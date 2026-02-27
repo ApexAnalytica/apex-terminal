@@ -7,11 +7,21 @@
   --accent-red: #ff1744;
   --accent-amber: #ffab00;
   --accent-green: #00e676;
+  --accent-purple: #7c4dff;
+  --accent-orange: #ff6d00;
   --surface: #0a0b10;
   --surface-elevated: #10111a;
   --border: #1a1c2e;
   --border-bright: #2a2d45;
   --text-muted: #5a5e72;
+
+  /* Category colors */
+  --cat-manufacturing: #00e5ff;
+  --cat-infrastructure: #7c4dff;
+  --cat-economic: #ffab00;
+  --cat-finance: #ff6d00;
+  --cat-energy: #00e676;
+  --cat-geopolitical: #ff1744;
 }
 
 @theme inline {
@@ -21,6 +31,8 @@
   --color-accent-red: var(--accent-red);
   --color-accent-amber: var(--accent-amber);
   --color-accent-green: var(--accent-green);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-orange: var(--accent-orange);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
   --color-border: var(--border);
@@ -66,6 +78,10 @@ body {
 
 .glow-amber {
   box-shadow: 0 0 8px rgba(255, 171, 0, 0.3), 0 0 24px rgba(255, 171, 0, 0.1);
+}
+
+.glow-purple {
+  box-shadow: 0 0 8px rgba(124, 77, 255, 0.3), 0 0 24px rgba(124, 77, 255, 0.1);
 }
 
 .text-glow-cyan {
@@ -117,6 +133,11 @@ body {
   background: var(--border) !important;
 }
 
+/* WebGL Canvas */
+canvas {
+  outline: none;
+}
+
 /* Blinking cursor */
 @keyframes blink {
   0%, 50% { opacity: 1; }
@@ -135,4 +156,14 @@ body {
 
 .pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* Edge particle flow animation */
+@keyframes edge-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.edge-animated {
+  animation: edge-flow 1s linear infinite;
 }

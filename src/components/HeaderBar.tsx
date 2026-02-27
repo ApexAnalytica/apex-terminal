@@ -1,13 +1,22 @@
 "use client";
 
-import { OmegaState } from "@/lib/types";
+import { useMemo } from "react";
+import { useApexStore } from "@/stores/useApexStore";
+import { computeOmegaState } from "@/lib/omega-engine";
 import CDOmegaMonitor from "./CDOmegaMonitor";
+import { ModuleId } from "@/lib/types";
 
-interface HeaderBarProps {
-  state: OmegaState;
-}
+const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[] = [
+  { id: "spirtes", label: "SPIRTES", icon: "◇", color: "var(--accent-cyan)" },
+  { id: "tarski", label: "TARSKI", icon: "⊢", color: "var(--accent-green)" },
+  { id: "pearl", label: "PEARL", icon: "⟐", color: "var(--accent-amber)" },
+  { id: "pareto", label: "PARETO", icon: "⚠", color: "var(--accent-red)" },
+];
 
-export default function HeaderBar({ state }: HeaderBarProps) {
+export default function HeaderBar() {
+  const { activeModule, setActiveModule, shocks } = useApexStore();
+  const state = useMemo(() => computeOmegaState(shocks), [shocks]);
+
   return (
     <header className="flex items-center justify-between px-6 h-14 border-b border-border bg-surface-elevated relative scanlines">
       {/* Left: Logo */}
@@ -21,13 +30,29 @@ export default function HeaderBar({ state }: HeaderBarProps) {
           </span>
         </div>
         <div className="h-8 w-px bg-border" />
-        <div className="flex flex-col">
-          <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.15em] text-accent-cyan">
-            CAUSAL INTELLIGENCE TERMINAL
-          </span>
-          <span className="text-[9px] text-text-muted font-mono tracking-wider">
-            &Omega;-Critical AI Systems&trade; Playbook
-          </span>
+
+        {/* Module Tabs */}
+        <div className="flex items-center gap-1">
+          {MODULE_TABS.map((tab) => {
+            const isActive = activeModule === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveModule(tab.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[9px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                style={{
+                  color: isActive ? tab.color : "var(--text-muted)",
+                  backgroundColor: isActive
+                    ? `color-mix(in srgb, ${tab.color} 10%, transparent)`
+                    : "transparent",
+                  borderBottom: isActive ? `1px solid ${tab.color}` : "1px solid transparent",
+                }}
+              >
+                <span className="text-xs">{tab.icon}</span>
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

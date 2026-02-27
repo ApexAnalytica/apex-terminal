@@ -1,67 +1,55 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { CausalShock, ModuleId, OmegaState } from "@/lib/types";
-import { computeOmegaState } from "@/lib/omega-engine";
+import dynamic from "next/dynamic";
+import { useApexStore } from "@/stores/useApexStore";
 import HeaderBar from "@/components/HeaderBar";
-import ManifoldSidebar from "@/components/ManifoldSidebar";
-import CausalDAG from "@/components/CausalDAG";
-import SyntheticTerminal from "@/components/SyntheticTerminal";
-import ShockPanel from "@/components/ShockPanel";
+import SystemCopilot from "@/components/SystemCopilot";
+import RiskPropagationFlow from "@/components/RiskPropagationFlow";
+import ModulePanel from "@/components/ModulePanel";
+import StructuralMetrics from "@/components/StructuralMetrics";
+import CausalDAG2D from "@/components/CausalDAG2D";
+
+// Dynamic import for 3D canvas (no SSR)
+const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="text-[10px] font-mono text-text-muted animate-pulse">
+        INITIALIZING WEBGL_3D RENDERER...
+      </div>
+    </div>
+  ),
+});
 
 export default function Home() {
-  const [activeModule, setActiveModule] = useState<ModuleId>("pareto");
-  const [shocks, setShocks] = useState<CausalShock[]>([]);
-
-  const omegaState: OmegaState = computeOmegaState(shocks);
-
-  const handleShockAdd = useCallback((shock: CausalShock) => {
-    setShocks((prev) => {
-      if (prev.some((s) => s.id === shock.id)) return prev;
-      return [...prev, shock];
-    });
-  }, []);
-
-  const handleShockRemove = useCallback((id: string) => {
-    setShocks((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  const viewMode = useApexStore((s) => s.viewMode);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
-      {/* Header */}
-      <HeaderBar state={omegaState} />
+      {/* Header with module tabs */}
+      <HeaderBar />
 
-      {/* Main Content */}
+      {/* Main 3-column layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Manifold Sidebar */}
-        <ManifoldSidebar
-          activeModule={activeModule}
-          onModuleSelect={setActiveModule}
-        />
+        {/* Left: System Copilot */}
+        <SystemCopilot />
 
-        {/* Center: DAG + Terminal */}
+        {/* Center: DAG + Risk Cards + Metrics */}
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* DAG Canvas */}
           <div className="flex-1 relative min-h-0">
-            <CausalDAG shocks={shocks} />
+            {viewMode === "3d" ? <CausalDAG3D /> : <CausalDAG2D />}
           </div>
 
-          {/* Terminal */}
-          <div className="h-64 min-h-[200px]">
-            <SyntheticTerminal
-              shocks={shocks}
-              onShockAdd={handleShockAdd}
-              onShockRemove={handleShockRemove}
-            />
-          </div>
+          {/* Risk Propagation Flow */}
+          <RiskPropagationFlow />
+
+          {/* Structural Metrics Footer */}
+          <StructuralMetrics />
         </div>
 
-        {/* Right: Shock Panel */}
-        <ShockPanel
-          activeShocks={shocks}
-          onShockAdd={handleShockAdd}
-          onShockRemove={handleShockRemove}
-        />
+        {/* Right: Module Panel */}
+        <ModulePanel />
       </div>
     </div>
   );

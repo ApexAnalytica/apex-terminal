@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -61,9 +61,8 @@ function CameraRig({
   posMap: Record<string, [number, number, number]>;
 }) {
   const { camera } = useThree();
-  const controlsRef = useApexStore.getState; // just to trigger re-renders
   const selectedNode = useApexStore((s) => s.selectedNode);
-  const orbitRef = useRef<any>(null);
+  const [controlsEnabled, setControlsEnabled] = useState(true);
   const animating = useRef(false);
   const progress = useRef(0);
   const startPos = useRef(new THREE.Vector3());
@@ -71,7 +70,6 @@ function CameraRig({
   const startTarget = useRef(new THREE.Vector3());
   const endTarget = useRef(new THREE.Vector3());
 
-  // Store orbit controls ref globally so we can access it
   const orbitControlsRef = useRef<any>(null);
 
   useEffect(() => {
@@ -85,6 +83,7 @@ function CameraRig({
       endTarget.current.set(nx, ny + 2, nz);
       progress.current = 0;
       animating.current = true;
+      setControlsEnabled(false);
     } else if (!selectedNode) {
       startPos.current.copy(camera.position);
       endPos.current.copy(HOME_POS);
@@ -94,6 +93,7 @@ function CameraRig({
       endTarget.current.copy(HOME_TARGET);
       progress.current = 0;
       animating.current = true;
+      setControlsEnabled(false);
     }
   }, [selectedNode, posMap, camera]);
 
@@ -114,19 +114,21 @@ function CameraRig({
 
     if (progress.current >= 1) {
       animating.current = false;
+      setControlsEnabled(true);
     }
   });
 
   return (
     <OrbitControls
       ref={orbitControlsRef}
+      makeDefault
       enableDamping
       dampingFactor={0.1}
       rotateSpeed={0.5}
       zoomSpeed={0.8}
       minDistance={5}
       maxDistance={400}
-      enabled={!animating.current}
+      enabled={controlsEnabled}
     />
   );
 }
@@ -318,7 +320,7 @@ export default function CausalDAG3D() {
       <Canvas
         key={canvasKey}
         camera={{ position: [25, 20, 50], fov: 60 }}
-        style={{ background: "#050508", position: "absolute", inset: 0 }}
+        style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
           const canvas = gl.domElement;

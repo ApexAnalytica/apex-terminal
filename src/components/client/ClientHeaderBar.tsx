@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useApexStore } from "@/stores/useApexStore";
 import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
 import CDOmegaMonitor from "../CDOmegaMonitor";
@@ -23,14 +24,20 @@ export default function ClientHeaderBar() {
     <header className="flex items-center justify-between px-6 h-14 border-b border-border bg-surface-elevated relative scanlines">
       {/* Left: Logo */}
       <div className="flex items-center gap-4">
-        <div className="flex flex-col">
-          <span className="font-[family-name:var(--font-michroma)] text-[13px] tracking-[0.2em] text-foreground">
-            ATHENA
-          </span>
-          <span className="font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.35em] text-text-muted -mt-0.5">
-            DEFENSE SYSTEMS
-          </span>
-        </div>
+        <Link
+          href="/"
+          className="flex items-center gap-2 group"
+        >
+          <span className="text-[10px] text-text-muted group-hover:text-accent-cyan transition-colors">&larr;</span>
+          <div className="flex flex-col">
+            <span className="font-[family-name:var(--font-michroma)] text-[13px] tracking-[0.2em] text-foreground group-hover:text-accent-cyan transition-colors">
+              ATHENA
+            </span>
+            <span className="font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.35em] text-text-muted -mt-0.5">
+              DEFENSE SYSTEMS
+            </span>
+          </div>
+        </Link>
         <div className="h-8 w-px bg-border" />
 
         {/* Module Tabs */}

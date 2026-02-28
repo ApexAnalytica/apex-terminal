@@ -46,7 +46,7 @@ const DOMAIN_Z_OFFSETS: Record<string, number> = {
 };
 
 // Target bounding box half-extents for the final layout
-const BOUNDS = { x: 35, y: 25, z: 20 };
+const BOUNDS = { x: 55, y: 40, z: 35 };
 
 export function computeLayout3D(
   nodes: CausalNode[],
@@ -85,10 +85,10 @@ export function computeLayout3D(
       "link",
       forceLink(simLinks)
         .id((d: any) => d.id)
-        .distance(15)
-        .strength(0.5)
+        .distance(25)
+        .strength(0.4)
     )
-    .force("charge", forceManyBody().strength(-60))
+    .force("charge", forceManyBody().strength(-120))
     .force("center", forceCenter(0, 0, 0))
     .velocityDecay(0.4)
     .stop();

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Billboard, Text, Html } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode } from "@/lib/types";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
@@ -158,31 +158,45 @@ export default function DAGNode3D({
         </mesh>
       )}
 
-      {/* Label */}
-      <Billboard position={[0, size + (isSelected ? 2.5 : 1.2), 0]}>
-        <Text
-          fontSize={isSelected ? 1.2 : 0.7}
-          color={isSelected ? "#00e5ff" : hovered ? "#ffffff" : color}
-          anchorX="center"
-          anchorY="bottom"
-          font={undefined}
-          fillOpacity={dimmed ? 0.2 : 1}
-          maxWidth={isSelected ? 30 : undefined}
+      {/* Label — always visible, HTML overlay above glow radius */}
+      {!dimmed && (
+        <Html
+          position={[0, size * 1.6 + 1.5, 0]}
+          center
+          style={{ pointerEvents: "none" }}
+          distanceFactor={35}
         >
-          {node.label}
-        </Text>
-        <Text
-          fontSize={isSelected ? 0.7 : 0.4}
-          color={isSelected ? "#00e5ff" : "rgba(90,94,114,1)"}
-          anchorX="center"
-          anchorY="top"
-          position={[0, isSelected ? -0.4 : -0.2, 0]}
-          font={undefined}
-          fillOpacity={dimmed ? 0.2 : isSelected ? 0.8 : 1}
-        >
-          {node.domain.toUpperCase()} | {"\u03A9"} {composite.toFixed(1)}
-        </Text>
-      </Billboard>
+          <div
+            style={{
+              fontFamily: "monospace",
+              textAlign: "center",
+              whiteSpace: "nowrap",
+              userSelect: "none",
+            }}
+          >
+            <div
+              style={{
+                fontSize: isSelected ? "13px" : "10px",
+                fontWeight: "bold",
+                color: isSelected ? "#00e5ff" : hovered ? "#ffffff" : color,
+                textShadow: "0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)",
+              }}
+            >
+              {node.label}
+            </div>
+            <div
+              style={{
+                fontSize: isSelected ? "10px" : "8px",
+                color: isSelected ? "rgba(0,229,255,0.7)" : "rgba(90,94,114,1)",
+                textShadow: "0 0 4px rgba(0,0,0,0.9)",
+                marginTop: "1px",
+              }}
+            >
+              {node.domain.toUpperCase()} | {"\u03A9"} {composite.toFixed(1)}
+            </div>
+          </div>
+        </Html>
+      )}
 
       {/* Hover Detail Card */}
       {hovered && !dimmed && (

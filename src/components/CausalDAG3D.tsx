@@ -52,7 +52,7 @@ class DAGErrorBoundary extends React.Component<
   }
 }
 
-const HOME_POS = new THREE.Vector3(25, 20, 50);
+const HOME_POS = new THREE.Vector3(40, 30, 80);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({
@@ -76,11 +76,11 @@ function CameraRig({
     if (selectedNode && posMap[selectedNode]) {
       const [nx, ny, nz] = posMap[selectedNode];
       startPos.current.copy(camera.position);
-      endPos.current.set(nx + 15, ny + 12, nz + 20);
+      endPos.current.set(nx + 18, ny + 14, nz + 30);
       startTarget.current.copy(
         orbitControlsRef.current?.target ?? HOME_TARGET
       );
-      endTarget.current.set(nx, ny + 2, nz);
+      endTarget.current.set(nx, ny, nz);
       progress.current = 0;
       animating.current = true;
       setControlsEnabled(false);
@@ -319,7 +319,7 @@ export default function CausalDAG3D() {
       <DAGErrorBoundary>
       <Canvas
         key={canvasKey}
-        camera={{ position: [25, 20, 50], fov: 60 }}
+        camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
@@ -370,6 +370,8 @@ export default function CausalDAG3D() {
                     setInterventionTarget(
                       interventionTarget === node.id ? null : node.id
                     );
+                  } else {
+                    setSelectedNode(selectedNode === node.id ? null : node.id);
                   }
                 }}
               />

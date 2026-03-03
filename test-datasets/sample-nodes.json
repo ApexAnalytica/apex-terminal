@@ -1,0 +1,283 @@
+{
+  "nodes": [
+    {
+      "id": "starlink_constellation",
+      "label": "Starlink Constellation",
+      "shortLabel": "SLC",
+      "category": "communications",
+      "domain": "Satellite Networks",
+      "discoverySource": "DCD",
+      "omegaFragility": {
+        "composite": 7.8,
+        "substitutionFriction": 8.2,
+        "downstreamLoad": 7.5,
+        "cascadingVoltage": 7.0,
+        "existentialTailWeight": 8.4
+      },
+      "globalConcentration": "85% SpaceX (Hawthorne)",
+      "replacementTime": "3-5 years",
+      "physicalConstraint": "LEO orbital slot allocation limited by ITU coordination",
+      "isConfounded": false,
+      "isRestricted": false
+    },
+    {
+      "id": "gps_iii",
+      "label": "GPS III Constellation",
+      "shortLabel": "GPS",
+      "category": "infrastructure",
+      "domain": "Satellite Networks",
+      "discoverySource": "PCMCI+",
+      "omegaFragility": {
+        "composite": 8.9,
+        "substitutionFriction": 9.1,
+        "downstreamLoad": 9.4,
+        "cascadingVoltage": 8.0,
+        "existentialTailWeight": 9.2
+      },
+      "globalConcentration": "100% Lockheed Martin (Littleton)",
+      "replacementTime": "8-12 years",
+      "physicalConstraint": "MEO orbit requires atomic clock precision; 24+ satellite minimum",
+      "isConfounded": false,
+      "isRestricted": true
+    },
+    {
+      "id": "launch_vehicle_mfg",
+      "label": "Launch Vehicle Manufacturing",
+      "shortLabel": "LVM",
+      "category": "manufacturing",
+      "domain": "Satellite Networks",
+      "discoverySource": "merged",
+      "omegaFragility": {
+        "composite": 7.2,
+        "substitutionFriction": 6.8,
+        "downstreamLoad": 7.5,
+        "cascadingVoltage": 7.8,
+        "existentialTailWeight": 6.5
+      },
+      "globalConcentration": "60% SpaceX, 25% ULA, 15% Arianespace",
+      "replacementTime": "2-4 years",
+      "isConfounded": true,
+      "isRestricted": false
+    },
+    {
+      "id": "ground_station_net",
+      "label": "Ground Station Network",
+      "shortLabel": "GSN",
+      "category": "infrastructure",
+      "domain": "Satellite Networks",
+      "discoverySource": "FCI",
+      "omegaFragility": {
+        "composite": 6.4,
+        "substitutionFriction": 5.8,
+        "downstreamLoad": 7.0,
+        "cascadingVoltage": 6.2,
+        "existentialTailWeight": 6.8
+      },
+      "globalConcentration": "Distributed — 40+ operators globally",
+      "replacementTime": "1-2 years",
+      "isConfounded": false,
+      "isRestricted": false
+    },
+    {
+      "id": "space_weather",
+      "label": "Space Weather Events",
+      "shortLabel": "SWE",
+      "category": "geopolitical",
+      "domain": "Satellite Networks",
+      "discoverySource": "DCD",
+      "omegaFragility": {
+        "composite": 8.5,
+        "substitutionFriction": 10.0,
+        "downstreamLoad": 8.0,
+        "cascadingVoltage": 9.5,
+        "existentialTailWeight": 6.5
+      },
+      "globalConcentration": "N/A — exogenous natural hazard",
+      "replacementTime": "N/A",
+      "physicalConstraint": "Carrington-class CME would disable LEO/MEO assets for months",
+      "isConfounded": false,
+      "isRestricted": false
+    },
+    {
+      "id": "deep_sea_mining",
+      "label": "Deep Sea Mining Operations",
+      "shortLabel": "DSM",
+      "category": "manufacturing",
+      "domain": "Ocean Resources",
+      "discoverySource": "FCI",
+      "omegaFragility": {
+        "composite": 6.9,
+        "substitutionFriction": 7.5,
+        "downstreamLoad": 6.0,
+        "cascadingVoltage": 7.2,
+        "existentialTailWeight": 6.8
+      },
+      "globalConcentration": "ISA licenses — 30+ nations competing",
+      "replacementTime": "5-8 years",
+      "physicalConstraint": "Polymetallic nodule harvesting limited to Clarion-Clipperton Zone",
+      "isConfounded": false,
+      "isRestricted": false
+    },
+    {
+      "id": "ocean_thermal_energy",
+      "label": "Ocean Thermal Energy Conversion",
+      "shortLabel": "OTE",
+      "category": "energy",
+      "domain": "Ocean Resources",
+      "discoverySource": "merged",
+      "omegaFragility": {
+        "composite": 5.2,
+        "substitutionFriction": 6.0,
+        "downstreamLoad": 4.5,
+        "cascadingVoltage": 5.0,
+        "existentialTailWeight": 5.4
+      },
+      "globalConcentration": "Experimental — Makai Ocean Engineering (Hawaii)",
+      "replacementTime": "8-12 years",
+      "isConfounded": false,
+      "isRestricted": false
+    },
+    {
+      "id": "manganese_nodules",
+      "label": "Manganese Nodule Processing",
+      "shortLabel": "MNP",
+      "category": "manufacturing",
+      "domain": "Ocean Resources",
+      "discoverySource": "DCD",
+      "omegaFragility": {
+        "composite": 6.1,
+        "substitutionFriction": 6.8,
+        "downstreamLoad": 5.5,
+        "cascadingVoltage": 6.0,
+        "existentialTailWeight": 6.2
+      },
+      "globalConcentration": "No commercial-scale facilities yet",
+      "replacementTime": "10-15 years",
+      "isConfounded": true,
+      "isRestricted": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_lvm_slc",
+      "source": "launch_vehicle_mfg",
+      "target": "starlink_constellation",
+      "weight": 0.85,
+      "lag": 1,
+      "type": "directed",
+      "confidence": 0.92,
+      "isInconsistent": false,
+      "physicalMechanism": "launch cadence directly constrains constellation deployment rate"
+    },
+    {
+      "id": "e_lvm_gps",
+      "source": "launch_vehicle_mfg",
+      "target": "gps_iii",
+      "weight": 0.70,
+      "lag": 2,
+      "type": "directed",
+      "confidence": 0.88,
+      "isInconsistent": false,
+      "physicalMechanism": "GPS III replacement satellites require dedicated launch windows"
+    },
+    {
+      "id": "e_slc_gsn",
+      "source": "starlink_constellation",
+      "target": "ground_station_net",
+      "weight": 0.65,
+      "lag": 0,
+      "type": "directed",
+      "confidence": 0.80,
+      "isInconsistent": false,
+      "physicalMechanism": "ground stations must scale with orbital shell density"
+    },
+    {
+      "id": "e_gps_gsn",
+      "source": "gps_iii",
+      "target": "ground_station_net",
+      "weight": 0.55,
+      "lag": 0,
+      "type": "directed",
+      "confidence": 0.75,
+      "isInconsistent": false,
+      "physicalMechanism": "GPS monitoring stations relay navigation corrections"
+    },
+    {
+      "id": "e_swe_slc",
+      "source": "space_weather",
+      "target": "starlink_constellation",
+      "weight": 0.90,
+      "lag": 0,
+      "type": "confounded",
+      "confidence": 0.60,
+      "isInconsistent": true,
+      "physicalMechanism": "solar storm atmospheric drag causes orbital decay in LEO"
+    },
+    {
+      "id": "e_swe_gps",
+      "source": "space_weather",
+      "target": "gps_iii",
+      "weight": 0.75,
+      "lag": 0,
+      "type": "confounded",
+      "confidence": 0.65,
+      "isInconsistent": false,
+      "physicalMechanism": "ionospheric scintillation degrades GPS signal accuracy"
+    },
+    {
+      "id": "e_slc_landing",
+      "source": "starlink_constellation",
+      "target": "landing_stations",
+      "weight": 0.45,
+      "lag": 1,
+      "type": "temporal",
+      "confidence": 0.70,
+      "isInconsistent": false,
+      "physicalMechanism": "LEO backhaul reduces dependence on subsea cable landing points"
+    },
+    {
+      "id": "e_gps_nova",
+      "source": "gps_iii",
+      "target": "nova_hub",
+      "weight": 0.40,
+      "lag": 0,
+      "type": "directed",
+      "confidence": 0.68,
+      "isInconsistent": false,
+      "physicalMechanism": "precision timing from GPS III synchronizes data center operations"
+    },
+    {
+      "id": "e_gsn_nvidia",
+      "source": "ground_station_net",
+      "target": "nvidia_stack",
+      "weight": 0.35,
+      "lag": 1,
+      "type": "temporal",
+      "confidence": 0.55,
+      "isInconsistent": false,
+      "physicalMechanism": "satellite ground data feeds training pipelines for GPU compute clusters"
+    },
+    {
+      "id": "e_dsm_mng",
+      "source": "deep_sea_mining",
+      "target": "manganese_nodules",
+      "weight": 0.92,
+      "lag": 1,
+      "type": "directed",
+      "confidence": 0.85,
+      "isInconsistent": false,
+      "physicalMechanism": "mining operations supply raw nodules for onshore processing"
+    },
+    {
+      "id": "e_ote_dsm",
+      "source": "ocean_thermal_energy",
+      "target": "deep_sea_mining",
+      "weight": 0.30,
+      "lag": 2,
+      "type": "temporal",
+      "confidence": 0.40,
+      "isInconsistent": false,
+      "physicalMechanism": "OTEC platforms could co-locate with mining operations for power"
+    }
+  ]
+}

@@ -276,6 +276,59 @@ export default function CausalDAG3D() {
     return greyed;
   }, [severedEdges, graphData]);
 
+  // Compute disconnected nodes: find the largest connected component,
+  // grey out any node not in it (floating imported clusters)
+  const disconnectedNodes = useMemo(() => {
+    // Build undirected adjacency list from active (non-severed) edges
+    const adj = new Map<string, Set<string>>();
+    for (const node of graphData.nodes) {
+      adj.set(node.id, new Set());
+    }
+    for (const edge of graphData.edges) {
+      if (edge.isSevered) continue;
+      adj.get(edge.source)?.add(edge.target);
+      adj.get(edge.target)?.add(edge.source);
+    }
+
+    // Find all connected components via BFS
+    const visited = new Set<string>();
+    const components: Set<string>[] = [];
+
+    for (const node of graphData.nodes) {
+      if (visited.has(node.id)) continue;
+      const component = new Set<string>();
+      const queue = [node.id];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (visited.has(current)) continue;
+        visited.add(current);
+        component.add(current);
+        const neighbors = adj.get(current);
+        if (neighbors) {
+          for (const n of neighbors) {
+            if (!visited.has(n)) queue.push(n);
+          }
+        }
+      }
+      components.push(component);
+    }
+
+    // Largest component is the main graph
+    let largest = components[0] ?? new Set<string>();
+    for (const c of components) {
+      if (c.size > largest.size) largest = c;
+    }
+
+    // Everything outside the largest component is disconnected
+    const disconnected = new Set<string>();
+    for (const node of graphData.nodes) {
+      if (!largest.has(node.id)) {
+        disconnected.add(node.id);
+      }
+    }
+    return disconnected;
+  }, [graphData]);
+
   const handleScissorsClick = useCallback(
     (edgeId: string) => {
       severEdge(edgeId);
@@ -363,7 +416,7 @@ export default function CausalDAG3D() {
                 isNeighborOfSelected={isNeighborOfSelected}
                 anyNodeSelected={anyNodeSelected}
                 isConsequence={node.isConsequence ?? false}
-                isGreyedOut={greyedOutNodes.has(node.id)}
+                isGreyedOut={greyedOutNodes.has(node.id) || disconnectedNodes.has(node.id)}
                 onDoubleClick={() => handleDoubleClick(node.id)}
                 onClick={() => {
                   if (interventionMode) {

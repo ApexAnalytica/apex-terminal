@@ -9,6 +9,7 @@ import RiskPropagationFlow from "@/components/RiskPropagationFlow";
 import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import CausalDAG2D from "@/components/CausalDAG2D";
+import ImportModal from "@/components/import/ImportModal";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -27,6 +28,9 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
+      {/* Import Modal (overlay) */}
+      <ImportModal />
+
       {/* Header with module tabs */}
       <HeaderBar />
 

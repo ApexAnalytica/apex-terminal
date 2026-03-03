@@ -1,12 +1,15 @@
 import { create } from "zustand";
 import {
   CausalShock,
+  CausalNode,
+  CausalEdge,
   ModuleId,
   ViewMode,
   TruthFilter,
   CopilotMessage,
   CausalGraph,
 } from "@/lib/types";
+import { mergeGraphs } from "@/lib/import/merge";
 import { MAIN_GRAPH } from "@/lib/graph-data";
 
 interface ApexState {
@@ -56,6 +59,11 @@ interface ApexState {
   // Copilot
   copilotMessages: CopilotMessage[];
   addCopilotMessage: (msg: CopilotMessage) => void;
+
+  // Import modal
+  importModalOpen: boolean;
+  setImportModalOpen: (open: boolean) => void;
+  mergeGraphData: (nodes: CausalNode[], edges: CausalEdge[]) => void;
 }
 
 export const useApexStore = create<ApexState>((set) => ({
@@ -125,4 +133,13 @@ export const useApexStore = create<ApexState>((set) => ({
   ],
   addCopilotMessage: (msg) =>
     set((s) => ({ copilotMessages: [...s.copilotMessages, msg] })),
+
+  // Import
+  importModalOpen: false,
+  setImportModalOpen: (open) => set({ importModalOpen: open }),
+  mergeGraphData: (nodes, edges) =>
+    set((s) => {
+      const { graph } = mergeGraphs(s.graphData, { nodes, edges });
+      return { graphData: graph, initialGraph: graph };
+    }),
 }));

@@ -1,0 +1,27 @@
+{
+  "nodes": [],
+  "edges": [
+    {
+      "id": "e_mng_baotou",
+      "source": "manganese_nodules",
+      "target": "baotou_refining",
+      "weight": 0.55,
+      "lag": 2,
+      "type": "directed",
+      "confidence": 0.62,
+      "isInconsistent": false,
+      "physicalMechanism": "deep sea manganese nodules contain rare earth co-products routed to Baotou refineries"
+    },
+    {
+      "id": "e_dsm_subsea",
+      "source": "deep_sea_mining",
+      "target": "subsea_mfg",
+      "weight": 0.40,
+      "lag": 1,
+      "type": "temporal",
+      "confidence": 0.50,
+      "isInconsistent": false,
+      "physicalMechanism": "deep sea mining vessels share subsea cable laying infrastructure and ROV technology"
+    }
+  ]
+}

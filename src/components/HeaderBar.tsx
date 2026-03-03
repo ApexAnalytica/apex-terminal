@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
 import CDOmegaMonitor from "./CDOmegaMonitor";
+import ImportButton from "./import/ImportButton";
 import { ModuleId } from "@/lib/types";
 
 const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[] = [
@@ -63,6 +64,8 @@ export default function HeaderBar() {
 
       {/* Right: Meta */}
       <div className="flex items-center gap-4">
+        <ImportButton />
+        <div className="h-8 w-px bg-border" />
         <div className="flex flex-col items-end">
           <span className="text-[9px] text-text-muted font-mono tracking-wider">
             TECH 2.0

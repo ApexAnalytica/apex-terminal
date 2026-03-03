@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APEX Terminal — Product Architecture Document</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #0a0b10;
+      --surface: #12131a;
+      --surface-elevated: #1a1b24;
+      --border: #2a2b36;
+      --text: #c8cad0;
+      --text-muted: #5a5e72;
+      --heading: #ffffff;
+      --cyan: #00e5ff;
+      --green: #00e676;
+      --amber: #ffab00;
+      --red: #ff1744;
+      --purple: #7c4dff;
+      --orange: #ff6d00;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 40px;
+    }
+
+    /* Cover */
+    .cover {
+      text-align: center;
+      padding: 100px 0 80px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 60px;
+    }
+    .cover-logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--heading);
+      margin-bottom: 4px;
+    }
+    .cover-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.5em;
+      color: var(--cyan);
+      margin-bottom: 40px;
+    }
+    .cover-title {
+      font-size: 20px;
+      font-weight: 300;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .cover-version {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Headings */
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--heading);
+      margin: 60px 0 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--cyan);
+    }
+    h1:first-of-type { margin-top: 0; }
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--heading);
+      margin: 40px 0 14px;
+    }
+    h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--cyan);
+      margin: 28px 0 10px;
+    }
+
+    p { margin-bottom: 14px; }
+
+    /* Code / Pre */
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--surface-elevated);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: var(--cyan);
+    }
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      line-height: 1.6;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+      color: var(--text);
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+    th {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:hover td { background: var(--surface); }
+
+    /* Lists */
+    ul, ol { margin: 10px 0 14px 24px; }
+    li { margin-bottom: 6px; }
+
+    /* Callout boxes */
+    .callout {
+      background: var(--surface);
+      border-left: 3px solid var(--cyan);
+      padding: 16px 20px;
+      border-radius: 0 6px 6px 0;
+      margin: 20px 0;
+    }
+    .callout.amber { border-left-color: var(--amber); }
+    .callout.green { border-left-color: var(--green); }
+    .callout.red { border-left-color: var(--red); }
+
+    /* Flow diagrams */
+    .flow {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px;
+      margin: 20px 0;
+    }
+    .flow-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: var(--cyan);
+      margin-bottom: 14px;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      padding: 3px 8px;
+      border-radius: 3px;
+      margin-right: 6px;
+    }
+    .badge-cyan { background: rgba(0,229,255,0.1); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); }
+    .badge-green { background: rgba(0,230,118,0.1); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+    .badge-amber { background: rgba(255,171,0,0.1); color: var(--amber); border: 1px solid rgba(255,171,0,0.3); }
+    .badge-red { background: rgba(255,23,68,0.1); color: var(--red); border: 1px solid rgba(255,23,68,0.3); }
+    .badge-purple { background: rgba(124,77,255,0.1); color: var(--purple); border: 1px solid rgba(124,77,255,0.3); }
+
+    /* Sections */
+    .section { margin-bottom: 50px; }
+
+    /* TOC */
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px 30px;
+      margin: 30px 0 50px;
+    }
+    .toc-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    .toc ol { counter-reset: toc; list-style: none; margin-left: 0; }
+    .toc li { counter-increment: toc; margin-bottom: 6px; }
+    .toc li::before {
+      content: counter(toc, decimal-leading-zero) ".";
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--cyan);
+      margin-right: 10px;
+    }
+    .toc a { color: var(--text); text-decoration: none; }
+    .toc a:hover { color: var(--cyan); }
+
+    /* Divider */
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 50px 0;
+    }
+
+    /* Print styles */
+    @media print {
+      body { background: #fff; color: #222; font-size: 11px; }
+      .container { padding: 20px; }
+      pre { background: #f5f5f5; border-color: #ddd; color: #333; }
+      code { background: #f0f0f0; color: #0066cc; }
+      table { font-size: 10px; }
+      th { background: #f5f5f5; }
+      h1 { border-bottom-color: #0066cc; color: #000; }
+      h3 { color: #0066cc; }
+      .cover-logo { color: #000; }
+      .cover-sub { color: #0066cc; }
+      .callout { background: #f9f9f9; }
+      .flow { background: #f9f9f9; }
+      .toc { background: #f9f9f9; }
+      .badge-cyan { color: #0066cc; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-logo">APEX</div>
+    <div class="cover-sub">ANALYTICA</div>
+    <div class="cover-title">Product Architecture Document</div>
+    <div class="cover-version">v2.0 &mdash; March 2026 &mdash; Brynna Shale</div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">CONTENTS</div>
+    <ol>
+      <li><a href="#overview">System Overview</a></li>
+      <li><a href="#layout">Page Layout &amp; Component Tree</a></li>
+      <li><a href="#store">State Management (Zustand Store)</a></li>
+      <li><a href="#rendering">3D Rendering Pipeline</a></li>
+      <li><a href="#engines">Core Engines</a></li>
+      <li><a href="#import">Dataset Import Pipeline</a></li>
+      <li><a href="#flows">Data Flow Diagrams</a></li>
+      <li><a href="#types">Type System &amp; Graph Data</a></li>
+      <li><a href="#algorithms">Key Algorithms</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. System Overview -->
+  <div class="section" id="overview">
+    <h1>01. System Overview</h1>
+    <p>APEX Terminal is a causal intelligence platform for analyzing systemic risk in critical infrastructure supply chains. It combines interactive 3D graph visualization with four specialized causal reasoning engines.</p>
+
+    <h3>Technology Stack</h3>
+    <table>
+      <tr><th>Layer</th><th>Technology</th></tr>
+      <tr><td>Framework</td><td>Next.js 16 + Turbopack, React 19</td></tr>
+      <tr><td>3D Rendering</td><td>React Three Fiber, Three.js, @react-three/drei</td></tr>
+      <tr><td>Graph Layout</td><td>d3-force-3d (force-directed simulation)</td></tr>
+      <tr><td>State Management</td><td>Zustand</td></tr>
+      <tr><td>Styling</td><td>Tailwind CSS</td></tr>
+      <tr><td>Animation</td><td>Framer Motion</td></tr>
+      <tr><td>2D Fallback</td><td>React Flow</td></tr>
+      <tr><td>Deployment</td><td>Vercel (auto-deploy from GitHub on push to main)</td></tr>
+      <tr><td>Repository</td><td>GitHub &mdash; <code>brynna-s/apex-terminal</code></td></tr>
+    </table>
+
+    <h3>Deployment &amp; Infrastructure</h3>
+    <table>
+      <tr><th>Component</th><th>Details</th></tr>
+      <tr><td>Hosting</td><td>Vercel (Edge Network, automatic HTTPS)</td></tr>
+      <tr><td>Live URL</td><td><code>apex-terminal-nu.vercel.app</code></td></tr>
+      <tr><td>Build System</td><td>Next.js 16 + Turbopack (optimized production builds)</td></tr>
+      <tr><td>Deploy Trigger</td><td>Automatic on push to <code>main</code> branch via GitHub integration</td></tr>
+      <tr><td>Rendering</td><td>Static prerendering (SSG) &mdash; all pages statically generated at build time</td></tr>
+      <tr><td>Backend</td><td>None &mdash; fully client-side (no API routes, no server functions)</td></tr>
+      <tr><td>Repository</td><td>GitHub: <code>github.com/brynna-s/apex-terminal</code> (public)</td></tr>
+    </table>
+
+    <h3>Routes</h3>
+    <table>
+      <tr><th>Route</th><th>Variant</th><th>Graph</th></tr>
+      <tr><td><code>/</code></td><td>APEX Analytica (main)</td><td>25 nodes, 10 domains &mdash; general critical infrastructure</td></tr>
+      <tr><td><code>/client</code></td><td>Athena Defense Systems</td><td>18 nodes, ISR-focused defense supply chain</td></tr>
+    </table>
+
+    <h3>Architecture Diagram</h3>
+    <pre>
+  GitHub (brynna-s/apex-terminal)
+      |
+      | push to main
+      v
+  VERCEL (apex-terminal-nu.vercel.app)
+      |
+      | Next.js 16 + Turbopack build -> Static prerender (SSG)
+      | Edge Network CDN -> automatic HTTPS
+      v
+  BROWSER (Fully Client-Side — No Backend)
+  +-----------------------------------------------------------------+
+  |                                                                 |
+  |   HeaderBar                                                     |
+  |   [Module Tabs]  [CDO Monitor]  [+ IMPORT]  [Session]          |
+  |                                                                 |
+  |   +------------------+------------------------------+---------+ |
+  |   |                  |                              |         | |
+  |   |  System Copilot  |      3D Causal DAG           | Module  | |
+  |   |  (Messages,      |   (React Three Fiber)        | Panel   | |
+  |   |   Actions,       |   + DAG Overlay              | (Right) | |
+  |   |   Queries)       |   + Risk Cards               |         | |
+  |   |                  |   + Structural Metrics        |         | |
+  |   +------------------+------------------------------+---------+ |
+  |                                                                 |
+  |   Zustand Store (Central State)                                 |
+  |   [graphData] [shocks] [selectedNode] [activeModule] [...]      |
+  |                                                                 |
+  |   Import Pipeline (Modal Overlay)                               |
+  |   [Parse] -> [Validate] -> [Preview] -> [Merge] -> [Render]    |
+  +-----------------------------------------------------------------+</pre>
+  </div>
+
+  <!-- 2. Layout & Component Tree -->
+  <div class="section" id="layout">
+    <h1>02. Page Layout &amp; Component Tree</h1>
+
+    <h3>Visual Layout</h3>
+    <pre>
+  +--------------------------------------------------------------------+
+  | APEX  [SPIRTES] [TARSKI] [PEARL] [PARETO]  CDO Monitor  +IMPORT   |
+  +----------+------------------------------------------+--------------+
+  |          |                                          |              |
+  |  System  |            3D Causal DAG                 |   Module     |
+  |  Copilot |         (WebGL Canvas)                   |   Panel      |
+  |          |                                          |              |
+  |  Chat    |    Nodes = spheres (size ~ omega)        |   Node       |
+  |  Actions |    Edges = tubes (weight ~ thickness)    |   Inspector  |
+  |  Input   |    Camera = orbit + zoom-to-node         |              |
+  |          |    Overlay = labels, legend, stats        |   Engine-    |
+  |          |                                          |   specific   |
+  |          +------------------------------------------+   panels     |
+  |          |  Risk Propagation Cards (scroll)         |              |
+  |          +------------------------------------------+              |
+  |          |  Structural Metrics Footer               |              |
+  +----------+------------------------------------------+--------------+</pre>
+
+    <h3>Component Tree</h3>
+    <pre>
+  page.tsx
+  +-- ImportModal (overlay, framer-motion)
+  |   +-- DropZone (step 1)
+  |   +-- ValidationSummary + PreviewTable (step 2)
+  |   +-- Merge confirmation (step 3)
+  |
+  +-- HeaderBar
+  |   +-- Logo + Module Tabs (SPIRTES | TARSKI | PEARL | PARETO)
+  |   +-- CDOmegaMonitor (buffer bar, alert, T-days)
+  |   +-- ImportButton ("+ IMPORT")
+  |
+  +-- SystemCopilot (left)
+  |   +-- Message list (animated entry)
+  |   +-- Action buttons (DISCOVER | EXPLAIN | VERIFY)
+  |   +-- Query input
+  |
+  +-- Center Column
+  |   +-- CausalDAG3D (or CausalDAG2D fallback)
+  |   |   +-- R3F Canvas + WebGL + OrbitControls
+  |   |   +-- CameraRig (animated zoom-to-node)
+  |   |   +-- DAGNode3D x N (sphere + glow + label + hover card)
+  |   |   +-- DAGEdge3D x N (tube + arrowhead + hover label)
+  |   |   +-- DAGOverlay (title, legend, leaderboard, hints)
+  |   +-- RiskPropagationFlow (horizontal scroll cards)
+  |   +-- StructuralMetrics (footer)
+  |
+  +-- ModulePanel (right)
+      +-- NodeInspector (omega profile, metadata, edges)
+      +-- SPIRTES: CascadeHeader + TrinityPanel (DCD/PCMCI+/FCI)
+      +-- TARSKI:  TruthFilter + AxiomLibrary + ProofTraces
+      +-- PEARL:   InterventionControls + Scissors Tool
+      +-- PARETO:  DoomsdayClock + ShockPanel + Fragility Index</pre>
+  </div>
+
+  <!-- 3. State Management -->
+  <div class="section" id="store">
+    <h1>03. State Management</h1>
+    <p>All application state is managed through a single Zustand store at <code>src/stores/useApexStore.ts</code>. Components subscribe to specific slices for optimal re-rendering.</p>
+
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>activeModule</code></td><td><code>"spirtes" | "tarski" | "pearl" | "pareto"</code></td><td>HeaderBar, ModulePanel</td></tr>
+      <tr><td><code>graphData</code></td><td><code>CausalGraph</code></td><td>CausalDAG3D, RiskPropagationFlow, ModulePanel, Copilot, NodeInspector</td></tr>
+      <tr><td><code>initialGraph</code></td><td><code>CausalGraph</code></td><td>resetSeveredEdges (restores graph after scissors)</td></tr>
+      <tr><td><code>shocks</code></td><td><code>CausalShock[]</code></td><td>HeaderBar (Omega engine), CDOmegaMonitor, ShockPanel</td></tr>
+      <tr><td><code>viewMode</code></td><td><code>"2d" | "3d"</code></td><td>DAG renderer toggle</td></tr>
+      <tr><td><code>selectedNode</code></td><td><code>string | null</code></td><td>CausalDAG3D (camera, highlighting), NodeInspector, Copilot (context)</td></tr>
+      <tr><td><code>interventionMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (downstream highlight), InterventionControls</td></tr>
+      <tr><td><code>interventionTarget</code></td><td><code>string | null</code></td><td>CausalDAG3D (amber ring), InterventionControls (counterfactual)</td></tr>
+      <tr><td><code>scissorsMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (edge click), InterventionControls</td></tr>
+      <tr><td><code>severedEdges</code></td><td><code>string[]</code></td><td>CausalDAG3D (greyed-out computation), DAGEdge3D (severed style)</td></tr>
+      <tr><td><code>truthFilter</code></td><td><code>"raw" | "verified"</code></td><td>DAGNode3D (restricted badge), DAGEdge3D (inconsistent style)</td></tr>
+      <tr><td><code>axiomLevelFilter</code></td><td><code>"all" | 0 | 1 | 2</code></td><td>AxiomLibrary</td></tr>
+      <tr><td><code>copilotMessages</code></td><td><code>CopilotMessage[]</code></td><td>SystemCopilot</td></tr>
+      <tr><td><code>importModalOpen</code></td><td><code>boolean</code></td><td>ImportModal, ImportButton</td></tr>
+    </table>
+
+    <h3>Store Actions</h3>
+    <table>
+      <tr><th>Action</th><th>Trigger</th><th>Effect</th></tr>
+      <tr><td><code>setActiveModule(id)</code></td><td>Module tab click</td><td>Swaps right panel content</td></tr>
+      <tr><td><code>setSelectedNode(id)</code></td><td>Node click in 3D/2D</td><td>Camera pan, inspector expand, copilot inject</td></tr>
+      <tr><td><code>addShock(shock)</code></td><td>PARETO shock button</td><td>Omega buffer recalc, doomsday update</td></tr>
+      <tr><td><code>mergeGraphData(nodes, edges)</code></td><td>Import merge confirm</td><td>Merge into graphData + initialGraph</td></tr>
+      <tr><td><code>severEdge(edgeId)</code></td><td>Edge click in scissors mode</td><td>Mark severed, spawn consequence nodes</td></tr>
+      <tr><td><code>setInterventionTarget(id)</code></td><td>Node click in intervention mode</td><td>Compute counterfactual, highlight downstream</td></tr>
+      <tr><td><code>setTruthFilter(f)</code></td><td>TARSKI filter toggle</td><td>Show/hide restricted nodes, inconsistent edges</td></tr>
+      <tr><td><code>addCopilotMessage(msg)</code></td><td>Actions, queries, imports</td><td>Append to chat history</td></tr>
+    </table>
+  </div>
+
+  <!-- 4. 3D Rendering Pipeline -->
+  <div class="section" id="rendering">
+    <h1>04. 3D Rendering Pipeline</h1>
+
+    <div class="flow">
+      <div class="flow-title">DATA TO PIXELS</div>
+      <pre>
+graphData (CausalGraph)
+    |
+    v
+computeLayout3D(nodes, edges, existingPositions?)
+    |-- d3-force-3d simulation
+    |   |-- Link force: distance=25, strength=0.4
+    |   |-- Charge force: strength=-120 (repulsion)
+    |   +-- Center force: origin (0,0,0)
+    |
+    |-- Iterations: 200 (cold start) or 50 (incremental/import)
+    |-- Domain z-layering (10 target layers, shifted x0.7)
+    +-- Normalize to bounds: +/-55 (x), +/-40 (y), +/-35 (z)
+        |
+        v
+    NodePosition[] { id, x, y, z }
+        |
+        +----> DAGNode3D (per node)
+        |       Size:  0.5 + (omega/10)^2.2 x 4.5  =  [0.5 - 5.0]
+        |       Color: getCategoryColor(category) or grey if disconnected
+        |       Glow:  red (omega > 9) / amber (>= 7) / green
+        |       Label: HTML overlay at distance factor 35
+        |       Hover: detail card with 4-axis omega bars
+        |
+        +----> DAGEdge3D (per edge)
+        |       Shape: Quadratic Bezier tube geometry
+        |       Color: directed=cyan / temporal=amber / confounded=orange
+        |       Arrow: cone at 80% along path
+        |       Hover: physical mechanism label
+        |
+        +----> CameraRig
+                Home:      [40, 30, 80] looking at origin
+                Selection: animate to [node + (18,14,30)] over 400ms
+                Easing:    ease-out cubic</pre>
+    </div>
+
+    <h3>Node Visual States</h3>
+    <table>
+      <tr><th>State</th><th>Appearance</th></tr>
+      <tr><td>Default</td><td>Category color, size proportional to omega composite</td></tr>
+      <tr><td>Selected</td><td>Cyan emissive glow, 1.15x scale, cyan selection ring, camera zooms</td></tr>
+      <tr><td>Dimmed</td><td>20% opacity (when another node is selected)</td></tr>
+      <tr><td>Greyed out</td><td>#3a3d50, 8% opacity (scissors mode: low-omega non-downstream)</td></tr>
+      <tr><td>Disconnected</td><td>#3a3d50, 8% opacity (imported but not connected to main graph)</td></tr>
+      <tr><td>Consequence</td><td>Orange (#ff6d00), birth animation 500ms, high pulse</td></tr>
+      <tr><td>Intervention target</td><td>Amber ring overlay</td></tr>
+      <tr><td>Restricted (Tarski)</td><td>Red sphere badge at top-right</td></tr>
+    </table>
+
+    <h3>Edge Visual States</h3>
+    <table>
+      <tr><th>State</th><th>Appearance</th></tr>
+      <tr><td>Directed</td><td>Solid cyan tube</td></tr>
+      <tr><td>Temporal</td><td>Dashed amber tube</td></tr>
+      <tr><td>Confounded</td><td>Dashed orange tube</td></tr>
+      <tr><td>Cross-domain</td><td>Purple, dashed</td></tr>
+      <tr><td>Severed (scissors)</td><td>Red, dashed, 25% opacity</td></tr>
+      <tr><td>Inconsistent (Tarski verified)</td><td>Red, dashed</td></tr>
+      <tr><td>Consequence edge</td><td>Orange</td></tr>
+    </table>
+
+    <h3>Disconnected Node Detection</h3>
+    <p>After any graph change (import, scissors), the renderer computes connected components via BFS. Nodes outside the largest connected component render as grey. When new edges bridge a floating cluster to the main graph, those nodes transition to full color automatically.</p>
+  </div>
+
+  <!-- 5. Core Engines -->
+  <div class="section" id="engines">
+    <h1>05. Core Engines</h1>
+
+    <p>APEX Terminal has four reasoning modules, each corresponding to a foundational research approach:</p>
+
+    <h2><span class="badge badge-cyan">SPIRTES</span> Structure Discovery</h2>
+    <p>Causal structure discovery using constraint-based and score-based algorithms.</p>
+    <ul>
+      <li><strong>DCD</strong> (Directed Cyclic Discovery) &mdash; primary structure learning</li>
+      <li><strong>PCMCI+</strong> &mdash; temporal lag analysis for time-series causation</li>
+      <li><strong>FCI</strong> &mdash; latent confounding detection under hidden variables</li>
+    </ul>
+    <p>The Trinity Panel visualizes all three discovery methods as SVG circular layouts, allowing comparison of which edges each method identifies.</p>
+
+    <div class="callout">
+      <strong>Cascade Analysis:</strong> Computes spectral radius (lambda_max) of the weighted adjacency matrix. If lambda_max &lt; 1.0, the system is stable. Top-3 centrality nodes are identified by degree centrality. Displayed as: <code>dS/dt = -damping*S + forgettingRate</code>
+    </div>
+
+    <h2><span class="badge badge-green">TARSKI</span> Truth Verification</h2>
+    <p>Physical constraint validation using a formal axiom library.</p>
+
+    <h3>Axiom Levels</h3>
+    <table>
+      <tr><th>Level</th><th>Type</th><th>Count</th><th>Examples</th></tr>
+      <tr><td><span class="badge badge-cyan">L0</span></td><td>Physics (immutable)</td><td>6</td><td>Temporal Priority, Conservation of Flow, DAG Integrity, Carnot Bound, Shannon Capacity</td></tr>
+      <tr><td><span class="badge badge-amber">L1</span></td><td>Regulatory (red alert)</td><td>4</td><td>Sanction Logic (OFAC/EU), Force Majeure, Capital Adequacy, EUV Export Control</td></tr>
+      <tr><td><span class="badge badge-purple">L2</span></td><td>Heuristic (anomaly flag)</td><td>2</td><td>Lead-Lag Reversal, Capacity Saturation</td></tr>
+    </table>
+
+    <p>In VERIFIED mode, restricted nodes display a red badge and inconsistent edges render as red dashed lines. Proof traces show which axioms were violated, the solver used (Z3 or cvc5), and check duration.</p>
+
+    <h2><span class="badge badge-amber">PEARL</span> Causal Reasoning</h2>
+    <p>Pearl's do-calculus for counterfactual reasoning and graph surgery.</p>
+
+    <h3>Intervention Mode (do(X))</h3>
+    <p>When a target node is selected, the system computes:</p>
+    <ul>
+      <li><strong>Expected Utility</strong>: E[U] = target.omega x avg_downstream_weight x 10</li>
+      <li><strong>Regret Bound</strong>: (1 - avg_weight) x target.omega</li>
+      <li><strong>Affected Nodes</strong>: BFS downstream with delta-omega estimates</li>
+      <li><strong>Method</strong>: DeepCFR (if confounded paths) or BackdoorAdjustment</li>
+    </ul>
+
+    <h3>Scissors Tool (Graph Surgery)</h3>
+    <p>Cutting an edge triggers <code>severEdgeAndSpawnConsequences()</code>:</p>
+    <ol>
+      <li>Edge marked as severed (red, dashed, 25% opacity)</li>
+      <li>2 consequence nodes spawned from domain-specific templates (omega 7.5&ndash;9.5)</li>
+      <li>New edges connect consequences to the original edge's target (weight 0.8)</li>
+      <li>Consequence nodes render orange with birth animation</li>
+    </ol>
+
+    <h2><span class="badge badge-red">PARETO</span> Risk Assessment</h2>
+    <p>Omega-Fragility scoring and doomsday clock for systemic risk monitoring.</p>
+
+    <h3>Omega Engine</h3>
+    <table>
+      <tr><th>Buffer Range</th><th>Status</th><th>Visual</th></tr>
+      <tr><td>65&ndash;100%</td><td>NOMINAL</td><td>Green bar, stable</td></tr>
+      <tr><td>35&ndash;65%</td><td>ELEVATED</td><td>Amber bar</td></tr>
+      <tr><td>15&ndash;35%</td><td>CRITICAL</td><td>Red bar</td></tr>
+      <tr><td>0&ndash;15%</td><td>OMEGA_BREACH</td><td>Red pulsing bar</td></tr>
+    </table>
+
+    <h3>Preset Shocks (7)</h3>
+    <table>
+      <tr><th>Shock</th><th>Severity</th><th>Category</th></tr>
+      <tr><td>Subsea Cable Severance</td><td>0.25</td><td>Supply</td></tr>
+      <tr><td>HBM Yield Collapse</td><td>0.30</td><td>Compute</td></tr>
+      <tr><td>Taiwan Strait Blockade</td><td>0.45</td><td>Geopolitical</td></tr>
+      <tr><td>Grid Cascade Failure</td><td>0.35</td><td>Energy</td></tr>
+      <tr><td>Coolant Shortage</td><td>0.20</td><td>Cooling</td></tr>
+      <tr><td>Rare Earth Embargo</td><td>0.30</td><td>Supply</td></tr>
+      <tr><td>Carrington Event</td><td>0.55</td><td>Energy</td></tr>
+    </table>
+
+    <h3>Doomsday Clock</h3>
+    <p>Computed from the omega buffer: <code>T-days = max(3, round(365 x buffer/100))</code>. Dragon King detection triggers when fragility index exceeds 70. Regime types: STABLE, STAGNATION, MELT_UP, PHASE_TRANSITION, CRASH.</p>
+  </div>
+
+  <!-- 6. Import Pipeline -->
+  <div class="section" id="import">
+    <h1>06. Dataset Import Pipeline</h1>
+
+    <p>Fully client-side import system supporting four file formats, with validation, preview, and merge-into-graph behavior.</p>
+
+    <h3>Supported Formats</h3>
+    <table>
+      <tr><th>Format</th><th>Extensions</th><th>Parser Method</th></tr>
+      <tr><td>JSON</td><td>.json</td><td><code>JSON.parse()</code> &mdash; accepts <code>{ nodes, edges }</code> or arrays</td></tr>
+      <tr><td>CSV</td><td>.csv</td><td>String splitting with quoted field handling, header aliasing</td></tr>
+      <tr><td>GraphML</td><td>.graphml, .gml</td><td><code>DOMParser</code> XML parsing, <code>&lt;key&gt;</code> mapping</td></tr>
+      <tr><td>DOT</td><td>.dot, .gv</td><td>Regex-based: <code>digraph { node [attrs]; a -&gt; b [attrs] }</code></td></tr>
+    </table>
+
+    <h3>Import Flow</h3>
+    <div class="flow">
+      <div class="flow-title">FILE TO GRAPH</div>
+      <pre>
+  File dropped/selected
+      |
+      v
+  detectFormat(file)
+      |-- Check extension (.csv, .json, .graphml, .dot)
+      +-- Fallback: content sniffing (starts with '{', '&lt;?xml', 'digraph')
+      |
+      v
+  parseFile(file) -> ParsedGraph { nodes: RawNode[], edges: RawEdge[] }
+      |
+      v
+  validateParsedGraph(parsed, existingGraph)
+      |-- ERRORS (block import):
+      |   |-- Duplicate node IDs within file
+      |   +-- Edge source/target references non-existent node
+      |-- WARNINGS (allow import):
+      |   |-- Node/edge ID already in graph (will skip on merge)
+      |   |-- Invalid category, edge type (coerced to defaults)
+      |   +-- Numeric fields out of range (clamped)
+      +-- Apply defaults: applyNodeDefaults(), applyEdgeDefaults()
+      |
+      v
+  ValidationResult { valid, issues[], resolvedNodes[], resolvedEdges[] }
+      |
+      v  (user reviews preview table, clicks MERGE)
+  mergeGraphs(existing, incoming)
+      |-- Skip duplicate node/edge IDs
+      |-- Skip edges with invalid refs
+      |-- Recompute metadata (density, counts)
+      +-- Set verificationStatus = "UNVERIFIED"
+      |
+      v
+  mergeGraphData(nodes, edges) -> store update
+      |-- graphData = merged
+      |-- initialGraph = merged
+      |-- Layout recomputes (50 iterations, preserves positions)
+      |-- Disconnected nodes -> grey
+      +-- Copilot: "Dataset imported: +X nodes, +Y edges"</pre>
+    </div>
+
+    <h3>Smart Defaults</h3>
+    <table>
+      <tr><th>Missing Field</th><th>Default Value</th></tr>
+      <tr><td>id</td><td><code>"imported_node_{index}"</code></td></tr>
+      <tr><td>label</td><td>Title-cased id</td></tr>
+      <tr><td>shortLabel</td><td>First 3 chars, uppercased</td></tr>
+      <tr><td>category</td><td><code>"infrastructure"</code></td></tr>
+      <tr><td>domain</td><td><code>"Imported"</code></td></tr>
+      <tr><td>discoverySource</td><td><code>"merged"</code></td></tr>
+      <tr><td>omegaFragility</td><td>All axes at 5.0 (midpoint)</td></tr>
+      <tr><td>Edge weight</td><td>0.5</td></tr>
+      <tr><td>Edge type</td><td><code>"directed"</code></td></tr>
+      <tr><td>Edge confidence</td><td>0.5</td></tr>
+    </table>
+
+    <h3>Merge Behavior</h3>
+    <div class="callout green">
+      <strong>Always merge, never replace.</strong> Imported data is added on top of the existing graph. Duplicate IDs are skipped. Disconnected imported clusters render grey until edges are added that bridge them to the main graph.
+    </div>
+
+    <h3>File Structure</h3>
+    <pre>
+  src/lib/import/
+  +-- types.ts               Types: ParsedGraph, ValidationResult, MergeResult
+  +-- defaults.ts            applyNodeDefaults(), applyEdgeDefaults()
+  +-- validation.ts          Schema validation, error/warning/info
+  +-- merge.ts               mergeGraphs() -- skip dupes, recompute metadata
+  +-- parsers/
+      +-- index.ts           detectFormat(), parseFile() dispatcher
+      +-- json-parser.ts     JSON.parse, shape detection
+      +-- csv-parser.ts      Header aliasing, quoted fields, node vs edge
+      +-- graphml-parser.ts  DOMParser XML, key/data extraction
+      +-- dot-parser.ts      Regex-based DOT parsing
+
+  src/components/import/
+  +-- ImportButton.tsx        "+ IMPORT" header trigger
+  +-- ImportModal.tsx         3-step modal (select -> preview -> confirm)
+  +-- DropZone.tsx            Drag-and-drop + file picker
+  +-- PreviewTable.tsx        Tabbed node/edge table, row validation
+  +-- ValidationSummary.tsx   Error/warning count banner</pre>
+  </div>
+
+  <!-- 7. Data Flow Diagrams -->
+  <div class="section" id="flows">
+    <h1>07. Data Flow Diagrams</h1>
+
+    <h2>Node Selection</h2>
+    <div class="flow">
+      <pre>
+  User clicks node in 3D
+      |
+      v
+  setSelectedNode(nodeId)
+      |
+      +---> CausalDAG3D
+      |      +-- Compute neighbor nodes + connected edges (BFS)
+      |      +-- Selected node: cyan glow, 1.15x scale, selection ring
+      |      +-- Other nodes: dimmed to 20% opacity
+      |      +-- Connected edges: 100% opacity / others: 5%
+      |      +-- CameraRig: animate to node over 400ms (ease-out cubic)
+      |
+      +---> NodeInspector
+      |      +-- Expand with slide animation
+      |      +-- Omega 4-axis breakdown bars
+      |      +-- Metadata: concentration, replacement time, domain
+      |      +-- List connected edges with physical mechanisms
+      |
+      +---> SystemCopilot
+             +-- Inject: "NODE FOCUSED: {label} (omega {score})"</pre>
+    </div>
+
+    <h2>Shock Injection</h2>
+    <div class="flow">
+      <pre>
+  User clicks shock in PARETO panel
+      |
+      v
+  addShock(shock)
+      |
+      +---> HeaderBar
+      |      +-- computeOmegaState(shocks) -> buffer, status
+      |      +-- computeDoomsdayState(shocks, buffer) -> T-days, regime
+      |      +-- CDOmegaMonitor: buffer bar recolors, T-days updates
+      |      +-- Dragon King detection if fragilityIndex > 70
+      |
+      +---> RiskPropagationFlow
+             +-- buildRiskCards() re-prioritizes cards by omega</pre>
+    </div>
+
+    <h2>Graph Surgery (Scissors)</h2>
+    <div class="flow">
+      <pre>
+  User enables scissors mode -> clicks edge
+      |
+      v
+  severEdge(edgeId) + setGraphData(severEdgeAndSpawnConsequences())
+      |
+      +---> Edge: isSevered = true (red, dashed, 25% opacity)
+      |
+      +---> 2 consequence nodes spawned (domain templates)
+      |      +-- Omega: 7.5-9.5 (high criticality)
+      |      +-- Render: orange, birth animation 500ms
+      |      +-- Connect to original edge target (weight 0.8)
+      |
+      +---> greyedOutNodes recomputed
+             +-- Nodes with omega &lt; 7, not downstream of cuts = grey</pre>
+    </div>
+
+    <h2>Dataset Import</h2>
+    <div class="flow">
+      <pre>
+  File dropped into ImportModal
+      |
+      v
+  parseFile(file) -> ParsedGraph
+      |
+      v
+  validateParsedGraph(parsed, graphData) -> ValidationResult
+      |
+      v  (user reviews, clicks MERGE)
+  mergeGraphs(graphData, resolved) -> merged CausalGraph
+      |
+      +---> Store: graphData = merged, initialGraph = merged
+      +---> Layout: computeLayout3D (50 iterations, warm start)
+      +---> Disconnected nodes: grey (outside largest component)
+      +---> Connected nodes: full color
+      +---> Copilot: "Dataset imported: +X nodes, +Y edges"
+      +---> Future bridge import: grey nodes become colored</pre>
+    </div>
+
+    <h2>Module Switch</h2>
+    <div class="flow">
+      <pre>
+  User clicks module tab (e.g., TARSKI)
+      |
+      v
+  setActiveModule("tarski")
+      |
+      +---> ModulePanel swaps right panel content
+      |      +-- Hide: SPIRTES (CascadeHeader + TrinityPanel)
+      |      +-- Show: TARSKI (TruthFilter + AxiomLibrary)
+      |
+      +---> (User clicks VERIFIED toggle)
+             |
+             v
+           setTruthFilter("verified")
+             +---> DAGNode3D: restricted nodes get red badge
+             +---> DAGEdge3D: inconsistent edges turn red + dashed</pre>
+    </div>
+  </div>
+
+  <!-- 8. Type System -->
+  <div class="section" id="types">
+    <h1>08. Type System &amp; Graph Data</h1>
+
+    <h3>CausalNode</h3>
+    <pre>
+{
+  id: string                        // "zeiss_optics"
+  label: string                     // "ZEISS High-NA Optics"
+  shortLabel: string                // "ZHN" (3 chars for viz)
+  category: NodeCategory            // 8 types (see below)
+
+  omegaFragility: {
+    composite: 0-10                 // Headline fragility score
+    substitutionFriction: 0-10      // Time to recreate
+    downstreamLoad: 0-10            // GDP/sectors dependent
+    cascadingVoltage: 0-10          // Non-linear propagation
+    existentialTailWeight: 0-10     // Beyond-VaR tail risk
+  }
+
+  globalConcentration: string       // "100% ASML (Veldhoven)"
+  replacementTime: string           // "7-10 years"
+  physicalConstraint?: string       // Tarski axiom reference
+  domain: string                    // "EUV Lithography" (10 domains)
+  discoverySource: "DCD" | "PCMCI+" | "FCI" | "merged"
+  isConfounded: boolean             // Latent common cause exists
+  isRestricted: boolean             // Tarski violation flagged
+  isConsequence?: boolean           // Spawned by scissors tool
+  consequenceOf?: string            // Parent edge ID
+}</pre>
+
+    <h3>CausalEdge</h3>
+    <pre>
+{
+  id: string
+  source: string                    // Source node ID
+  target: string                    // Target node ID
+  weight: 0-1                       // Causal strength
+  lag: number                       // Temporal lag in steps
+  type: "directed" | "confounded" | "temporal"
+  confidence: 0-1                   // Discovery confidence
+  isInconsistent: boolean           // Tarski flagged
+  physicalMechanism: string         // "powers", "constrains supply"
+  isSevered?: boolean               // Cut by scissors tool
+  isConsequenceEdge?: boolean       // From consequence node
+}</pre>
+
+    <h3>Node Categories (8)</h3>
+    <p>
+      <span class="badge badge-cyan">manufacturing</span>
+      <span class="badge badge-green">infrastructure</span>
+      <span class="badge badge-amber">economic</span>
+      <span class="badge badge-purple">finance</span>
+      <span class="badge badge-red">energy</span>
+      <span class="badge badge-amber">geopolitical</span>
+      <span class="badge badge-cyan">communications</span>
+      <span class="badge badge-green">agriculture</span>
+    </p>
+
+    <h3>MAIN_GRAPH Domains (10)</h3>
+    <table>
+      <tr><th>Domain</th><th>Nodes</th><th>Examples</th></tr>
+      <tr><td>EUV Lithography</td><td>3</td><td>ZEISS Optics, ASML EUV Platform, TSMC Advanced Fab</td></tr>
+      <tr><td>Undersea Cables</td><td>3</td><td>Subsea Cable Mfg, Cable Fleet, Landing Stations</td></tr>
+      <tr><td>Rare Earth</td><td>2</td><td>Baotou Refining, NdFeB Magnets</td></tr>
+      <tr><td>HVDC Power</td><td>2</td><td>HVDC Cable Mfg, Converter Stations</td></tr>
+      <tr><td>AI Compute</td><td>3</td><td>TSMC CoWoS, SK Hynix HBM, Nvidia Stack</td></tr>
+      <tr><td>Fertilizer</td><td>3</td><td>Phosphate Rock, Potash Exports, Gulf Ammonia</td></tr>
+      <tr><td>Data Centers</td><td>3</td><td>Nova Hub, HV Transformers, Liquid Cooling</td></tr>
+      <tr><td>Dollar Funding</td><td>3</td><td>FX Swap Basis, UST Repo, Fed Swap Lines</td></tr>
+      <tr><td>Geopolitical</td><td>2</td><td>Trade Policy, Grid Stability</td></tr>
+      <tr><td>Energy Grid</td><td>1</td><td>(ERCOT)</td></tr>
+    </table>
+  </div>
+
+  <!-- 9. Key Algorithms -->
+  <div class="section" id="algorithms">
+    <h1>09. Key Algorithms</h1>
+
+    <table>
+      <tr><th>Algorithm</th><th>Location</th><th>Description</th></tr>
+      <tr><td>Force-directed layout</td><td><code>graph-layout.ts</code></td><td>d3-force-3d simulation with domain z-layering, 200 iterations cold / 50 warm</td></tr>
+      <tr><td>Connected components</td><td><code>CausalDAG3D.tsx</code></td><td>BFS to find largest connected component; nodes outside it render grey</td></tr>
+      <tr><td>Cascade lambda_max</td><td><code>omega-engine.ts</code></td><td>Max weighted row sum of adjacency matrix approximates spectral radius</td></tr>
+      <tr><td>Omega buffer</td><td><code>omega-engine.ts</code></td><td><code>max(0, 100 - totalSeverity x 100)</code>, drives status thresholds</td></tr>
+      <tr><td>Doomsday T-days</td><td><code>omega-engine.ts</code></td><td><code>max(3, round(365 x buffer/100))</code></td></tr>
+      <tr><td>Dragon King detection</td><td><code>omega-engine.ts</code></td><td>Triggered when fragilityIndex exceeds 70</td></tr>
+      <tr><td>Counterfactual E[U]</td><td><code>InterventionControls</code></td><td><code>target.omega x avg_downstream_weight x 10</code></td></tr>
+      <tr><td>Graph surgery</td><td><code>intervention-engine.ts</code></td><td>Sever edge, spawn domain-specific consequence nodes (omega 7.5-9.5)</td></tr>
+      <tr><td>Node sizing</td><td><code>DAGNode3D.tsx</code></td><td><code>0.5 + (omega/10)^2.2 x 4.5</code> &mdash; power curve emphasizes high-omega</td></tr>
+      <tr><td>CSV header aliasing</td><td><code>csv-parser.ts</code></td><td>Case-insensitive normalized header to canonical field mapping</td></tr>
+      <tr><td>Format detection</td><td><code>parsers/index.ts</code></td><td>Extension map with content-sniffing fallback</td></tr>
+      <tr><td>Graph merge</td><td><code>merge.ts</code></td><td>Skip duplicate IDs, validate edge refs, recompute metadata</td></tr>
+    </table>
+  </div>
+
+  <hr>
+
+  <div style="text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 12px;">
+    <div style="font-family: 'JetBrains Mono', monospace; letter-spacing: 0.2em; margin-bottom: 8px;">APEX ANALYTICA</div>
+    <div>Product Architecture Document v2.0</div>
+    <div>March 2026 &mdash; Brynna Shale</div>
+  </div>
+
+</div>
+</body>
+</html>

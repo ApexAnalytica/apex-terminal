@@ -71,7 +71,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "PARETO ENGINE",
     description:
-      "The Pareto Engine monitors tail risk. The Doomsday Clock shows T-days until system failure, regime type, and dragon king probability. The \u03A9-Fragility Assessment tracks buffer depletion. Below, the top critical nodes are ranked by \u03A9 score. Use the Shock Injector to stress-test with preset scenarios like Taiwan Blockade or Carrington Event.",
+      "The Pareto Engine monitors tail risk. The Doomsday Clock shows the time-to-failure horizon — a relative measure scaled to the system's dynamics — along with regime type and dragon king probability. The \u03A9-Fragility Assessment tracks buffer depletion. Below, the top critical nodes are ranked by \u03A9 score. Use the Shock Injector to stress-test with preset scenarios like Taiwan Blockade or Carrington Event.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },

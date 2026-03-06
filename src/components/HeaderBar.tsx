@@ -15,7 +15,7 @@ const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[
 ];
 
 export default function HeaderBar() {
-  const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline } = useApexStore();
+  const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive } = useApexStore();
   const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
 
   // During replay, override omega state with current epoch's values
@@ -52,7 +52,7 @@ export default function HeaderBar() {
         <div className="h-8 w-px bg-border" />
 
         {/* Module Tabs */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" data-tour="module-tabs">
           {MODULE_TABS.map((tab) => {
             const isActive = activeModule === tab.id;
             return (
@@ -82,6 +82,13 @@ export default function HeaderBar() {
       {/* Right: Meta */}
       <div className="flex items-center gap-4">
         <ImportButton />
+        <button
+          onClick={() => setTourActive(true)}
+          className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors"
+          title="Feature Tour"
+        >
+          ?
+        </button>
         <div className="h-8 w-px bg-border" />
         <div className="flex flex-col items-end">
           <span className="text-[9px] text-text-muted font-mono tracking-wider">

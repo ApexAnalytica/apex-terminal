@@ -14,7 +14,7 @@ export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
 
   return (
-    <aside className="flex flex-col w-80 border-l border-border bg-surface h-full overflow-hidden">
+    <aside className="flex flex-col w-80 border-l border-border bg-surface h-full overflow-hidden" data-tour="module-panel">
       {/* Module Header */}
       <div className="px-4 py-3 border-b border-border bg-surface-elevated">
         <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted uppercase">

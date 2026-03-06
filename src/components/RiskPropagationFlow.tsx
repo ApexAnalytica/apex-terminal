@@ -13,7 +13,7 @@ export default function RiskPropagationFlow() {
   const riskCards = useMemo(() => buildRiskCards(graphData, shocks), [graphData, shocks]);
 
   return (
-    <div className="flex items-stretch gap-2 px-4 py-2 overflow-x-auto border-t border-border bg-surface-elevated">
+    <div className="flex items-stretch gap-2 px-4 py-2 overflow-x-auto border-t border-border bg-surface-elevated" data-tour="risk-flow">
       {riskCards.map((card, i) => {
         const color = getCategoryColor(card.category);
         const domainColor = getDomainColor(card.domain);

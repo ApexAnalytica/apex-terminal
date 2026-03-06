@@ -280,7 +280,7 @@ export default function SystemCopilot() {
     : null;
 
   return (
-    <aside className="flex flex-col w-80 border-r border-border bg-surface h-full">
+    <aside className="flex flex-col w-80 border-r border-border bg-surface h-full" data-tour="system-copilot">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-surface-elevated">
         <div className="flex items-center justify-between">
@@ -526,7 +526,7 @@ export default function SystemCopilot() {
       </div>
 
       {/* Action Buttons */}
-      <div className="px-3 py-2 border-t border-border flex flex-wrap gap-1.5">
+      <div className="px-3 py-2 border-t border-border flex flex-wrap gap-1.5" data-tour="action-buttons">
         {ACTIONS.map((a) => (
           <button
             key={a.action}

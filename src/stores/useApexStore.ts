@@ -128,6 +128,12 @@ interface ApexState {
   addImportedDataset: (dataset: ImportedDataset) => void;
   removeImportedDataset: (id: string) => void;
 
+  // Tour
+  tourActive: boolean;
+  tourStep: number;
+  setTourActive: (active: boolean) => void;
+  setTourStep: (step: number) => void;
+
   // Replay / Cascade
   replayActive: boolean;
   replayPlaying: boolean;
@@ -420,6 +426,12 @@ export const useApexStore = create<ApexState>((set) => ({
         initialGraph: graph,
       };
     }),
+
+  // Tour
+  tourActive: false,
+  tourStep: 0,
+  setTourActive: (active) => set({ tourActive: active, tourStep: 0 }),
+  setTourStep: (step) => set({ tourStep: step }),
 
   // Replay / Cascade
   replayActive: false,

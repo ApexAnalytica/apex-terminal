@@ -16,7 +16,7 @@ export default function CDOmegaMonitor({ state, doomsday, alertLevel }: CDOmegaM
   const filledSegments = Math.round((state.buffer / 100) * segments);
 
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex items-center gap-6" data-tour="cd-omega">
       {/* CDΩ Label */}
       <div className="flex flex-col items-end">
         <span

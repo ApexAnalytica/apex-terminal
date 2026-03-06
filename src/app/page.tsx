@@ -10,6 +10,7 @@ import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import CausalDAG2D from "@/components/CausalDAG2D";
 import ImportModal from "@/components/import/ImportModal";
+import SpotlightTour from "@/components/SpotlightTour";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -30,6 +31,7 @@ export default function Home() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
       {/* Import Modal (overlay) */}
       <ImportModal />
+      <SpotlightTour />
 
       {/* Header with module tabs */}
       <HeaderBar />
@@ -43,7 +45,7 @@ export default function Home() {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* DAG Canvas — relative container with explicit flex sizing,
                children use absolute positioning to fill */}
-          <div className="flex-1 relative min-h-0" style={{ contain: "strict" }}>
+          <div className="flex-1 relative min-h-0" data-tour="dag-canvas" style={{ contain: "strict" }}>
             <div className="absolute inset-0">
               {viewMode === "3d" ? <CausalDAG3D /> : <CausalDAG2D />}
             </div>

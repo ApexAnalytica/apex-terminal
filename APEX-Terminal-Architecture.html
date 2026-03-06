@@ -257,7 +257,7 @@
     <div class="cover-logo">APEX</div>
     <div class="cover-sub">ANALYTICA</div>
     <div class="cover-title">Product Architecture Document</div>
-    <div class="cover-version">v2.0 &mdash; March 2026 &mdash; Brynna Shale</div>
+    <div class="cover-version">v3.0 &mdash; March 2026 &mdash; Brynna Shale</div>
   </div>
 
   <!-- TOC -->
@@ -269,6 +269,9 @@
       <li><a href="#store">State Management (Zustand Store)</a></li>
       <li><a href="#rendering">3D Rendering Pipeline</a></li>
       <li><a href="#engines">Core Engines</a></li>
+      <li><a href="#llm">LLM Integration &amp; API Routes</a></li>
+      <li><a href="#snapshots">Snapshot System</a></li>
+      <li><a href="#replay">Cascade Replay System</a></li>
       <li><a href="#import">Dataset Import Pipeline</a></li>
       <li><a href="#flows">Data Flow Diagrams</a></li>
       <li><a href="#types">Type System &amp; Graph Data</a></li>
@@ -279,7 +282,7 @@
   <!-- 1. System Overview -->
   <div class="section" id="overview">
     <h1>01. System Overview</h1>
-    <p>APEX Terminal is a causal intelligence platform for analyzing systemic risk in critical infrastructure supply chains. It combines interactive 3D graph visualization with four specialized causal reasoning engines.</p>
+    <p>APEX Terminal is a causal intelligence platform for analyzing systemic risk in critical infrastructure supply chains. It combines interactive 3D graph visualization with four specialized causal reasoning engines, dual-LLM copilot integration, and an epoch-based cascade replay system.</p>
 
     <h3>Technology Stack</h3>
     <table>
@@ -291,6 +294,8 @@
       <tr><td>Styling</td><td>Tailwind CSS</td></tr>
       <tr><td>Animation</td><td>Framer Motion</td></tr>
       <tr><td>2D Fallback</td><td>React Flow</td></tr>
+      <tr><td>LLM Providers</td><td>Anthropic SDK (Claude), Google Generative AI (Gemini)</td></tr>
+      <tr><td>PDF Parsing</td><td>pdfjs-dist (legacy build for Turbopack compatibility)</td></tr>
       <tr><td>Deployment</td><td>Vercel (auto-deploy from GitHub on push to main)</td></tr>
       <tr><td>Repository</td><td>GitHub &mdash; <code>brynna-s/apex-terminal</code></td></tr>
     </table>
@@ -302,8 +307,8 @@
       <tr><td>Live URL</td><td><code>apex-terminal-nu.vercel.app</code></td></tr>
       <tr><td>Build System</td><td>Next.js 16 + Turbopack (optimized production builds)</td></tr>
       <tr><td>Deploy Trigger</td><td>Automatic on push to <code>main</code> branch via GitHub integration</td></tr>
-      <tr><td>Rendering</td><td>Static prerendering (SSG) &mdash; all pages statically generated at build time</td></tr>
-      <tr><td>Backend</td><td>None &mdash; fully client-side (no API routes, no server functions)</td></tr>
+      <tr><td>Rendering</td><td>Static prerendering (SSG) for pages; server-side API routes for LLM proxying</td></tr>
+      <tr><td>API Routes</td><td>4 Next.js route handlers: <code>/api/copilot</code>, <code>/api/compute</code>, <code>/api/structure</code>, <code>/api/enrich</code></td></tr>
       <tr><td>Repository</td><td>GitHub: <code>github.com/brynna-s/apex-terminal</code> (public)</td></tr>
     </table>
 
@@ -311,7 +316,7 @@
     <table>
       <tr><th>Route</th><th>Variant</th><th>Graph</th></tr>
       <tr><td><code>/</code></td><td>APEX Analytica (main)</td><td>25 nodes, 10 domains &mdash; general critical infrastructure</td></tr>
-      <tr><td><code>/client</code></td><td>Athena Defense Systems</td><td>18 nodes, ISR-focused defense supply chain</td></tr>
+      <tr><td><code>/client</code></td><td>Sandbox (login gate)</td><td>Empty graph start &mdash; import data to begin; multi-graph management</td></tr>
     </table>
 
     <h3>Architecture Diagram</h3>
@@ -324,8 +329,9 @@
       |
       | Next.js 16 + Turbopack build -> Static prerender (SSG)
       | Edge Network CDN -> automatic HTTPS
+      | API Routes -> LLM proxy (Claude / Gemini)
       v
-  BROWSER (Fully Client-Side — No Backend)
+  BROWSER (Client-Side + API-Backed LLM)
   +-----------------------------------------------------------------+
   |                                                                 |
   |   HeaderBar                                                     |
@@ -334,17 +340,28 @@
   |   +------------------+------------------------------+---------+ |
   |   |                  |                              |         | |
   |   |  System Copilot  |      3D Causal DAG           | Module  | |
-  |   |  (Messages,      |   (React Three Fiber)        | Panel   | |
-  |   |   Actions,       |   + DAG Overlay              | (Right) | |
-  |   |   Queries)       |   + Risk Cards               |         | |
+  |   |  (LLM Streaming  |   (React Three Fiber)        | Panel   | |
+  |   |   + Structured)  |   + DAG Overlay              | (Right) | |
+  |   |                  |   + Risk Cards               |         | |
   |   |                  |   + Structural Metrics        |         | |
   |   +------------------+------------------------------+---------+ |
   |                                                                 |
   |   Zustand Store (Central State)                                 |
-  |   [graphData] [shocks] [selectedNode] [activeModule] [...]      |
+  |   [graphData] [shocks] [selectedNode] [activeModule]            |
+  |   [snapshots] [replay] [ablation] [llmConfig] [sandbox] [...]  |
+  |                                                                 |
+  |   Engine Provider (LocalProvider -> future RemoteProvider)      |
+  |   [Spirtes] [Tarski] [Pearl] [Pareto] [Interdiction]           |
+  |                                                                 |
+  |   Snapshot Pipeline                                             |
+  |   [Serialize] -> [Tarski Validate] -> [Store] -> [Diff]        |
   |                                                                 |
   |   Import Pipeline (Modal Overlay)                               |
-  |   [Parse] -> [Validate] -> [Preview] -> [Merge] -> [Render]    |
+  |   [Parse] -> [Column Map] -> [Validate] -> [Preview]           |
+  |   -> [Merge] -> [Enrich (LLM)] -> [Render]                     |
+  |                                                                 |
+  |   Replay System                                                 |
+  |   [Cascade Simulate] -> [Epoch Playback] -> [Branch/Compare]   |
   +-----------------------------------------------------------------+</pre>
   </div>
 
@@ -364,21 +381,26 @@
   |  Chat    |    Nodes = spheres (size ~ omega)        |   Node       |
   |  Actions |    Edges = tubes (weight ~ thickness)    |   Inspector  |
   |  Input   |    Camera = orbit + zoom-to-node         |              |
-  |          |    Overlay = labels, legend, stats        |   Engine-    |
-  |          |                                          |   specific   |
+  |  LLM     |    Overlay = labels, legend, stats        |   Engine-    |
+  |  Stream  |                                          |   specific   |
   |          +------------------------------------------+   panels     |
   |          |  Risk Propagation Cards (scroll)         |              |
   |          +------------------------------------------+              |
   |          |  Structural Metrics Footer               |              |
+  |          +------------------------------------------+              |
+  |          |  Replay Controls (when active)           |              |
   +----------+------------------------------------------+--------------+</pre>
 
     <h3>Component Tree</h3>
     <pre>
   page.tsx
+  +-- SpotlightTour (guided onboarding overlay)
+  |
   +-- ImportModal (overlay, framer-motion)
-  |   +-- DropZone (step 1)
-  |   +-- ValidationSummary + PreviewTable (step 2)
-  |   +-- Merge confirmation (step 3)
+  |   +-- DropZone (step 1: file select/drag)
+  |   +-- ColumnMapper (step 2: LLM-assisted column mapping)
+  |   +-- ValidationSummary + PreviewTable (step 3: review)
+  |   +-- Merge confirmation (step 4)
   |
   +-- HeaderBar
   |   +-- Logo + Module Tabs (SPIRTES | TARSKI | PEARL | PARETO)
@@ -388,7 +410,7 @@
   +-- SystemCopilot (left)
   |   +-- Message list (animated entry)
   |   +-- Action buttons (DISCOVER | EXPLAIN | VERIFY)
-  |   +-- Query input
+  |   +-- Query input (structured + LLM streaming)
   |
   +-- Center Column
   |   +-- CausalDAG3D (or CausalDAG2D fallback)
@@ -399,13 +421,22 @@
   |   |   +-- DAGOverlay (title, legend, leaderboard, hints)
   |   +-- RiskPropagationFlow (horizontal scroll cards)
   |   +-- StructuralMetrics (footer)
+  |   +-- ReplayControls (epoch slider, play/pause, speed, timeline toggle)
   |
   +-- ModulePanel (right)
-      +-- NodeInspector (omega profile, metadata, edges)
+      +-- NodeInspector (omega profile, metadata, edges — persistent)
       +-- SPIRTES: CascadeHeader + TrinityPanel (DCD/PCMCI+/FCI)
       +-- TARSKI:  TruthFilter + AxiomLibrary + ProofTraces
-      +-- PEARL:   InterventionControls + Scissors Tool
+      +-- PEARL:   InterventionControls + AblationPanel + InterdictionPanel
       +-- PARETO:  DoomsdayClock + ShockPanel + Fragility Index</pre>
+
+    <h3>/client Sandbox Components</h3>
+    <pre>
+  client/page.tsx
+  +-- SandboxLogin (org name gate)
+  +-- ClientHeaderBar (graph selector, rename, delete)
+  +-- SandboxEmptyState ("Import data to begin")
+  +-- ClientSystemCopilot (sandbox-scoped copilot)</pre>
   </div>
 
   <!-- 3. State Management -->
@@ -413,6 +444,7 @@
     <h1>03. State Management</h1>
     <p>All application state is managed through a single Zustand store at <code>src/stores/useApexStore.ts</code>. Components subscribe to specific slices for optimal re-rendering.</p>
 
+    <h3>Core State Slices</h3>
     <table>
       <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
       <tr><td><code>activeModule</code></td><td><code>"spirtes" | "tarski" | "pearl" | "pareto"</code></td><td>HeaderBar, ModulePanel</td></tr>
@@ -431,17 +463,83 @@
       <tr><td><code>importModalOpen</code></td><td><code>boolean</code></td><td>ImportModal, ImportButton</td></tr>
     </table>
 
+    <h3>Ablation State</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>ablationMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (ablation visuals), AblationPanel</td></tr>
+      <tr><td><code>ablatedNodeIds</code></td><td><code>string[]</code></td><td>AblationPanel, CausalDAG3D</td></tr>
+      <tr><td><code>ablatedEdgeIds</code></td><td><code>string[]</code></td><td>AblationPanel, CausalDAG3D</td></tr>
+    </table>
+
+    <h3>LLM Configuration State</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>llmProvider</code></td><td><code>"anthropic" | "gemini"</code></td><td>SystemCopilot (provider selector)</td></tr>
+      <tr><td><code>claudeApiKey</code></td><td><code>string</code></td><td>Copilot, Compute routes</td></tr>
+      <tr><td><code>geminiApiKey</code></td><td><code>string</code></td><td>Copilot, Structure/Enrich routes</td></tr>
+      <tr><td><code>claudeModel</code></td><td><code>string</code></td><td>Model selector (default: <code>claude-sonnet-4-20250514</code>)</td></tr>
+      <tr><td><code>geminiModel</code></td><td><code>string</code></td><td>Model selector (default: <code>gemini-2.0-flash</code>)</td></tr>
+      <tr><td><code>isLlmStreaming</code></td><td><code>boolean</code></td><td>SystemCopilot (streaming indicator)</td></tr>
+    </table>
+
+    <h3>Snapshot State</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>currentSnapshot</code></td><td><code>SystemStateSnapshot | null</code></td><td>Copilot context, snapshot diff</td></tr>
+      <tr><td><code>snapshotHistory</code></td><td><code>SystemStateSnapshot[]</code></td><td>History (capped at 50)</td></tr>
+      <tr><td><code>isComputeLoading</code></td><td><code>boolean</code></td><td>Loading indicator</td></tr>
+    </table>
+
+    <h3>Replay / Cascade State</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>replayActive</code></td><td><code>boolean</code></td><td>ReplayControls, CausalDAG3D</td></tr>
+      <tr><td><code>replayPlaying</code></td><td><code>boolean</code></td><td>ReplayControls (play/pause)</td></tr>
+      <tr><td><code>replaySpeed</code></td><td><code>number</code> (0.5, 1, 2, 4)</td><td>ReplayControls (speed selector)</td></tr>
+      <tr><td><code>currentEpoch</code></td><td><code>number</code></td><td>ReplayControls (slider), DAG visualization</td></tr>
+      <tr><td><code>baselineEpochs</code></td><td><code>EpochSnapshot[]</code></td><td>Replay (original cascade)</td></tr>
+      <tr><td><code>interventionEpochs</code></td><td><code>EpochSnapshot[]</code></td><td>Replay (intervention/ablation cascade)</td></tr>
+      <tr><td><code>activeTimeline</code></td><td><code>"baseline" | "intervention"</code></td><td>ReplayControls (timeline toggle)</td></tr>
+      <tr><td><code>replayBranchEpoch</code></td><td><code>number | null</code></td><td>ReplayControls (branch marker)</td></tr>
+    </table>
+
+    <h3>Sandbox State (/client)</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>sandboxOrgName</code></td><td><code>string | null</code></td><td>SandboxLogin, ClientHeaderBar</td></tr>
+      <tr><td><code>sandboxGraphs</code></td><td><code>{ id, name, graph }[]</code></td><td>ClientHeaderBar (graph picker)</td></tr>
+      <tr><td><code>activeSandboxGraphId</code></td><td><code>string | null</code></td><td>Graph switching</td></tr>
+    </table>
+
+    <h3>Dataset Tracking &amp; Tour State</h3>
+    <table>
+      <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
+      <tr><td><code>importedDatasets</code></td><td><code>ImportedDataset[]</code></td><td>Import history, dataset removal</td></tr>
+      <tr><td><code>tourActive</code></td><td><code>boolean</code></td><td>SpotlightTour</td></tr>
+      <tr><td><code>tourStep</code></td><td><code>number</code></td><td>SpotlightTour (step progression)</td></tr>
+    </table>
+
     <h3>Store Actions</h3>
     <table>
       <tr><th>Action</th><th>Trigger</th><th>Effect</th></tr>
       <tr><td><code>setActiveModule(id)</code></td><td>Module tab click</td><td>Swaps right panel content</td></tr>
       <tr><td><code>setSelectedNode(id)</code></td><td>Node click in 3D/2D</td><td>Camera pan, inspector expand, copilot inject</td></tr>
       <tr><td><code>addShock(shock)</code></td><td>PARETO shock button</td><td>Omega buffer recalc, doomsday update</td></tr>
-      <tr><td><code>mergeGraphData(nodes, edges)</code></td><td>Import merge confirm</td><td>Merge into graphData + initialGraph</td></tr>
+      <tr><td><code>mergeGraphData(nodes, edges, color?)</code></td><td>Import merge confirm</td><td>Merge into graphData + initialGraph, optional dataset color</td></tr>
       <tr><td><code>severEdge(edgeId)</code></td><td>Edge click in scissors mode</td><td>Mark severed, spawn consequence nodes</td></tr>
       <tr><td><code>setInterventionTarget(id)</code></td><td>Node click in intervention mode</td><td>Compute counterfactual, highlight downstream</td></tr>
       <tr><td><code>setTruthFilter(f)</code></td><td>TARSKI filter toggle</td><td>Show/hide restricted nodes, inconsistent edges</td></tr>
-      <tr><td><code>addCopilotMessage(msg)</code></td><td>Actions, queries, imports</td><td>Append to chat history</td></tr>
+      <tr><td><code>addCopilotMessage(msg)</code></td><td>Actions, queries, LLM streaming</td><td>Append to chat history</td></tr>
+      <tr><td><code>toggleAblatedNode(id)</code></td><td>Node click in ablation mode</td><td>Add/remove from ablation set, auto-ablate connected edges</td></tr>
+      <tr><td><code>toggleAblatedEdge(id)</code></td><td>Edge click in ablation mode</td><td>Add/remove from ablation set</td></tr>
+      <tr><td><code>startAblationReplay()</code></td><td>AblationPanel "Run" button</td><td>Build ablated graph, simulate cascade, start replay</td></tr>
+      <tr><td><code>setSnapshot(snapshot)</code></td><td>Compute API response</td><td>Tarski-validate, store, cap history at 50</td></tr>
+      <tr><td><code>startReplay()</code></td><td>Cascade replay trigger</td><td>Simulate cascade epochs, start baseline playback</td></tr>
+      <tr><td><code>branchFromCurrentEpoch()</code></td><td>Branch button in replay</td><td>Fork from current epoch, create intervention timeline</td></tr>
+      <tr><td><code>addImportedDataset(dataset)</code></td><td>Import merge</td><td>Track dataset with color, node/edge IDs</td></tr>
+      <tr><td><code>removeImportedDataset(id)</code></td><td>Dataset removal</td><td>Remove tracked nodes/edges, recompute graph</td></tr>
+      <tr><td><code>addSandboxGraph(name, graph)</code></td><td>New graph in sandbox</td><td>Add graph, switch to it</td></tr>
+      <tr><td><code>switchSandboxGraph(id)</code></td><td>Graph picker</td><td>Save current, load selected</td></tr>
     </table>
   </div>
 
@@ -471,6 +569,7 @@ computeLayout3D(nodes, edges, existingPositions?)
         +----> DAGNode3D (per node)
         |       Size:  0.5 + (omega/10)^2.2 x 4.5  =  [0.5 - 5.0]
         |       Color: getCategoryColor(category) or grey if disconnected
+        |              or datasetColor if from imported dataset
         |       Glow:  red (omega > 9) / amber (>= 7) / green
         |       Label: HTML overlay at distance factor 35
         |       Hover: detail card with 4-axis omega bars
@@ -498,6 +597,8 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>Consequence</td><td>Orange (#ff6d00), birth animation 500ms, high pulse</td></tr>
       <tr><td>Intervention target</td><td>Amber ring overlay</td></tr>
       <tr><td>Restricted (Tarski)</td><td>Red sphere badge at top-right</td></tr>
+      <tr><td>Ablated</td><td>Marked for removal in ablation analysis</td></tr>
+      <tr><td>Dataset-colored</td><td>Color from <code>DATASET_COLORS</code> palette (cyan, orange, purple, green, red, amber, blue, lime)</td></tr>
     </table>
 
     <h3>Edge Visual States</h3>
@@ -510,6 +611,7 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>Severed (scissors)</td><td>Red, dashed, 25% opacity</td></tr>
       <tr><td>Inconsistent (Tarski verified)</td><td>Red, dashed</td></tr>
       <tr><td>Consequence edge</td><td>Orange</td></tr>
+      <tr><td>Ablated</td><td>Marked for removal in ablation analysis</td></tr>
     </table>
 
     <h3>Disconnected Node Detection</h3>
@@ -520,7 +622,22 @@ computeLayout3D(nodes, edges, existingPositions?)
   <div class="section" id="engines">
     <h1>05. Core Engines</h1>
 
-    <p>APEX Terminal has four reasoning modules, each corresponding to a foundational research approach:</p>
+    <p>APEX Terminal has four reasoning modules, plus two additional analysis tools (Ablation and Interdiction). All engines are accessed through a unified <code>EngineProvider</code> interface, currently implemented by <code>LocalProvider</code> (client-side). A future <code>RemoteProvider</code> will swap transport (FastAPI/gRPC) without changing calling code.</p>
+
+    <h3>Engine Provider Interface</h3>
+    <pre>
+  src/lib/engines/
+  +-- engine-interface.ts    EngineProvider interface (common contract)
+  +-- local-provider.ts      LocalProvider (client-side implementation)
+  +-- index.ts               Registry (getEngineProvider() singleton)
+
+  Methods:
+  +-- discoverStructure(graph)            -> CascadeAnalysis
+  +-- computeCounterfactual(graph, ...)   -> EpochSnapshot[]
+  +-- scanTailRisk(shocks)                -> OmegaState
+  +-- computeDoomsday(shocks, buffer)     -> DoomsdayState
+  +-- validateSnapshot(snapshot)          -> TarskiValidationResult
+  +-- solveInterdiction(graph, ...)       -> InterdictionResult</pre>
 
     <h2><span class="badge badge-cyan">SPIRTES</span> Structure Discovery</h2>
     <p>Causal structure discovery using constraint-based and score-based algorithms.</p>
@@ -536,7 +653,7 @@ computeLayout3D(nodes, edges, existingPositions?)
     </div>
 
     <h2><span class="badge badge-green">TARSKI</span> Truth Verification</h2>
-    <p>Physical constraint validation using a formal axiom library.</p>
+    <p>Physical constraint validation using a formal axiom library. In v3, Tarski also validates <code>SystemStateSnapshot</code> objects before they enter the store.</p>
 
     <h3>Axiom Levels</h3>
     <table>
@@ -546,10 +663,20 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td><span class="badge badge-purple">L2</span></td><td>Heuristic (anomaly flag)</td><td>2</td><td>Lead-Lag Reversal, Capacity Saturation</td></tr>
     </table>
 
-    <p>In VERIFIED mode, restricted nodes display a red badge and inconsistent edges render as red dashed lines. Proof traces show which axioms were violated, the solver used (Z3 or cvc5), and check duration.</p>
+    <h3>Programmatic Axiom Checks (Snapshot Validator)</h3>
+    <table>
+      <tr><th>Check</th><th>Axiom</th><th>What it validates</th></tr>
+      <tr><td>Temporal Priority</td><td>A-01</td><td>No negative edge weights (reversed causality)</td></tr>
+      <tr><td>Conservation of Flow</td><td>A-02</td><td>Node omega does not exceed theoretical max (10)</td></tr>
+      <tr><td>DAG Integrity</td><td>A-03</td><td>Self-loop / degenerate cycle detection</td></tr>
+      <tr><td>Capacity Saturation</td><td>H-02</td><td>Nodes with omega > 9.5 flagged as near-saturated</td></tr>
+      <tr><td>Sanction Logic</td><td>R-01</td><td>High-weight edges between omega-breached nodes</td></tr>
+    </table>
+
+    <p>In VERIFIED mode, restricted nodes display a red badge and inconsistent edges render as red dashed lines. Proof traces show which axioms were violated and the check result. All validation is currently programmatic (no external SMT solvers) &mdash; Z3/cvc5 integration is planned for v2 backend.</p>
 
     <h2><span class="badge badge-amber">PEARL</span> Causal Reasoning</h2>
-    <p>Pearl's do-calculus for counterfactual reasoning and graph surgery.</p>
+    <p>Pearl's do-calculus for counterfactual reasoning and graph surgery. The Pearl module now includes three sub-tools: Intervention, Ablation, and Interdiction.</p>
 
     <h3>Intervention Mode (do(X))</h3>
     <p>When a target node is selected, the system computes:</p>
@@ -568,6 +695,25 @@ computeLayout3D(nodes, edges, existingPositions?)
       <li>New edges connect consequences to the original edge's target (weight 0.8)</li>
       <li>Consequence nodes render orange with birth animation</li>
     </ol>
+
+    <h3>Ablation Analysis</h3>
+    <p>Select nodes/edges for removal and compare the resulting cascade against the baseline. Located in <code>AblationPanel.tsx</code> + <code>ablation-engine.ts</code>.</p>
+    <ul>
+      <li>Toggle nodes/edges for ablation (auto-ablates connected edges when a node is selected)</li>
+      <li><code>computeAblationComparison(graph, nodeIds, edgeIds)</code> computes structural delta</li>
+      <li>"Run" builds the ablated graph and launches cascade replay on the intervention timeline</li>
+      <li>Mutually exclusive with scissors mode (enabling one disables the other)</li>
+    </ul>
+
+    <h3>Interdiction Solver</h3>
+    <p>Greedy minimax network protection at <code>interdiction-engine.ts</code> + <code>InterdictionPanel.tsx</code>.</p>
+    <ul>
+      <li><strong>Algorithm</strong>: O(budget x candidates) greedy approximation to NP-hard network interdiction</li>
+      <li><strong>Budget</strong>: configurable (default 3) — max number of removals</li>
+      <li><strong>Mode</strong>: edge-only, node-only, or both</li>
+      <li><strong>Damage metric</strong>: composite of peak mean shock intensity (0-40), omega buffer deficit (0-40), and criticality bonus (0 or 20)</li>
+      <li>Requires active shocks to run; outputs ordered list of optimal interventions with marginal reduction scores</li>
+    </ul>
 
     <h2><span class="badge badge-red">PARETO</span> Risk Assessment</h2>
     <p>Omega-Fragility scoring and doomsday clock for systemic risk monitoring.</p>
@@ -597,11 +743,205 @@ computeLayout3D(nodes, edges, existingPositions?)
     <p>Computed from the omega buffer: <code>T-days = max(3, round(365 x buffer/100))</code>. Dragon King detection triggers when fragility index exceeds 70. Regime types: STABLE, STAGNATION, MELT_UP, PHASE_TRANSITION, CRASH.</p>
   </div>
 
-  <!-- 6. Import Pipeline -->
-  <div class="section" id="import">
-    <h1>06. Dataset Import Pipeline</h1>
+  <!-- 6. LLM Integration -->
+  <div class="section" id="llm">
+    <h1>06. LLM Integration &amp; API Routes</h1>
 
-    <p>Fully client-side import system supporting four file formats, with validation, preview, and merge-into-graph behavior.</p>
+    <p>APEX Terminal supports dual-LLM streaming via server-side API routes that proxy requests to Anthropic (Claude) and Google (Gemini). API keys are stored in session-only Zustand state (never persisted).</p>
+
+    <h3>LLM Providers</h3>
+    <table>
+      <tr><th>Provider</th><th>Models</th><th>Role</th></tr>
+      <tr><td>Anthropic (Claude)</td><td>Claude Sonnet 4, Claude Haiku 4.5, Claude Opus 4.6</td><td>Copilot streaming, compute engine (snapshot generation)</td></tr>
+      <tr><td>Google (Gemini)</td><td>Gemini 2.0 Flash, Flash Lite, Gemini 2.5 Pro</td><td>Copilot streaming, structure mapping, enrichment scoring</td></tr>
+    </table>
+
+    <h3>API Routes</h3>
+    <table>
+      <tr><th>Route</th><th>Method</th><th>Purpose</th><th>Providers</th></tr>
+      <tr><td><code>/api/copilot</code></td><td>POST</td><td>Streaming LLM copilot conversation with graph context</td><td>Claude + Gemini</td></tr>
+      <tr><td><code>/api/compute</code></td><td>POST</td><td>Generate <code>SystemStateSnapshot</code> JSON from graph state</td><td>Claude only</td></tr>
+      <tr><td><code>/api/structure</code></td><td>POST</td><td>LLM-assisted CSV column mapping to canonical fields</td><td>Claude + Gemini</td></tr>
+      <tr><td><code>/api/enrich</code></td><td>POST</td><td>LLM-powered Omega-Fragility scoring for imported nodes</td><td>Claude + Gemini</td></tr>
+    </table>
+
+    <h3>Copilot Architecture</h3>
+    <div class="flow">
+      <div class="flow-title">COPILOT QUERY FLOW</div>
+      <pre>
+  User types query / clicks action button
+      |
+      +---> Structured (no API key)?
+      |     |
+      |     v
+      |   copilot-engine.ts
+      |     processAction() / processQuery() / processNodeAnalysis()
+      |     Returns static CopilotMessage[] from graph analysis
+      |
+      +---> LLM Streaming (API key present)?
+            |
+            v
+          copilot-context.ts: serializeGraphContext()
+            |-- Adjacency matrix (up to 30 nodes)
+            |-- Active shocks, severed edges
+            |-- Selected node details
+            |-- Ablation state
+            |-- Snapshot diff context (if available)
+            |
+            v
+          copilot-engine.ts: streamLlmQuery()
+            |-- POST /api/copilot
+            |-- Server proxies to Claude or Gemini
+            +-- Returns ReadableStream -> token-by-token UI update</pre>
+    </div>
+
+    <h3>File Structure</h3>
+    <pre>
+  src/lib/
+  +-- llm-providers.ts         Provider types, model registry, defaults
+  +-- copilot-engine.ts        Structured + LLM streaming query processing
+  +-- copilot-context.ts       Graph state serialization for LLM context
+
+  src/app/api/
+  +-- copilot/route.ts         Streaming copilot proxy (Claude + Gemini)
+  +-- compute/route.ts         Snapshot generation via Claude
+  +-- structure/route.ts       Column mapping via LLM
+  +-- enrich/route.ts          Omega scoring via LLM</pre>
+  </div>
+
+  <!-- 7. Snapshot System -->
+  <div class="section" id="snapshots">
+    <h1>07. Snapshot System</h1>
+
+    <p>The snapshot system provides a structured data frame (<code>SystemStateSnapshot</code>) that captures the entire graph state at a point in time. Snapshots are built from engine outputs, validated by Tarski, and stored in the Zustand store for the copilot to reference.</p>
+
+    <h3>SystemStateSnapshot Schema</h3>
+    <pre>
+{
+  version: 1,
+  timestamp: string (ISO-8601),
+  graph: {
+    nodes: [{ id, omega, fragility, isActivated }],
+    edges: [{ id, weight, probability, isSevered }]
+  },
+  engineOutputs: {
+    spirtes: { density, lambdaMax, isStable } | null,
+    pareto:  { omegaBuffer, status, criticalityEstimate } | null,
+    pearl:   { interventionCount, severedEdges[] } | null
+  },
+  tarskiValidation: {
+    status: "PENDING" | "PASSED" | "VIOLATIONS_FOUND",
+    violations: [{ axiomId, edgeId?, nodeId?, detail }],
+    checkedAt: string
+  },
+  metadata: { epochCount, shockCount, activeModule }
+}</pre>
+
+    <h3>Snapshot Lifecycle</h3>
+    <div class="flow">
+      <div class="flow-title">SNAPSHOT PIPELINE</div>
+      <pre>
+  Graph state + Engine outputs
+      |
+      v
+  buildSnapshot() (serializer.ts)
+      |-- Derives node states from graph or active epoch
+      |-- Computes cascade analysis (lambda_max)
+      |-- Computes omega state from shocks
+      |-- Assembles pearl intervention data
+      |
+      v
+  SystemStateSnapshot (tarskiValidation = PENDING)
+      |
+      v
+  setSnapshot() in Zustand store
+      |-- validateSnapshot() (tarski-validator.ts)
+      |   |-- Runs 5 axiom checks (A-01, A-02, A-03, H-02, R-01)
+      |   +-- Returns PASSED or VIOLATIONS_FOUND
+      |
+      |-- Stores with validation result attached
+      |-- Appends to snapshotHistory (capped at 50)
+      +-- Console warns on violations (informational in v3)
+
+  Between snapshots:
+  diffSnapshots(prev, curr) -> SnapshotDiff
+      |-- Node diffs: omega delta, fragility delta, activation changes
+      |-- Edge diffs: weight delta, severance changes
+      |-- Added/removed nodes and edges
+      +-- Metric diffs: omega buffer delta, stability changes, violation count</pre>
+    </div>
+
+    <h3>File Structure</h3>
+    <pre>
+  src/lib/snapshots/
+  +-- types.ts                 SystemStateSnapshot, SnapshotNode/Edge, validation types
+  +-- serializer.ts            buildSnapshot() — pure function, no API calls
+  +-- tarski-validator.ts      validateSnapshot() — programmatic axiom checks
+  +-- diff.ts                  diffSnapshots() — structured delta between snapshots</pre>
+  </div>
+
+  <!-- 8. Cascade Replay System -->
+  <div class="section" id="replay">
+    <h1>08. Cascade Replay System</h1>
+
+    <p>The replay system simulates cascade propagation across the causal graph over discrete time epochs, allowing users to visualize how shocks ripple through the network.</p>
+
+    <h3>Cascade Simulation</h3>
+    <p><code>simulateCascade(graph, shocks, severedEdges, config?, epochs?, initialNodeStates?)</code> produces an array of <code>EpochSnapshot</code> objects, each containing per-node shock states, omega buffer, and criticality status.</p>
+
+    <h3>Dual Timeline Architecture</h3>
+    <table>
+      <tr><th>Timeline</th><th>Source</th><th>Purpose</th></tr>
+      <tr><td><code>baseline</code></td><td><code>startReplay()</code></td><td>Cascade with current graph + shocks + severed edges</td></tr>
+      <tr><td><code>intervention</code></td><td><code>branchFromCurrentEpoch()</code> or <code>startAblationReplay()</code></td><td>Cascade from a branch point or ablated graph</td></tr>
+    </table>
+
+    <h3>Replay Controls</h3>
+    <ul>
+      <li><strong>Play / Pause</strong>: Toggle epoch auto-advance</li>
+      <li><strong>Speed</strong>: 0.5x, 1x, 2x, 4x (driven by <code>useReplayTick</code> hook)</li>
+      <li><strong>Epoch Slider</strong>: Scrub through cascade timeline</li>
+      <li><strong>Step</strong>: Advance/rewind by one epoch</li>
+      <li><strong>Timeline Toggle</strong>: Switch between baseline and intervention views</li>
+      <li><strong>Branch</strong>: Fork a new intervention timeline from the current epoch</li>
+    </ul>
+
+    <h3>Replay Data Flow</h3>
+    <div class="flow">
+      <div class="flow-title">REPLAY LIFECYCLE</div>
+      <pre>
+  User triggers replay (PARETO or Ablation)
+      |
+      v
+  simulateCascade(graph, shocks, severedEdges)
+      |-- Produces EpochSnapshot[] (baseline)
+      |
+      v
+  Store: baselineEpochs = epochs, replayActive = true
+      |
+      v
+  useReplayTick(speed) auto-advances currentEpoch
+      |
+      +---> CausalDAG3D reads epoch[currentEpoch].nodeStates
+      |      +-- Node colors/sizes update per epoch
+      |      +-- Shock intensity drives glow effects
+      |
+      +---> ReplayControls shows epoch slider + status
+      |
+      +---> User clicks BRANCH at epoch N
+             |
+             v
+           simulateCascade(graph, shocks, severedEdges, ..., branchState)
+             |-- Produces interventionEpochs[]
+             +-- activeTimeline = "intervention"</pre>
+    </div>
+  </div>
+
+  <!-- 9. Import Pipeline -->
+  <div class="section" id="import">
+    <h1>09. Dataset Import Pipeline</h1>
+
+    <p>Client-side import system supporting five file formats, with LLM-assisted column mapping, validation, preview, enrichment, and merge-into-graph behavior.</p>
 
     <h3>Supported Formats</h3>
     <table>
@@ -610,21 +950,30 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>CSV</td><td>.csv</td><td>String splitting with quoted field handling, header aliasing</td></tr>
       <tr><td>GraphML</td><td>.graphml, .gml</td><td><code>DOMParser</code> XML parsing, <code>&lt;key&gt;</code> mapping</td></tr>
       <tr><td>DOT</td><td>.dot, .gv</td><td>Regex-based: <code>digraph { node [attrs]; a -&gt; b [attrs] }</code></td></tr>
+      <tr><td>PDF</td><td>.pdf</td><td>pdfjs-dist table extraction &rarr; CSV conversion (max 50 pages)</td></tr>
     </table>
 
     <h3>Import Flow</h3>
     <div class="flow">
-      <div class="flow-title">FILE TO GRAPH</div>
+      <div class="flow-title">FILE TO GRAPH (EXPANDED)</div>
       <pre>
   File dropped/selected
       |
       v
   detectFormat(file)
-      |-- Check extension (.csv, .json, .graphml, .dot)
+      |-- Check extension (.csv, .json, .graphml, .dot, .pdf)
       +-- Fallback: content sniffing (starts with '{', '&lt;?xml', 'digraph')
       |
       v
   parseFile(file) -> ParsedGraph { nodes: RawNode[], edges: RawEdge[] }
+      |   (PDF: extract tables -> CSV -> parse)
+      |
+      v
+  ColumnMapper (if CSV/PDF — LLM-assisted or manual)
+      |-- autoMapHeaders() heuristic mapping
+      |-- Optional: POST /api/structure for LLM column mapping
+      |-- User reviews/adjusts mappings
+      |-- detectDataMode() -> "nodes" or "edges"
       |
       v
   validateParsedGraph(parsed, existingGraph)
@@ -648,12 +997,18 @@ computeLayout3D(nodes, edges, existingPositions?)
       +-- Set verificationStatus = "UNVERIFIED"
       |
       v
-  mergeGraphData(nodes, edges) -> store update
-      |-- graphData = merged
-      |-- initialGraph = merged
+  mergeGraphData(nodes, edges, datasetColor) -> store update
+      |-- graphData = merged, initialGraph = merged
+      |-- Dataset tracked: addImportedDataset({ id, name, nodeIds, edgeIds, color })
       |-- Layout recomputes (50 iterations, preserves positions)
       |-- Disconnected nodes -> grey
-      +-- Copilot: "Dataset imported: +X nodes, +Y edges"</pre>
+      +-- Copilot: "Dataset imported: +X nodes, +Y edges"
+      |
+      v  (optional, if LLM API key present)
+  POST /api/enrich -> LLM Omega-Fragility scoring
+      |-- Sends node labels/domains to LLM
+      |-- LLM returns per-node omega sub-scores + concentration + replacement time
+      +-- Enriched scores merged back into graph nodes</pre>
     </div>
 
     <h3>Smart Defaults</h3>
@@ -671,36 +1026,43 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>Edge confidence</td><td>0.5</td></tr>
     </table>
 
-    <h3>Merge Behavior</h3>
+    <h3>Dataset Tracking &amp; Removal</h3>
     <div class="callout green">
-      <strong>Always merge, never replace.</strong> Imported data is added on top of the existing graph. Duplicate IDs are skipped. Disconnected imported clusters render grey until edges are added that bridge them to the main graph.
+      <strong>Always merge, never replace.</strong> Imported data is added on top of the existing graph. Each import is tracked as an <code>ImportedDataset</code> with a unique color from the 8-color palette. Datasets can be removed individually, which strips their nodes, edges, and any orphaned color-matched nodes not claimed by other datasets.
     </div>
+
+    <h3>Edge Inference (Enrichment)</h3>
+    <p><code>enrich.ts: inferEdges()</code> automatically creates directed edges between imported nodes based on shared domain (sequential chaining) and shared category (cross-domain bridges). This prevents imported clusters from remaining fully disconnected.</p>
 
     <h3>File Structure</h3>
     <pre>
   src/lib/import/
-  +-- types.ts               Types: ParsedGraph, ValidationResult, MergeResult
+  +-- types.ts               Types: ParsedGraph, ValidationResult, MergeResult, ColumnMapping
   +-- defaults.ts            applyNodeDefaults(), applyEdgeDefaults()
   +-- validation.ts          Schema validation, error/warning/info
   +-- merge.ts               mergeGraphs() -- skip dupes, recompute metadata
+  +-- column-mapping.ts      CANONICAL_FIELDS, autoMapHeaders(), detectDataMode()
+  +-- enrich.ts              inferEdges() -- domain/category-based edge inference
   +-- parsers/
       +-- index.ts           detectFormat(), parseFile() dispatcher
       +-- json-parser.ts     JSON.parse, shape detection
       +-- csv-parser.ts      Header aliasing, quoted fields, node vs edge
       +-- graphml-parser.ts  DOMParser XML, key/data extraction
       +-- dot-parser.ts      Regex-based DOT parsing
+      +-- pdf-parser.ts      pdfjs-dist table extraction -> CSV
 
   src/components/import/
   +-- ImportButton.tsx        "+ IMPORT" header trigger
-  +-- ImportModal.tsx         3-step modal (select -> preview -> confirm)
+  +-- ImportModal.tsx         Multi-step modal (select -> map -> preview -> confirm)
   +-- DropZone.tsx            Drag-and-drop + file picker
+  +-- ColumnMapper.tsx        LLM-assisted + manual column mapping UI
   +-- PreviewTable.tsx        Tabbed node/edge table, row validation
   +-- ValidationSummary.tsx   Error/warning count banner</pre>
   </div>
 
-  <!-- 7. Data Flow Diagrams -->
+  <!-- 10. Data Flow Diagrams -->
   <div class="section" id="flows">
-    <h1>07. Data Flow Diagrams</h1>
+    <h1>10. Data Flow Diagrams</h1>
 
     <h2>Node Selection</h2>
     <div class="flow">
@@ -764,6 +1126,43 @@ computeLayout3D(nodes, edges, existingPositions?)
              +-- Nodes with omega &lt; 7, not downstream of cuts = grey</pre>
     </div>
 
+    <h2>Ablation + Replay</h2>
+    <div class="flow">
+      <pre>
+  User toggles ablation mode -> selects nodes/edges
+      |
+      v
+  toggleAblatedNode(id) / toggleAblatedEdge(id)
+      |-- Auto-ablates connected edges when node selected
+      |-- AblationPanel shows computeAblationComparison() preview
+      |
+      v  (user clicks RUN)
+  startAblationReplay()
+      |-- Builds ablated graph (filters out ablated nodes/edges)
+      |-- simulateCascade(ablatedGraph) -> interventionEpochs
+      +-- Replay starts on intervention timeline</pre>
+    </div>
+
+    <h2>Interdiction Solver</h2>
+    <div class="flow">
+      <pre>
+  User configures budget + mode in InterdictionPanel
+      |
+      v
+  solveInterdiction(graph, shocks, severedEdges, budget, mode)
+      |
+      |-- Step 1: Baseline cascade -> baselineDamage
+      |-- Step 2: For each candidate removal, simulate cascade
+      |-- Step 3: Pick lowest damage (greedy)
+      |-- Repeat up to budget times
+      |
+      v
+  InterdictionResult
+      |-- interventions[]: ordered by effectiveness
+      |-- baselineDamage / bestDamage / reductionPct
+      +-- User can apply recommendations (sever suggested edges)</pre>
+    </div>
+
     <h2>Dataset Import</h2>
     <div class="flow">
       <pre>
@@ -772,6 +1171,9 @@ computeLayout3D(nodes, edges, existingPositions?)
       v
   parseFile(file) -> ParsedGraph
       |
+      v  (CSV/PDF only)
+  ColumnMapper: autoMap + optional LLM mapping
+      |
       v
   validateParsedGraph(parsed, graphData) -> ValidationResult
       |
@@ -779,11 +1181,12 @@ computeLayout3D(nodes, edges, existingPositions?)
   mergeGraphs(graphData, resolved) -> merged CausalGraph
       |
       +---> Store: graphData = merged, initialGraph = merged
+      +---> addImportedDataset(tracked with color)
       +---> Layout: computeLayout3D (50 iterations, warm start)
       +---> Disconnected nodes: grey (outside largest component)
-      +---> Connected nodes: full color
+      +---> Connected nodes: full color (or dataset color)
       +---> Copilot: "Dataset imported: +X nodes, +Y edges"
-      +---> Future bridge import: grey nodes become colored</pre>
+      +---> Optional: POST /api/enrich for LLM Omega scoring</pre>
     </div>
 
     <h2>Module Switch</h2>
@@ -805,11 +1208,30 @@ computeLayout3D(nodes, edges, existingPositions?)
              +---> DAGNode3D: restricted nodes get red badge
              +---> DAGEdge3D: inconsistent edges turn red + dashed</pre>
     </div>
+
+    <h2>LLM Copilot Query</h2>
+    <div class="flow">
+      <pre>
+  User types query in SystemCopilot
+      |
+      +---> No API key: processQuery(query, graph)
+      |      +-- Keyword matching (RISK, COUNTERFACT, SHOCK, etc.)
+      |      +-- Returns static CopilotMessage[] from graph analysis
+      |
+      +---> API key present: streamLlmQuery(opts)
+             +-- serializeGraphContext(graph, options)
+             |   +-- Node adjacency, shocks, severed edges
+             |   +-- Selected node, ablation state
+             |   +-- Snapshot diff context
+             |
+             +-- POST /api/copilot (streaming)
+             +-- Token-by-token response appended to chat</pre>
+    </div>
   </div>
 
-  <!-- 8. Type System -->
+  <!-- 11. Type System -->
   <div class="section" id="types">
-    <h1>08. Type System &amp; Graph Data</h1>
+    <h1>11. Type System &amp; Graph Data</h1>
 
     <h3>CausalNode</h3>
     <pre>
@@ -836,6 +1258,8 @@ computeLayout3D(nodes, edges, existingPositions?)
   isRestricted: boolean             // Tarski violation flagged
   isConsequence?: boolean           // Spawned by scissors tool
   consequenceOf?: string            // Parent edge ID
+  datasetColor?: string             // Color from imported dataset
+  position3d?: { x, y, z }         // Cached layout position
 }</pre>
 
     <h3>CausalEdge</h3>
@@ -852,6 +1276,35 @@ computeLayout3D(nodes, edges, existingPositions?)
   physicalMechanism: string         // "powers", "constrains supply"
   isSevered?: boolean               // Cut by scissors tool
   isConsequenceEdge?: boolean       // From consequence node
+}</pre>
+
+    <h3>EpochSnapshot (Cascade Replay)</h3>
+    <pre>
+{
+  epoch: number
+  nodeStates: Record&lt;string, {
+    omegaComposite: number
+    shockIntensity: number
+    isActivated: boolean
+  }&gt;
+  edgeStates: Record&lt;string, {
+    activeWeight: number
+  }&gt;
+  omegaBuffer: number
+  omegaStatus: OmegaStatus
+  isCritical: boolean
+  criticalityEstimate: number
+}</pre>
+
+    <h3>ImportedDataset</h3>
+    <pre>
+{
+  id: string                        // Unique dataset identifier
+  name: string                      // File name
+  timestamp: number                 // Import time
+  nodeIds: string[]                 // Tracked node IDs
+  edgeIds: string[]                 // Tracked edge IDs
+  color: string                     // From DATASET_COLORS palette
 }</pre>
 
     <h3>Node Categories (8)</h3>
@@ -882,9 +1335,9 @@ computeLayout3D(nodes, edges, existingPositions?)
     </table>
   </div>
 
-  <!-- 9. Key Algorithms -->
+  <!-- 12. Key Algorithms -->
   <div class="section" id="algorithms">
-    <h1>09. Key Algorithms</h1>
+    <h1>12. Key Algorithms</h1>
 
     <table>
       <tr><th>Algorithm</th><th>Location</th><th>Description</th></tr>
@@ -896,10 +1349,19 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>Dragon King detection</td><td><code>omega-engine.ts</code></td><td>Triggered when fragilityIndex exceeds 70</td></tr>
       <tr><td>Counterfactual E[U]</td><td><code>InterventionControls</code></td><td><code>target.omega x avg_downstream_weight x 10</code></td></tr>
       <tr><td>Graph surgery</td><td><code>intervention-engine.ts</code></td><td>Sever edge, spawn domain-specific consequence nodes (omega 7.5-9.5)</td></tr>
+      <tr><td>Ablation comparison</td><td><code>ablation-engine.ts</code></td><td>Remove nodes/edges, compare cascade metrics vs baseline</td></tr>
+      <tr><td>Greedy minimax interdiction</td><td><code>interdiction-engine.ts</code></td><td>O(budget x candidates) greedy solver for network protection; damage = intensity(40) + buffer(40) + critical(20)</td></tr>
+      <tr><td>Cascade simulation</td><td><code>cascade-simulator.ts</code></td><td>Epoch-based shock propagation with damping, activation thresholds, omega buffer tracking</td></tr>
+      <tr><td>Snapshot validation</td><td><code>tarski-validator.ts</code></td><td>5 programmatic axiom checks (A-01, A-02, A-03, H-02, R-01) against SystemStateSnapshot</td></tr>
+      <tr><td>Snapshot diff</td><td><code>snapshots/diff.ts</code></td><td>Structured delta: node omega/fragility, edge weight, added/removed, metric changes</td></tr>
+      <tr><td>Edge inference</td><td><code>import/enrich.ts</code></td><td>Auto-create edges from shared domain (sequential) and category (cross-domain bridges)</td></tr>
       <tr><td>Node sizing</td><td><code>DAGNode3D.tsx</code></td><td><code>0.5 + (omega/10)^2.2 x 4.5</code> &mdash; power curve emphasizes high-omega</td></tr>
       <tr><td>CSV header aliasing</td><td><code>csv-parser.ts</code></td><td>Case-insensitive normalized header to canonical field mapping</td></tr>
+      <tr><td>LLM column mapping</td><td><code>column-mapping.ts</code></td><td>Heuristic autoMap + optional LLM-assisted mapping via /api/structure</td></tr>
+      <tr><td>PDF table extraction</td><td><code>pdf-parser.ts</code></td><td>pdfjs-dist text items -> positional grouping -> tabular CSV (max 50 pages)</td></tr>
       <tr><td>Format detection</td><td><code>parsers/index.ts</code></td><td>Extension map with content-sniffing fallback</td></tr>
       <tr><td>Graph merge</td><td><code>merge.ts</code></td><td>Skip duplicate IDs, validate edge refs, recompute metadata</td></tr>
+      <tr><td>Graph context serialization</td><td><code>copilot-context.ts</code></td><td>Serialize graph + state for LLM system prompt (adjacency, shocks, ablation, snapshot diff)</td></tr>
     </table>
   </div>
 
@@ -907,7 +1369,7 @@ computeLayout3D(nodes, edges, existingPositions?)
 
   <div style="text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 12px;">
     <div style="font-family: 'JetBrains Mono', monospace; letter-spacing: 0.2em; margin-bottom: 8px;">APEX ANALYTICA</div>
-    <div>Product Architecture Document v2.0</div>
+    <div>Product Architecture Document v3.0</div>
     <div>March 2026 &mdash; Brynna Shale</div>
   </div>
 

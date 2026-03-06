@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { ImportFormat, ParsedGraph } from "../types";
-import { parseCSV } from "./csv-parser";
+import { parseCSV, HEADER_MAP } from "./csv-parser";
 import { parseJSON } from "./json-parser";
 import { parseGraphML } from "./graphml-parser";
 import { parseDOT } from "./dot-parser";
@@ -84,12 +84,30 @@ function extractTableFromSheet(sheet: XLSX.WorkSheet): { csv: string; warnings: 
     return { csv: "", warnings: ["No tabular data found in sheet"] };
   }
 
-  // Pick the largest region (most rows)
-  const best = regions.reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a));
+  // Score each region: prefer tables whose headers match known HEADER_MAP fields.
+  // This distinguishes entity tables (Supply Chain Stage, Company, Country) from
+  // time-series tables (Quarter, Price, Index) in dashboard-style xlsx files.
+  function scoreRegion(region: { start: number; end: number; maxCols: number }): number {
+    const headerRow = rows[region.start];
+    if (!Array.isArray(headerRow)) return 0;
+    let mapHits = 0;
+    for (const cell of headerRow) {
+      if (cell == null || cell === "") continue;
+      const normalized = String(cell).toLowerCase().replace(/[\s-]+/g, "_");
+      if (normalized in HEADER_MAP) mapHits++;
+    }
+    // Weighted score: HEADER_MAP matches are worth 10 rows each,
+    // so a 7-row table with 4 mapped headers (score=47) beats
+    // a 10-row table with 0 mapped headers (score=10).
+    const rowCount = region.end - region.start;
+    return mapHits * 10 + rowCount;
+  }
+
+  const best = regions.reduce((a, b) => (scoreRegion(b) > scoreRegion(a) ? b : a));
 
   if (regions.length > 1) {
     warnings.push(
-      `Found ${regions.length} table sections; extracted the largest (rows ${best.start + 1}–${best.end}, ${best.end - best.start} rows)`
+      `Found ${regions.length} table sections; extracted best match (rows ${best.start + 1}–${best.end}, ${best.end - best.start} rows)`
     );
   }
 

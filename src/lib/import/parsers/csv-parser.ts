@@ -41,7 +41,7 @@ function coerceValue(val: string): string | number | boolean {
 }
 
 // Header aliases → canonical field name
-const HEADER_MAP: Record<string, string> = {
+export const HEADER_MAP: Record<string, string> = {
   id: "id",
   node_id: "id",
   nodeid: "id",

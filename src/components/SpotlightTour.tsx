@@ -10,6 +10,7 @@ interface TourStep {
   title: string;
   description: string;
   tooltipPosition: "top" | "bottom" | "left" | "right" | "center";
+  onEnter?: () => void;
 }
 
 const TOUR_STEPS: TourStep[] = [
@@ -28,6 +29,51 @@ const TOUR_STEPS: TourStep[] = [
     description:
       "Switch between the four analysis engines: Spirtes (structure discovery), Tarski (truth verification), Pearl (counterfactuals), and Pareto (criticality warnings).",
     tooltipPosition: "bottom",
+  },
+  {
+    id: "spirtes-deep",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "SPIRTES ENGINE",
+    description:
+      "The Spirtes Engine runs structural causal discovery. The header shows the spectral radius (\u03BB_max) \u2014 values below 1.0 mean the cascade is stable. Below it, the Trinity panel displays three algorithm sub-graphs.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
+  },
+  {
+    id: "spirtes-graphs",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "TRINITY SUB-GRAPHS",
+    description:
+      "DCD/NOTEARS discovers nonlinear structure \u2014 nodes arranged in a circle with directed arrows showing causal flow. PCMCI+ reveals temporal lags \u2014 nodes laid out in T\u20112/T\u20111/T\u20110 columns showing how effects propagate over time. FCI detects hidden confounders \u2014 dashed red edges with \u2018?\u2019 markers flag latent common causes.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
+  },
+  {
+    id: "tarski-deep",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "TARSKI ENGINE",
+    description:
+      "The Tarski Engine verifies the DAG against physical and regulatory axioms. Toggle RAW/VERIFIED to see which edges fail. The axiom library has 3 levels: L0 (physics \u2014 immutable), L1 (regulatory \u2014 red alert), L2 (heuristic \u2014 anomaly flags). In VERIFIED mode, proof traces show which axioms each edge violated and the solver used.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("tarski"),
+  },
+  {
+    id: "pearl-deep",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "PEARL ENGINE",
+    description:
+      "The Pearl Engine enables counterfactual reasoning via do-calculus. Intervention Controls let you select a do(X) target node. The scissors tool severs causal links. Ablation removes nodes/edges and replays the cascade to compare. Network Interdiction runs minimax optimization to find the best edges to cut for minimal damage.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("pearl"),
+  },
+  {
+    id: "pareto-deep",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "PARETO ENGINE",
+    description:
+      "The Pareto Engine monitors tail risk. The Doomsday Clock shows T-days until system failure, regime type, and dragon king probability. The \u03A9-Fragility Assessment tracks buffer depletion. Below, the top critical nodes are ranked by \u03A9 score. Use the Shock Injector to stress-test with preset scenarios like Taiwan Blockade or Carrington Event.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
   {
     id: "cd-omega",
@@ -62,6 +108,14 @@ const TOUR_STEPS: TourStep[] = [
     tooltipPosition: "right",
   },
   {
+    id: "compute-button",
+    targetSelector: '[data-tour="action-buttons"]',
+    title: "COMPUTE WITH CLAUDE",
+    description:
+      "Compute with Claude generates a System State Snapshot \u2014 a structured analysis of the entire graph. Claude handles computation; Gemini reads the results to answer your questions. If no Claude key is set, a local snapshot is computed instead.",
+    tooltipPosition: "right",
+  },
+  {
     id: "risk-flow",
     targetSelector: '[data-tour="risk-flow"]',
     title: "RISK PROPAGATION",
@@ -74,7 +128,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "MODULE PANEL",
     description:
-      "The right panel displays module-specific controls and results: discovery algorithms, axiom proofs, intervention tools, or fragility assessments.",
+      "This panel changes based on the active module. You\u2019ve now seen all four.",
     tooltipPosition: "left",
   },
   {
@@ -155,6 +209,7 @@ export default function SpotlightTour() {
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tooltipHeightRef = useRef(200);
+  const preTourModuleRef = useRef<string | null>(null);
 
   const step = TOUR_STEPS[tourStep];
   const isFirst = tourStep === 0;
@@ -183,6 +238,19 @@ export default function SpotlightTour() {
     measureTarget();
   }, [measureTarget]);
 
+  // Save pre-tour module on tour start
+  useEffect(() => {
+    if (tourActive) {
+      preTourModuleRef.current = useApexStore.getState().activeModule;
+    }
+  }, [tourActive]);
+
+  // Call onEnter when step changes
+  useEffect(() => {
+    if (!tourActive || !step) return;
+    step.onEnter?.();
+  }, [tourActive, tourStep, step]);
+
   useEffect(() => {
     if (!tourActive) return;
     updatePositions();
@@ -210,7 +278,12 @@ export default function SpotlightTour() {
     }
   });
 
-  const close = useCallback(() => setTourActive(false), [setTourActive]);
+  const close = useCallback(() => {
+    if (preTourModuleRef.current) {
+      useApexStore.getState().setActiveModule(preTourModuleRef.current as "spirtes" | "tarski" | "pearl" | "pareto");
+    }
+    setTourActive(false);
+  }, [setTourActive]);
 
   const next = useCallback(() => {
     if (isLast) {

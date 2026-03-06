@@ -80,6 +80,7 @@ export interface CausalNode {
   position3d?: { x: number; y: number; z: number };
   isConsequence?: boolean; // spawned by link break tool
   consequenceOf?: string; // edge ID that spawned this node
+  datasetColor?: string; // color from imported dataset
 }
 
 export interface CausalEdge {

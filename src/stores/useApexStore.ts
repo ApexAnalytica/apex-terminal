@@ -11,6 +11,26 @@ import {
   EpochSnapshot,
   TimelineId,
 } from "@/lib/types";
+
+export interface ImportedDataset {
+  id: string;
+  name: string;
+  timestamp: number;
+  nodeIds: string[];
+  edgeIds: string[];
+  color: string;
+}
+
+export const DATASET_COLORS = [
+  "#00e5ff", // cyan
+  "#ff6d00", // orange
+  "#7c4dff", // purple
+  "#00e676", // green
+  "#ff1744", // red
+  "#ffab00", // amber
+  "#448aff", // blue
+  "#76ff03", // lime
+];
 import { mergeGraphs } from "@/lib/import/merge";
 import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade } from "@/lib/cascade-simulator";
@@ -101,7 +121,12 @@ interface ApexState {
   // Import modal
   importModalOpen: boolean;
   setImportModalOpen: (open: boolean) => void;
-  mergeGraphData: (nodes: CausalNode[], edges: CausalEdge[]) => void;
+  mergeGraphData: (nodes: CausalNode[], edges: CausalEdge[], datasetColor?: string) => void;
+
+  // Imported dataset tracking
+  importedDatasets: ImportedDataset[];
+  addImportedDataset: (dataset: ImportedDataset) => void;
+  removeImportedDataset: (id: string) => void;
 
   // Replay / Cascade
   replayActive: boolean;
@@ -329,10 +354,71 @@ export const useApexStore = create<ApexState>((set) => ({
   // Import
   importModalOpen: false,
   setImportModalOpen: (open) => set({ importModalOpen: open }),
-  mergeGraphData: (nodes, edges) =>
+  mergeGraphData: (nodes, edges, datasetColor) =>
     set((s) => {
-      const { graph } = mergeGraphs(s.graphData, { nodes, edges });
+      const coloredNodes = datasetColor
+        ? nodes.map((n) => ({ ...n, datasetColor }))
+        : nodes;
+      const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
       return { graphData: graph, initialGraph: graph };
+    }),
+
+  // Imported dataset tracking
+  importedDatasets: [],
+  addImportedDataset: (dataset) =>
+    set((s) => ({ importedDatasets: [...s.importedDatasets, dataset] })),
+  removeImportedDataset: (id) =>
+    set((s) => {
+      const dataset = s.importedDatasets.find((d) => d.id === id);
+      if (!dataset) return s;
+
+      const remainingDatasets = s.importedDatasets.filter((d) => d.id !== id);
+
+      // Collect node IDs explicitly tracked by this dataset
+      const nodeIdsToRemove = new Set(dataset.nodeIds);
+
+      // Also remove any nodes with this dataset's color that aren't
+      // claimed by another remaining dataset (catches stub nodes,
+      // inferred nodes, or any untracked orphans)
+      const claimedByOthers = new Set<string>();
+      for (const other of remainingDatasets) {
+        for (const nid of other.nodeIds) claimedByOthers.add(nid);
+      }
+      for (const node of s.graphData.nodes) {
+        if (node.datasetColor === dataset.color && !claimedByOthers.has(node.id)) {
+          nodeIdsToRemove.add(node.id);
+        }
+      }
+
+      const edgeIdsToRemove = new Set(dataset.edgeIds);
+
+      const remainingNodes = s.graphData.nodes.filter((n) => !nodeIdsToRemove.has(n.id));
+      const remainingNodeIds = new Set(remainingNodes.map((n) => n.id));
+      // Remove tracked edges + any edges referencing removed nodes
+      const remainingEdges = s.graphData.edges.filter(
+        (e) =>
+          !edgeIdsToRemove.has(e.id) &&
+          remainingNodeIds.has(e.source) &&
+          remainingNodeIds.has(e.target)
+      );
+      const graph: CausalGraph = {
+        nodes: remainingNodes,
+        edges: remainingEdges,
+        metadata: {
+          ...s.graphData.metadata,
+          totalNodes: remainingNodes.length,
+          totalEdges: remainingEdges.length,
+          density:
+            remainingNodes.length > 1
+              ? remainingEdges.length / (remainingNodes.length * (remainingNodes.length - 1))
+              : 0,
+        },
+      };
+      return {
+        importedDatasets: remainingDatasets,
+        graphData: graph,
+        initialGraph: graph,
+      };
     }),
 
   // Replay / Cascade

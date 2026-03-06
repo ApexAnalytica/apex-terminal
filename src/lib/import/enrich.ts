@@ -44,6 +44,7 @@ function inferEdges(nodes: CausalNode[], edges: CausalEdge[]): { edges: CausalEd
   const domainGroups = new Map<string, CausalNode[]>();
   for (const node of nodes) {
     const d = node.domain;
+    if (!d || d === "Imported") continue; // skip default/unresolved domains
     if (!domainGroups.has(d)) domainGroups.set(d, []);
     domainGroups.get(d)!.push(node);
   }
@@ -109,10 +110,8 @@ function computeOmegaScores(nodes: CausalNode[], edges: CausalEdge[]): CausalNod
     outDegree.set(node.id, 0);
   }
   for (const edge of edges) {
-    inDegree.set(edge.source, (inDegree.get(edge.source) ?? 0));
     outDegree.set(edge.source, (outDegree.get(edge.source) ?? 0) + 1);
     inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
-    outDegree.set(edge.target, (outDegree.get(edge.target) ?? 0));
   }
 
   // Build domain size map and count unique domains depending on each node (via incoming edges)

@@ -65,6 +65,8 @@ export default function SystemCopilot() {
     setClaudeModel,
     setGeminiModel,
     setIsLlmStreaming,
+    importedDatasets,
+    removeImportedDataset,
   } = useApexStore();
 
   const activeApiKey = llmProvider === "gemini" ? geminiApiKey : claudeApiKey;
@@ -73,13 +75,27 @@ export default function SystemCopilot() {
 
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showDatasets, setShowDatasets] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
   const streamingMsgRef = useRef<string | null>(null);
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLlmActive = activeApiKey.length > 0;
+
+  // Click-outside to close datasets panel
+  useEffect(() => {
+    if (!showDatasets) return;
+    const handler = (e: MouseEvent) => {
+      if (datasetPanelRef.current && !datasetPanelRef.current.contains(e.target as Node)) {
+        setShowDatasets(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showDatasets]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -278,13 +294,26 @@ export default function SystemCopilot() {
                 : "Synthetic Scientist Interface"}
             </div>
           </div>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
-            title="LLM Settings"
-          >
-            {showSettings ? "\u2715" : "\u2699"}
-          </button>
+          <div className="flex items-center gap-1">
+            {importedDatasets.length > 0 && (
+              <button
+                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) setShowSettings(false); }}
+                className={`text-[11px] transition-colors p-1 ${
+                  showDatasets ? "text-accent-amber" : "text-text-muted hover:text-accent-amber"
+                }`}
+                title="Imported Datasets"
+              >
+                {showDatasets ? "\u2715" : "\u25A4"}
+              </button>
+            )}
+            <button
+              onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowDatasets(false); }}
+              className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
+              title="LLM Settings"
+            >
+              {showSettings ? "\u2715" : "\u2699"}
+            </button>
+          </div>
         </div>
 
         {/* Settings panel */}
@@ -373,55 +402,127 @@ export default function SystemCopilot() {
         </AnimatePresence>
       </div>
 
-      {/* Messages */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-3 py-2 space-y-2"
-      >
-        <AnimatePresence>
-          {copilotMessages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15 }}
-              className="text-[11px] font-mono leading-relaxed"
-            >
-              <div className="flex items-center gap-2 mb-0.5">
-                <span
-                  className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider"
+      {/* Messages + Datasets overlay container */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Messages */}
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto px-3 py-2 space-y-2"
+        >
+          <AnimatePresence>
+            {copilotMessages.map((msg) => (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.15 }}
+                className="text-[11px] font-mono leading-relaxed"
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span
+                    className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider"
+                    style={{ color: getRoleColor(msg.role) }}
+                  >
+                    {getRoleLabel(msg.role)}
+                  </span>
+                  {msg.module && (
+                    <span className="text-[8px] text-text-muted tracking-wider uppercase">
+                      [{msg.module}]
+                    </span>
+                  )}
+                  {/* Streaming indicator */}
+                  {msg.id === streamingMsgRef.current && isLlmStreaming && (
+                    <span className="text-[8px] text-accent-cyan animate-pulse tracking-wider">
+                      STREAMING...
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="whitespace-pre-wrap pl-2 border-l border-border"
                   style={{ color: getRoleColor(msg.role) }}
                 >
-                  {getRoleLabel(msg.role)}
-                </span>
-                {msg.module && (
-                  <span className="text-[8px] text-text-muted tracking-wider uppercase">
-                    [{msg.module}]
-                  </span>
-                )}
-                {/* Streaming indicator */}
-                {msg.id === streamingMsgRef.current && isLlmStreaming && (
-                  <span className="text-[8px] text-accent-cyan animate-pulse tracking-wider">
-                    STREAMING...
-                  </span>
-                )}
+                  {msg.content || (isLlmStreaming && msg.id === streamingMsgRef.current ? "" : msg.content)}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Thinking indicator */}
+          {isLlmStreaming && copilotMessages[copilotMessages.length - 1]?.content === "" && (
+            <div className="text-[10px] font-mono text-accent-cyan animate-pulse pl-2">
+              APEX is thinking...
+            </div>
+          )}
+        </div>
+
+        {/* Datasets overlay */}
+        <AnimatePresence>
+          {showDatasets && importedDatasets.length > 0 && (
+            <motion.div
+              ref={datasetPanelRef}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              className="absolute inset-x-0 top-0 bottom-12 z-10 bg-surface/95 backdrop-blur-sm border-b border-border flex flex-col"
+            >
+              <div className="px-3 pt-3 pb-1.5">
+                <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-[0.2em] text-text-muted uppercase">
+                  IMPORTED DATASETS
+                </div>
+                <div className="text-[8px] font-mono text-text-muted mt-0.5">
+                  {importedDatasets.length} file{importedDatasets.length !== 1 ? "s" : ""} &middot; click outside to close
+                </div>
               </div>
-              <div
-                className="whitespace-pre-wrap pl-2 border-l border-border"
-                style={{ color: getRoleColor(msg.role) }}
-              >
-                {msg.content || (isLlmStreaming && msg.id === streamingMsgRef.current ? "" : msg.content)}
+              <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5">
+                {importedDatasets.map((ds) => (
+                  <div
+                    key={ds.id}
+                    className="group flex items-center justify-between text-[9px] font-mono p-2 rounded border transition-colors"
+                    style={{
+                      borderColor: `color-mix(in srgb, ${ds.color} 30%, transparent)`,
+                      backgroundColor: `color-mix(in srgb, ${ds.color} 5%, transparent)`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: ds.color }}
+                      />
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span
+                          className="truncate font-[family-name:var(--font-michroma)] text-[8px] tracking-wider"
+                          style={{ color: ds.color }}
+                          title={ds.name}
+                        >
+                          {ds.name}
+                        </span>
+                        <span className="text-text-muted text-[8px]">
+                          {ds.nodeIds.length} nodes &middot; {ds.edgeIds.length} edges
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        removeImportedDataset(ds.id);
+                        addCopilotMessage({
+                          id: `remove-${Date.now()}`,
+                          role: "system",
+                          content: `Dataset removed: "${ds.name}" (${ds.nodeIds.length} nodes, ${ds.edgeIds.length} edges removed from graph).`,
+                          timestamp: Date.now(),
+                        });
+                      }}
+                      className="text-[9px] text-accent-red/50 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100 ml-2 shrink-0 px-1"
+                      title="Remove dataset"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             </motion.div>
-          ))}
+          )}
         </AnimatePresence>
-
-        {/* Thinking indicator */}
-        {isLlmStreaming && copilotMessages[copilotMessages.length - 1]?.content === "" && (
-          <div className="text-[10px] font-mono text-accent-cyan animate-pulse pl-2">
-            APEX is thinking...
-          </div>
-        )}
       </div>
 
       {/* Action Buttons */}

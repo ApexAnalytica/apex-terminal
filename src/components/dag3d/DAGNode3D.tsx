@@ -58,7 +58,7 @@ export default function DAGNode3D({
   const birthProgress = useRef(isConsequence ? 0 : 1);
   const displayOmega = useRef(node.omegaFragility.composite);
   const [hovered, setHovered] = useState(false);
-  const baseColor = getCategoryColor(node.category);
+  const baseColor = node.datasetColor ?? getCategoryColor(node.category);
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
   const t = composite / 10;

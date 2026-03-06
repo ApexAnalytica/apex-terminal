@@ -62,6 +62,8 @@ export default function ClientSystemCopilot() {
     setClaudeModel,
     setGeminiModel,
     setIsLlmStreaming,
+    importedDatasets,
+    removeImportedDataset,
   } = useApexStore();
 
   const activeApiKey = llmProvider === "gemini" ? geminiApiKey : claudeApiKey;
@@ -70,6 +72,7 @@ export default function ClientSystemCopilot() {
 
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showDatasets, setShowDatasets] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
@@ -264,13 +267,26 @@ export default function ClientSystemCopilot() {
                 : "ISR Analysis Interface"}
             </div>
           </div>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
-            title="LLM Settings"
-          >
-            {showSettings ? "\u2715" : "\u2699"}
-          </button>
+          <div className="flex items-center gap-1">
+            {importedDatasets.length > 0 && (
+              <button
+                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) setShowSettings(false); }}
+                className={`text-[11px] transition-colors p-1 ${
+                  showDatasets ? "text-accent-amber" : "text-text-muted hover:text-accent-amber"
+                }`}
+                title="Imported Datasets"
+              >
+                {showDatasets ? "✕" : "▤"}
+              </button>
+            )}
+            <button
+              onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowDatasets(false); }}
+              className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
+              title="LLM Settings"
+            >
+              {showSettings ? "\u2715" : "\u2699"}
+            </button>
+          </div>
         </div>
 
         {/* Settings panel */}
@@ -338,6 +354,55 @@ export default function ClientSystemCopilot() {
                     {llmProvider.toUpperCase()} ACTIVE
                   </div>
                 )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Datasets panel */}
+        <AnimatePresence>
+          {showDatasets && importedDatasets.length > 0 && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-2 pt-2 border-t border-border space-y-1">
+                <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted uppercase">
+                  IMPORTED DATASETS
+                </div>
+                {importedDatasets.map((ds) => (
+                  <div
+                    key={ds.id}
+                    className="group flex items-center justify-between text-[9px] font-mono p-1.5 rounded border border-accent-amber/20 bg-accent-amber/5"
+                  >
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-accent-amber truncate" title={ds.name}>
+                        {ds.name}
+                      </span>
+                      <span className="text-text-muted text-[8px]">
+                        {ds.nodeIds.length}N · {ds.edgeIds.length}E
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        removeImportedDataset(ds.id);
+                        addCopilotMessage({
+                          id: `remove-${Date.now()}`,
+                          role: "system",
+                          content: `Dataset removed: "${ds.name}" (${ds.nodeIds.length} nodes, ${ds.edgeIds.length} edges removed from graph).`,
+                          timestamp: Date.now(),
+                        });
+                      }}
+                      className="text-[8px] text-accent-red/60 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100 ml-2 shrink-0"
+                      title="Remove dataset"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}

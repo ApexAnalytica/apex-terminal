@@ -18,8 +18,8 @@ import { getCategoryColor } from "@/lib/graph-data";
 import DAGOverlay from "./dag3d/DAGOverlay";
 
 function CausalNode2D({ data }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, domain } = data;
-  const color = getCategoryColor(category);
+  const { label, category, omegaComposite, isRestricted, domain, datasetColor } = data;
+  const color = datasetColor ?? getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
 
@@ -92,6 +92,7 @@ export default function CausalDAG2D() {
           omegaComposite: n.omegaFragility.composite,
           domain: n.domain,
           isRestricted: truthFilter === "verified" && n.isRestricted,
+          datasetColor: n.datasetColor,
         },
       })),
     [graphData, truthFilter]

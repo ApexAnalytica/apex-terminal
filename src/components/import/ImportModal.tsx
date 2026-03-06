@@ -12,6 +12,7 @@ import {
   ValidationResult,
   MergeResult,
 } from "@/lib/import/types";
+import { DATASET_COLORS } from "@/stores/useApexStore";
 import DropZone from "./DropZone";
 import ValidationSummary from "./ValidationSummary";
 import PreviewTable from "./PreviewTable";
@@ -22,6 +23,8 @@ export default function ImportModal() {
   const graphData = useApexStore((s) => s.graphData);
   const mergeGraphData = useApexStore((s) => s.mergeGraphData);
   const addCopilotMessage = useApexStore((s) => s.addCopilotMessage);
+  const addImportedDataset = useApexStore((s) => s.addImportedDataset);
+  const importedDatasets = useApexStore((s) => s.importedDatasets);
 
   const [step, setStep] = useState<ImportStep>("select");
   const [fileName, setFileName] = useState<string>("");
@@ -29,6 +32,10 @@ export default function ImportModal() {
     useState<ValidationResult | null>(null);
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  // Per-file tracking: which raw node/edge IDs came from which file
+  const [fileBreakdown, setFileBreakdown] = useState<
+    { name: string; nodeIndices: number[]; edgeIndices: number[] }[]
+  >([]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -38,6 +45,7 @@ export default function ImportModal() {
       setValidationResult(null);
       setMergeResult(null);
       setParseError(null);
+      setFileBreakdown([]);
     }
   }, [open]);
 
@@ -64,13 +72,21 @@ export default function ImportModal() {
       const allEdges: ParsedGraph["edges"] = [];
       const allWarnings: string[] = [];
       const errors: string[] = [];
+      const breakdown: { name: string; nodeIndices: number[]; edgeIndices: number[] }[] = [];
 
       for (const file of files) {
         try {
           const parsed = await parseFile(file);
+          const nodeStart = allNodes.length;
+          const edgeStart = allEdges.length;
           allNodes.push(...parsed.nodes);
           allEdges.push(...parsed.edges);
           allWarnings.push(...parsed.warnings);
+          breakdown.push({
+            name: file.name,
+            nodeIndices: parsed.nodes.map((_, i) => nodeStart + i),
+            edgeIndices: parsed.edges.map((_, i) => edgeStart + i),
+          });
         } catch (err) {
           errors.push(
             `${file.name}: ${err instanceof Error ? err.message : "unknown error"}`
@@ -176,17 +192,33 @@ export default function ImportModal() {
       // ── Auto-create stub nodes for unresolved edge references ──
       // When edges reference source/target names with no matching node,
       // generate placeholder nodes so validation doesn't block the import.
+      // Attribute stub nodes to the file whose edges created them.
       if (allEdges.length > 0) {
         const existingNodeIds = new Set(allNodes.map((n) => String(n.id ?? "")));
         const stubbed = new Set<string>();
 
-        for (const edge of allEdges) {
+        // Build edge-index → file lookup
+        const edgeFileMap = new Map<number, number>();
+        for (let f = 0; f < breakdown.length; f++) {
+          for (const ei of breakdown[f].edgeIndices) {
+            edgeFileMap.set(ei, f);
+          }
+        }
+
+        for (let ei = 0; ei < allEdges.length; ei++) {
+          const edge = allEdges[ei];
           for (const ref of [edge.source, edge.target]) {
             if (!ref) continue;
             const refStr = String(ref);
             if (existingNodeIds.has(refStr) || stubbed.has(refStr)) continue;
+            const stubIndex = allNodes.length;
             allNodes.push({ id: refStr, label: refStr });
             stubbed.add(refStr);
+            // Attribute stub to the file that owns this edge
+            const fileIdx = edgeFileMap.get(ei);
+            if (fileIdx !== undefined && breakdown[fileIdx]) {
+              breakdown[fileIdx].nodeIndices.push(stubIndex);
+            }
           }
         }
 
@@ -206,6 +238,7 @@ export default function ImportModal() {
 
       const result = validateParsedGraph(combined, graphData);
       setValidationResult(result);
+      setFileBreakdown(breakdown);
       setStep("preview");
     },
     [graphData]
@@ -214,30 +247,73 @@ export default function ImportModal() {
   const handleMerge = useCallback(() => {
     if (!validationResult) return;
 
+    const resolvedNodes = validationResult.resolvedNodes;
+    const resolvedEdges = validationResult.resolvedEdges;
+
+    // Build per-file datasets with unique colors, stamp nodes
+    const colorBase = importedDatasets.length;
+    const filesToRegister = fileBreakdown.length > 0
+      ? fileBreakdown
+      : [{ name: fileName, nodeIndices: resolvedNodes.map((_, i) => i), edgeIndices: resolvedEdges.map((_, i) => i) }];
+
+    // Stamp each node with its file's color
+    const coloredNodes = [...resolvedNodes];
+    for (let f = 0; f < filesToRegister.length; f++) {
+      const color = DATASET_COLORS[(colorBase + f) % DATASET_COLORS.length];
+      for (const idx of filesToRegister[f].nodeIndices) {
+        if (idx < coloredNodes.length) {
+          coloredNodes[idx] = { ...coloredNodes[idx], datasetColor: color };
+        }
+      }
+    }
+
     const { result } = mergeGraphs(graphData, {
-      nodes: validationResult.resolvedNodes,
-      edges: validationResult.resolvedEdges,
+      nodes: coloredNodes,
+      edges: resolvedEdges,
     });
 
-    mergeGraphData(
-      validationResult.resolvedNodes,
-      validationResult.resolvedEdges
-    );
+    // Merge into store (pass without color — nodes already stamped)
+    mergeGraphData(coloredNodes, resolvedEdges);
+
+    // Register each file as a separate dataset
+    for (let f = 0; f < filesToRegister.length; f++) {
+      const file = filesToRegister[f];
+      const color = DATASET_COLORS[(colorBase + f) % DATASET_COLORS.length];
+      const nodeIds = file.nodeIndices
+        .filter((i) => i < resolvedNodes.length)
+        .map((i) => resolvedNodes[i].id);
+      const edgeIds = file.edgeIndices
+        .filter((i) => i < resolvedEdges.length)
+        .map((i) => resolvedEdges[i].id);
+
+      addImportedDataset({
+        id: `import-${Date.now()}-${f}`,
+        name: file.name,
+        timestamp: Date.now(),
+        nodeIds,
+        edgeIds,
+        color,
+      });
+    }
+
     setMergeResult(result);
     setStep("confirm");
 
     // Notify copilot
+    const fileList = filesToRegister.length > 1
+      ? ` (${filesToRegister.map((f) => f.name).join(", ")})`
+      : "";
     addCopilotMessage({
       id: `import-${Date.now()}`,
       role: "system",
-      content: `Dataset imported: +${result.addedNodes} nodes, +${result.addedEdges} edges merged into graph.${
+      content: `Dataset imported: +${result.addedNodes} nodes, +${result.addedEdges} edges merged into graph${fileList}.${
         result.skippedNodes.length > 0
           ? ` ${result.skippedNodes.length} duplicate nodes skipped.`
           : ""
       }`,
       timestamp: Date.now(),
     });
-  }, [validationResult, graphData, mergeGraphData, addCopilotMessage]);
+  }, [validationResult, graphData, mergeGraphData, addCopilotMessage, addImportedDataset, importedDatasets.length, fileName, fileBreakdown]);
 
   if (!open) return null;
 

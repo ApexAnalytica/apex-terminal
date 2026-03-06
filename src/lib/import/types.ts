@@ -76,6 +76,29 @@ export interface MergeResult {
   skippedEdges: string[];
 }
 
+// ─── Column Mapping ──────────────────────────────────────────────
+
+export interface ColumnMapping {
+  rawHeader: string;
+  canonicalField: string | null; // null = skip this column
+}
+
+export type DataMode = "nodes" | "edges" | "auto";
+
+// ─── LLM Enrichment ─────────────────────────────────────────────
+
+export interface OmegaEnrichment {
+  nodeId: string;
+  composite?: number;
+  substitutionFriction?: number;
+  downstreamLoad?: number;
+  cascadingVoltage?: number;
+  existentialTailWeight?: number;
+  globalConcentration?: string;
+  replacementTime?: string;
+  reasoning?: string;
+}
+
 // ─── UI State ────────────────────────────────────────────────────
 
-export type ImportStep = "select" | "preview" | "confirm";
+export type ImportStep = "select" | "mapping" | "preview" | "confirm";

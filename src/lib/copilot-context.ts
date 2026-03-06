@@ -1,4 +1,6 @@
 import { CausalGraph, CausalNode, CausalEdge } from "./types";
+import type { SystemStateSnapshot } from "./snapshots/types";
+import { diffSnapshots } from "./snapshots/diff";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -168,6 +170,93 @@ export function serializeGraphContext(
       (e) => !opts.ablatedEdgeIds?.includes(e.id) && !opts.ablatedNodeIds?.includes(e.source) && !opts.ablatedNodeIds?.includes(e.target)
     );
     lines.push(`Post-ablation: ${remainingNodes.length} nodes, ${remainingEdges.length} edges`);
+  }
+
+  return lines.join("\n");
+}
+
+// ─── Snapshot Context for Gemini ──────────────────────────────
+// Formats the latest snapshot(s) as text for Gemini's system prompt.
+
+export function serializeSnapshotContext(
+  snapshots: SystemStateSnapshot[],
+  maxSnapshots = 5
+): string {
+  if (snapshots.length === 0) return "";
+
+  const recent = snapshots.slice(-maxSnapshots);
+  const lines: string[] = [];
+
+  lines.push("=== SYSTEM STATE SNAPSHOTS ===");
+  lines.push(`Showing ${recent.length} of ${snapshots.length} total snapshots\n`);
+
+  // Full detail for the latest snapshot
+  const latest = recent[recent.length - 1];
+  lines.push(`--- CURRENT (${latest.timestamp}) ---`);
+  if (latest.engineOutputs.spirtes) {
+    const s = latest.engineOutputs.spirtes;
+    lines.push(
+      `Spirtes: density=${s.density.toFixed(3)} λmax=${s.lambdaMax.toFixed(2)} ${s.isStable ? "STABLE" : "UNSTABLE"}`
+    );
+  }
+  if (latest.engineOutputs.pareto) {
+    const p = latest.engineOutputs.pareto;
+    lines.push(
+      `Pareto: buffer=${p.omegaBuffer.toFixed(1)}% status=${p.status} crit=${p.criticalityEstimate}`
+    );
+  }
+  if (latest.engineOutputs.pearl) {
+    const pe = latest.engineOutputs.pearl;
+    lines.push(
+      `Pearl: interventions=${pe.interventionCount} severed=[${pe.severedEdges.join(",")}]`
+    );
+  }
+  lines.push(
+    `Tarski: ${latest.tarskiValidation.status} (${latest.tarskiValidation.violations.length} violations)`
+  );
+  const topNodes = [...latest.graph.nodes]
+    .sort((a, b) => b.omega - a.omega)
+    .slice(0, 5);
+  lines.push(
+    `Top Ω: ${topNodes.map((n) => `${n.id}:${n.omega.toFixed(1)}`).join(", ")}`
+  );
+  const activated = latest.graph.nodes.filter((n) => n.isActivated);
+  if (activated.length > 0) {
+    lines.push(`Activated: ${activated.map((n) => n.id).join(", ")}`);
+  }
+  lines.push(
+    `Meta: epochs=${latest.metadata.epochCount} shocks=${latest.metadata.shockCount} module=${latest.metadata.activeModule}`
+  );
+  lines.push("");
+
+  // Previous snapshots as diffs (compact)
+  for (let i = recent.length - 2; i >= 0; i--) {
+    const prev = recent[i];
+    const curr = recent[i + 1];
+    const diff = diffSnapshots(prev, curr);
+    const label = `T-${recent.length - 1 - i}`;
+
+    lines.push(`--- DIFF ${label} → ${label === "T-1" ? "CURRENT" : `T-${recent.length - 2 - i}`} ---`);
+
+    if (diff.nodes.changed.length > 0) {
+      const top3 = diff.nodes.changed
+        .sort((a, b) => Math.abs(b.omegaDelta) - Math.abs(a.omegaDelta))
+        .slice(0, 3);
+      lines.push(
+        `Nodes changed: ${diff.nodes.changed.length} (top: ${top3.map((n) => `${n.id} ΔΩ=${n.omegaDelta > 0 ? "+" : ""}${n.omegaDelta.toFixed(2)}`).join(", ")})`
+      );
+    }
+    if (diff.nodes.added.length > 0) lines.push(`Nodes added: ${diff.nodes.added.join(", ")}`);
+    if (diff.nodes.removed.length > 0) lines.push(`Nodes removed: ${diff.nodes.removed.join(", ")}`);
+    if (diff.edges.changed.length > 0) lines.push(`Edges changed: ${diff.edges.changed.length}`);
+    if (diff.metrics.omegaBufferDelta != null) {
+      lines.push(`Buffer Δ: ${diff.metrics.omegaBufferDelta > 0 ? "+" : ""}${diff.metrics.omegaBufferDelta.toFixed(1)}%`);
+    }
+    if (diff.metrics.stabilityChanged) lines.push(`Stability: CHANGED`);
+    if (diff.metrics.violationCountDelta !== 0) {
+      lines.push(`Violations Δ: ${diff.metrics.violationCountDelta > 0 ? "+" : ""}${diff.metrics.violationCountDelta}`);
+    }
+    lines.push("");
   }
 
   return lines.join("\n");

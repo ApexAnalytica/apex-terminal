@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { computeOmegaState, computeDoomsdayState, computeCascadeAnalysis, getPresetShocks } from "@/lib/omega-engine";
+import { getPresetShocks } from "@/lib/omega-engine";
+import { getEngineProvider } from "@/lib/engines";
 import { getDomainColor } from "@/lib/graph-data";
 import { AXIOM_LIBRARY, PROOF_TRACES } from "@/lib/tarski-data";
 import TrinityPanel from "./TrinityPanel";
 import InterventionControls from "./InterventionControls";
 import AblationPanel from "./AblationPanel";
+import InterdictionPanel from "./InterdictionPanel";
 import NodeInspector from "./NodeInspector";
 
 export default function ModulePanel() {
@@ -50,11 +52,13 @@ export default function ModulePanel() {
           <div className="p-4 space-y-3">
             <InterventionControls />
             <AblationPanel />
+            <InterdictionPanel />
           </div>
         )}
 
         {activeModule === "pareto" && (
           <div className="p-4 space-y-3">
+            <SnapshotIndicator />
             <ParetoPanel />
           </div>
         )}
@@ -129,11 +133,25 @@ function ParetoPanel() {
   const graphData = useApexStore((s) => s.graphData);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const replayActive = useApexStore((s) => s.replayActive);
+  const currentEpoch = useApexStore((s) => s.currentEpoch);
+  const baselineEpochs = useApexStore((s) => s.baselineEpochs);
+  const interventionEpochs = useApexStore((s) => s.interventionEpochs);
+  const activeTimeline = useApexStore((s) => s.activeTimeline);
+  const engine = useMemo(() => getEngineProvider(), []);
   const presetShocks = useMemo(() => getPresetShocks(), []);
-  const omegaState = useMemo(() => computeOmegaState(shocks), [shocks]);
+  const omegaState = useMemo(() => engine.scanTailRisk(shocks), [engine, shocks]);
+
+  // During replay, derive buffer from current epoch snapshot for dynamic T=
+  const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
+  const currentSnapshot = replayActive && replayEpochs.length > 0
+    ? replayEpochs[currentEpoch] ?? null
+    : null;
+  const effectiveBuffer = currentSnapshot ? currentSnapshot.omegaBuffer : omegaState.buffer;
+
   const doomsday = useMemo(
-    () => computeDoomsdayState(shocks, omegaState.buffer),
-    [shocks, omegaState.buffer]
+    () => engine.computeDoomsday(shocks, effectiveBuffer),
+    [engine, shocks, effectiveBuffer]
   );
 
   const topNodes = useMemo(() => {
@@ -160,12 +178,19 @@ function ParetoPanel() {
       </div>
       <div className="p-2 border border-accent-red/20 rounded bg-accent-red/5 space-y-2">
         <div className="flex items-center justify-between">
-          <span
-            className="font-[family-name:var(--font-michroma)] text-[32px] font-bold tabular-nums leading-none"
-            style={{ color: countdownColor }}
-          >
-            T-{doomsday.timeToFailureDays}
-          </span>
+          <div className="flex items-baseline gap-2">
+            <span
+              className="font-[family-name:var(--font-michroma)] text-[32px] font-bold tabular-nums leading-none"
+              style={{ color: countdownColor }}
+            >
+              T-{doomsday.timeToFailureDays}
+            </span>
+            {replayActive && currentSnapshot && (
+              <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--accent-cyan)" }}>
+                t={currentSnapshot.epoch}
+              </span>
+            )}
+          </div>
           <span
             className="text-[9px] font-mono px-2 py-0.5 rounded"
             style={{ color: regimeColor, backgroundColor: `${regimeColor}15`, border: `1px solid ${regimeColor}40` }}
@@ -399,9 +424,36 @@ function AxiomLibrary() {
   );
 }
 
+function SnapshotIndicator() {
+  const snapshotHistory = useApexStore((s) => s.snapshotHistory);
+  const currentSnapshot = useApexStore((s) => s.currentSnapshot);
+
+  if (snapshotHistory.length === 0) return null;
+
+  const latestTime = currentSnapshot
+    ? new Date(currentSnapshot.timestamp).toLocaleTimeString()
+    : "—";
+
+  return (
+    <div className="flex items-center justify-between text-[8px] font-mono text-text-muted p-1.5 border border-border/50 rounded bg-surface-elevated">
+      <span>SNAPSHOTS: {snapshotHistory.length}</span>
+      <span>LATEST: {latestTime}</span>
+      {currentSnapshot?.tarskiValidation.status === "VIOLATIONS_FOUND" && (
+        <span className="text-accent-red">
+          {currentSnapshot.tarskiValidation.violations.length} VIOLATIONS
+        </span>
+      )}
+      {currentSnapshot?.tarskiValidation.status === "PASSED" && (
+        <span className="text-accent-green">VALIDATED</span>
+      )}
+    </div>
+  );
+}
+
 function CascadeHeader() {
   const graphData = useApexStore((s) => s.graphData);
-  const cascade = useMemo(() => computeCascadeAnalysis(graphData), [graphData]);
+  const engine = useMemo(() => getEngineProvider(), []);
+  const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
 
   return (
     <div className="px-4 py-2 border-b border-border space-y-1.5">

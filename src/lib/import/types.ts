@@ -39,7 +39,7 @@ export interface RawEdge {
 
 // ─── Parsed output from format parsers ───────────────────────────
 
-export type ImportFormat = "csv" | "json" | "graphml" | "dot" | "xlsx";
+export type ImportFormat = "csv" | "json" | "graphml" | "dot" | "xlsx" | "pdf";
 
 export interface ParsedGraph {
   nodes: RawNode[];

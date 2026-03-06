@@ -12,6 +12,8 @@ import {
 } from "@/lib/copilot-engine";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
+import { serializeGraphContext, serializeSnapshotContext } from "@/lib/copilot-context";
+import { buildSnapshot } from "@/lib/snapshots/serializer";
 
 const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "DISCOVER STRUCTURE", action: "DISCOVER_STRUCTURE", color: "var(--accent-cyan)" },
@@ -19,10 +21,7 @@ const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "VERIFY LOGIC", action: "VERIFY_LOGIC", color: "var(--accent-amber)" },
 ];
 
-const PROVIDER_OPTIONS: { value: LLMProvider; label: string }[] = [
-  { value: "gemini", label: "Gemini" },
-  { value: "anthropic", label: "Claude" },
-];
+// Copilot is locked to Gemini; Claude is used exclusively for compute.
 
 function getRoleColor(role: CopilotMessage["role"]): string {
   switch (role) {
@@ -53,6 +52,7 @@ export default function SystemCopilot() {
     ablationMode,
     ablatedNodeIds,
     ablatedEdgeIds,
+    activeModule,
     llmProvider,
     claudeApiKey,
     geminiApiKey,
@@ -67,11 +67,23 @@ export default function SystemCopilot() {
     setIsLlmStreaming,
     importedDatasets,
     removeImportedDataset,
+    currentSnapshot,
+    snapshotHistory,
+    isComputeLoading,
+    setSnapshot,
+    setIsComputeLoading,
+    baselineEpochs,
+    currentEpoch,
   } = useApexStore();
 
-  const activeApiKey = llmProvider === "gemini" ? geminiApiKey : claudeApiKey;
-  const activeModel = llmProvider === "gemini" ? geminiModel : claudeModel;
-  const modelOptions = getModelsForProvider(llmProvider);
+  // Copilot always uses Gemini; Claude key is for compute only
+  const copilotApiKey = geminiApiKey;
+  const copilotModel = geminiModel;
+  const copilotModelOptions = getModelsForProvider("gemini");
+
+  // Claude compute key/model
+  const computeApiKey = claudeApiKey;
+  const computeModel = claudeModel;
 
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -83,7 +95,8 @@ export default function SystemCopilot() {
   const streamingMsgRef = useRef<string | null>(null);
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isLlmActive = activeApiKey.length > 0;
+  const isLlmActive = copilotApiKey.length > 0;
+  const isComputeAvailable = computeApiKey.length > 0;
 
   // Click-outside to close datasets panel
   useEffect(() => {
@@ -133,6 +146,109 @@ export default function SystemCopilot() {
     }
   }, [severedEdges, flashContextBadge]);
 
+  // ─── Compute with Claude ───────────────────────────────────
+  const handleComputeWithClaude = useCallback(async () => {
+    if (isComputeLoading) return;
+    setIsComputeLoading(true);
+
+    addCopilotMessage({
+      id: `sys-compute-${Date.now()}`,
+      role: "system",
+      content: "Computing snapshot with Claude...",
+      timestamp: Date.now(),
+    });
+
+    try {
+      if (isComputeAvailable) {
+        // Claude API call
+        const graphContext = serializeGraphContext(graphData, {
+          selectedNode,
+          severedEdges,
+          shocks,
+          interventionMode,
+          interventionTarget,
+          ablationMode,
+          ablatedNodeIds,
+          ablatedEdgeIds,
+        });
+
+        const res = await fetch("/api/compute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            graphContext,
+            apiKey: computeApiKey,
+            model: computeModel,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Request failed" }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const snapshot = await res.json();
+        setSnapshot(snapshot);
+
+        addCopilotMessage({
+          id: `sys-compute-done-${Date.now()}`,
+          role: "system",
+          content: `Snapshot computed (Claude). Tarski: ${snapshot.tarskiValidation?.status ?? "PENDING"}. ${snapshot.tarskiValidation?.violations?.length ?? 0} violation(s).`,
+          timestamp: Date.now(),
+        });
+      } else {
+        // Fallback: local snapshot (no Claude key)
+        const snapshot = buildSnapshot({
+          graph: graphData,
+          shocks,
+          severedEdges,
+          activeModule,
+          epochs: baselineEpochs.length > 0 ? baselineEpochs : undefined,
+          currentEpoch: baselineEpochs.length > 0 ? currentEpoch : undefined,
+        });
+        setSnapshot(snapshot);
+
+        addCopilotMessage({
+          id: `sys-compute-local-${Date.now()}`,
+          role: "system",
+          content: `Snapshot computed (local). Tarski: ${snapshot.tarskiValidation?.status ?? "PENDING"}. ${snapshot.tarskiValidation?.violations?.length ?? 0} violation(s).`,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Compute failed";
+      addCopilotMessage({
+        id: `sys-compute-err-${Date.now()}`,
+        role: "system",
+        content: `[COMPUTE ERROR: ${message}]`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      setIsComputeLoading(false);
+    }
+  }, [
+    isComputeLoading,
+    isComputeAvailable,
+    graphData,
+    selectedNode,
+    severedEdges,
+    shocks,
+    interventionMode,
+    interventionTarget,
+    ablationMode,
+    ablatedNodeIds,
+    ablatedEdgeIds,
+    activeModule,
+    baselineEpochs,
+    currentEpoch,
+    computeApiKey,
+    computeModel,
+    addCopilotMessage,
+    setSnapshot,
+    setIsComputeLoading,
+  ]);
+
+  // ─── Streaming query (Gemini copilot) ─────────────────────
   const handleStreamingQuery = useCallback(
     async (userContent: string) => {
       setIsLlmStreaming(true);
@@ -154,12 +270,17 @@ export default function SystemCopilot() {
           { id: "temp", role: "user" as const, content: userContent, timestamp: Date.now() },
         ];
 
+        // Enrich system context with snapshot data if available
+        const snapshotContext = snapshotHistory.length > 0
+          ? serializeSnapshotContext(snapshotHistory)
+          : "";
+
         const stream = await streamLlmQuery({
           copilotMessages: allMessages,
           graph: graphData,
-          apiKey: activeApiKey,
-          model: activeModel,
-          provider: llmProvider,
+          apiKey: copilotApiKey,
+          model: copilotModel,
+          provider: "gemini",
           selectedNode,
           severedEdges,
           shocks,
@@ -168,6 +289,7 @@ export default function SystemCopilot() {
           ablationMode,
           ablatedNodeIds,
           ablatedEdgeIds,
+          snapshotContext,
         });
 
         const reader = stream.getReader();
@@ -202,9 +324,9 @@ export default function SystemCopilot() {
     [
       copilotMessages,
       graphData,
-      activeApiKey,
-      activeModel,
-      llmProvider,
+      copilotApiKey,
+      copilotModel,
+      snapshotHistory,
       selectedNode,
       severedEdges,
       shocks,
@@ -290,8 +412,9 @@ export default function SystemCopilot() {
             </div>
             <div className="text-[9px] text-text-muted font-mono mt-0.5">
               {isLlmActive
-                ? `${llmProvider === "gemini" ? "Gemini" : "Claude"}-Augmented Analysis`
+                ? "Gemini-Augmented Analysis"
                 : "Synthetic Scientist Interface"}
+              {isComputeAvailable && " + Claude Compute"}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -326,61 +449,56 @@ export default function SystemCopilot() {
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <div className="mt-2 pt-2 border-t border-border space-y-1.5">
-                {/* Provider selector */}
-                <div className="flex gap-1">
-                  {PROVIDER_OPTIONS.map((p) => (
-                    <button
-                      key={p.value}
-                      onClick={() => setLlmProvider(p.value)}
-                      className={`flex-1 text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1 rounded border transition-colors ${
-                        llmProvider === p.value
-                          ? "border-accent-cyan/60 text-accent-cyan bg-accent-cyan/10"
-                          : "border-border text-text-muted hover:text-foreground"
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                {/* API key input */}
-                <input
-                  type="password"
-                  value={activeApiKey}
-                  onChange={(e) =>
-                    llmProvider === "gemini"
-                      ? setGeminiApiKey(e.target.value)
-                      : setClaudeApiKey(e.target.value)
-                  }
-                  className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
-                  placeholder={
-                    llmProvider === "gemini"
-                      ? "AIza... (session only, not stored)"
-                      : "sk-ant-... (session only, not stored)"
-                  }
-                  spellCheck={false}
-                />
-                {/* Model selector */}
-                <select
-                  value={activeModel}
-                  onChange={(e) =>
-                    llmProvider === "gemini"
-                      ? setGeminiModel(e.target.value)
-                      : setClaudeModel(e.target.value)
-                  }
-                  className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
-                >
-                  {modelOptions.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                {isLlmActive && (
-                  <div className="text-[8px] text-accent-green font-mono tracking-wider">
-                    {llmProvider.toUpperCase()} ACTIVE
+              <div className="mt-2 pt-2 border-t border-border space-y-2">
+                {/* Gemini (Copilot) */}
+                <div className="space-y-1">
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                    GEMINI — COPILOT
                   </div>
-                )}
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                    placeholder="AIza... (session only)"
+                    spellCheck={false}
+                  />
+                  <select
+                    value={copilotModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
+                  >
+                    {copilotModelOptions.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  {isLlmActive && (
+                    <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                      GEMINI ACTIVE
+                    </div>
+                  )}
+                </div>
+                {/* Claude (Compute) */}
+                <div className="space-y-1 pt-1.5 border-t border-border">
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                    CLAUDE — COMPUTE
+                  </div>
+                  <input
+                    type="password"
+                    value={claudeApiKey}
+                    onChange={(e) => setClaudeApiKey(e.target.value)}
+                    className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                    placeholder="sk-ant-... (session only)"
+                    spellCheck={false}
+                  />
+                  {isComputeAvailable && (
+                    <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                      CLAUDE COMPUTE READY
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
@@ -557,6 +675,14 @@ export default function SystemCopilot() {
             ANALYZE NODE
           </button>
         )}
+        {/* Compute with Claude button */}
+        <button
+          onClick={handleComputeWithClaude}
+          disabled={isComputeLoading || isLlmStreaming}
+          className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-2.5 py-1.5 rounded border transition-colors border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 disabled:opacity-40"
+        >
+          {isComputeLoading ? "COMPUTING..." : isComputeAvailable ? "COMPUTE WITH CLAUDE" : "COMPUTE (LOCAL)"}
+        </button>
       </div>
 
       {/* Input */}

@@ -11,6 +11,8 @@ import {
   EpochSnapshot,
   TimelineId,
 } from "@/lib/types";
+import type { SystemStateSnapshot } from "@/lib/snapshots/types";
+import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
 
 export interface ImportedDataset {
   id: string;
@@ -133,6 +135,13 @@ interface ApexState {
   tourStep: number;
   setTourActive: (active: boolean) => void;
   setTourStep: (step: number) => void;
+
+  // Snapshots
+  currentSnapshot: SystemStateSnapshot | null;
+  snapshotHistory: SystemStateSnapshot[];
+  isComputeLoading: boolean;
+  setSnapshot: (snapshot: SystemStateSnapshot) => void;
+  setIsComputeLoading: (loading: boolean) => void;
 
   // Replay / Cascade
   replayActive: boolean;
@@ -432,6 +441,32 @@ export const useApexStore = create<ApexState>((set) => ({
   tourStep: 0,
   setTourActive: (active) => set({ tourActive: active, tourStep: 0 }),
   setTourStep: (step) => set({ tourStep: step }),
+
+  // Snapshots
+  currentSnapshot: null,
+  snapshotHistory: [],
+  isComputeLoading: false,
+  setSnapshot: (snapshot) =>
+    set((s) => {
+      const validated = validateSnapshot(snapshot);
+      const snapshotWithValidation = {
+        ...snapshot,
+        tarskiValidation: validated,
+      };
+      if (validated.status === "VIOLATIONS_FOUND") {
+        // Log but still store — violations are informational in v2
+        console.warn(
+          "[Tarski] Snapshot has violations:",
+          validated.violations
+        );
+      }
+      const history = [...s.snapshotHistory, snapshotWithValidation];
+      return {
+        currentSnapshot: snapshotWithValidation,
+        snapshotHistory: history.slice(-50), // cap at 50
+      };
+    }),
+  setIsComputeLoading: (loading) => set({ isComputeLoading: loading }),
 
   // Replay / Cascade
   replayActive: false,

@@ -24,6 +24,7 @@
     "d3-force-3d": "^3.0.6",
     "framer-motion": "^12.34.3",
     "next": "16.1.6",
+    "pdfjs-dist": "^5.5.207",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "reactflow": "^11.11.4",

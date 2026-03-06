@@ -1,4 +1,6 @@
 import { TarskiAxiom, ProofTrace } from "./types";
+import type { SystemStateSnapshot } from "./snapshots/types";
+import type { TarskiViolation } from "./snapshots/types";
 
 // ─── Axiom Library (Appendix C) ─────────────────────────────────
 
@@ -112,3 +114,75 @@ export const PROOF_TRACES: ProofTrace[] = [
     checkTimeMs: 8.7,
   },
 ];
+
+// ─── Axiom Check Functions ────────────────────────────────────
+// Each axiom can optionally define a `check` function that validates
+// a SystemStateSnapshot and returns violations. Axioms without domain
+// data return empty arrays.
+
+export type AxiomCheckFn = (snapshot: SystemStateSnapshot) => TarskiViolation[];
+
+export const AXIOM_CHECKS: Record<string, AxiomCheckFn> = {
+  "A-01": (snapshot) => {
+    // Temporal Priority: negative weights imply reversed causality
+    return snapshot.graph.edges
+      .filter((e) => e.weight < 0)
+      .map((e) => ({
+        axiomId: "A-01",
+        edgeId: e.id,
+        detail: `Negative weight (${e.weight.toFixed(3)}) violates temporal priority`,
+      }));
+  },
+  "A-02": (snapshot) => {
+    // Conservation of Flow: omega exceeding theoretical max
+    return snapshot.graph.nodes
+      .filter((n) => n.omega > 10)
+      .map((n) => ({
+        axiomId: "A-02",
+        nodeId: n.id,
+        detail: `Ω=${n.omega.toFixed(2)} exceeds conservation bound`,
+      }));
+  },
+  "A-03": (snapshot) => {
+    // DAG Integrity: degenerate edge detection
+    return snapshot.graph.edges
+      .filter((e) => e.weight === 0 && e.probability === 0)
+      .map((e) => ({
+        axiomId: "A-03",
+        edgeId: e.id,
+        detail: `Zero weight and probability — potential degenerate cycle`,
+      }));
+  },
+  "H-02": (snapshot) => {
+    // Capacity Saturation: Ω > 9.5
+    return snapshot.graph.nodes
+      .filter((n) => n.omega > 9.5)
+      .map((n) => ({
+        axiomId: "H-02",
+        nodeId: n.id,
+        detail: `Ω=${n.omega.toFixed(2)} exceeds saturation threshold (9.5)`,
+      }));
+  },
+  "R-01": (snapshot) => {
+    // Sanction Logic: high-confidence flow between breached nodes
+    const breached = new Set(
+      snapshot.graph.nodes.filter((n) => n.omega > 9.8).map((n) => n.id)
+    );
+    if (breached.size < 2) return [];
+    return snapshot.graph.edges
+      .filter((e) => !e.isSevered && e.weight > 0.8 && e.probability > 0.95)
+      .map((e) => ({
+        axiomId: "R-01",
+        edgeId: e.id,
+        detail: `High-confidence flow (p=${e.probability.toFixed(2)}) between Ω-breached nodes`,
+      }));
+  },
+  // Remaining axioms — metadata only, no programmatic check yet
+  "A-04": () => [],
+  "A-05": () => [],
+  "A-06": () => [],
+  "R-02": () => [],
+  "R-03": () => [],
+  "R-04": () => [],
+  "H-01": () => [],
+};

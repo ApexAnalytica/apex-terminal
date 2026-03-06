@@ -212,13 +212,70 @@ export default function CausalDAG3D() {
     return result;
   }, [graphData]);
 
-  const posMap = useMemo(() => {
+  const basePosMap = useMemo(() => {
     const map: Record<string, [number, number, number]> = {};
     positions.forEach((p) => {
       map[p.id] = [p.x, p.y, p.z];
     });
     return map;
   }, [positions]);
+
+  // Dynamic positions: during replay, nodes contract toward activated neighbors
+  // based on shock intensity — visualizes hypersynchronization/convulsion
+  const posMap = useMemo(() => {
+    if (!currentSnapshot) return basePosMap;
+
+    const CONTRACTION = 0.18; // max fraction of distance to contract
+    const map: Record<string, [number, number, number]> = {};
+
+    // Build adjacency for neighbor lookup
+    const neighbors = new Map<string, string[]>();
+    for (const edge of graphData.edges) {
+      if (!neighbors.has(edge.source)) neighbors.set(edge.source, []);
+      if (!neighbors.has(edge.target)) neighbors.set(edge.target, []);
+      neighbors.get(edge.source)!.push(edge.target);
+      neighbors.get(edge.target)!.push(edge.source);
+    }
+
+    for (const id of Object.keys(basePosMap)) {
+      const base = basePosMap[id];
+      const state = currentSnapshot.nodeStates[id];
+      if (!state || state.shockIntensity < 0.01) {
+        map[id] = base;
+        continue;
+      }
+
+      // Compute weighted center of activated neighbors
+      const nbs = neighbors.get(id) ?? [];
+      let cx = 0, cy = 0, cz = 0, totalWeight = 0;
+      for (const nbId of nbs) {
+        const nbState = currentSnapshot.nodeStates[nbId];
+        const nbPos = basePosMap[nbId];
+        if (!nbPos) continue;
+        const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
+        cx += nbPos[0] * w;
+        cy += nbPos[1] * w;
+        cz += nbPos[2] * w;
+        totalWeight += w;
+      }
+
+      if (totalWeight > 0) {
+        cx /= totalWeight;
+        cy /= totalWeight;
+        cz /= totalWeight;
+        const pull = state.shockIntensity * CONTRACTION;
+        map[id] = [
+          base[0] + (cx - base[0]) * pull,
+          base[1] + (cy - base[1]) * pull,
+          base[2] + (cz - base[2]) * pull,
+        ];
+      } else {
+        map[id] = base;
+      }
+    }
+
+    return map;
+  }, [basePosMap, currentSnapshot, graphData.edges]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 

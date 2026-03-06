@@ -7,7 +7,7 @@ interface DropZoneProps {
 }
 
 const ACCEPT =
-  ".csv,.json,.graphml,.gml,.dot,.gv,.xlsx,.xls";
+  ".csv,.json,.graphml,.gml,.dot,.gv,.xlsx,.xls,.pdf";
 
 export default function DropZone({ onFileSelected }: DropZoneProps) {
   const [dragOver, setDragOver] = useState(false);
@@ -70,7 +70,7 @@ export default function DropZone({ onFileSelected }: DropZoneProps) {
           {dragOver ? "DROP FILES TO IMPORT" : "DRAG & DROP FILES OR CLICK TO SELECT"}
         </span>
         <span className="text-[9px] font-mono text-text-muted tracking-wider">
-          CSV &middot; JSON &middot; GRAPHML &middot; DOT &middot; XLSX
+          CSV &middot; JSON &middot; GRAPHML &middot; DOT &middot; XLSX &middot; PDF
         </span>
       </div>
     </div>

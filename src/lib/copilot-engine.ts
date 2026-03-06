@@ -231,12 +231,13 @@ interface StreamLlmOptions {
   ablationMode?: boolean;
   ablatedNodeIds?: string[];
   ablatedEdgeIds?: string[];
+  snapshotContext?: string;
 }
 
 export async function streamLlmQuery(
   opts: StreamLlmOptions
 ): Promise<ReadableStream<Uint8Array>> {
-  const systemContext = serializeGraphContext(opts.graph, {
+  let systemContext = serializeGraphContext(opts.graph, {
     selectedNode: opts.selectedNode,
     severedEdges: opts.severedEdges,
     shocks: opts.shocks,
@@ -246,6 +247,11 @@ export async function streamLlmQuery(
     ablatedNodeIds: opts.ablatedNodeIds,
     ablatedEdgeIds: opts.ablatedEdgeIds,
   });
+
+  // Append snapshot context if available
+  if (opts.snapshotContext) {
+    systemContext += "\n\n" + opts.snapshotContext;
+  }
 
   // Convert copilot messages to Claude messages format (skip system messages)
   const messages = opts.copilotMessages

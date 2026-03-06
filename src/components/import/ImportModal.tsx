@@ -17,6 +17,22 @@ import DropZone from "./DropZone";
 import ValidationSummary from "./ValidationSummary";
 import PreviewTable from "./PreviewTable";
 
+/**
+ * Clean a raw filename into a readable dataset name.
+ * "2026-03-05-rivian-magnet-supply-chain-2.csv" → "Rivian Magnet Supply Chain 2"
+ */
+function cleanDatasetName(filename: string): string {
+  // Strip extension
+  let name = filename.replace(/\.[^.]+$/, "");
+  // Strip leading date patterns (YYYY-MM-DD, YYYYMMDD)
+  name = name.replace(/^\d{4}-?\d{2}-?\d{2}[-_]?/, "");
+  // Replace hyphens/underscores with spaces
+  name = name.replace(/[-_]+/g, " ").trim();
+  // Title case
+  name = name.replace(/\b\w/g, (c) => c.toUpperCase());
+  return name || filename;
+}
+
 export default function ImportModal() {
   const open = useApexStore((s) => s.importModalOpen);
   const setOpen = useApexStore((s) => s.setImportModalOpen);
@@ -64,7 +80,7 @@ export default function ImportModal() {
       if (files.length === 0) return;
 
       setFileName(
-        files.length === 1 ? files[0].name : `${files.length} files selected`
+        files.length === 1 ? cleanDatasetName(files[0].name) : `${files.length} files selected`
       );
       setParseError(null);
 
@@ -288,7 +304,7 @@ export default function ImportModal() {
 
       addImportedDataset({
         id: `import-${Date.now()}-${f}`,
-        name: file.name,
+        name: cleanDatasetName(file.name),
         timestamp: Date.now(),
         nodeIds,
         edgeIds,

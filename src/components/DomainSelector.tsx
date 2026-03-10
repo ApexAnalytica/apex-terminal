@@ -45,6 +45,30 @@ export const DOMAIN_CARDS = [
     colorVar: "var(--accent-green)",
     description: "Compute concentration, model failures, AI supply chain disruption",
   },
+  {
+    id: "energy-systems",
+    label: "Energy Systems Risk",
+    icon: "\u{26A1}",
+    color: "#ff1744",
+    colorVar: "var(--accent-red)",
+    description: "Grid-scale storage, HVDC transmission, nuclear fuel cycle, transformer supply",
+  },
+  {
+    id: "manufacturing",
+    label: "Manufacturing Systems Risk",
+    icon: "\u{1F3ED}",
+    color: "#448aff",
+    colorVar: "var(--accent-blue)",
+    description: "Biomanufacturing capacity, fertilizer dependency, industrial robotics",
+  },
+  {
+    id: "frontier-science",
+    label: "\u03A9-Frontier Science",
+    icon: "\u269B\uFE0F",
+    color: "#e040fb",
+    colorVar: "var(--accent-magenta)",
+    description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
+  },
 ] as const;
 
 const CASCADE_EXAMPLES: Record<string, string> = {
@@ -68,6 +92,45 @@ const CASCADE_EXAMPLES: Record<string, string> = {
     "Data sovereignty laws \u2192 compute localization \u2192 efficiency loss \u2192 AI capability fragmentation",
   "infrastructure+ai-systems":
     "Power grid failure \u2192 data center outage \u2192 AI service disruption \u2192 dependent system cascades",
+  // Energy Systems pairs
+  "energy-systems+financial-contagion":
+    "Grid instability \u2192 utility bond default \u2192 energy credit freeze \u2192 rolling blackout financing gap",
+  "energy-systems+supply-chain":
+    "Transformer shortage \u2192 grid expansion halt \u2192 industrial power rationing \u2192 manufacturing delays",
+  "energy-systems+sovereign-risk":
+    "Nuclear fuel enrichment bottleneck \u2192 energy import dependency \u2192 sovereign credit downgrade",
+  "energy-systems+infrastructure":
+    "HVDC cable failure \u2192 grid island separation \u2192 frequency instability \u2192 cascading load shed",
+  "ai-systems+energy-systems":
+    "AI data center load surge \u2192 grid capacity breach \u2192 emergency curtailment \u2192 compute rationing",
+  // Manufacturing pairs
+  "financial-contagion+manufacturing":
+    "Credit contraction \u2192 biomanufacturing capex freeze \u2192 vaccine production gap \u2192 pandemic vulnerability",
+  "manufacturing+supply-chain":
+    "Rare earth embargo \u2192 industrial robotics shortage \u2192 factory automation halt \u2192 output collapse",
+  "manufacturing+sovereign-risk":
+    "Export controls \u2192 fertilizer supply disruption \u2192 food price shock \u2192 sovereign instability",
+  "infrastructure+manufacturing":
+    "Port congestion \u2192 ammonia shipping delays \u2192 fertilizer plant idle \u2192 agricultural yield drop",
+  "ai-systems+manufacturing":
+    "AI-driven process optimization loss \u2192 yield degradation \u2192 biomanufacturing quality failures",
+  "energy-systems+manufacturing":
+    "Grid-scale battery material shortage \u2192 storage deployment halt \u2192 renewable intermittency \u2192 factory power cuts",
+  // Frontier Science pairs
+  "ai-systems+frontier-science":
+    "Compute scarcity \u2192 lattice QCD bottleneck \u2192 discovery window narrows \u2192 BSM parameter space unsearched",
+  "energy-systems+frontier-science":
+    "Grid failure \u2192 accelerator/detector downtime \u2192 irreversible observation window lost",
+  "frontier-science+infrastructure":
+    "Undersea cable cut \u2192 multi-messenger data sync lost \u2192 cross-channel correlation destroyed",
+  "frontier-science+supply-chain":
+    "Cryogenic helium shortage \u2192 detector cooling failure \u2192 particle physics experiment halt",
+  "financial-contagion+frontier-science":
+    "Science funding crisis \u2192 next-gen collider delay \u2192 post-Standard Model discovery window closes",
+  "frontier-science+manufacturing":
+    "Metamaterial fabrication bottleneck \u2192 quantum sensor production halt \u2192 dark sector search stalls",
+  "frontier-science+sovereign-risk":
+    "International collaboration collapse \u2192 experiment data-sharing embargo \u2192 discovery fragmentation",
 };
 
 function getCascadeExamples(domainIds: string[]): string[] {
@@ -188,7 +251,7 @@ export default function DomainSelector() {
             </div>
 
             {/* Domain Cards */}
-            <div className="px-6 py-4 grid gap-2">
+            <div className="px-6 py-4 grid gap-1.5 max-h-[400px] overflow-y-auto">
               {DOMAIN_CARDS.map((domain) => {
                 const isSelected = localSelected.includes(domain.id);
                 const isDisabled =
@@ -198,7 +261,7 @@ export default function DomainSelector() {
                   <button
                     key={domain.id}
                     onClick={() => !isDisabled && toggleDomain(domain.id)}
-                    className="flex items-center gap-3 px-4 py-3 rounded border transition-all text-left"
+                    className="flex items-center gap-3 px-4 py-2.5 rounded border transition-all text-left"
                     style={{
                       borderColor: isSelected ? domain.color : "var(--border)",
                       backgroundColor: isSelected

@@ -60,7 +60,8 @@ export type NodeCategory =
   | "energy"
   | "geopolitical"
   | "communications"
-  | "agriculture";
+  | "agriculture"
+  | "science";
 
 export type EdgeType = "directed" | "confounded" | "temporal";
 

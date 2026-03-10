@@ -120,6 +120,14 @@ interface ApexState {
   deleteSandboxGraph: (id: string) => void;
   renameSandboxGraph: (id: string, name: string) => void;
 
+  // Domain selector
+  selectedDomains: string[];
+  isMultiDomainMode: boolean;
+  domainSelectorOpen: boolean;
+  setSelectedDomains: (domains: string[]) => void;
+  setIsMultiDomainMode: (multi: boolean) => void;
+  setDomainSelectorOpen: (open: boolean) => void;
+
   // Import modal
   importModalOpen: boolean;
   setImportModalOpen: (open: boolean) => void;
@@ -365,6 +373,14 @@ export const useApexStore = create<ApexState>((set) => ({
         g.id === id ? { ...g, name } : g
       ),
     })),
+
+  // Domain selector
+  selectedDomains: [],
+  isMultiDomainMode: false,
+  domainSelectorOpen: true,
+  setSelectedDomains: (domains) => set({ selectedDomains: domains }),
+  setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
+  setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
 
   // Import
   importModalOpen: false,

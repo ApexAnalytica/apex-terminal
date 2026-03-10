@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { getCategoryColor } from "@/lib/graph-data";
 import { useApexStore } from "@/stores/useApexStore";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { CausalNode } from "@/lib/types";
 
 function layoutNodes(nodes: CausalNode[]) {
@@ -23,7 +24,7 @@ function layoutNodes(nodes: CausalNode[]) {
 }
 
 export default function FciGraph() {
-  const graphData = useApexStore((s) => s.graphData);
+  const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
 

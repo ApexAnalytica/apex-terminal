@@ -5,6 +5,7 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeLayout3D, NodePosition } from "@/lib/graph-layout";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
@@ -168,8 +169,8 @@ function ReplayTickDriver() {
 }
 
 export default function CausalDAG3D() {
+  const graphData = useFilteredGraph();
   const {
-    graphData,
     setGraphData,
     truthFilter,
     interventionMode,

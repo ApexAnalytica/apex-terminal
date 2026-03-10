@@ -2,10 +2,11 @@
 
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeOmegaState, computeDoomsdayState } from "@/lib/omega-engine";
 
 export default function StructuralMetrics() {
-  const meta = useApexStore((s) => s.graphData.metadata);
+  const meta = useFilteredGraph().metadata;
   const shocks = useApexStore((s) => s.shocks);
 
   const omegaState = useMemo(() => computeOmegaState(shocks), [shocks]);

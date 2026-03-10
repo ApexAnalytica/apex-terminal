@@ -14,6 +14,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor } from "@/lib/graph-data";
 import DAGOverlay from "./dag3d/DAGOverlay";
 
@@ -75,7 +76,8 @@ function CausalNode2D({ data }: NodeProps) {
 const nodeTypes = { causal: CausalNode2D };
 
 export default function CausalDAG2D() {
-  const { graphData, truthFilter } = useApexStore();
+  const graphData = useFilteredGraph();
+  const { truthFilter } = useApexStore();
 
   const nodes: Node[] = useMemo(
     () =>

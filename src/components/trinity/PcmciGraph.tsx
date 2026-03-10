@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { getCategoryColor } from "@/lib/graph-data";
 import { useApexStore } from "@/stores/useApexStore";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { CausalNode } from "@/lib/types";
 
 // Time-layered layout: T-2, T-1, T-0
@@ -13,7 +14,7 @@ const TIME_COLS = [
 ];
 
 export default function PcmciGraph() {
-  const graphData = useApexStore((s) => s.graphData);
+  const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
 

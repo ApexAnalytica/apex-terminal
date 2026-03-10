@@ -63,7 +63,7 @@ export const DOMAIN_CARDS = [
   },
   {
     id: "frontier-science",
-    label: "\u03A9-Frontier Science",
+    label: "Frontier Science",
     icon: "\u269B\uFE0F",
     color: "#e040fb",
     colorVar: "var(--accent-magenta)",

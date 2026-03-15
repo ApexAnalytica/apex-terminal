@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
+import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -16,11 +17,14 @@ export default function NodeInspector() {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const graphData = useApexStore((s) => s.graphData);
+  const isLive = useApexStore((s) => s.isLive);
+  const { graph: temporalGraph } = useTemporalGraph();
+  const activeGraph = isLive ? graphData : temporalGraph;
 
   const node = useMemo(() => {
     if (!selectedNode) return null;
-    return graphData.nodes.find((n) => n.id === selectedNode) ?? null;
-  }, [selectedNode, graphData.nodes]);
+    return activeGraph.nodes.find((n) => n.id === selectedNode) ?? null;
+  }, [selectedNode, activeGraph.nodes]);
 
   const connectedEdges = useMemo(() => {
     if (!selectedNode) return [];

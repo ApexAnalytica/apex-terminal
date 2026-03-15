@@ -11,7 +11,7 @@ import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D from "./dag3d/DAGNode3D";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
-import ReplayControls from "./ReplayControls";
+// ReplayControls is now integrated into TimeDial
 import { useReplayTick } from "@/lib/useReplayTick";
 import { EpochSnapshot } from "@/lib/types";
 
@@ -461,7 +461,6 @@ export default function CausalDAG3D() {
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <DAGOverlay />
-      <ReplayControls />
       <DAGErrorBoundary>
       <Canvas
         key={canvasKey}

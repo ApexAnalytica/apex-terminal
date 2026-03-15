@@ -33,10 +33,11 @@ function clamp(v: number, min: number, max: number): number {
 
 const DEFAULT_OMEGA: OmegaFragilityProfile = {
   composite: 5.0,
-  substitutionFriction: 5.0,
-  downstreamLoad: 5.0,
-  cascadingVoltage: 5.0,
-  existentialTailWeight: 5.0,
+  irreplaceability: 5.0,
+  restorationLatency: 5.0,
+  jurisdictionalHazard: 5.0,
+  cascadeLoad: 5.0,
+  tailDepth: 5.0,
 };
 
 export function applyNodeDefaults(raw: RawNode, index: number): CausalNode {
@@ -59,23 +60,28 @@ export function applyNodeDefaults(raw: RawNode, index: number): CausalNode {
   const rawOmega = raw.omegaFragility ?? {};
   const omegaFragility: OmegaFragilityProfile = {
     composite: clamp(rawOmega.composite ?? DEFAULT_OMEGA.composite, 0, 10),
-    substitutionFriction: clamp(
-      rawOmega.substitutionFriction ?? DEFAULT_OMEGA.substitutionFriction,
+    irreplaceability: clamp(
+      rawOmega.irreplaceability ?? DEFAULT_OMEGA.irreplaceability,
       0,
       10
     ),
-    downstreamLoad: clamp(
-      rawOmega.downstreamLoad ?? DEFAULT_OMEGA.downstreamLoad,
+    restorationLatency: clamp(
+      rawOmega.restorationLatency ?? DEFAULT_OMEGA.restorationLatency,
       0,
       10
     ),
-    cascadingVoltage: clamp(
-      rawOmega.cascadingVoltage ?? DEFAULT_OMEGA.cascadingVoltage,
+    jurisdictionalHazard: clamp(
+      rawOmega.jurisdictionalHazard ?? DEFAULT_OMEGA.jurisdictionalHazard,
       0,
       10
     ),
-    existentialTailWeight: clamp(
-      rawOmega.existentialTailWeight ?? DEFAULT_OMEGA.existentialTailWeight,
+    cascadeLoad: clamp(
+      rawOmega.cascadeLoad ?? DEFAULT_OMEGA.cascadeLoad,
+      0,
+      10
+    ),
+    tailDepth: clamp(
+      rawOmega.tailDepth ?? DEFAULT_OMEGA.tailDepth,
       0,
       10
     ),

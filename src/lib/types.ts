@@ -44,11 +44,38 @@ export interface TerminalLine {
 
 // ─── Omega-Fragility Profile ────────────────────────────────────
 export interface OmegaFragilityProfile {
-  composite: number;              // 0-10 headline score
-  substitutionFriction: number;   // 0-10 time to re-create
-  downstreamLoad: number;         // 0-10 GDP/sectors dependent
-  cascadingVoltage: number;       // 0-10 non-linear propagation
-  existentialTailWeight: number;  // 0-10 distributional depth beyond VaR
+  composite: number;              // ΩF 0-10 headline fragility score
+  irreplaceability: number;       // I  0-10 how impossible to substitute (capacity share, tech exclusivity)
+  restorationLatency: number;     // R  0-10 time to restore equivalent capacity after catastrophic failure
+  jurisdictionalHazard: number;   // J  0-10 sanctions, conflict, export controls, regulatory exposure
+  cascadeLoad: number;            // C  0-10 downstream impact depth (GDP, sectors, nonlinear propagation)
+  tailDepth: number;              // T  0-10 distributional depth beyond VaR (fat-tail severity)
+}
+
+/** Pillar weight configuration for ΩF composite aggregation */
+export interface OmegaPillarWeights {
+  irreplaceability: number;
+  restorationLatency: number;
+  jurisdictionalHazard: number;
+  cascadeLoad: number;
+  tailDepth: number;
+}
+
+/** Default pillar weights (must sum to 1.0) */
+export const DEFAULT_OMEGA_WEIGHTS: OmegaPillarWeights = {
+  irreplaceability: 0.25,
+  restorationLatency: 0.20,
+  jurisdictionalHazard: 0.15,
+  cascadeLoad: 0.25,
+  tailDepth: 0.15,
+};
+
+/** System-level ΩSF: weighted aggregation of node ΩF scores */
+export interface OmegaSystemFragility {
+  omegaSF: number;             // Σ(αi × ΩFi) — throughput-weighted fragility
+  omegaSX: number;             // Σ(ei × ΩFi) — exposure-weighted fragility
+  contagionRadius: number;     // count of downstream nodes exceeding loss threshold
+  bufferHorizon: number;       // epochs between node failure and systemic failure
 }
 
 // ─── Causal Graph ────────────────────────────────────────────────

@@ -105,7 +105,7 @@ const SECTIONS: SectionMeta[] = [
     badgeLabel: "Import",
     paper: "Data Integrity \u2014 \u03A9 Clamping & Defaults",
     equations: [
-      "\u03A9 dimensions clamped to [0, 10]:\u2003composite, substitutionFriction, downstreamLoad, cascadingVoltage, existentialTailWeight",
+      "\u03A9 dimensions clamped to [0, 10]:\u2003composite, irreplaceability, cascadeLoad, tailDepth, restorationLatency, jurisdictionalHazard",
     ],
     filePattern: "import/defaults.test",
   },

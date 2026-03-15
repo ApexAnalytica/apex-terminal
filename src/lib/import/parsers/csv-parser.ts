@@ -106,10 +106,15 @@ export const HEADER_MAP: Record<string, string> = {
   composite: "composite",
   omega: "composite",
   omega_fragility: "composite",
-  substitution_friction: "substitutionFriction",
-  downstream_load: "downstreamLoad",
-  cascading_voltage: "cascadingVoltage",
-  existential_tail_weight: "existentialTailWeight",
+  substitution_friction: "irreplaceability",
+  irreplaceability: "irreplaceability",
+  downstream_load: "cascadeLoad",
+  cascading_voltage: "cascadeLoad",
+  cascade_load: "cascadeLoad",
+  existential_tail_weight: "tailDepth",
+  tail_depth: "tailDepth",
+  restoration_latency: "restorationLatency",
+  jurisdictional_hazard: "jurisdictionalHazard",
   global_concentration: "globalConcentration",
   replacement_time: "replacementTime",
   capacity: "physicalConstraint",
@@ -216,31 +221,35 @@ export function parseCSV(content: string): ParsedGraph {
   const nodes: RawNode[] = rows.map((row) => {
     const node = { ...row } as RawNode;
     const composite = row.composite as number | undefined;
-    const sf = row.substitutionFriction as number | undefined;
-    const dl = row.downstreamLoad as number | undefined;
-    const cv = row.cascadingVoltage as number | undefined;
-    const etw = row.existentialTailWeight as number | undefined;
+    const ir = row.irreplaceability as number | undefined;
+    const rl = row.restorationLatency as number | undefined;
+    const jh = row.jurisdictionalHazard as number | undefined;
+    const cl = row.cascadeLoad as number | undefined;
+    const td = row.tailDepth as number | undefined;
 
     if (
       composite !== undefined ||
-      sf !== undefined ||
-      dl !== undefined ||
-      cv !== undefined ||
-      etw !== undefined
+      ir !== undefined ||
+      rl !== undefined ||
+      jh !== undefined ||
+      cl !== undefined ||
+      td !== undefined
     ) {
       node.omegaFragility = {
         ...(composite !== undefined && { composite }),
-        ...(sf !== undefined && { substitutionFriction: sf }),
-        ...(dl !== undefined && { downstreamLoad: dl }),
-        ...(cv !== undefined && { cascadingVoltage: cv }),
-        ...(etw !== undefined && { existentialTailWeight: etw }),
+        ...(ir !== undefined && { irreplaceability: ir }),
+        ...(rl !== undefined && { restorationLatency: rl }),
+        ...(jh !== undefined && { jurisdictionalHazard: jh }),
+        ...(cl !== undefined && { cascadeLoad: cl }),
+        ...(td !== undefined && { tailDepth: td }),
       };
       // Remove hoisted fields from top level
       delete (node as Record<string, unknown>).composite;
-      delete (node as Record<string, unknown>).substitutionFriction;
-      delete (node as Record<string, unknown>).downstreamLoad;
-      delete (node as Record<string, unknown>).cascadingVoltage;
-      delete (node as Record<string, unknown>).existentialTailWeight;
+      delete (node as Record<string, unknown>).irreplaceability;
+      delete (node as Record<string, unknown>).restorationLatency;
+      delete (node as Record<string, unknown>).jurisdictionalHazard;
+      delete (node as Record<string, unknown>).cascadeLoad;
+      delete (node as Record<string, unknown>).tailDepth;
     }
     return node;
   });

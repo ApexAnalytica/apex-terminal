@@ -523,10 +523,11 @@ export default function ImportModal() {
 
             const omega = { ...node.omegaFragility };
             if (enrichment.composite != null) omega.composite = Math.max(0, Math.min(10, enrichment.composite));
-            if (enrichment.substitutionFriction != null) omega.substitutionFriction = Math.max(0, Math.min(10, enrichment.substitutionFriction));
-            if (enrichment.downstreamLoad != null) omega.downstreamLoad = Math.max(0, Math.min(10, enrichment.downstreamLoad));
-            if (enrichment.cascadingVoltage != null) omega.cascadingVoltage = Math.max(0, Math.min(10, enrichment.cascadingVoltage));
-            if (enrichment.existentialTailWeight != null) omega.existentialTailWeight = Math.max(0, Math.min(10, enrichment.existentialTailWeight));
+            if (enrichment.irreplaceability != null) omega.irreplaceability = Math.max(0, Math.min(10, enrichment.irreplaceability));
+            if (enrichment.restorationLatency != null) omega.restorationLatency = Math.max(0, Math.min(10, enrichment.restorationLatency));
+            if (enrichment.jurisdictionalHazard != null) omega.jurisdictionalHazard = Math.max(0, Math.min(10, enrichment.jurisdictionalHazard));
+            if (enrichment.cascadeLoad != null) omega.cascadeLoad = Math.max(0, Math.min(10, enrichment.cascadeLoad));
+            if (enrichment.tailDepth != null) omega.tailDepth = Math.max(0, Math.min(10, enrichment.tailDepth));
 
             return {
               ...node,

@@ -13,10 +13,11 @@ import {
 
 const DEFAULT_OMEGA: OmegaFragilityProfile = {
   composite: 5.0,
-  substitutionFriction: 5.0,
-  downstreamLoad: 5.0,
-  cascadingVoltage: 5.0,
-  existentialTailWeight: 5.0,
+  irreplaceability: 5.0,
+  cascadeLoad: 5.0,
+  tailDepth: 5.0,
+  restorationLatency: 5.0,
+  jurisdictionalHazard: 5.0,
 };
 
 export function makeNode(overrides: Partial<CausalNode> & { id: string }): CausalNode {

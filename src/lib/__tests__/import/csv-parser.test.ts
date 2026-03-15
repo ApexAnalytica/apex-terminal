@@ -27,8 +27,8 @@ describe("parseCSV", () => {
     const n = result.nodes[0];
     expect(n.omegaFragility).toBeDefined();
     expect(n.omegaFragility!.composite).toBe(8.5);
-    expect(n.omegaFragility!.substitutionFriction).toBe(7.0);
-    expect(n.omegaFragility!.downstreamLoad).toBe(9.0);
+    expect(n.omegaFragility!.irreplaceability).toBe(7.0);
+    expect(n.omegaFragility!.cascadeLoad).toBe(9.0);
   });
 
   it("parses an edge CSV detecting source/target columns", () => {

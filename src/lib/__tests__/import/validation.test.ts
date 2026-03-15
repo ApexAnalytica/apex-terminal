@@ -132,8 +132,8 @@ describe("validateParsedGraph", () => {
     });
     const result = validateParsedGraph(parsed, EMPTY_EXISTING);
     expect(result.resolvedNodes[0].category).toBe("infrastructure"); // default
-    // After enrichment: sole-source node gets SF=7, DL=2, CV=2, ETW=5 → composite=4.0
-    expect(result.resolvedNodes[0].omegaFragility.composite).toBe(4);
+    // After enrichment: sole node gets I=7, R=5, J=3, C=2, T=5 → composite≈4.5
+    expect(result.resolvedNodes[0].omegaFragility.composite).toBe(4.5);
   });
 
   it("allows edges referencing nodes from existing graph", () => {

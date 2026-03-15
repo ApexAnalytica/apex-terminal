@@ -127,11 +127,12 @@ export function processNodeAnalysis(
         `Domain: ${node.domain} | Category: ${node.category}\n` +
         `Risk Tier: ${tier}\n\n` +
         `\u03A9-Fragility Breakdown:\n` +
-        `  Composite:            ${omega.composite.toFixed(1)} / 10\n` +
-        `  Substitution Friction: ${omega.substitutionFriction.toFixed(1)} / 10\n` +
-        `  Downstream Load:       ${omega.downstreamLoad.toFixed(1)} / 10\n` +
-        `  Cascading Voltage:     ${omega.cascadingVoltage.toFixed(1)} / 10\n` +
-        `  Tail Weight:           ${omega.existentialTailWeight.toFixed(1)} / 10\n\n` +
+        `  Composite:             ${omega.composite.toFixed(1)} / 10\n` +
+        `  Irreplaceability:      ${omega.irreplaceability.toFixed(1)} / 10\n` +
+        `  Restoration Latency:   ${omega.restorationLatency.toFixed(1)} / 10\n` +
+        `  Jurisdictional Hazard: ${omega.jurisdictionalHazard.toFixed(1)} / 10\n` +
+        `  Cascade Load:          ${omega.cascadeLoad.toFixed(1)} / 10\n` +
+        `  Tail Depth:            ${omega.tailDepth.toFixed(1)} / 10\n\n` +
         `Global Concentration: ${node.globalConcentration}\n` +
         `Replacement Time: ${node.replacementTime}\n` +
         (node.physicalConstraint ? `Physical Constraint: ${node.physicalConstraint}\n` : "") +

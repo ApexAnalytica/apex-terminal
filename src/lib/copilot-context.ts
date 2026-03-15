@@ -19,10 +19,11 @@ function serializeNode(n: CausalNode): string {
   return (
     `${n.label} [${n.id}] — domain:${n.domain} cat:${n.category} ` +
     `Ω:${n.omegaFragility.composite.toFixed(1)} ` +
-    `(sub:${n.omegaFragility.substitutionFriction.toFixed(1)} ` +
-    `load:${n.omegaFragility.downstreamLoad.toFixed(1)} ` +
-    `casc:${n.omegaFragility.cascadingVoltage.toFixed(1)} ` +
-    `tail:${n.omegaFragility.existentialTailWeight.toFixed(1)}) ` +
+    `(irr:${n.omegaFragility.irreplaceability.toFixed(1)} ` +
+    `rest:${n.omegaFragility.restorationLatency.toFixed(1)} ` +
+    `jur:${n.omegaFragility.jurisdictionalHazard.toFixed(1)} ` +
+    `casc:${n.omegaFragility.cascadeLoad.toFixed(1)} ` +
+    `tail:${n.omegaFragility.tailDepth.toFixed(1)}) ` +
     `conc:"${n.globalConcentration}" repl:"${n.replacementTime}"` +
     (n.isConfounded ? " [CONFOUNDED]" : "") +
     (n.isRestricted ? " [TARSKI-RESTRICTED]" : "")

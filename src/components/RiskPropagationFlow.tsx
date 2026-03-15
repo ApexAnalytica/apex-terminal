@@ -5,14 +5,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor, getCategoryLabel, getDomainColor, buildRiskCards } from "@/lib/graph-data";
+import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function RiskPropagationFlow() {
   const graphData = useFilteredGraph();
   const shocks = useApexStore((s) => s.shocks);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
-  const riskCards = useMemo(() => buildRiskCards(graphData, shocks), [graphData, shocks]);
+  const isLive = useApexStore((s) => s.isLive);
+  const { graph: temporalGraph } = useTemporalGraph();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Use temporal graph when scrubbing, otherwise use live graph
+  const activeGraph = isLive ? graphData : temporalGraph;
+  const riskCards = useMemo(() => buildRiskCards(activeGraph, shocks), [activeGraph, shocks]);
 
   return (
     <div className="border-t border-border bg-surface-elevated" data-tour="risk-flow">

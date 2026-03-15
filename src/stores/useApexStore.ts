@@ -37,6 +37,8 @@ import { mergeGraphs } from "@/lib/import/merge";
 import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
+import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
+import { generateTemporalData } from "@/lib/temporal-data";
 
 interface ApexState {
   // Module navigation
@@ -168,6 +170,19 @@ interface ApexState {
   stepEpoch: (delta: number) => void;
   setActiveTimeline: (id: TimelineId) => void;
   branchFromCurrentEpoch: () => void;
+
+  // Timeline / Time Dial
+  timelinePosition: number; // ms timestamp of currently selected point
+  timelineRange: { start: number; end: number }; // viewable range as ms timestamps
+  isLive: boolean; // whether following real-time
+  timelineGranularity: TimeGranularity;
+  temporalData: TemporalDataset | null;
+  setTimelinePosition: (ts: number) => void;
+  setTimelineRange: (range: { start: number; end: number }) => void;
+  setIsLive: (live: boolean) => void;
+  setTimelineGranularity: (g: TimeGranularity) => void;
+  initTemporalData: () => void;
+  goLive: () => void;
 }
 
 export const useApexStore = create<ApexState>((set) => ({
@@ -558,4 +573,49 @@ export const useApexStore = create<ApexState>((set) => ({
         replayPlaying: true,
       };
     }),
+
+  // Timeline / Time Dial
+  timelinePosition: Date.now(),
+  timelineRange: {
+    start: Date.now() - 60 * 24 * 60 * 60 * 1000, // 60 days ago
+    end: Date.now(),
+  },
+  isLive: true,
+  timelineGranularity: "day",
+  temporalData: null,
+
+  setTimelinePosition: (ts) =>
+    set({ timelinePosition: ts, isLive: false }),
+
+  setTimelineRange: (range) =>
+    set({ timelineRange: range }),
+
+  setIsLive: (live) =>
+    set((s) => ({
+      isLive: live,
+      ...(live ? { timelinePosition: s.timelineRange.end } : {}),
+    })),
+
+  setTimelineGranularity: (g) =>
+    set({ timelineGranularity: g }),
+
+  initTemporalData: () =>
+    set((s) => {
+      if (s.temporalData) return s;
+      const data = generateTemporalData(s.graphData.nodes, 60);
+      return {
+        temporalData: data,
+        timelineRange: {
+          start: data.rangeStart.getTime(),
+          end: data.rangeEnd.getTime(),
+        },
+        timelinePosition: data.rangeEnd.getTime(),
+      };
+    }),
+
+  goLive: () =>
+    set((s) => ({
+      isLive: true,
+      timelinePosition: s.timelineRange.end,
+    })),
 }));

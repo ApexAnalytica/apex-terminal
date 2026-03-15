@@ -3,31 +3,34 @@
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
+import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function DAGOverlay() {
-  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode } = useApexStore();
-  const meta = graphData.metadata;
+  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, isLive, timelinePosition } = useApexStore();
+  const { graph: temporalGraph } = useTemporalGraph();
+  const activeGraph = isLive ? graphData : temporalGraph;
+  const meta = activeGraph.metadata;
 
   const selectedNodeData = useMemo(() => {
     if (!selectedNode) return null;
-    return graphData.nodes.find((n) => n.id === selectedNode) ?? null;
-  }, [selectedNode, graphData.nodes]);
+    return activeGraph.nodes.find((n) => n.id === selectedNode) ?? null;
+  }, [selectedNode, activeGraph.nodes]);
 
   // Domain legend: count nodes per domain
   const domainCounts = useMemo(() => {
     const map: Record<string, number> = {};
-    graphData.nodes.forEach((n) => {
+    activeGraph.nodes.forEach((n) => {
       map[n.domain] = (map[n.domain] || 0) + 1;
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [graphData.nodes]);
+  }, [activeGraph.nodes]);
 
   // Top-Ω nodes
   const topOmega = useMemo(() => {
-    return [...graphData.nodes]
+    return [...activeGraph.nodes]
       .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
       .slice(0, 5);
-  }, [graphData.nodes]);
+  }, [activeGraph.nodes]);
 
   return (
     <div className="absolute inset-0 pointer-events-none z-10">
@@ -71,6 +74,22 @@ export default function DAGOverlay() {
           {viewMode === "3d" ? "\u2192 2D" : "\u2192 3D"}
         </button>
       </div>
+
+      {/* Temporal scrub indicator */}
+      {!isLive && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2">
+          <div
+            className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-3 py-1 rounded border"
+            style={{
+              borderColor: "var(--accent-amber)",
+              backgroundColor: "rgba(255,171,0,0.08)",
+              color: "var(--accent-amber)",
+            }}
+          >
+            HISTORICAL VIEW — {new Date(timelinePosition).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </div>
+        </div>
+      )}
 
       {/* Truth filter badge */}
       {truthFilter === "verified" && (

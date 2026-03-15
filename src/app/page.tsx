@@ -11,6 +11,7 @@ import StructuralMetrics from "@/components/StructuralMetrics";
 import CausalDAG2D from "@/components/CausalDAG2D";
 import ImportModal from "@/components/import/ImportModal";
 import SpotlightTour from "@/components/SpotlightTour";
+import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
 
 // Dynamic import for 3D canvas (no SSR)
@@ -76,6 +77,9 @@ export default function Home() {
 
           {/* Risk Propagation Flow */}
           <RiskPropagationFlow />
+
+          {/* Time Dial — persistent timeline scrubber */}
+          <TimeDial />
 
           {/* Structural Metrics Footer */}
           <StructuralMetrics />

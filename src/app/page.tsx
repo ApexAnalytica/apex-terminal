@@ -12,6 +12,7 @@ import CausalDAG2D from "@/components/CausalDAG2D";
 import ImportModal from "@/components/import/ImportModal";
 import SpotlightTour from "@/components/SpotlightTour";
 import TimeDial from "@/components/TimeDial";
+import DomainSelector from "@/components/DomainSelector";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -30,8 +31,9 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
-      {/* Import Modal (overlay) */}
+      {/* Overlays */}
       <ImportModal />
+      <DomainSelector />
       <SpotlightTour />
 
       {/* Header with module tabs */}

@@ -6,6 +6,7 @@ import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/li
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import { ModuleId } from "@/lib/types";
+import { DOMAIN_CARDS } from "./DomainSelector";
 
 const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[] = [
   { id: "spirtes", label: "SPIRTES", icon: "◇", color: "var(--accent-cyan)" },
@@ -15,7 +16,7 @@ const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[
 ];
 
 export default function HeaderBar() {
-  const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive } = useApexStore();
+  const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive, selectedDomains, setDomainSelectorOpen } = useApexStore();
   const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
 
   // During replay, override omega state with current epoch's values
@@ -50,6 +51,35 @@ export default function HeaderBar() {
           </span>
         </div>
         <div className="h-8 w-px bg-border" />
+
+        {/* Selected Domains */}
+        {selectedDomains.length > 0 && (
+          <>
+            <button
+              onClick={() => setDomainSelectorOpen(true)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded border border-border hover:border-accent-cyan/40 transition-colors group"
+              title="Change domain workspace"
+            >
+              {selectedDomains.map((id) => {
+                const domain = DOMAIN_CARDS.find((d) => d.id === id);
+                if (!domain) return null;
+                return (
+                  <span
+                    key={id}
+                    className="text-sm"
+                    title={domain.label}
+                  >
+                    {domain.icon}
+                  </span>
+                );
+              })}
+              <span className="text-[8px] font-mono text-text-muted group-hover:text-accent-cyan transition-colors ml-0.5">
+                {selectedDomains.length > 1 ? "MULTI" : "SINGLE"}
+              </span>
+            </button>
+            <div className="h-8 w-px bg-border" />
+          </>
+        )}
 
         {/* Module Tabs */}
         <div className="flex items-center gap-1" data-tour="module-tabs">

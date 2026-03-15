@@ -345,6 +345,78 @@ const NODES: CausalNode[] = [
     isRestricted: false,
   },
 
+  // ── Frontier Science (5) ──
+  {
+    id: "collider_precision",
+    label: "Collider Precision Frontier",
+    shortLabel: "CPF",
+    category: "science",
+    omegaFragility: omega(9.7, 9.8, 9.5, 9.3, 9.7),
+    globalConcentration: "CERN LHC sole facility at energy frontier",
+    replacementTime: "15-25 years (next-gen collider)",
+    physicalConstraint: "Higgs self-coupling requires 10x luminosity; discovery window shrinking as anomalies refine",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "neutrino_frontier",
+    label: "Neutrino Mass & Oscillation",
+    shortLabel: "NMO",
+    category: "science",
+    omegaFragility: omega(9.5, 9.6, 9.4, 9.2, 9.5),
+    globalConcentration: "DUNE (US), Hyper-K (JP), JUNO (CN) — 3 mega-experiments",
+    replacementTime: "10-20 years (detector construction)",
+    physicalConstraint: "Sterile \u03BD parameter space shrinking; 0\u03BD\u03B2\u03B2 rarest process ever sought",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "quantum_gravity_phenom",
+    label: "Quantum Gravity Signatures",
+    shortLabel: "QGS",
+    category: "science",
+    omegaFragility: omega(9.4, 9.7, 9.3, 9.0, 9.6),
+    globalConcentration: "LIGO/Virgo/KAGRA + EHT + Fermi/CTA",
+    replacementTime: "Cosmic events — non-reproducible",
+    physicalConstraint: "Planck scale (10\u00B9\u2079 GeV) inaccessible directly; relies on cosmological amplification",
+    domain: "Frontier Science",
+    discoverySource: "PCMCI+",
+    isConfounded: true,
+    isRestricted: false,
+  },
+  {
+    id: "dark_sector_sensors",
+    label: "Dark Sector Quantum Sensors",
+    shortLabel: "DQS",
+    category: "science",
+    omegaFragility: omega(9.3, 9.4, 9.2, 9.0, 9.3),
+    globalConcentration: "Fragmented: ADMX, ABRACADABRA, CASPEr, NV labs",
+    replacementTime: "5-10 years (quantum platform maturation)",
+    physicalConstraint: "Decoherence limits; coupling strengths 10\u00B9\u2076\u00D7 weaker than EM",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "multi_messenger_astro",
+    label: "Multi-Messenger Astrophysics",
+    shortLabel: "MMA",
+    category: "science",
+    omegaFragility: omega(9.6, 9.5, 9.7, 9.4, 9.6),
+    globalConcentration: "IceCube, LIGO, Fermi, Pierre Auger — no single-point replacement",
+    replacementTime: "Non-reproducible cosmic events",
+    physicalConstraint: "Cross-channel timing windows <seconds; missed coincidence = lost forever",
+    domain: "Frontier Science",
+    discoverySource: "PCMCI+",
+    isConfounded: true,
+    isRestricted: false,
+  },
+
   // ── Cross-domain connectors ──
   {
     id: "trade_policy",
@@ -458,6 +530,30 @@ const EDGES: CausalEdge[] = [
 
   // FX Swap → Credit contraction effect
   { id: "e35", source: "fx_swap_basis", target: "fed_swap_lines", weight: 0.72, lag: 0, type: "directed", confidence: 0.76, isInconsistent: false, physicalMechanism: "basis blowout triggers emergency swap-line draws" },
+
+  // ─── Frontier Science Internal Edges ────────────────────────────
+  // Collider → Neutrino (shared accelerator infrastructure, CP violation measurements)
+  { id: "e36", source: "collider_precision", target: "neutrino_frontier", weight: 0.78, lag: 1, type: "directed", confidence: 0.82, isInconsistent: false, physicalMechanism: "accelerator-produced neutrino beams; shared CP violation measurements" },
+  // Neutrino → Dark Sector (sterile neutrino ↔ dark sector coupling)
+  { id: "e37", source: "neutrino_frontier", target: "dark_sector_sensors", weight: 0.72, lag: 1, type: "temporal", confidence: 0.76, isInconsistent: false, physicalMechanism: "sterile neutrino signatures constrain dark sector parameter space" },
+  // Multi-Messenger → QG (GW + gamma-ray → Planck-scale dispersion tests)
+  { id: "e38", source: "multi_messenger_astro", target: "quantum_gravity_phenom", weight: 0.88, lag: 0, type: "directed", confidence: 0.90, isInconsistent: false, physicalMechanism: "multi-messenger timing tests Lorentz invariance at Planck scale" },
+  // QG → Dark Sector (shared quantum sensor technology)
+  { id: "e39", source: "quantum_gravity_phenom", target: "dark_sector_sensors", weight: 0.68, lag: 1, type: "temporal", confidence: 0.72, isInconsistent: false, physicalMechanism: "interferometric Planck-scale noise probes overlap with dark sector searches" },
+  // Collider → QG (energy frontier constraints inform QG models)
+  { id: "e40", source: "collider_precision", target: "quantum_gravity_phenom", weight: 0.60, lag: 2, type: "temporal", confidence: 0.66, isInconsistent: false, physicalMechanism: "electroweak precision data constrains quantum gravity effective field theory" },
+  // Multi-Messenger → Neutrino (supernova neutrino bursts are multi-messenger events)
+  { id: "e41", source: "multi_messenger_astro", target: "neutrino_frontier", weight: 0.82, lag: 0, type: "directed", confidence: 0.86, isInconsistent: false, physicalMechanism: "supernova neutrino burst requires real-time multi-messenger alert" },
+
+  // ─── Frontier Science Cross-Domain Edges ────────────────────────
+  // AI Compute → Collider (ML anomaly detection, lattice QCD)
+  { id: "e42", source: "nvidia_stack", target: "collider_precision", weight: 0.65, lag: 1, type: "temporal", confidence: 0.70, isInconsistent: false, physicalMechanism: "GPU-driven ML anomaly detection accelerates BSM searches in collider data" },
+  // Data Centers → Multi-Messenger (compute for GW template matching)
+  { id: "e43", source: "nova_hub", target: "multi_messenger_astro", weight: 0.60, lag: 0, type: "directed", confidence: 0.68, isInconsistent: false, physicalMechanism: "real-time GW template matching requires low-latency cloud compute" },
+  // Landing Stations → Multi-Messenger (global data sync for coincidence detection)
+  { id: "e44", source: "landing_stations", target: "multi_messenger_astro", weight: 0.72, lag: 0, type: "directed", confidence: 0.78, isInconsistent: false, physicalMechanism: "subsea fiber carries sub-second multi-messenger alerts across observatories" },
+  // Grid → Dark Sector Sensors (cryogenic detectors need stable power)
+  { id: "e45", source: "grid_stability", target: "dark_sector_sensors", weight: 0.58, lag: 0, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "quantum sensor decoherence spikes with grid frequency instability" },
 ];
 
 const METADATA: GraphMetadata = {
@@ -569,6 +665,7 @@ export function getCategoryColor(category: string): string {
     case "geopolitical": return "#ff1744";
     case "communications": return "#448aff";
     case "agriculture": return "#76ff03";
+    case "science": return "#e040fb";
     default: return "#5a5e72";
   }
 }
@@ -590,6 +687,7 @@ export function getDomainColor(domain: string): string {
     case "Dollar Funding": return "#ffab00";
     case "Geopolitical": return "#ff1744";
     case "Energy Grid": return "#00bfa5";
+    case "Frontier Science": return "#e040fb";
     // Athena Defense domains
     case "Drone Swarms": return "#ff6d00";
     case "SATCOM": return "#448aff";

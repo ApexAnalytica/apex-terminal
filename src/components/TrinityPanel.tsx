@@ -1,8 +1,10 @@
 "use client";
 
-import DcdGraph from "./trinity/DcdGraph";
-import PcmciGraph from "./trinity/PcmciGraph";
-import FciGraph from "./trinity/FciGraph";
+import dynamic from "next/dynamic";
+
+const DcdGraph = dynamic(() => import("./trinity/DcdGraph"), { ssr: false });
+const PcmciGraph = dynamic(() => import("./trinity/PcmciGraph"), { ssr: false });
+const FciGraph = dynamic(() => import("./trinity/FciGraph"), { ssr: false });
 
 export default function TrinityPanel() {
   return (

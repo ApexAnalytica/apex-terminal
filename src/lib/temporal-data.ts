@@ -133,14 +133,16 @@ export function generateTemporalData(
         omegaComposite: Math.round(omega * 100) / 100,
         omegaProfile: {
           composite: Math.round(omega * 100) / 100,
-          substitutionFriction:
-            Math.round(baseProfile.substitutionFriction * profileScale * 100) / 100,
-          downstreamLoad:
-            Math.round(baseProfile.downstreamLoad * profileScale * 100) / 100,
-          cascadingVoltage:
-            Math.round(baseProfile.cascadingVoltage * profileScale * 100) / 100,
-          existentialTailWeight:
-            Math.round(baseProfile.existentialTailWeight * profileScale * 100) / 100,
+          irreplaceability:
+            Math.round(baseProfile.irreplaceability * profileScale * 100) / 100,
+          restorationLatency:
+            Math.round(baseProfile.restorationLatency * profileScale * 100) / 100,
+          jurisdictionalHazard:
+            Math.round(baseProfile.jurisdictionalHazard * profileScale * 100) / 100,
+          cascadeLoad:
+            Math.round(baseProfile.cascadeLoad * profileScale * 100) / 100,
+          tailDepth:
+            Math.round(baseProfile.tailDepth * profileScale * 100) / 100,
         },
       });
 

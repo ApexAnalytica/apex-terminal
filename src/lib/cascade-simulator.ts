@@ -212,10 +212,11 @@ export function simulateCascade(
       const scale = 1 + newIntensity * cfg.omegaShockScale;
       state.omegaProfile = {
         composite: state.omegaComposite,
-        substitutionFriction: Math.min(10, base.substitutionFriction * scale),
-        downstreamLoad: Math.min(10, base.downstreamLoad * scale),
-        cascadingVoltage: Math.min(10, base.cascadingVoltage * scale),
-        existentialTailWeight: Math.min(10, base.existentialTailWeight * scale),
+        irreplaceability: Math.min(10, base.irreplaceability * scale),
+        restorationLatency: Math.min(10, base.restorationLatency * scale),
+        jurisdictionalHazard: Math.min(10, base.jurisdictionalHazard * scale),
+        cascadeLoad: Math.min(10, base.cascadeLoad * scale),
+        tailDepth: Math.min(10, base.tailDepth * scale),
       };
 
       maxDelta = Math.max(maxDelta, Math.abs(newIntensity - oldIntensity));

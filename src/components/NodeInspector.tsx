@@ -35,10 +35,11 @@ export default function NodeInspector() {
 
   const axes = node
     ? [
-        { label: "SUBSTITUTION FRICTION", value: node.omegaFragility.substitutionFriction },
-        { label: "DOWNSTREAM LOAD", value: node.omegaFragility.downstreamLoad },
-        { label: "CASCADING VOLTAGE", value: node.omegaFragility.cascadingVoltage },
-        { label: "TAIL WEIGHT", value: node.omegaFragility.existentialTailWeight },
+        { label: "IRREPLACEABILITY", value: node.omegaFragility.irreplaceability },
+        { label: "RESTORATION LATENCY", value: node.omegaFragility.restorationLatency },
+        { label: "JURISDICTIONAL HAZARD", value: node.omegaFragility.jurisdictionalHazard },
+        { label: "CASCADE LOAD", value: node.omegaFragility.cascadeLoad },
+        { label: "TAIL DEPTH", value: node.omegaFragility.tailDepth },
       ]
     : [];
 
@@ -101,7 +102,7 @@ export default function NodeInspector() {
               <span className="text-[10px] text-text-muted font-mono">/ 10.0</span>
             </div>
 
-            {/* 4-axis bars (larger) */}
+            {/* 5-axis bars (larger) */}
             <div className="space-y-2">
               {axes.map((axis) => (
                 <div key={axis.label}>

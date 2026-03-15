@@ -6,11 +6,12 @@ import type { LLMProvider } from "@/lib/llm-providers";
 const SYSTEM_PROMPT = `You are the APEX Omega-Fragility scoring engine. Given a list of nodes from a causal graph, assign risk scores based on your domain knowledge.
 
 For each node, provide Omega-Fragility sub-scores (0-10 scale):
-- substitutionFriction: How hard is it to replace this entity? (10 = irreplaceable monopoly)
-- downstreamLoad: How many downstream systems depend on it? (10 = critical to many sectors)
-- cascadingVoltage: How likely is a disruption to cascade nonlinearly? (10 = extreme cascade risk)
-- existentialTailWeight: How concentrated is supply / how extreme is tail risk? (10 = single point of failure)
-- composite: Weighted average of the above four scores
+- irreplaceability: How hard is it to replace this entity? (10 = irreplaceable monopoly)
+- cascadeLoad: How many downstream systems depend on it and how likely is nonlinear cascade? (10 = extreme cascade risk)
+- tailDepth: How concentrated is supply / how extreme is tail risk? (10 = single point of failure)
+- restorationLatency: How long to restore after disruption? (10 = decade-scale recovery)
+- jurisdictionalHazard: How exposed to regulatory/geopolitical risk? (10 = extreme jurisdictional risk)
+- composite: Weighted average of the above five scores
 
 Also provide:
 - globalConcentration: A brief string like "90% China" or "Single source: ASML" or "Diversified" if you know the real-world concentration
@@ -25,10 +26,11 @@ Return ONLY valid JSON (no markdown fences):
     {
       "nodeId": "<id>",
       "composite": <number>,
-      "substitutionFriction": <number>,
-      "downstreamLoad": <number>,
-      "cascadingVoltage": <number>,
-      "existentialTailWeight": <number>,
+      "irreplaceability": <number>,
+      "cascadeLoad": <number>,
+      "tailDepth": <number>,
+      "restorationLatency": <number>,
+      "jurisdictionalHazard": <number>,
       "globalConcentration": "<string>",
       "replacementTime": "<string>",
       "reasoning": "<string>"

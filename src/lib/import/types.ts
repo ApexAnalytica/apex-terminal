@@ -11,10 +11,11 @@ export interface RawNode {
   discoverySource?: string;
   omegaFragility?: Partial<{
     composite: number;
-    substitutionFriction: number;
-    downstreamLoad: number;
-    cascadingVoltage: number;
-    existentialTailWeight: number;
+    irreplaceability: number;
+    restorationLatency: number;
+    jurisdictionalHazard: number;
+    cascadeLoad: number;
+    tailDepth: number;
   }>;
   globalConcentration?: string;
   replacementTime?: string;
@@ -90,10 +91,11 @@ export type DataMode = "nodes" | "edges" | "auto";
 export interface OmegaEnrichment {
   nodeId: string;
   composite?: number;
-  substitutionFriction?: number;
-  downstreamLoad?: number;
-  cascadingVoltage?: number;
-  existentialTailWeight?: number;
+  irreplaceability?: number;
+  restorationLatency?: number;
+  jurisdictionalHazard?: number;
+  cascadeLoad?: number;
+  tailDepth?: number;
   globalConcentration?: string;
   replacementTime?: string;
   reasoning?: string;

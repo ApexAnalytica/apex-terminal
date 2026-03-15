@@ -10,7 +10,7 @@ function richGraph() {
       shortLabel: "TSM",
       category: "manufacturing",
       domain: "EUV Lithography",
-      omegaFragility: { composite: 9.9, substitutionFriction: 9.5, downstreamLoad: 9.8, cascadingVoltage: 9.7, existentialTailWeight: 9.6 },
+      omegaFragility: { composite: 9.9, irreplaceability: 9.5, cascadeLoad: 9.8, tailDepth: 9.6, restorationLatency: 5.0, jurisdictionalHazard: 5.0 },
       globalConcentration: "92% Taiwan",
       replacementTime: "5-7 years",
       discoverySource: "DCD",
@@ -24,7 +24,7 @@ function richGraph() {
       shortLabel: "AIC",
       category: "infrastructure",
       domain: "AI Compute",
-      omegaFragility: { composite: 8.5, substitutionFriction: 8.0, downstreamLoad: 9.0, cascadingVoltage: 8.5, existentialTailWeight: 8.2 },
+      omegaFragility: { composite: 8.5, irreplaceability: 8.0, cascadeLoad: 9.0, tailDepth: 8.2, restorationLatency: 5.0, jurisdictionalHazard: 5.0 },
     }),
     makeNode({
       id: "n3",
@@ -32,7 +32,7 @@ function richGraph() {
       shortLabel: "DC",
       category: "infrastructure",
       domain: "Data Centers",
-      omegaFragility: { composite: 7.0, substitutionFriction: 6.5, downstreamLoad: 7.5, cascadingVoltage: 7.0, existentialTailWeight: 6.8 },
+      omegaFragility: { composite: 7.0, irreplaceability: 6.5, cascadeLoad: 7.5, tailDepth: 6.8, restorationLatency: 5.0, jurisdictionalHazard: 5.0 },
     }),
   ];
   const edges = [
@@ -95,8 +95,8 @@ describe("processNodeAnalysis", () => {
     const msgs = processNodeAnalysis("n1", richGraph());
     const content = msgs[0].content;
     expect(content).toContain("Composite:");
-    expect(content).toContain("Substitution Friction:");
-    expect(content).toContain("Downstream Load:");
+    expect(content).toContain("Irreplaceability:");
+    expect(content).toContain("Cascade Load:");
     expect(content).toContain("9.9"); // composite value
   });
 

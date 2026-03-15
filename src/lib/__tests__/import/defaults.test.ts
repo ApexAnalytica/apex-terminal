@@ -35,19 +35,20 @@ describe("applyNodeDefaults", () => {
 
   it("clamps omega values to [0, 10]", () => {
     const node = applyNodeDefaults(
-      { id: "x", omegaFragility: { composite: 15, substitutionFriction: -3 } },
+      { id: "x", omegaFragility: { composite: 15, irreplaceability: -3 } },
       0
     );
     expect(node.omegaFragility.composite).toBe(10);
-    expect(node.omegaFragility.substitutionFriction).toBe(0);
+    expect(node.omegaFragility.irreplaceability).toBe(0);
   });
 
   it("applies midpoint (5.0) defaults for missing omega fields", () => {
     const node = applyNodeDefaults({ id: "x" }, 0);
     expect(node.omegaFragility.composite).toBe(5.0);
-    expect(node.omegaFragility.downstreamLoad).toBe(5.0);
-    expect(node.omegaFragility.cascadingVoltage).toBe(5.0);
-    expect(node.omegaFragility.existentialTailWeight).toBe(5.0);
+    expect(node.omegaFragility.cascadeLoad).toBe(5.0);
+    expect(node.omegaFragility.tailDepth).toBe(5.0);
+    expect(node.omegaFragility.restorationLatency).toBe(5.0);
+    expect(node.omegaFragility.jurisdictionalHazard).toBe(5.0);
   });
 
   it("defaults discoverySource to merged for invalid values", () => {

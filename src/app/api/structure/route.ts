@@ -9,7 +9,7 @@ Available canonical fields:
 - IDENTITY: id, label, shortLabel
 - CLASSIFICATION: category, domain, discoverySource
 - RELATIONSHIPS: source, target, weight, lag, confidence, physicalMechanism
-- RISK METRICS: composite, substitutionFriction, downstreamLoad, cascadingVoltage, existentialTailWeight, globalConcentration, replacementTime, physicalConstraint
+- RISK METRICS: composite, irreplaceability, cascadeLoad, tailDepth, restorationLatency, jurisdictionalHazard, globalConcentration, replacementTime, physicalConstraint
 - FLAGS: isConfounded, isRestricted, isInconsistent
 
 Rules:

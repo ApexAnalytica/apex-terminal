@@ -184,7 +184,7 @@ describe("simulateCascade", () => {
 
   it("updates omega composite: min(10, base * (1 + intensity * omegaShockScale))", () => {
     const graph = makeGraph(
-      [makeNode({ id: "X", category: "energy", omegaFragility: { composite: 5, substitutionFriction: 5, downstreamLoad: 5, cascadingVoltage: 5, existentialTailWeight: 5 } })],
+      [makeNode({ id: "X", category: "energy", omegaFragility: { composite: 5, irreplaceability: 5, cascadeLoad: 5, tailDepth: 5, restorationLatency: 5, jurisdictionalHazard: 5 } })],
       []
     );
     const shock = makeShock({ id: "s", category: "energy", severity: 1.0 });
@@ -211,7 +211,7 @@ describe("simulateCascade", () => {
     const initialStates = {
       X: {
         omegaComposite: 7,
-        omegaProfile: { composite: 7, substitutionFriction: 5, downstreamLoad: 5, cascadingVoltage: 5, existentialTailWeight: 5 },
+        omegaProfile: { composite: 7, irreplaceability: 5, cascadeLoad: 5, tailDepth: 5, restorationLatency: 5, jurisdictionalHazard: 5 },
         shockIntensity: 0.5,
         isActivated: true,
       },
@@ -244,7 +244,7 @@ describe("simulateCascade", () => {
       [makeNode({
         id: "X",
         category: "energy",
-        omegaFragility: { composite: 9.5, substitutionFriction: 9.5, downstreamLoad: 9.5, cascadingVoltage: 9.5, existentialTailWeight: 9.5 },
+        omegaFragility: { composite: 9.5, irreplaceability: 9.5, cascadeLoad: 9.5, tailDepth: 9.5, restorationLatency: 9.5, jurisdictionalHazard: 9.5 },
       })],
       []
     );
@@ -253,10 +253,11 @@ describe("simulateCascade", () => {
     for (const snap of snaps) {
       const profile = snap.nodeStates["X"].omegaProfile;
       expect(profile.composite).toBeLessThanOrEqual(10);
-      expect(profile.substitutionFriction).toBeLessThanOrEqual(10);
-      expect(profile.downstreamLoad).toBeLessThanOrEqual(10);
-      expect(profile.cascadingVoltage).toBeLessThanOrEqual(10);
-      expect(profile.existentialTailWeight).toBeLessThanOrEqual(10);
+      expect(profile.irreplaceability).toBeLessThanOrEqual(10);
+      expect(profile.cascadeLoad).toBeLessThanOrEqual(10);
+      expect(profile.tailDepth).toBeLessThanOrEqual(10);
+      expect(profile.restorationLatency).toBeLessThanOrEqual(10);
+      expect(profile.jurisdictionalHazard).toBeLessThanOrEqual(10);
     }
   });
 

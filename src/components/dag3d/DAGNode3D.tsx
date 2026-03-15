@@ -96,10 +96,11 @@ export default function DAGNode3D({
   });
 
   const axes = [
-    { label: "SUBST FRICTION", value: node.omegaFragility.substitutionFriction },
-    { label: "DOWNSTREAM LD", value: node.omegaFragility.downstreamLoad },
-    { label: "CASCADE VOLT", value: node.omegaFragility.cascadingVoltage },
-    { label: "TAIL WEIGHT", value: node.omegaFragility.existentialTailWeight },
+    { label: "IRREPLACEABILITY", value: node.omegaFragility.irreplaceability },
+    { label: "RESTORE LATENCY", value: node.omegaFragility.restorationLatency },
+    { label: "JURISD HAZARD", value: node.omegaFragility.jurisdictionalHazard },
+    { label: "CASCADE LOAD", value: node.omegaFragility.cascadeLoad },
+    { label: "TAIL DEPTH", value: node.omegaFragility.tailDepth },
   ];
 
   return (
@@ -271,7 +272,7 @@ export default function DAGNode3D({
               <span style={{ fontSize: "9px", color: "#5a5e72" }}>/ 10.0</span>
             </div>
 
-            {/* 4-axis bars */}
+            {/* 5-axis bars */}
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
               {axes.map((axis) => (
                 <div key={axis.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>

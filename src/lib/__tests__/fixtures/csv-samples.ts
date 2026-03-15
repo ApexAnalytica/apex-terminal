@@ -1,6 +1,6 @@
 // ─── CSV Test Samples ────────────────────────────────────────────
 
-export const NODE_CSV = `id,label,category,domain,composite,substitution_friction,downstream_load
+export const NODE_CSV = `id,label,category,domain,composite,irreplaceability,cascade_load
 n1,Node Alpha,manufacturing,EUV Lithography,8.5,7.0,9.0
 n2,Node Beta,energy,Energy Grid,6.0,5.5,6.5
 n3,Node Gamma,infrastructure,AI Compute,7.2,6.8,7.5`;

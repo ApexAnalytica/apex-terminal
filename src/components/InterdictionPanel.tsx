@@ -101,7 +101,7 @@ export default function InterdictionPanel() {
 
       {!canRun && (
         <div className="text-[8px] font-mono text-text-muted italic">
-          Inject shocks in Pareto module first
+          Inject shock scenarios above first, then solve for optimal defenses
         </div>
       )}
 

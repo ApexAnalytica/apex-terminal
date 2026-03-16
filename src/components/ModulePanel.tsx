@@ -5,7 +5,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
 import { getDomainColor } from "@/lib/graph-data";
-import { AXIOM_LIBRARY, PROOF_TRACES } from "@/lib/tarski-data";
+import { AXIOM_LIBRARY } from "@/lib/tarski-data";
 import TrinityPanel from "./TrinityPanel";
 import InterventionControls from "./InterventionControls";
 import AblationPanel from "./AblationPanel";
@@ -72,20 +72,25 @@ function TarskiPanel() {
   const truthFilter = useApexStore((s) => s.truthFilter);
   const setTruthFilter = useApexStore((s) => s.setTruthFilter);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const tarskiReport = useApexStore((s) => s.tarskiReport);
 
   return (
     <>
       <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-green">
         TRUTH FILTER
       </div>
+      <div className="text-[8px] font-mono text-text-muted mb-2">
+        Validates causal edges against physical, regulatory, and heuristic axioms.
+        VERIFIED mode flags structurally fragile links and restricted nodes.
+      </div>
       <div className="flex gap-2">
         <button
           onClick={() => { setTruthFilter("raw"); setSelectedNode(null); }}
           className="text-[9px] font-mono px-3 py-1.5 rounded border transition-colors"
           style={{
-            borderColor: truthFilter === "raw" ? "var(--accent-green)" : "var(--border)",
-            color: truthFilter === "raw" ? "var(--accent-green)" : "var(--text-muted)",
-            backgroundColor: truthFilter === "raw" ? "rgba(0,230,118,0.08)" : "transparent",
+            borderColor: truthFilter === "raw" ? "var(--accent-cyan)" : "var(--border)",
+            color: truthFilter === "raw" ? "var(--accent-cyan)" : "var(--text-muted)",
+            backgroundColor: truthFilter === "raw" ? "rgba(0,229,255,0.08)" : "transparent",
           }}
         >
           RAW
@@ -93,13 +98,17 @@ function TarskiPanel() {
         <button
           onClick={() => {
             setTruthFilter("verified");
-            const firstRestricted = graphData.nodes.find((n) => n.isRestricted);
-            if (firstRestricted) {
-              setSelectedNode(firstRestricted.id);
-            } else {
-              const firstInconsistentEdge = graphData.edges.find((e) => e.isInconsistent);
-              if (firstInconsistentEdge) setSelectedNode(firstInconsistentEdge.source);
-            }
+            // After validation runs, select first restricted node
+            setTimeout(() => {
+              const state = useApexStore.getState();
+              const firstRestricted = state.graphData.nodes.find((n) => n.isRestricted);
+              if (firstRestricted) {
+                setSelectedNode(firstRestricted.id);
+              } else {
+                const firstInconsistentEdge = state.graphData.edges.find((e) => e.isInconsistent);
+                if (firstInconsistentEdge) setSelectedNode(firstInconsistentEdge.source);
+              }
+            }, 0);
           }}
           className="text-[9px] font-mono px-3 py-1.5 rounded border transition-colors"
           style={{
@@ -111,16 +120,74 @@ function TarskiPanel() {
           VERIFIED
         </button>
       </div>
+
+      {/* Status display */}
       <div className="text-[9px] font-mono text-text-muted space-y-1 mt-2">
-        <div>Inconsistent Edges: <span className="text-accent-red">{graphData.metadata.inconsistentEdges}</span></div>
-        <div>Restricted Nodes: <span className="text-accent-amber">{graphData.metadata.restrictedNodes}</span></div>
-        <div>Status: <span className="text-accent-green">{graphData.metadata.verificationStatus}</span></div>
+        <div className="flex items-center justify-between">
+          <span>Status:</span>
+          <span style={{
+            color: graphData.metadata.verificationStatus === "UNVERIFIED"
+              ? "var(--text-muted)"
+              : graphData.metadata.verificationStatus === "VERIFIED"
+                ? "var(--accent-green)"
+                : "#ff1744"
+          }}>
+            {graphData.metadata.verificationStatus}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Inconsistent Edges:</span>
+          <span style={{ color: graphData.metadata.inconsistentEdges > 0 ? "#ff1744" : "var(--text-muted)" }}>
+            {graphData.metadata.inconsistentEdges}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Restricted Nodes:</span>
+          <span style={{ color: graphData.metadata.restrictedNodes > 0 ? "#ffab00" : "var(--text-muted)" }}>
+            {graphData.metadata.restrictedNodes}
+          </span>
+        </div>
       </div>
-      {truthFilter === "verified" && (
-        <div className="text-[9px] font-mono text-accent-red mt-2 p-2 border border-accent-red/30 rounded bg-accent-red/5">
-          TARSKI FILTER ACTIVE — DETECTED: {graphData.metadata.inconsistentEdges} INCONSISTENT EDGES, {graphData.metadata.restrictedNodes} NODES RESTRICTED
+
+      {truthFilter === "verified" && tarskiReport && (
+        <div className="text-[9px] font-mono mt-2 p-2 border rounded"
+          style={{
+            borderColor: tarskiReport.totalViolations > 0 ? "rgba(255,23,68,0.3)" : "rgba(0,230,118,0.3)",
+            backgroundColor: tarskiReport.totalViolations > 0 ? "rgba(255,23,68,0.05)" : "rgba(0,230,118,0.05)",
+            color: tarskiReport.totalViolations > 0 ? "#ff1744" : "#00e676",
+          }}
+        >
+          TARSKI FILTER ACTIVE — {tarskiReport.totalViolations} VIOLATIONS DETECTED
+          <div className="text-[8px] text-text-muted mt-1">
+            {tarskiReport.proofTraces.length} proof traces generated across {
+              new Set(tarskiReport.proofTraces.flatMap(t => t.violatedAxioms)).size
+            } axioms
+          </div>
         </div>
       )}
+
+      {/* Restricted node list (when verified) */}
+      {truthFilter === "verified" && tarskiReport && tarskiReport.restrictedNodeIds.size > 0 && (
+        <div className="mt-2 space-y-1">
+          <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-amber">
+            RESTRICTED NODES ({tarskiReport.restrictedNodeIds.size})
+          </div>
+          <div className="max-h-28 overflow-y-auto space-y-0.5">
+            {graphData.nodes
+              .filter((n) => n.isRestricted)
+              .map((n) => (
+                <div
+                  key={n.id}
+                  className="text-[8px] font-mono p-1 border border-accent-amber/20 rounded bg-accent-amber/5 text-accent-amber cursor-pointer hover:brightness-125 transition-all truncate"
+                  onClick={() => setSelectedNode(n.id)}
+                >
+                  {n.label}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       <AxiomLibrary />
     </>
   );
@@ -331,11 +398,26 @@ function AxiomLibrary() {
   const axiomLevelFilter = useApexStore((s) => s.axiomLevelFilter);
   const setAxiomLevelFilter = useApexStore((s) => s.setAxiomLevelFilter);
   const truthFilter = useApexStore((s) => s.truthFilter);
+  const tarskiReport = useApexStore((s) => s.tarskiReport);
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const graphData = useApexStore((s) => s.graphData);
 
   const filteredAxioms = useMemo(() => {
     if (axiomLevelFilter === "all") return AXIOM_LIBRARY;
     return AXIOM_LIBRARY.filter((a) => a.level === axiomLevelFilter);
   }, [axiomLevelFilter]);
+
+  // Count violations per axiom
+  const axiomViolationCounts = useMemo(() => {
+    if (!tarskiReport) return {};
+    const counts: Record<string, number> = {};
+    tarskiReport.proofTraces.forEach((trace) => {
+      trace.violatedAxioms.forEach((a) => {
+        counts[a] = (counts[a] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [tarskiReport]);
 
   const levelLabels: { value: "all" | 0 | 1 | 2; label: string }[] = [
     { value: "all", label: "ALL" },
@@ -370,54 +452,91 @@ function AxiomLibrary() {
       </div>
       {/* Axiom list */}
       <div className="space-y-1 max-h-48 overflow-y-auto">
-        {filteredAxioms.map((axiom) => (
-          <div
-            key={axiom.id}
-            className="text-[9px] font-mono p-1.5 border border-border/50 rounded bg-surface-elevated"
-          >
-            <div className="flex items-center gap-1.5">
-              <span
-                className="text-[7px] px-1 rounded"
-                style={{
-                  color: levelColors[axiom.level],
-                  backgroundColor: `${levelColors[axiom.level]}15`,
-                }}
-              >
-                L{axiom.level}
-              </span>
-              <span className="text-text-muted">{axiom.id}</span>
-              <span className="text-foreground">{axiom.name}</span>
-            </div>
-            <div className="text-accent-green mt-0.5">{axiom.formalNotation}</div>
-          </div>
-        ))}
-      </div>
-      {/* Proof Traces (shown in VERIFIED mode) */}
-      {truthFilter === "verified" && (
-        <div className="space-y-1 mt-2">
-          <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted">
-            PROOF TRACES
-          </div>
-          {PROOF_TRACES.map((trace) => (
+        {filteredAxioms.map((axiom) => {
+          const violationCount = axiomViolationCounts[axiom.id] || 0;
+          const hasViolations = truthFilter === "verified" && violationCount > 0;
+          return (
             <div
-              key={trace.edgeId}
-              className="text-[8px] font-mono p-1.5 border rounded"
+              key={axiom.id}
+              className="text-[9px] font-mono p-1.5 border rounded bg-surface-elevated"
               style={{
-                borderColor: trace.verdict === "REJECTED" ? "rgba(255,23,68,0.3)" : "rgba(255,171,0,0.3)",
-                backgroundColor: trace.verdict === "REJECTED" ? "rgba(255,23,68,0.05)" : "rgba(255,171,0,0.05)",
+                borderColor: hasViolations ? "rgba(255,23,68,0.3)" : "var(--border)",
+                backgroundColor: hasViolations ? "rgba(255,23,68,0.05)" : undefined,
               }}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-text-muted">Edge: <span className="text-foreground">{trace.edgeId}</span></span>
-                <span style={{ color: trace.verdict === "REJECTED" ? "#ff1744" : "#ffab00" }}>
-                  {trace.verdict}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-[7px] px-1 rounded"
+                  style={{
+                    color: levelColors[axiom.level],
+                    backgroundColor: `${levelColors[axiom.level]}15`,
+                  }}
+                >
+                  L{axiom.level}
                 </span>
+                <span className="text-text-muted">{axiom.id}</span>
+                <span className="text-foreground flex-1">{axiom.name}</span>
+                {hasViolations && (
+                  <span className="text-[7px] px-1.5 py-0.5 rounded bg-accent-red/10 text-accent-red">
+                    {violationCount}
+                  </span>
+                )}
               </div>
-              <div className="text-text-muted mt-0.5">
-                Violated: {trace.violatedAxioms.join(", ")} | {trace.solverUsed} | {trace.checkTimeMs}ms
-              </div>
+              <div className="text-accent-green mt-0.5">{axiom.formalNotation}</div>
+              {hasViolations && (
+                <div className="text-accent-red mt-0.5 text-[8px]">
+                  {axiom.description}
+                </div>
+              )}
             </div>
-          ))}
+          );
+        })}
+      </div>
+      {/* Proof Traces (shown in VERIFIED mode) */}
+      {truthFilter === "verified" && tarskiReport && tarskiReport.proofTraces.length > 0 && (
+        <div className="space-y-1 mt-2">
+          <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted">
+            PROOF TRACES ({tarskiReport.proofTraces.length})
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            {tarskiReport.proofTraces.map((trace) => {
+              // Find the edge label for human-readable display
+              const edge = graphData.edges.find((e) => e.id === trace.edgeId);
+              const shortId = trace.edgeId.length > 30
+                ? trace.edgeId.slice(0, 28) + "..."
+                : trace.edgeId;
+              return (
+                <div
+                  key={trace.edgeId}
+                  className="text-[8px] font-mono p-1.5 border rounded cursor-pointer hover:brightness-125 transition-all"
+                  style={{
+                    borderColor: trace.verdict === "REJECTED" ? "rgba(255,23,68,0.3)" : "rgba(255,171,0,0.3)",
+                    backgroundColor: trace.verdict === "REJECTED" ? "rgba(255,23,68,0.05)" : "rgba(255,171,0,0.05)",
+                  }}
+                  onClick={() => {
+                    if (edge) setSelectedNode(edge.source);
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-muted truncate flex-1" title={trace.edgeId}>
+                      {shortId}
+                    </span>
+                    <span style={{ color: trace.verdict === "REJECTED" ? "#ff1744" : "#ffab00" }}>
+                      {trace.verdict}
+                    </span>
+                  </div>
+                  <div className="text-text-muted mt-0.5">
+                    Violated: {trace.violatedAxioms.join(", ")} | {trace.solverUsed} | {trace.checkTimeMs}ms
+                  </div>
+                  {edge && (
+                    <div className="text-text-muted mt-0.5 truncate" title={edge.physicalMechanism}>
+                      {edge.physicalMechanism.slice(0, 60)}...
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -1006,7 +1006,7 @@ const EDGES: CausalEdge[] = [
 const METADATA: GraphMetadata = {
   density: parseFloat((2 * EDGES.length / (NODES.length * (NODES.length - 1))).toFixed(3)),
   constraintType: "DCD / NOTEARS + PCMCI+ temporal + FCI latent",
-  verificationStatus: "INCONSISTENCIES_FOUND",
+  verificationStatus: "UNVERIFIED",
   totalNodes: NODES.length,
   totalEdges: EDGES.length,
   inconsistentEdges: EDGES.filter((e) => e.isInconsistent).length,

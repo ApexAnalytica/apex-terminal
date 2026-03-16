@@ -13,6 +13,12 @@ import {
 } from "@/lib/types";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
 import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
+import {
+  runTarskiValidation,
+  applyTarskiFlags,
+  clearTarskiFlags,
+  type TarskiValidationReport,
+} from "@/lib/tarski-data";
 
 export interface ImportedDataset {
   id: string;
@@ -62,6 +68,7 @@ interface ApexState {
   // Truth filter
   truthFilter: TruthFilter;
   setTruthFilter: (f: TruthFilter) => void;
+  tarskiReport: TarskiValidationReport | null;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -211,7 +218,20 @@ export const useApexStore = create<ApexState>((set) => ({
 
   // Truth filter
   truthFilter: "raw",
-  setTruthFilter: (f) => set({ truthFilter: f }),
+  tarskiReport: null,
+  setTruthFilter: (f) =>
+    set((s) => {
+      if (f === "verified") {
+        // Dynamically run Tarski validation against the live graph
+        const report = runTarskiValidation(s.graphData);
+        const flaggedGraph = applyTarskiFlags(s.graphData, report);
+        return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
+      } else {
+        // Clear all flags when switching back to RAW
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        return { truthFilter: f, graphData: cleanGraph, tarskiReport: null };
+      }
+    }),
 
   // Selected node
   selectedNode: null,

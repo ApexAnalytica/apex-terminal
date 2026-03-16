@@ -12,8 +12,8 @@ const DOMAIN_MAP: Record<string, string[]> = {
   "sovereign-risk": ["Geopolitical"],
   "infrastructure": ["Data Centers", "Undersea Cables"],
   "ai-systems": ["AI Compute"],
-  "energy-systems": ["HVDC Power", "Energy Grid", "Rare Earth"],
-  "manufacturing": ["Fertilizer"],
+  "energy-systems": ["HVDC Power", "Energy Grid", "Rare Earth", "Saudi Aramco Energy", "QatarEnergy LNG"],
+  "manufacturing": ["Fertilizer", "QAFCO Fertilizer", "Ma'aden Phosphate"],
   "frontier-science": ["Frontier Science"],
 };
 

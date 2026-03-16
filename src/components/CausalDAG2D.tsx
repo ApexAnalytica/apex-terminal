@@ -12,6 +12,8 @@ import ReactFlow, {
   Handle,
   Position,
   BackgroundVariant,
+  SelectionMode,
+  OnSelectionChangeFunc,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
@@ -23,25 +25,32 @@ import { useReplayTickDOM } from "@/lib/useReplayTick";
 import type { CausalEdge, EpochSnapshot } from "@/lib/types";
 import { AnimatePresence } from "framer-motion";
 
-function CausalNode2D({ data }: NodeProps) {
+function CausalNode2D({ data, selected }: NodeProps) {
   const { label, category, omegaComposite, isRestricted, domain, datasetColor, shockIntensity } = data;
   const color = datasetColor ?? getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
   const shockGlow = shockIntensity ?? 0;
 
+  const selectionGlow = selected
+    ? "0 0 12px #00e5ff80, 0 0 24px #00e5ff40"
+    : "";
+
   return (
     <motion.div
       className="relative px-5 py-3 rounded border font-mono text-[11px] tracking-wider text-center min-w-[120px]"
       style={{
-        borderColor: isRestricted ? "#ff1744" : color,
+        borderColor: selected ? "#00e5ff" : isRestricted ? "#ff1744" : color,
         backgroundColor: `color-mix(in srgb, ${color} ${Math.round(5 + (omegaComposite / 10) * 15)}%, #0a0b10)`,
         color,
-        boxShadow: shockGlow > 0
-          ? `0 0 ${Math.round(shockGlow * 30)}px ${color}80, 0 0 ${Math.round(shockGlow * 15)}px ${color}40, inset 0 0 ${Math.round(shockGlow * 10)}px ${color}30`
-          : omegaComposite > 0
-            ? `0 0 ${Math.round((omegaComposite / 10) * 20)}px ${color}40, inset 0 0 ${Math.round((omegaComposite / 10) * 10)}px ${color}20`
-            : "none",
+        boxShadow: [
+          selectionGlow,
+          shockGlow > 0
+            ? `0 0 ${Math.round(shockGlow * 30)}px ${color}80, 0 0 ${Math.round(shockGlow * 15)}px ${color}40, inset 0 0 ${Math.round(shockGlow * 10)}px ${color}30`
+            : omegaComposite > 0
+              ? `0 0 ${Math.round((omegaComposite / 10) * 20)}px ${color}40, inset 0 0 ${Math.round((omegaComposite / 10) * 10)}px ${color}20`
+              : "",
+        ].filter(Boolean).join(", ") || "none",
       }}
       animate={
         shockGlow > 0.3
@@ -409,6 +418,15 @@ export default function CausalDAG2D() {
   );
 
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(
+    ({ nodes: selNodes }) => {
+      setSelectedNodes(selNodes.map((n) => n.id));
+    },
+    [setSelectedNodes]
+  );
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
@@ -442,6 +460,10 @@ export default function CausalDAG2D() {
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onSelectionChange={onSelectionChange}
+        selectionMode={SelectionMode.Partial}
+        selectionOnDrag
+        panOnDrag={[1]}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
@@ -453,6 +475,13 @@ export default function CausalDAG2D() {
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
+      {selectedNodesCount > 0 && (
+        <div className="absolute top-3 right-3 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">
+          <span className="text-[10px] font-mono text-accent-cyan">
+            {selectedNodesCount} node{selectedNodesCount !== 1 ? "s" : ""} selected
+          </span>
+        </div>
+      )}
       <AnimatePresence>
         {selectedEdge && (
           <EdgeInspector

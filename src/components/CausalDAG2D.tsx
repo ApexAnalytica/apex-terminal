@@ -234,8 +234,6 @@ export default function CausalDAG2D() {
       : null;
 
   const CONTRACTION = 0.18;
-  const NODE_W = 160; // approximate node width for collision
-  const NODE_H = 70;  // approximate node height for collision
 
   // Stable hash: deterministic position per node ID (won't jump when nodes are filtered)
   const idHash = useCallback((id: string): number => {
@@ -246,89 +244,58 @@ export default function CausalDAG2D() {
     return Math.abs(h);
   }, []);
 
-  // Domain layout offsets — group nodes by domain in distinct zones
-  const DOMAIN_ZONES: Record<string, { cx: number; cy: number }> = useMemo(() => ({
-    "Saudi Aramco Energy": { cx: 0, cy: 0 },
-    "QatarEnergy LNG":     { cx: 1100, cy: 0 },
-    "QAFCO Fertilizer":    { cx: 0, cy: 900 },
-    "Ma'aden Phosphate":   { cx: 1100, cy: 900 },
-  }), []);
-
   const nodes: Node[] = useMemo(() => {
-    // Group nodes by domain for within-domain layout
-    const domainGroups = new Map<string, typeof graphData.nodes>();
-    for (const n of graphData.nodes) {
-      if (!domainGroups.has(n.domain)) domainGroups.set(n.domain, []);
-      domainGroups.get(n.domain)!.push(n);
-    }
+    // Vertical layout: 5 columns, nodes flow top-to-bottom
+    // Stable positions based on node ID hash — won't jump when filtered
+    const COLS = 5;
+    const COL_W = 220;
+    const ROW_H = 130;
 
-    // Compute stable positions: domain zone + circular spread within domain
+    // Sort nodes by domain then by ID hash for consistent vertical ordering
+    const domainOrder: Record<string, number> = {
+      "Saudi Aramco Energy": 0,
+      "QatarEnergy LNG": 1,
+      "QAFCO Fertilizer": 2,
+      "Ma'aden Phosphate": 3,
+    };
+    const sorted = [...graphData.nodes].sort((a, b) => {
+      const da = domainOrder[a.domain] ?? 4;
+      const db = domainOrder[b.domain] ?? 4;
+      if (da !== db) return da - db;
+      return idHash(a.id) - idHash(b.id);
+    });
+
+    // Assign stable column/row positions
     const positions = new Map<string, { x: number; y: number }>();
-    for (const [domain, domainNodes] of domainGroups) {
-      const zone = DOMAIN_ZONES[domain] ?? { cx: 550, cy: 450 };
-      const count = domainNodes.length;
-      // Sort by ID hash for consistent ordering
-      const sorted = [...domainNodes].sort((a, b) => idHash(a.id) - idHash(b.id));
-
-      for (let i = 0; i < sorted.length; i++) {
-        const n = sorted[i];
-        // Use a wider grid within each domain zone
-        const cols = Math.ceil(Math.sqrt(count * 1.5));
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        // Stagger even rows for better spacing
-        const staggerX = row % 2 === 1 ? NODE_W * 0.5 : 0;
-        const x = zone.cx + col * (NODE_W + 40) + staggerX;
-        const y = zone.cy + row * (NODE_H + 50);
-        positions.set(n.id, { x, y });
-      }
-    }
-
-    // Collision avoidance — simple iterative repulsion (3 passes)
-    const allIds = Array.from(positions.keys());
-    for (let pass = 0; pass < 3; pass++) {
-      for (let i = 0; i < allIds.length; i++) {
-        for (let j = i + 1; j < allIds.length; j++) {
-          const a = positions.get(allIds[i])!;
-          const b = positions.get(allIds[j])!;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const overlapX = NODE_W - Math.abs(dx);
-          const overlapY = NODE_H - Math.abs(dy);
-          if (overlapX > 0 && overlapY > 0) {
-            // Push apart along the axis with less overlap
-            if (overlapX < overlapY) {
-              const push = overlapX * 0.55;
-              a.x -= dx > 0 ? push : -push;
-              b.x += dx > 0 ? push : -push;
-            } else {
-              const push = overlapY * 0.55;
-              a.y -= dy > 0 ? push : -push;
-              b.y += dy > 0 ? push : -push;
-            }
-          }
-        }
-      }
-    }
+    sorted.forEach((n, i) => {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      // Slight jitter from ID hash for organic feel, but small (±20px)
+      const h = idHash(n.id);
+      const jitterX = ((h % 41) - 20);
+      const jitterY = ((h % 37) - 18);
+      positions.set(n.id, {
+        x: col * COL_W + 50 + jitterX,
+        y: row * ROW_H + 30 + jitterY,
+      });
+    });
 
     return graphData.nodes.map((n) => {
       const base = positions.get(n.id) ?? { x: 0, y: 0 };
-      let posX = base.x;
-      let posY = base.y;
-
-      // Subtle temporal drift — omega changes nudge position slightly (max ±15px)
       const omega = n.omegaFragility.composite;
+
+      // Smooth gradual drift based on omega — continuous function, no popping
+      // omega ranges 0-10, so drift is gentle and proportional
       const h = idHash(n.id);
-      const driftX = Math.sin(omega * 0.7 + h * 0.001) * 15;
-      const driftY = Math.cos(omega * 0.5 + h * 0.002) * 12;
-      posX += driftX;
-      posY += driftY;
+      const driftX = Math.sin(omega * 0.3 + h * 0.0007) * 10;
+      const driftY = Math.cos(omega * 0.25 + h * 0.0011) * 8;
+      let posX = base.x + driftX;
+      let posY = base.y + driftY;
 
       // Apply contraction during replay
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[n.id];
         if (state && state.shockIntensity > 0.01) {
-          // Pull slightly toward neighbors under shock
           let cx = 0, cy = 0, totalWeight = 0;
           for (const edge of graphData.edges) {
             const nbId = edge.source === n.id ? edge.target : edge.target === n.id ? edge.source : null;
@@ -369,7 +336,7 @@ export default function CausalDAG2D() {
         },
       };
     });
-  }, [graphData, truthFilter, currentSnapshot, idHash, DOMAIN_ZONES]);
+  }, [graphData, truthFilter, currentSnapshot, idHash]);
 
   const edges: Edge[] = useMemo(
     () =>

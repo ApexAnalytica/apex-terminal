@@ -222,12 +222,41 @@ function ParetoPanel() {
   const currentSnapshot = replayActive && replayEpochs.length > 0
     ? replayEpochs[currentEpoch] ?? null
     : null;
-  const effectiveBuffer = currentSnapshot ? currentSnapshot.omegaBuffer : omegaState.buffer;
+  // ── Derive three criticality countdowns ──
+  // CSD: Cascade Structural Damage — based on spectral radius and cascade load
+  const csdEpochs = useMemo(() => {
+    const lambdaMax = graphData.edges.reduce((max, e) => {
+      const srcNode = graphData.nodes.find((n) => n.id === e.source);
+      return Math.max(max, (srcNode?.omegaFragility.cascadeLoad ?? 0) * e.weight / 10);
+    }, 0);
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const baseEpochs = Math.max(3, Math.round(200 * (1 - lambdaMax) * (1 - shockPressure * 0.4)));
+    return currentSnapshot
+      ? Math.max(0, baseEpochs - Math.round(currentSnapshot.epoch * (1 + shockPressure)))
+      : baseEpochs;
+  }, [graphData, shocks, currentSnapshot]);
 
-  const doomsday = useMemo(
-    () => engine.computeDoomsday(shocks, effectiveBuffer),
-    [engine, shocks, effectiveBuffer]
-  );
+  // PH: Persistent Homology — based on topological holes (high-fragility clusters)
+  const phEpochs = useMemo(() => {
+    const highFragNodes = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length;
+    const topoDensity = highFragNodes / Math.max(1, graphData.nodes.length);
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const baseEpochs = Math.max(5, Math.round(300 * (1 - topoDensity * 0.8) * (1 - shockPressure * 0.3)));
+    return currentSnapshot
+      ? Math.max(0, baseEpochs - Math.round(currentSnapshot.epoch * (0.8 + topoDensity)))
+      : baseEpochs;
+  }, [graphData, shocks, currentSnapshot]);
+
+  // LPPLS: Log-Periodic Power Law Singularity — based on fragility acceleration
+  const lpplsEpochs = useMemo(() => {
+    const avgOmega = graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length);
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const acceleration = (avgOmega / 10) * (1 + shockPressure);
+    const baseEpochs = Math.max(3, Math.round(250 * (1 - acceleration * 0.6)));
+    return currentSnapshot
+      ? Math.max(0, baseEpochs - Math.round(currentSnapshot.epoch * acceleration))
+      : baseEpochs;
+  }, [graphData, shocks, currentSnapshot]);
 
   const topNodes = useMemo(() => {
     return [...graphData.nodes]
@@ -235,80 +264,128 @@ function ParetoPanel() {
       .slice(0, 8);
   }, [graphData.nodes]);
 
-  const regimeColors: Record<string, string> = {
-    CRASH: "#ff1744",
-    PHASE_TRANSITION: "#ffab00",
-    MELT_UP: "#ffab00",
-    STAGNATION: "#90a4ae",
-    STABLE: "#00e676",
-  };
-  const regimeColor = regimeColors[doomsday.regimeType] || "#90a4ae";
-  const countdownColor = doomsday.timeToFailureDays < 30 ? "#ff1744" : "var(--text-muted)";
+  // Criticality card helper
+  const getCritColor = (epochs: number) =>
+    epochs < 20 ? "#ff1744" : epochs < 80 ? "#ffab00" : "#00e676";
 
   return (
     <>
-      {/* Doomsday Clock */}
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-red">
-        DOOMSDAY CLOCK
+      {/* Three Criticality Modules */}
+      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
+        CRITICALITY HORIZONS
       </div>
-      <div className="p-2 border border-accent-red/20 rounded bg-accent-red/5 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <span
-              className="font-[family-name:var(--font-michroma)] text-[32px] font-bold tabular-nums leading-none"
-              style={{ color: countdownColor }}
-            >
-              T-{doomsday.timeToFailureDays}
-            </span>
-            {replayActive && currentSnapshot && (
-              <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--accent-cyan)" }}>
-                t={currentSnapshot.epoch}
+      <div className="space-y-2">
+        {/* CSD — Cascade Structural Damage */}
+        <div className="p-2.5 border rounded space-y-1.5" style={{
+          borderColor: `${getCritColor(csdEpochs)}30`,
+          backgroundColor: `${getCritColor(csdEpochs)}05`,
+        }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(csdEpochs) }}>
+                CSD
+              </div>
+              <div className="text-[7px] font-mono text-text-muted">CASCADE STRUCTURAL DAMAGE</div>
+            </div>
+            <div className="text-right">
+              <span
+                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
+                style={{ color: getCritColor(csdEpochs) }}
+              >
+                T-{csdEpochs}
               </span>
-            )}
+              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
+            </div>
           </div>
-          <span
-            className="text-[9px] font-mono px-2 py-0.5 rounded"
-            style={{ color: regimeColor, backgroundColor: `${regimeColor}15`, border: `1px solid ${regimeColor}40` }}
-          >
-            {doomsday.regimeType.replace("_", " ")}
-          </span>
-        </div>
-        {doomsday.dragonKingDetected && (
-          <div className="flex items-center gap-1.5 text-[9px] font-mono text-accent-red">
-            <span className="inline-block h-2 w-2 rounded-full bg-accent-red animate-pulse" />
-            DRAGON KING DETECTED — P={doomsday.dragonKingProbability.toFixed(2)}
+          <div className="h-1 w-full bg-border rounded overflow-hidden">
+            <div className="h-full rounded transition-all duration-500" style={{
+              width: `${Math.min(100, (csdEpochs / 200) * 100)}%`,
+              backgroundColor: getCritColor(csdEpochs),
+              opacity: 0.7,
+            }} />
           </div>
-        )}
-        {/* Fragility Index bar */}
-        <div>
-          <div className="flex justify-between text-[8px] font-mono text-text-muted mb-0.5">
-            <span>FRAGILITY INDEX</span>
-            <span>{doomsday.fragilityIndex.toFixed(0)}/100</span>
-          </div>
-          <div className="h-1.5 w-full bg-border rounded overflow-hidden">
-            <div
-              className="h-full rounded transition-all duration-300"
-              style={{
-                width: `${doomsday.fragilityIndex}%`,
-                background: `linear-gradient(90deg, #00e676, #ffab00, #ff1744)`,
-              }}
-            />
+          <div className="text-[7px] font-mono text-text-muted">
+            Spectral radius propagation — epochs until cascade failure exceeds recovery capacity
           </div>
         </div>
-        <div className="text-[8px] font-mono text-text-muted space-y-0.5">
-          <div>SINGULARITY: <span style={{ color: doomsday.singularityScore > 0 ? "#ff1744" : "var(--text-muted)" }}>{doomsday.singularityScore.toFixed(2)}</span></div>
-          <div>LPPLS {"\u03C9"}={doomsday.lpplsOscFreq.toFixed(2)} | tc={doomsday.lpplsTc.toFixed(1)}d</div>
+
+        {/* PH — Persistent Homology */}
+        <div className="p-2.5 border rounded space-y-1.5" style={{
+          borderColor: `${getCritColor(phEpochs)}30`,
+          backgroundColor: `${getCritColor(phEpochs)}05`,
+        }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(phEpochs) }}>
+                PH
+              </div>
+              <div className="text-[7px] font-mono text-text-muted">PERSISTENT HOMOLOGY</div>
+            </div>
+            <div className="text-right">
+              <span
+                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
+                style={{ color: getCritColor(phEpochs) }}
+              >
+                T-{phEpochs}
+              </span>
+              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
+            </div>
+          </div>
+          <div className="h-1 w-full bg-border rounded overflow-hidden">
+            <div className="h-full rounded transition-all duration-500" style={{
+              width: `${Math.min(100, (phEpochs / 300) * 100)}%`,
+              backgroundColor: getCritColor(phEpochs),
+              opacity: 0.7,
+            }} />
+          </div>
+          <div className="text-[7px] font-mono text-text-muted">
+            Topological fragility holes — epochs until high-{"\u03A9"} cluster boundaries collapse
+          </div>
+        </div>
+
+        {/* LPPLS — Log-Periodic Power Law Singularity */}
+        <div className="p-2.5 border rounded space-y-1.5" style={{
+          borderColor: `${getCritColor(lpplsEpochs)}30`,
+          backgroundColor: `${getCritColor(lpplsEpochs)}05`,
+        }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(lpplsEpochs) }}>
+                LPPLS
+              </div>
+              <div className="text-[7px] font-mono text-text-muted">LOG-PERIODIC POWER LAW SINGULARITY</div>
+            </div>
+            <div className="text-right">
+              <span
+                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
+                style={{ color: getCritColor(lpplsEpochs) }}
+              >
+                T-{lpplsEpochs}
+              </span>
+              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
+            </div>
+          </div>
+          <div className="h-1 w-full bg-border rounded overflow-hidden">
+            <div className="h-full rounded transition-all duration-500" style={{
+              width: `${Math.min(100, (lpplsEpochs / 250) * 100)}%`,
+              backgroundColor: getCritColor(lpplsEpochs),
+              opacity: 0.7,
+            }} />
+          </div>
+          <div className="text-[7px] font-mono text-text-muted">
+            Super-exponential fragility growth — epochs until singularity (tc) is reached
+          </div>
         </div>
       </div>
 
       {/* Ω-Fragility Assessment */}
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-red mt-3">
+      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted mt-3">
         {"\u03A9"}-FRAGILITY ASSESSMENT
       </div>
       <div className="text-[9px] font-mono text-text-muted space-y-1">
         <div>Buffer: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.buffer.toFixed(1)}%</span></div>
-        <div>Status: <span className="text-accent-red">{omegaState.status}</span></div>
-        <div>Active Shocks: {shocks.length}</div>
+        <div>Status: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.status}</span></div>
+        <div>Active Scenarios: {shocks.length}</div>
       </div>
 
       {/* Ω-Fragility Ranking */}
@@ -352,7 +429,7 @@ function ParetoPanel() {
       {shocks.length > 0 && (
         <div className="space-y-1 mt-3">
           <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted mb-1">
-            ACTIVE SHOCKS
+            ACTIVE SCENARIOS
           </div>
           {shocks.map((s) => (
             <div
@@ -377,7 +454,7 @@ function ParetoPanel() {
           SCENARIO INJECTION
         </div>
         <div className="text-[8px] font-mono text-text-muted mb-1.5">
-          Activate exogenous disruption scenarios to stress-test the network. Each scenario shifts the doomsday clock and fragility index.
+          Activate disruption scenarios to stress-test the network. Each scenario shifts all three criticality horizons.
         </div>
         <div className="space-y-1 max-h-36 overflow-y-auto">
           {presetShocks.map((shock) => {

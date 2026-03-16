@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
+  EdgeMouseHandler,
   Background,
   Controls,
   NodeProps,
@@ -18,7 +19,8 @@ import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor } from "@/lib/graph-data";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
-import type { EpochSnapshot } from "@/lib/types";
+import type { CausalEdge, EpochSnapshot } from "@/lib/types";
+import { AnimatePresence } from "framer-motion";
 
 function CausalNode2D({ data }: NodeProps) {
   const { label, category, omegaComposite, isRestricted, domain, datasetColor, shockIntensity } = data;
@@ -85,6 +87,126 @@ function CausalNode2D({ data }: NodeProps) {
   );
 }
 
+function EdgeInspector({
+  edge,
+  sourceLabel,
+  targetLabel,
+  onClose,
+}: {
+  edge: CausalEdge;
+  sourceLabel: string;
+  targetLabel: string;
+  onClose: () => void;
+}) {
+  const typeColor =
+    edge.type === "temporal"
+      ? "#ffab00"
+      : edge.type === "confounded"
+        ? "#ff6d00"
+        : "#00e5ff";
+
+  const typeLabel =
+    edge.type === "temporal"
+      ? "TEMPORAL"
+      : edge.type === "confounded"
+        ? "CONFOUNDED"
+        : "DIRECTED";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.15 }}
+      className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-[420px] rounded border border-border bg-background/95 backdrop-blur-sm shadow-2xl"
+      style={{ boxShadow: `0 0 20px ${typeColor}15` }}
+    >
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-[0.15em] text-text-muted">
+          CAUSAL LINK INSPECTOR
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-text-muted hover:text-foreground transition-colors"
+        >
+          ESC
+        </button>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        {/* Source → Target */}
+        <div className="flex items-center gap-2 text-[10px] font-mono">
+          <span className="text-accent-cyan">{sourceLabel}</span>
+          <span className="text-text-muted">{"\u2192"}</span>
+          <span className="text-accent-cyan">{targetLabel}</span>
+        </div>
+
+        {/* Physical Mechanism */}
+        <div>
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+            PHYSICAL MECHANISM
+          </div>
+          <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+            {edge.physicalMechanism}
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="flex gap-4">
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">TYPE</div>
+            <div
+              className="text-[10px] font-mono mt-0.5"
+              style={{ color: typeColor }}
+            >
+              {typeLabel}
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">WEIGHT</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {edge.weight.toFixed(2)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">CONFIDENCE</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {(edge.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">LAG</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {edge.lag === 0 ? "sync" : `t+${edge.lag}`}
+            </div>
+          </div>
+          {edge.isInconsistent && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">STATUS</div>
+              <div className="text-[10px] font-mono text-accent-red mt-0.5">
+                INCONSISTENT
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Confidence bar */}
+        <div>
+          <div className="h-1 rounded-full bg-surface overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${edge.confidence * 100}%`,
+                backgroundColor: typeColor,
+                opacity: 0.7,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 const nodeTypes = { causal: CausalNode2D };
 
 export default function CausalDAG2D() {
@@ -97,6 +219,8 @@ export default function CausalDAG2D() {
     interventionEpochs,
     activeTimeline,
   } = useApexStore();
+
+  const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
 
   // Drive replay ticking in DOM (outside R3F Canvas)
   useReplayTickDOM();
@@ -191,6 +315,7 @@ export default function CausalDAG2D() {
       graphData.edges.map((e) => {
         const isInconsistent = truthFilter === "verified" && e.isInconsistent;
         const propagationSignal = currentSnapshot?.edgeStates[e.id]?.propagationSignal ?? 0;
+        const isSelected = selectedEdge?.id === e.id;
 
         const baseColor = isInconsistent
           ? "#ff1744"
@@ -205,15 +330,17 @@ export default function CausalDAG2D() {
           ? "#ffab00"
           : baseColor;
 
-        const baseOpacity = isInconsistent ? 0.6 : 0.7;
+        const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
         const opacity = propagationSignal > 0
           ? Math.min(1, baseOpacity + propagationSignal * 0.3)
-          : baseOpacity;
+          : selectedEdge && !isSelected ? 0.15 : baseOpacity;
 
         const baseWidth = 0.5 + e.weight * 1.5;
-        const strokeWidth = propagationSignal > 0
-          ? baseWidth + propagationSignal * 2
-          : baseWidth;
+        const strokeWidth = isSelected
+          ? baseWidth + 1.5
+          : propagationSignal > 0
+            ? baseWidth + propagationSignal * 2
+            : baseWidth;
 
         return {
           id: e.id,
@@ -238,10 +365,32 @@ export default function CausalDAG2D() {
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot]
+    [graphData, truthFilter, currentSnapshot, selectedEdge]
   );
 
   const onInit = useCallback(() => {}, []);
+
+  const onEdgeClick: EdgeMouseHandler = useCallback(
+    (_event, rfEdge) => {
+      const causalEdge = graphData.edges.find((e) => e.id === rfEdge.id);
+      if (causalEdge) {
+        setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
+      }
+    },
+    [graphData.edges]
+  );
+
+  const onPaneClick = useCallback(() => {
+    setSelectedEdge(null);
+  }, []);
+
+  // Resolve labels for edge inspector
+  const selectedSourceLabel = selectedEdge
+    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    : "";
+  const selectedTargetLabel = selectedEdge
+    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    : "";
 
   return (
     <div className="w-full h-full relative">
@@ -251,6 +400,8 @@ export default function CausalDAG2D() {
         edges={edges}
         nodeTypes={nodeTypes}
         onInit={onInit}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
@@ -262,6 +413,17 @@ export default function CausalDAG2D() {
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
+      <AnimatePresence>
+        {selectedEdge && (
+          <EdgeInspector
+            key={selectedEdge.id}
+            edge={selectedEdge}
+            sourceLabel={selectedSourceLabel}
+            targetLabel={selectedTargetLabel}
+            onClose={() => setSelectedEdge(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -234,64 +234,124 @@ export default function CausalDAG2D() {
       : null;
 
   const CONTRACTION = 0.18;
+  const NODE_W = 160; // approximate node width for collision
+  const NODE_H = 70;  // approximate node height for collision
+
+  // Stable hash: deterministic position per node ID (won't jump when nodes are filtered)
+  const idHash = useCallback((id: string): number => {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) {
+      h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }, []);
+
+  // Domain layout offsets — group nodes by domain in distinct zones
+  const DOMAIN_ZONES: Record<string, { cx: number; cy: number }> = useMemo(() => ({
+    "Saudi Aramco Energy": { cx: 0, cy: 0 },
+    "QatarEnergy LNG":     { cx: 1100, cy: 0 },
+    "QAFCO Fertilizer":    { cx: 0, cy: 900 },
+    "Ma'aden Phosphate":   { cx: 1100, cy: 900 },
+  }), []);
 
   const nodes: Node[] = useMemo(() => {
-    // Compute base positions
-    const basePositions = graphData.nodes.map((n, i) => ({
-      id: n.id,
-      x: (i % 5) * 200 + 50 + (Math.sin(i * 1.7) * 40),
-      y: Math.floor(i / 5) * 160 + 30 + (Math.cos(i * 2.3) * 30),
-    }));
+    // Group nodes by domain for within-domain layout
+    const domainGroups = new Map<string, typeof graphData.nodes>();
+    for (const n of graphData.nodes) {
+      if (!domainGroups.has(n.domain)) domainGroups.set(n.domain, []);
+      domainGroups.get(n.domain)!.push(n);
+    }
 
-    // Build adjacency map for contraction
-    const neighbors = new Map<string, string[]>();
-    if (currentSnapshot) {
-      for (const edge of graphData.edges) {
-        if (!neighbors.has(edge.source)) neighbors.set(edge.source, []);
-        if (!neighbors.has(edge.target)) neighbors.set(edge.target, []);
-        neighbors.get(edge.source)!.push(edge.target);
-        neighbors.get(edge.target)!.push(edge.source);
+    // Compute stable positions: domain zone + circular spread within domain
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const [domain, domainNodes] of domainGroups) {
+      const zone = DOMAIN_ZONES[domain] ?? { cx: 550, cy: 450 };
+      const count = domainNodes.length;
+      // Sort by ID hash for consistent ordering
+      const sorted = [...domainNodes].sort((a, b) => idHash(a.id) - idHash(b.id));
+
+      for (let i = 0; i < sorted.length; i++) {
+        const n = sorted[i];
+        // Use a wider grid within each domain zone
+        const cols = Math.ceil(Math.sqrt(count * 1.5));
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        // Stagger even rows for better spacing
+        const staggerX = row % 2 === 1 ? NODE_W * 0.5 : 0;
+        const x = zone.cx + col * (NODE_W + 40) + staggerX;
+        const y = zone.cy + row * (NODE_H + 50);
+        positions.set(n.id, { x, y });
       }
     }
 
-    // Build position lookup for contraction
-    const posLookup = new Map<string, { x: number; y: number }>();
-    for (const bp of basePositions) {
-      posLookup.set(bp.id, { x: bp.x, y: bp.y });
+    // Collision avoidance — simple iterative repulsion (3 passes)
+    const allIds = Array.from(positions.keys());
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < allIds.length; i++) {
+        for (let j = i + 1; j < allIds.length; j++) {
+          const a = positions.get(allIds[i])!;
+          const b = positions.get(allIds[j])!;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const overlapX = NODE_W - Math.abs(dx);
+          const overlapY = NODE_H - Math.abs(dy);
+          if (overlapX > 0 && overlapY > 0) {
+            // Push apart along the axis with less overlap
+            if (overlapX < overlapY) {
+              const push = overlapX * 0.55;
+              a.x -= dx > 0 ? push : -push;
+              b.x += dx > 0 ? push : -push;
+            } else {
+              const push = overlapY * 0.55;
+              a.y -= dy > 0 ? push : -push;
+              b.y += dy > 0 ? push : -push;
+            }
+          }
+        }
+      }
     }
 
-    return graphData.nodes.map((n, i) => {
-      const base = basePositions[i];
+    return graphData.nodes.map((n) => {
+      const base = positions.get(n.id) ?? { x: 0, y: 0 };
       let posX = base.x;
       let posY = base.y;
+
+      // Subtle temporal drift — omega changes nudge position slightly (max ±15px)
+      const omega = n.omegaFragility.composite;
+      const h = idHash(n.id);
+      const driftX = Math.sin(omega * 0.7 + h * 0.001) * 15;
+      const driftY = Math.cos(omega * 0.5 + h * 0.002) * 12;
+      posX += driftX;
+      posY += driftY;
 
       // Apply contraction during replay
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[n.id];
         if (state && state.shockIntensity > 0.01) {
-          const nbs = neighbors.get(n.id) ?? [];
+          // Pull slightly toward neighbors under shock
           let cx = 0, cy = 0, totalWeight = 0;
-          for (const nbId of nbs) {
+          for (const edge of graphData.edges) {
+            const nbId = edge.source === n.id ? edge.target : edge.target === n.id ? edge.source : null;
+            if (!nbId) continue;
+            const nbPos = positions.get(nbId);
             const nbState = currentSnapshot.nodeStates[nbId];
-            const nbPos = posLookup.get(nbId);
             if (!nbPos) continue;
             const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
             cx += nbPos.x * w;
             cy += nbPos.y * w;
             totalWeight += w;
           }
-
           if (totalWeight > 0) {
             cx /= totalWeight;
             cy /= totalWeight;
             const pull = state.shockIntensity * CONTRACTION;
-            posX = base.x + (cx - base.x) * pull;
-            posY = base.y + (cy - base.y) * pull;
+            posX = posX + (cx - posX) * pull;
+            posY = posY + (cy - posY) * pull;
           }
         }
       }
 
-      const epochOmega = currentSnapshot?.nodeStates[n.id]?.omegaComposite ?? n.omegaFragility.composite;
+      const epochOmega = currentSnapshot?.nodeStates[n.id]?.omegaComposite ?? omega;
       const epochShock = currentSnapshot?.nodeStates[n.id]?.shockIntensity ?? 0;
 
       return {
@@ -309,7 +369,7 @@ export default function CausalDAG2D() {
         },
       };
     });
-  }, [graphData, truthFilter, currentSnapshot]);
+  }, [graphData, truthFilter, currentSnapshot, idHash, DOMAIN_ZONES]);
 
   const edges: Edge[] = useMemo(
     () =>

@@ -1,5 +1,6 @@
 import { CopilotMessage, ModuleId, CausalGraph } from "./types";
 import { serializeGraphContext } from "./copilot-context";
+import { runTarskiValidation, TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 
 let msgCounter = 0;
 
@@ -17,6 +18,61 @@ function makeMsg(
   };
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────
+
+function getAxiomName(axiomId: string): string {
+  return AXIOM_LIBRARY.find((a) => a.id === axiomId)?.name ?? axiomId;
+}
+
+function getAxiomLevel(axiomId: string): number {
+  return AXIOM_LIBRARY.find((a) => a.id === axiomId)?.level ?? -1;
+}
+
+const LEVEL_LABELS: Record<number, string> = {
+  0: "Physical Laws",
+  1: "Regulatory / Geopolitical",
+  2: "Heuristic",
+};
+
+/** Build a cascade chain string from a starting node, walking outbound edges. */
+function traceCascadePath(graph: CausalGraph, startId: string, maxDepth = 5): string[] {
+  const path: string[] = [];
+  const visited = new Set<string>();
+  let current = startId;
+
+  for (let i = 0; i < maxDepth; i++) {
+    const node = graph.nodes.find((n) => n.id === current);
+    if (!node || visited.has(current)) break;
+    visited.add(current);
+    path.push(node.shortLabel || node.label);
+
+    // Follow the highest-weight outbound edge
+    const outEdges = graph.edges
+      .filter((e) => e.source === current && !e.isSevered)
+      .sort((a, b) => b.weight - a.weight);
+    if (outEdges.length === 0) break;
+    current = outEdges[0].target;
+  }
+
+  return path;
+}
+
+/** Get top cascade chains from the graph's highest-omega root nodes. */
+function getTopCascadeChains(graph: CausalGraph, count = 3): string[] {
+  const topNodes = [...graph.nodes]
+    .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+    .slice(0, count);
+
+  return topNodes
+    .map((n) => {
+      const path = traceCascadePath(graph, n.id);
+      return path.length >= 2 ? path.join(" \u2192 ") : null;
+    })
+    .filter((p): p is string => p !== null);
+}
+
+// ─── Actions ──────────────────────────────────────────────────────
+
 export type CopilotAction =
   | "DISCOVER_STRUCTURE"
   | "EXPLAIN_REJECTION"
@@ -24,7 +80,8 @@ export type CopilotAction =
 
 export function processAction(
   action: CopilotAction,
-  graph: CausalGraph
+  graph: CausalGraph,
+  tarskiReport?: TarskiValidationReport | null
 ): CopilotMessage[] {
   const domains = [...new Set(graph.nodes.map((n) => n.domain))];
   const topNode = [...graph.nodes].sort(
@@ -32,7 +89,12 @@ export function processAction(
   )[0];
 
   switch (action) {
-    case "DISCOVER_STRUCTURE":
+    case "DISCOVER_STRUCTURE": {
+      const chains = getTopCascadeChains(graph);
+      const chainsText = chains.length > 0
+        ? `Cross-domain cascades detected: ${chains.join(", ")}.\n\n`
+        : "";
+
       return [
         makeMsg(
           "assistant",
@@ -46,42 +108,117 @@ export function processAction(
             `  \u2022 DCD/NOTEARS \u2014 nonlinear structural\n` +
             `  \u2022 PCMCI+ \u2014 temporal lag analysis\n` +
             `  \u2022 FCI \u2014 latent confounding detection\n\n` +
-            `Cross-domain cascades detected: EUV \u2192 AI Compute, Rare Earth \u2192 HVDC \u2192 Grid \u2192 Data Centers, Undersea Cables \u2192 Dollar Funding.\n\n` +
+            chainsText +
             `Structure locked. Awaiting Tarski verification pass.`,
           "spirtes"
         ),
       ];
+    }
 
-    case "EXPLAIN_REJECTION":
+    case "EXPLAIN_REJECTION": {
+      // Run Tarski validation dynamically if not provided
+      const report = tarskiReport ?? runTarskiValidation(graph);
+
+      // Group proof traces by axiom level
+      const byLevel = new Map<number, { edgeId: string; axioms: string[]; verdict: string }[]>();
+      for (const trace of report.proofTraces) {
+        for (const axiomId of trace.violatedAxioms) {
+          const level = getAxiomLevel(axiomId);
+          if (!byLevel.has(level)) byLevel.set(level, []);
+          byLevel.get(level)!.push({
+            edgeId: trace.edgeId,
+            axioms: trace.violatedAxioms,
+            verdict: trace.verdict,
+          });
+        }
+      }
+
+      // Build detail lines
+      let detailText = "";
+      for (const [level, traces] of [...byLevel.entries()].sort((a, b) => a[0] - b[0])) {
+        const levelLabel = LEVEL_LABELS[level] ?? `Level ${level}`;
+        // Deduplicate by edgeId within this level
+        const seen = new Set<string>();
+        const uniqueTraces = traces.filter((t) => {
+          if (seen.has(t.edgeId)) return false;
+          seen.add(t.edgeId);
+          return true;
+        });
+
+        detailText += `${levelLabel}:\n`;
+        for (const trace of uniqueTraces.slice(0, 5)) {
+          const edge = graph.edges.find((e) => e.id === trace.edgeId);
+          if (edge) {
+            const src = graph.nodes.find((n) => n.id === edge.source);
+            const tgt = graph.nodes.find((n) => n.id === edge.target);
+            const axiomNames = trace.axioms.map((a) => `${getAxiomName(a)} (${a})`).join(", ");
+            detailText += `  \u2022 ${src?.shortLabel ?? edge.source} \u2194 ${tgt?.shortLabel ?? edge.target} \u2014 ${axiomNames}\n`;
+          }
+        }
+        if (uniqueTraces.length > 5) {
+          detailText += `  ... and ${uniqueTraces.length - 5} more\n`;
+        }
+        detailText += "\n";
+      }
+
+      // Restricted nodes summary
+      let restrictedText = "";
+      if (report.restrictedNodeIds.size > 0) {
+        const restrictedNodes = graph.nodes.filter((n) => report.restrictedNodeIds.has(n.id));
+        const top5 = restrictedNodes
+          .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+          .slice(0, 5);
+        restrictedText = `Restricted nodes: ${top5.map((n) => `${n.shortLabel} (\u03A9 ${n.omegaFragility.composite.toFixed(1)})`).join(", ")}`;
+        if (restrictedNodes.length > 5) {
+          restrictedText += ` ... and ${restrictedNodes.length - 5} more`;
+        }
+        restrictedText += "\n\n";
+      }
+
       return [
         makeMsg(
           "assistant",
           `[TARSKI] Truth filter scan complete.\n\n` +
-            `Detected: ${graph.metadata.inconsistentEdges} inconsistent edge(s)\n` +
-            `Restricted: ${graph.metadata.restrictedNodes} node(s)\n\n` +
-            `Inconsistency detail:\n` +
-            `  \u2022 N. Virginia Hub \u2194 Grid Stability \u2014 bidirectional load/supply loop violates DAG acyclicity\n` +
-            `  \u2022 Fed Swap Lines \u2194 FX Swap Basis \u2014 confounded relationship, latent policy variable suspected\n\n` +
+            `Detected: ${report.inconsistentEdgeIds.size} inconsistent edge(s)\n` +
+            `Restricted: ${report.restrictedNodeIds.size} node(s)\n\n` +
+            detailText +
+            restrictedText +
             `Physical constraint violations checked across ${domains.length} domains.\n` +
             `Recommendation: Apply FCI pass to identify hidden common causes. Toggle VERIFIED mode to see restricted edges.`,
           "tarski"
         ),
       ];
+    }
 
-    case "VERIFY_LOGIC":
+    case "VERIFY_LOGIC": {
+      // Build dynamic intervention examples from top-omega nodes
+      const topNodes = [...graph.nodes]
+        .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+        .slice(0, 3);
+
+      const interventionLines = topNodes.map((node) => {
+        const path = traceCascadePath(graph, node.id);
+        const omegas = path.map((label) => {
+          const n = graph.nodes.find((nd) => nd.shortLabel === label || nd.label === label);
+          return n ? n.omegaFragility.composite.toFixed(1) : "?";
+        });
+        const cascadeStr = path.join(" \u2192 ");
+        const omegaStr = omegas.join(" \u2192 ");
+        return `  \u2022 do(${node.shortLabel} = 0) \u2192 Expected cascade: ${cascadeStr} (\u03A9 propagation ${omegaStr})`;
+      });
+
       return [
         makeMsg(
           "assistant",
           `[PEARL] Causal logic verification via do-calculus...\n\n` +
             `Testing interventional consistency across ${domains.length} domains:\n` +
-            `  \u2022 do(TSMC CoWoS = 0) \u2192 Expected cascade: AI Compute \u2192 Data Center \u2192 Credit markets (\u03A9 propagation 9.9 \u2192 9.5 \u2192 9.2)\n` +
-            `  \u2022 do(Baotou Refining = embargo) \u2192 NdFeB \u2192 HVDC \u2192 Grid cascade (\u03A9 9.7 \u2192 9.4 \u2192 9.5 \u2192 8.8)\n` +
-            `  \u2022 P(Credit Stress | do(Landing Stations cut)) diverges from observational by \u0394=0.42\n\n` +
-            `Conclusion: Cross-domain causal effects are non-spurious. The DAG structure supports valid interventional reasoning.\n\n` +
+            interventionLines.join("\n") +
+            `\n\nConclusion: Cross-domain causal effects are non-spurious. The DAG structure supports valid interventional reasoning.\n\n` +
             `Pearl Engine status: READY for counterfactual queries.`,
           "pearl"
         ),
       ];
+    }
   }
 }
 
@@ -156,6 +293,11 @@ export function processQuery(
     .slice(0, 5);
 
   if (q.includes("RISK") || q.includes("PROPAGAT")) {
+    const chains = getTopCascadeChains(graph);
+    const chainsText = chains.length > 0
+      ? chains.map((c) => `  ${c}`).join("\n")
+      : "  No multi-hop cascade chains detected.";
+
     return [
       makeMsg(
         "assistant",
@@ -168,10 +310,8 @@ export function processQuery(
             )
             .join("\n") +
           `\n\nKey cross-domain cascade chains:\n` +
-          `  ZEISS Optics \u2192 ASML EUV \u2192 TSMC Fab \u2192 CoWoS \u2192 AI Compute \u2192 Data Centers \u2192 Credit\n` +
-          `  Baotou Rare Earth \u2192 NdFeB \u2192 HVDC \u2192 Grid \u2192 Data Centers\n` +
-          `  Landing Stations \u2192 FX Swap Basis \u2192 UST Repo \u2192 Fed Swap Lines\n\n` +
-          `Total risk exposure: OMEGA-CRITICAL across 8 domains.`,
+          chainsText +
+          `\n\nTotal risk exposure: ${topNodes[0]?.omegaFragility.composite > 9 ? "OMEGA-CRITICAL" : "ELEVATED"} across ${[...new Set(graph.nodes.map((n) => n.domain))].length} domains.`,
         "spirtes"
       ),
     ];
@@ -233,6 +373,7 @@ interface StreamLlmOptions {
   ablatedNodeIds?: string[];
   ablatedEdgeIds?: string[];
   snapshotContext?: string;
+  tarskiReport?: TarskiValidationReport | null;
 }
 
 export async function streamLlmQuery(
@@ -247,6 +388,7 @@ export async function streamLlmQuery(
     ablationMode: opts.ablationMode,
     ablatedNodeIds: opts.ablatedNodeIds,
     ablatedEdgeIds: opts.ablatedEdgeIds,
+    tarskiReport: opts.tarskiReport,
   });
 
   // Append snapshot context if available

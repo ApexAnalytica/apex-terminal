@@ -1,6 +1,7 @@
 import { CausalGraph, CausalNode, CausalEdge } from "./types";
 import type { SystemStateSnapshot } from "./snapshots/types";
 import { diffSnapshots } from "./snapshots/diff";
+import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -11,6 +12,7 @@ interface ContextOptions {
   ablationMode?: boolean;
   ablatedNodeIds?: string[];
   ablatedEdgeIds?: string[];
+  tarskiReport?: TarskiValidationReport | null;
 }
 
 const MAX_ADJACENCY_NODES = 30;
@@ -171,6 +173,37 @@ export function serializeGraphContext(
       (e) => !opts.ablatedEdgeIds?.includes(e.id) && !opts.ablatedNodeIds?.includes(e.source) && !opts.ablatedNodeIds?.includes(e.target)
     );
     lines.push(`Post-ablation: ${remainingNodes.length} nodes, ${remainingEdges.length} edges`);
+  }
+
+  // Tarski validation report
+  if (opts.tarskiReport && opts.tarskiReport.proofTraces.length > 0) {
+    lines.push("");
+    lines.push("=== TARSKI VALIDATION ===");
+    lines.push(
+      `Inconsistent edges: ${opts.tarskiReport.inconsistentEdgeIds.size} | ` +
+        `Restricted nodes: ${opts.tarskiReport.restrictedNodeIds.size} | ` +
+        `Proof traces: ${opts.tarskiReport.proofTraces.length}`
+    );
+    for (const trace of opts.tarskiReport.proofTraces.slice(0, 15)) {
+      const edge = graph.edges.find((e) => e.id === trace.edgeId);
+      if (edge) {
+        const src = graph.nodes.find((n) => n.id === edge.source);
+        const tgt = graph.nodes.find((n) => n.id === edge.target);
+        const axiomNames = trace.violatedAxioms
+          .map((id) => {
+            const ax = AXIOM_LIBRARY.find((a) => a.id === id);
+            return ax ? `${ax.name} (${id}, L${ax.level})` : id;
+          })
+          .join(", ");
+        lines.push(
+          `${src?.shortLabel ?? edge.source} → ${tgt?.shortLabel ?? edge.target} ` +
+            `[${trace.verdict}] axioms: ${axiomNames}`
+        );
+      }
+    }
+    if (opts.tarskiReport.proofTraces.length > 15) {
+      lines.push(`(${opts.tarskiReport.proofTraces.length - 15} more traces omitted)`);
+    }
   }
 
   return lines.join("\n");

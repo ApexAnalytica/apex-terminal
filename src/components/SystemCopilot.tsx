@@ -74,6 +74,7 @@ export default function SystemCopilot() {
     setIsComputeLoading,
     baselineEpochs,
     currentEpoch,
+    tarskiReport,
   } = useApexStore();
 
   // Copilot always uses Gemini; Claude key is for compute only
@@ -290,6 +291,7 @@ export default function SystemCopilot() {
           ablatedNodeIds,
           ablatedEdgeIds,
           snapshotContext,
+          tarskiReport,
         });
 
         const reader = stream.getReader();
@@ -353,7 +355,7 @@ export default function SystemCopilot() {
     if (isLlmActive) {
       handleStreamingQuery(userContent);
     } else {
-      const responses = processAction(action, graphData);
+      const responses = processAction(action, graphData, tarskiReport);
       responses.forEach((msg) => addCopilotMessage(msg));
     }
   };

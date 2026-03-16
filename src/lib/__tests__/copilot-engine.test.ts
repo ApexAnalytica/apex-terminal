@@ -60,10 +60,27 @@ describe("processAction", () => {
     expect(msgs[0].content).toContain(String(graph.metadata.totalEdges));
   });
 
+  it("DISCOVER_STRUCTURE includes dynamic cascade chains", () => {
+    const msgs = processAction("DISCOVER_STRUCTURE", richGraph());
+    // Should reference actual node labels, not hardcoded ones
+    expect(msgs[0].content).toContain("TSM");
+  });
+
   it("EXPLAIN_REJECTION returns Tarski module output", () => {
     const msgs = processAction("EXPLAIN_REJECTION", richGraph());
     expect(msgs[0].module).toBe("tarski");
     expect(msgs[0].content).toContain("TARSKI");
+  });
+
+  it("EXPLAIN_REJECTION uses dynamic Tarski data", () => {
+    const msgs = processAction("EXPLAIN_REJECTION", richGraph());
+    const content = msgs[0].content;
+    // Should contain detected counts from validation, not hardcoded text
+    expect(content).toContain("inconsistent edge(s)");
+    expect(content).toContain("node(s)");
+    // Should NOT contain old hardcoded references
+    expect(content).not.toContain("N. Virginia Hub");
+    expect(content).not.toContain("Fed Swap Lines");
   });
 
   it("VERIFY_LOGIC returns Pearl module output", () => {
@@ -71,6 +88,13 @@ describe("processAction", () => {
     expect(msgs[0].module).toBe("pearl");
     expect(msgs[0].content).toContain("PEARL");
     expect(msgs[0].content).toContain("do-calculus");
+  });
+
+  it("VERIFY_LOGIC includes dynamic intervention targets", () => {
+    const msgs = processAction("VERIFY_LOGIC", richGraph());
+    const content = msgs[0].content;
+    // Should reference actual graph nodes
+    expect(content).toContain("TSM");
   });
 
   it("all messages have valid IDs and timestamps", () => {
@@ -139,6 +163,15 @@ describe("processQuery", () => {
     const msgs = processQuery("risk propagation paths", richGraph());
     expect(msgs[0].content).toContain("Risk propagation");
     expect(msgs[0].module).toBe("spirtes");
+  });
+
+  it("risk query includes dynamic cascade chains from graph", () => {
+    const msgs = processQuery("risk propagation", richGraph());
+    const content = msgs[0].content;
+    // Should reference actual graph nodes, not hardcoded chains
+    expect(content).toContain("TSM");
+    expect(content).not.toContain("ZEISS Optics");
+    expect(content).not.toContain("Baotou Rare Earth");
   });
 
   it("routes COUNTERFACTUAL keyword to Pearl engine", () => {

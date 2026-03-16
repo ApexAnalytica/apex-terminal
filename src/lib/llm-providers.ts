@@ -1,7 +1,7 @@
 // ─── LLM Provider Abstraction ───────────────────────────────────
 // Unified interface for streaming from multiple LLM providers
 
-export type LLMProvider = "anthropic" | "gemini";
+export type LLMProvider = "anthropic" | "gemini" | "ollama";
 
 export interface StreamOptions {
   apiKey: string;
@@ -26,6 +26,13 @@ export const PROVIDER_MODELS: ProviderModelOption[] = [
   { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", provider: "gemini" },
   { value: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", provider: "gemini" },
   { value: "gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro", provider: "gemini" },
+  // Ollama (local open-source)
+  { value: "llama3.1:8b", label: "Llama 3.1 8B", provider: "ollama" },
+  { value: "llama3.1:70b", label: "Llama 3.1 70B", provider: "ollama" },
+  { value: "mistral:7b", label: "Mistral 7B", provider: "ollama" },
+  { value: "mixtral:8x7b", label: "Mixtral 8x7B", provider: "ollama" },
+  { value: "qwen2.5:7b", label: "Qwen 2.5 7B", provider: "ollama" },
+  { value: "deepseek-r1:8b", label: "DeepSeek R1 8B", provider: "ollama" },
 ];
 
 export function getModelsForProvider(provider: LLMProvider): ProviderModelOption[] {
@@ -37,7 +44,9 @@ export function getProviderForModel(model: string): LLMProvider | null {
 }
 
 export function getDefaultModel(provider: LLMProvider): string {
-  return provider === "anthropic"
-    ? "claude-sonnet-4-20250514"
-    : "gemini-2.0-flash";
+  switch (provider) {
+    case "anthropic": return "claude-sonnet-4-20250514";
+    case "gemini": return "gemini-2.0-flash";
+    case "ollama": return "llama3.1:8b";
+  }
 }

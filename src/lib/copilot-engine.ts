@@ -363,7 +363,7 @@ interface StreamLlmOptions {
   graph: CausalGraph;
   apiKey: string;
   model: string;
-  provider?: "anthropic" | "gemini";
+  provider?: "anthropic" | "gemini" | "ollama";
   selectedNode: string | null;
   severedEdges: string[];
   shocks: { id: string; name: string; severity: number; category: string }[];
@@ -374,6 +374,7 @@ interface StreamLlmOptions {
   ablatedEdgeIds?: string[];
   snapshotContext?: string;
   tarskiReport?: TarskiValidationReport | null;
+  ollamaUrl?: string;
 }
 
 export async function streamLlmQuery(
@@ -413,6 +414,7 @@ export async function streamLlmQuery(
       apiKey: opts.apiKey,
       model: opts.model,
       provider: opts.provider,
+      ollamaUrl: opts.ollamaUrl,
     }),
   });
 

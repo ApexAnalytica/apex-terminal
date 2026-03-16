@@ -62,10 +62,10 @@ export default function InterventionControls() {
   return (
     <div className="space-y-3">
       <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
-        INTERVENTION MODE
+        do(X) INTERVENTION
       </div>
       <div className="text-[9px] text-text-muted font-mono">
-        Apply Pearl&apos;s do-calculus. Click a node in the DAG to set do(X) target.
+        Pearl&apos;s do-calculus: isolate a node from upstream causes to observe counterfactual downstream effects. Unlike scenario shocks (Pareto), this is a structural graph operation.
       </div>
 
       <button

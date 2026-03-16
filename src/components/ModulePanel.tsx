@@ -25,8 +25,8 @@ export default function ModulePanel() {
         <div className="text-[9px] text-text-muted font-mono mt-0.5">
           {activeModule === "spirtes" && "Structure Discovery \u2014 DCD / NOTEARS / PCMCI+ / FCI"}
           {activeModule === "tarski" && "Truth Verification \u2014 Physical Constraint Filter"}
-          {activeModule === "pearl" && "Counterfactual Engine \u2014 do-Calculus"}
-          {activeModule === "pareto" && "Criticality Warning \u2014 \u03A9-Fragility Assessment"}
+          {activeModule === "pearl" && "Structural Intervention \u2014 do-Calculus & Counterfactuals"}
+          {activeModule === "pareto" && "Scenario Stress Test \u2014 Shock Injection & Defense Optimization"}
         </div>
       </div>
 
@@ -50,16 +50,24 @@ export default function ModulePanel() {
 
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
+            <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
+              Structural what-if analysis. Apply do(X) to isolate a node from its upstream causes,
+              sever causal links, and observe counterfactual downstream effects.
+            </div>
             <InterventionControls />
             <AblationPanel />
-            <InterdictionPanel />
           </div>
         )}
 
         {activeModule === "pareto" && (
           <div className="p-4 space-y-3">
+            <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
+              Inject exogenous disruption scenarios, assess systemic fragility,
+              then run interdiction to find optimal defensive interventions.
+            </div>
             <SnapshotIndicator />
             <ParetoPanel />
+            <InterdictionPanel />
           </div>
         )}
       </div>
@@ -363,10 +371,13 @@ function ParetoPanel() {
         </div>
       )}
 
-      {/* Shock Injector */}
+      {/* Scenario Injector */}
       <div className="mt-3">
-        <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted mb-1.5">
-          INJECT SHOCK
+        <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-red mb-1">
+          SCENARIO INJECTION
+        </div>
+        <div className="text-[8px] font-mono text-text-muted mb-1.5">
+          Activate exogenous disruption scenarios to stress-test the network. Each scenario shifts the doomsday clock and fragility index.
         </div>
         <div className="space-y-1 max-h-36 overflow-y-auto">
           {presetShocks.map((shock) => {

@@ -5,6 +5,7 @@ import ReactFlow, {
   Node,
   Edge,
   EdgeMouseHandler,
+  NodeMouseHandler,
   Background,
   Controls,
   NodeProps,
@@ -380,9 +381,20 @@ export default function CausalDAG2D() {
     [graphData.edges]
   );
 
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+
+  const onNodeClick: NodeMouseHandler = useCallback(
+    (_event, rfNode) => {
+      setSelectedEdge(null);
+      setSelectedNode(rfNode.id);
+    },
+    [setSelectedNode]
+  );
+
   const onPaneClick = useCallback(() => {
     setSelectedEdge(null);
-  }, []);
+    setSelectedNode(null);
+  }, [setSelectedNode]);
 
   // Resolve labels for edge inspector
   const selectedSourceLabel = selectedEdge
@@ -400,6 +412,7 @@ export default function CausalDAG2D() {
         edges={edges}
         nodeTypes={nodeTypes}
         onInit={onInit}
+        onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         fitView

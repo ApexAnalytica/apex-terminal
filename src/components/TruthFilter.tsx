@@ -3,7 +3,7 @@
 import { useApexStore } from "@/stores/useApexStore";
 
 export default function TruthFilter() {
-  const { truthFilter, setTruthFilter, graphData } = useApexStore();
+  const { truthFilter, setTruthFilter, graphData, tarskiReport } = useApexStore();
   const meta = graphData.metadata;
 
   return (
@@ -30,8 +30,8 @@ export default function TruthFilter() {
           VERIFIED
         </button>
       </div>
-      {truthFilter === "verified" && (
-        <span className="text-[8px] font-mono text-accent-red">
+      {truthFilter === "verified" && tarskiReport && (
+        <span className="text-[8px] font-mono" style={{ color: tarskiReport.totalViolations > 0 ? "#ff1744" : "#00e676" }}>
           {meta.inconsistentEdges} EDGES | {meta.restrictedNodes} NODES
         </span>
       )}

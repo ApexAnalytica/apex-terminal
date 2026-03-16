@@ -1541,7 +1541,7 @@ const EDGES: CausalEdge[] = [
   // Trade policy → Saudi Aramco (export controls, sanctions)
   { id: "cx_trade_sa_aramco", source: "trade_policy", target: "sa_east_west_pipeline", weight: 0.60, lag: 2, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Trade sanctions and export controls affect Saudi energy routing" },
   // Trade policy → QatarEnergy LNG exports
-  { id: "cx_trade_qe_lng", source: "trade_policy", target: "qe_qatarenergy_lng_export_trains_qatargas_14_t", weight: 0.60, lag: 2, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Geopolitical trade restrictions affect LNG export contracts and routing" },
+  { id: "cx_trade_qe_lng", source: "trade_policy", target: "qe_qatarenergy_lng_export_trains_qatargas_1", weight: 0.60, lag: 2, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Geopolitical trade restrictions affect LNG export contracts and routing" },
   // Dollar funding → Middle East sovereign risk (FX reserves)
   { id: "cx_fx_swap_sa", source: "fx_swap_basis", target: "sa_ras_tanura_terminal", weight: 0.55, lag: 1, type: "directed", confidence: 0.60, isInconsistent: false, physicalMechanism: "Dollar liquidity stress affects petrodollar recycling and Saudi export revenue" },
   // Grid stability → Saudi gas system (power feeds gas processing)

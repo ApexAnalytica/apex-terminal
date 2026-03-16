@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
@@ -13,7 +13,39 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
+const OMEGA_DESCRIPTIONS: Record<string, { short: string; detail: string; formula: string }> = {
+  IRREPLACEABILITY: {
+    short: "How difficult is it to substitute this node if it fails?",
+    detail: "Measures the global concentration of capability. A node scoring 10 means a single facility or entity controls the entire supply — no alternative exists. Derived from market share data, patent exclusivity, and geographic monopoly indicators.",
+    formula: "I = f(HHI, market_share_top1, patent_exclusivity, geographic_monopoly)",
+  },
+  "RESTORATION LATENCY": {
+    short: "How long would it take to restore function after disruption?",
+    detail: "Captures the time horizon to rebuild or reroute. A semiconductor fab takes 3–5 years to build; a shipping route reroute may take weeks. Scored from replacement time estimates, capital intensity, and regulatory approval cycles.",
+    formula: "R = g(replacement_time_months, capex_intensity, regulatory_gates)",
+  },
+  "JURISDICTIONAL HAZARD": {
+    short: "How exposed is this node to sovereign or regulatory risk?",
+    detail: "Reflects the political and legal environment governing this asset. Nodes in contested jurisdictions, under sanctions exposure, or subject to export controls score higher. Incorporates governance indices, sanctions lists, and geopolitical tension scores.",
+    formula: "J = h(governance_index, sanctions_proximity, export_control_tier, conflict_zone)",
+  },
+  "CASCADE LOAD": {
+    short: "How many downstream nodes depend on this one?",
+    detail: "Measures the systemic importance through graph topology. A node with high cascade load sits at a critical junction — its failure propagates to many dependent systems. Computed from edge degree, betweenness centrality, and the omega scores of downstream neighbors.",
+    formula: "C = Σ(edge_degree × downstream_ΩF) / normalization_factor",
+  },
+  "TAIL DEPTH": {
+    short: "How severe is the worst-case disruption scenario?",
+    detail: "Quantifies fat-tail risk — the potential for extreme, non-linear damage. Nodes where disruption triggers cascading failures across domains (e.g., Strait of Hormuz blocking both energy and fertilizer supply chains) score highest. Derived from historical crisis data and concentration × criticality interaction.",
+    formula: "T = concentration_score × system_criticality × historical_tail_events",
+  },
+};
+
+const OMEGA_METHODOLOGY = "The ΩF (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0–10. The composite weights are: I(0.25) + R(0.20) + J(0.20) + C(0.20) + T(0.15). Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.";
+
 export default function NodeInspector() {
+  const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
+  const [showMethodology, setShowMethodology] = useState(false);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const graphData = useApexStore((s) => s.graphData);
@@ -92,40 +124,96 @@ export default function NodeInspector() {
             </div>
 
             {/* Omega Composite */}
-            <div className="flex items-baseline gap-2">
-              <span
-                className="text-[28px] font-bold font-mono"
-                style={{ color: getBarColor(node.omegaFragility.composite) }}
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-[28px] font-bold font-mono"
+                  style={{ color: getBarColor(node.omegaFragility.composite) }}
+                >
+                  {"\u03A9"} {node.omegaFragility.composite.toFixed(1)}
+                </span>
+                <span className="text-[10px] text-text-muted font-mono">/ 10.0</span>
+              </div>
+              <button
+                onClick={() => setShowMethodology((v) => !v)}
+                className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors mt-0.5 tracking-wider"
               >
-                {"\u03A9"} {node.omegaFragility.composite.toFixed(1)}
-              </span>
-              <span className="text-[10px] text-text-muted font-mono">/ 10.0</span>
+                {showMethodology ? "▾ HIDE METHODOLOGY" : "▸ HOW IS ΩF COMPUTED?"}
+              </button>
+              <AnimatePresence>
+                {showMethodology && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-1.5 p-2 rounded border border-accent-cyan/20 bg-accent-cyan/5 text-[8px] font-mono text-foreground/80 leading-relaxed">
+                      {OMEGA_METHODOLOGY}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* 5-axis bars (larger) */}
+            {/* 5-axis bars with expandable descriptions */}
             <div className="space-y-2">
-              {axes.map((axis) => (
-                <div key={axis.label}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[8px] text-text-muted font-mono">{axis.label}</span>
-                    <span
-                      className="text-[9px] font-mono font-bold"
-                      style={{ color: getBarColor(axis.value) }}
-                    >
-                      {axis.value.toFixed(1)}
-                    </span>
+              {axes.map((axis) => {
+                const desc = OMEGA_DESCRIPTIONS[axis.label];
+                const isExpanded = expandedPillar === axis.label;
+                return (
+                  <div key={axis.label}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <button
+                        onClick={() => setExpandedPillar(isExpanded ? null : axis.label)}
+                        className="text-[8px] text-text-muted font-mono hover:text-accent-cyan transition-colors text-left flex items-center gap-1"
+                      >
+                        <span className="text-[7px] opacity-50">{isExpanded ? "▾" : "▸"}</span>
+                        {axis.label}
+                      </button>
+                      <span
+                        className="text-[9px] font-mono font-bold"
+                        style={{ color: getBarColor(axis.value) }}
+                      >
+                        {axis.value.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(axis.value / 10) * 100}%`,
+                          backgroundColor: getBarColor(axis.value),
+                        }}
+                      />
+                    </div>
+                    <AnimatePresence>
+                      {isExpanded && desc && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-1 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
+                            <div className="text-[8px] font-mono text-foreground/90 leading-relaxed">
+                              {desc.short}
+                            </div>
+                            <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+                              {desc.detail}
+                            </div>
+                            <div className="text-[7px] font-mono text-accent-cyan/60 leading-relaxed border-t border-border pt-1">
+                              {desc.formula}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${(axis.value / 10) * 100}%`,
-                        backgroundColor: getBarColor(axis.value),
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Metadata */}

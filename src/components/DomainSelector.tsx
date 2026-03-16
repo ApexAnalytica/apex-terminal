@@ -6,26 +6,118 @@ import { useApexStore } from "@/stores/useApexStore";
 
 export const DOMAIN_CARDS = [
   {
+    id: "financial-contagion",
+    label: "Financial Contagion Risk",
+    icon: "\u{1F3E6}",
+    color: "#ff6d00",
+    colorVar: "var(--accent-orange)",
+    description: "Systemic banking failures, credit default cascades, liquidity traps",
+    hasData: false,
+  },
+  {
+    id: "supply-chain",
+    label: "Supply Chain Shock Risk",
+    icon: "\u{1F517}",
+    color: "#00e5ff",
+    colorVar: "var(--accent-cyan)",
+    description: "Critical material bottlenecks, logistics disruption, supplier concentration",
+    hasData: false,
+  },
+  {
+    id: "sovereign-risk",
+    label: "Emerging Market Sovereign Risk",
+    icon: "\u{1F30D}",
+    color: "#ffab00",
+    colorVar: "var(--accent-amber)",
+    description: "Currency crises, debt restructuring, capital flight contagion",
+    hasData: false,
+  },
+  {
+    id: "infrastructure",
+    label: "Infrastructure Resilience Risk",
+    icon: "\u{1F3D7}",
+    color: "#7c4dff",
+    colorVar: "var(--accent-purple)",
+    description: "Grid failures, telecom outages, transportation network collapse",
+    hasData: false,
+  },
+  {
+    id: "ai-systems",
+    label: "Scaled AI System Risk",
+    icon: "\u{1F916}",
+    color: "#00e676",
+    colorVar: "var(--accent-green)",
+    description: "Compute concentration, model failures, AI supply chain disruption",
+    hasData: false,
+  },
+  {
     id: "energy-systems",
     label: "Energy Systems",
     icon: "\u{26A1}",
-    color: "#00e676",
-    colorVar: "var(--accent-green)",
+    color: "#ff1744",
+    colorVar: "var(--accent-red)",
     description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
+    hasData: true,
   },
   {
     id: "manufacturing",
     label: "Fertilizer & Agrochemical",
     icon: "\u{1F3ED}",
-    color: "#76ff03",
-    colorVar: "var(--accent-green)",
+    color: "#448aff",
+    colorVar: "var(--accent-blue)",
     description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
+    hasData: true,
+  },
+  {
+    id: "frontier-science",
+    label: "Frontier Science",
+    icon: "\u269B\uFE0F",
+    color: "#e040fb",
+    colorVar: "var(--accent-magenta)",
+    description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
+    hasData: false,
   },
 ] as const;
 
 const CASCADE_EXAMPLES: Record<string, string> = {
   "energy-systems+manufacturing":
     "Saudi gas supply disruption \u2192 ammonia feedstock shortage \u2192 QAFCO/Ma'aden output collapse \u2192 global fertilizer price spike \u2192 food inflation",
+  "financial-contagion+supply-chain":
+    "Bank credit freeze \u2192 trade finance collapse \u2192 shipping delays \u2192 manufacturing halt",
+  "financial-contagion+sovereign-risk":
+    "Sovereign default \u2192 bank exposure losses \u2192 cross-border contagion \u2192 currency crisis",
+  "financial-contagion+infrastructure":
+    "Infrastructure bond default \u2192 municipal credit freeze \u2192 utility service degradation",
+  "financial-contagion+ai-systems":
+    "AI compute capex pullback \u2192 chip vendor revenue shock \u2192 semiconductor credit tightening",
+  "supply-chain+sovereign-risk":
+    "Export ban \u2192 critical mineral shortage \u2192 manufacturing re-routing \u2192 cost inflation",
+  "supply-chain+infrastructure":
+    "Port failure \u2192 rerouting bottleneck \u2192 energy grid overload \u2192 cascading blackouts",
+  "supply-chain+ai-systems":
+    "Chip fab disruption \u2192 GPU allocation crisis \u2192 AI training delays \u2192 compute rationing",
+  "sovereign-risk+infrastructure":
+    "Fiscal crisis \u2192 infrastructure maintenance cuts \u2192 grid instability \u2192 industrial output drop",
+  "sovereign-risk+ai-systems":
+    "Data sovereignty laws \u2192 compute localization \u2192 efficiency loss \u2192 AI capability fragmentation",
+  "infrastructure+ai-systems":
+    "Power grid failure \u2192 data center outage \u2192 AI service disruption \u2192 dependent system cascades",
+  "energy-systems+financial-contagion":
+    "Grid instability \u2192 utility bond default \u2192 energy credit freeze \u2192 rolling blackout financing gap",
+  "energy-systems+supply-chain":
+    "Transformer shortage \u2192 grid expansion halt \u2192 industrial power rationing \u2192 manufacturing delays",
+  "energy-systems+sovereign-risk":
+    "Nuclear fuel enrichment bottleneck \u2192 energy import dependency \u2192 sovereign credit downgrade",
+  "energy-systems+infrastructure":
+    "HVDC cable failure \u2192 grid island separation \u2192 frequency instability \u2192 cascading load shed",
+  "ai-systems+energy-systems":
+    "AI data center load surge \u2192 grid capacity breach \u2192 emergency curtailment \u2192 compute rationing",
+  "financial-contagion+manufacturing":
+    "Credit contraction \u2192 biomanufacturing capex freeze \u2192 vaccine production gap \u2192 pandemic vulnerability",
+  "manufacturing+supply-chain":
+    "Rare earth embargo \u2192 industrial robotics shortage \u2192 factory automation halt \u2192 output collapse",
+  "manufacturing+sovereign-risk":
+    "Export controls \u2192 fertilizer supply disruption \u2192 food price shock \u2192 sovereign instability",
 };
 
 function getCascadeExamples(domainIds: string[]): string[] {
@@ -150,7 +242,8 @@ export default function DomainSelector() {
               {DOMAIN_CARDS.map((domain) => {
                 const isSelected = localSelected.includes(domain.id);
                 const isDisabled =
-                  !isSelected && localMulti && localSelected.length >= 3;
+                  !domain.hasData ||
+                  (!isSelected && localMulti && localSelected.length >= 3);
 
                 return (
                   <button
@@ -162,7 +255,7 @@ export default function DomainSelector() {
                       backgroundColor: isSelected
                         ? `${domain.color}10`
                         : "var(--surface)",
-                      opacity: isDisabled ? 0.4 : 1,
+                      opacity: isDisabled ? 0.35 : 1,
                       cursor: isDisabled ? "not-allowed" : "pointer",
                       boxShadow: isSelected
                         ? `0 0 12px ${domain.color}20, 0 0 4px ${domain.color}15`
@@ -172,10 +265,15 @@ export default function DomainSelector() {
                     <span className="text-xl flex-shrink-0">{domain.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div
-                        className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider"
-                        style={{ color: isSelected ? domain.color : "var(--foreground)" }}
+                        className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
+                        style={{ color: isSelected ? domain.color : domain.hasData ? "var(--foreground)" : "var(--text-muted)" }}
                       >
                         {domain.label.toUpperCase()}
+                        {!domain.hasData && (
+                          <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
+                            COMING SOON
+                          </span>
+                        )}
                       </div>
                       <div className="text-[9px] font-mono text-text-muted mt-0.5 truncate">
                         {domain.description}

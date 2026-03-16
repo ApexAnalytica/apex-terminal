@@ -115,12 +115,16 @@ interface ApexState {
   geminiApiKey: string;
   claudeModel: string;
   geminiModel: string;
+  ollamaUrl: string;
+  ollamaModel: string;
   isLlmStreaming: boolean;
   setLlmProvider: (provider: LLMProvider) => void;
   setClaudeApiKey: (key: string) => void;
   setGeminiApiKey: (key: string) => void;
   setClaudeModel: (model: string) => void;
   setGeminiModel: (model: string) => void;
+  setOllamaUrl: (url: string) => void;
+  setOllamaModel: (model: string) => void;
   setIsLlmStreaming: (streaming: boolean) => void;
 
   // Sandbox
@@ -355,12 +359,16 @@ export const useApexStore = create<ApexState>((set) => ({
   geminiApiKey: "",
   claudeModel: "claude-sonnet-4-20250514",
   geminiModel: "gemini-2.0-flash",
+  ollamaUrl: "http://localhost:11434",
+  ollamaModel: "llama3.1:8b",
   isLlmStreaming: false,
   setLlmProvider: (provider) => set({ llmProvider: provider }),
   setClaudeApiKey: (key) => set({ claudeApiKey: key }),
   setGeminiApiKey: (key) => set({ geminiApiKey: key }),
   setClaudeModel: (model) => set({ claudeModel: model }),
   setGeminiModel: (model) => set({ geminiModel: model }),
+  setOllamaUrl: (url) => set({ ollamaUrl: url }),
+  setOllamaModel: (model) => set({ ollamaModel: model }),
   setIsLlmStreaming: (streaming) => set({ isLlmStreaming: streaming }),
 
   // Sandbox

@@ -10,6 +10,7 @@ import {
   streamLlmQuery,
   CopilotAction,
 } from "@/lib/copilot-engine";
+import { processLlmActions } from "@/lib/copilot-actions";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
 import { serializeGraphContext, serializeSnapshotContext } from "@/lib/copilot-context";
@@ -58,12 +59,16 @@ export default function SystemCopilot() {
     geminiApiKey,
     claudeModel,
     geminiModel,
+    ollamaUrl,
+    ollamaModel,
     isLlmStreaming,
     setLlmProvider,
     setClaudeApiKey,
     setGeminiApiKey,
     setClaudeModel,
     setGeminiModel,
+    setOllamaUrl,
+    setOllamaModel,
     setIsLlmStreaming,
     importedDatasets,
     removeImportedDataset,
@@ -77,10 +82,11 @@ export default function SystemCopilot() {
     tarskiReport,
   } = useApexStore();
 
-  // Copilot always uses Gemini; Claude key is for compute only
-  const copilotApiKey = geminiApiKey;
-  const copilotModel = geminiModel;
-  const copilotModelOptions = getModelsForProvider("gemini");
+  // Copilot provider: Gemini or Ollama; Claude is for compute only
+  const copilotProvider: LLMProvider = llmProvider === "ollama" ? "ollama" : "gemini";
+  const copilotApiKey = copilotProvider === "ollama" ? "ollama-local" : geminiApiKey;
+  const copilotModel = copilotProvider === "ollama" ? ollamaModel : geminiModel;
+  const copilotModelOptions = getModelsForProvider(copilotProvider);
 
   // Claude compute key/model
   const computeApiKey = claudeApiKey;
@@ -96,7 +102,7 @@ export default function SystemCopilot() {
   const streamingMsgRef = useRef<string | null>(null);
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isLlmActive = copilotApiKey.length > 0;
+  const isLlmActive = copilotProvider === "ollama" || copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
 
   // Click-outside to close datasets panel
@@ -281,7 +287,7 @@ export default function SystemCopilot() {
           graph: graphData,
           apiKey: copilotApiKey,
           model: copilotModel,
-          provider: "gemini",
+          provider: copilotProvider,
           selectedNode,
           severedEdges,
           shocks,
@@ -292,6 +298,7 @@ export default function SystemCopilot() {
           ablatedEdgeIds,
           snapshotContext,
           tarskiReport,
+          ollamaUrl: copilotProvider === "ollama" ? ollamaUrl : undefined,
         });
 
         const reader = stream.getReader();
@@ -302,12 +309,33 @@ export default function SystemCopilot() {
           const { done, value } = await reader.read();
           if (done) break;
           accumulated += decoder.decode(value, { stream: true });
+          // Strip action tags from displayed text
+          const { displayText } = processLlmActions(accumulated);
           // Update the streaming message in store
           useApexStore.setState((s) => ({
             copilotMessages: s.copilotMessages.map((m) =>
-              m.id === assistantId ? { ...m, content: accumulated } : m
+              m.id === assistantId ? { ...m, content: displayText } : m
             ),
           }));
+        }
+
+        // After streaming completes, execute any actions from the full response
+        const { displayText, actionResults } = processLlmActions(accumulated);
+        // Update final display text
+        useApexStore.setState((s) => ({
+          copilotMessages: s.copilotMessages.map((m) =>
+            m.id === assistantId ? { ...m, content: displayText } : m
+          ),
+        }));
+        // Log action results as system messages
+        if (actionResults.length > 0) {
+          const actionSummary = actionResults.map((r) => `  \u2022 ${r}`).join("\n");
+          addCopilotMessage({
+            id: `sys-actions-${Date.now()}`,
+            role: "system",
+            content: `ACTIONS EXECUTED:\n${actionSummary}`,
+            timestamp: Date.now(),
+          });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "LLM request failed";
@@ -328,6 +356,8 @@ export default function SystemCopilot() {
       graphData,
       copilotApiKey,
       copilotModel,
+      copilotProvider,
+      ollamaUrl,
       snapshotHistory,
       selectedNode,
       severedEdges,
@@ -413,9 +443,11 @@ export default function SystemCopilot() {
               SYSTEM COPILOT
             </div>
             <div className="text-[9px] text-text-muted font-mono mt-0.5">
-              {isLlmActive
-                ? "Gemini-Augmented Analysis"
-                : "Synthetic Scientist Interface"}
+              {copilotProvider === "ollama"
+                ? `Ollama Local (${ollamaModel})`
+                : isLlmActive
+                  ? "Gemini-Augmented Analysis"
+                  : "Synthetic Scientist Interface"}
               {isComputeAvailable && " + Claude Compute"}
             </div>
           </div>
@@ -452,36 +484,95 @@ export default function SystemCopilot() {
               className="overflow-hidden"
             >
               <div className="mt-2 pt-2 border-t border-border space-y-2">
-                {/* Gemini (Copilot) */}
+                {/* Provider toggle */}
                 <div className="space-y-1">
                   <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                    GEMINI — COPILOT
+                    COPILOT PROVIDER
                   </div>
-                  <input
-                    type="password"
-                    value={geminiApiKey}
-                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                    className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
-                    placeholder="AIza... (session only)"
-                    spellCheck={false}
-                  />
-                  <select
-                    value={copilotModel}
-                    onChange={(e) => setGeminiModel(e.target.value)}
-                    className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
-                  >
-                    {copilotModelOptions.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
+                  <div className="flex gap-1">
+                    {(["gemini", "ollama"] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setLlmProvider(p)}
+                        className="flex-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1 rounded border transition-all"
+                        style={{
+                          borderColor: copilotProvider === p ? "var(--accent-cyan)" : "var(--border)",
+                          backgroundColor: copilotProvider === p ? "rgba(0,229,255,0.08)" : "transparent",
+                          color: copilotProvider === p ? "var(--accent-cyan)" : "var(--text-muted)",
+                        }}
+                      >
+                        {p === "gemini" ? "GEMINI" : "OLLAMA"}
+                      </button>
                     ))}
-                  </select>
-                  {isLlmActive && (
-                    <div className="text-[8px] text-accent-green font-mono tracking-wider">
-                      GEMINI ACTIVE
-                    </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Gemini config */}
+                {copilotProvider === "gemini" && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                      GEMINI — COPILOT
+                    </div>
+                    <input
+                      type="password"
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                      placeholder="AIza... (session only)"
+                      spellCheck={false}
+                    />
+                    <select
+                      value={copilotModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
+                    >
+                      {copilotModelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    {geminiApiKey.length > 0 && (
+                      <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                        GEMINI ACTIVE
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Ollama config */}
+                {copilotProvider === "ollama" && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                      OLLAMA — LOCAL LLM
+                    </div>
+                    <input
+                      type="text"
+                      value={ollamaUrl}
+                      onChange={(e) => setOllamaUrl(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                      placeholder="http://localhost:11434"
+                      spellCheck={false}
+                    />
+                    <select
+                      value={ollamaModel}
+                      onChange={(e) => setOllamaModel(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
+                    >
+                      {copilotModelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                      OLLAMA MODE — no API key needed
+                    </div>
+                    <div className="text-[8px] font-mono text-text-muted leading-relaxed">
+                      Run &quot;ollama serve&quot; locally. Models: ollama pull llama3.1:8b
+                    </div>
+                  </div>
+                )}
                 {/* Claude (Compute) */}
                 <div className="space-y-1 pt-1.5 border-t border-border">
                   <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
@@ -697,7 +788,7 @@ export default function SystemCopilot() {
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             disabled={isLlmStreaming}
             className="flex-1 bg-surface-elevated font-mono text-[11px] text-foreground outline-none px-2.5 py-1.5 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors disabled:opacity-40"
-            placeholder={isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
+            placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
             spellCheck={false}
           />
           <button

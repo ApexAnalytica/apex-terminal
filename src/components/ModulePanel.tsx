@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
@@ -268,6 +268,66 @@ function ParetoPanel() {
   const getCritColor = (epochs: number) =>
     epochs < 20 ? "#ff1744" : epochs < 80 ? "#ffab00" : "#00e676";
 
+  // Collapsible state for each criticality card
+  const [expandedCrit, setExpandedCrit] = useState<Record<string, boolean>>({});
+  const toggleCrit = useCallback((key: string) => {
+    setExpandedCrit((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // Generate CSD time series: spectral radius cascade growth
+  const csdTimeSeries = useMemo(() => {
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const points: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59;
+      const base = 0.3 + shockPressure * 0.2;
+      // Exponential cascade growth with damped oscillation
+      const cascade = base * Math.exp(t * (1.2 + shockPressure * 0.8));
+      const damping = 0.15 * Math.sin(t * 12 + shockPressure * 3) * Math.exp(-t * 0.5);
+      points.push(Math.min(1, (cascade + damping) / (1 + base * 3)));
+    }
+    return points;
+  }, [shocks]);
+
+  // Generate PH time series: Betti number persistence steps
+  const phTimeSeries = useMemo(() => {
+    const topoDensity = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length / Math.max(1, graphData.nodes.length);
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const points: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59;
+      // Step-like Betti number changes with gradual drift
+      const bettiBase = 0.2 + topoDensity * 0.4;
+      const step1 = t > 0.15 ? 0.12 : 0;
+      const step2 = t > 0.35 ? 0.18 : 0;
+      const step3 = t > 0.55 ? 0.15 + shockPressure * 0.1 : 0;
+      const step4 = t > 0.78 ? 0.2 + shockPressure * 0.15 : 0;
+      const noise = 0.03 * Math.sin(t * 20 + i * 0.7);
+      points.push(Math.min(1, bettiBase + step1 + step2 + step3 + step4 + noise));
+    }
+    return points;
+  }, [graphData.nodes, shocks]);
+
+  // Generate LPPLS time series: log-periodic oscillations approaching singularity
+  const lpplsTimeSeries = useMemo(() => {
+    const avgOmega = graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length);
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const points: number[] = [];
+    const tc = 1.05; // critical time just beyond our window
+    const omega = 6.36 + shockPressure * 2.1; // log-periodic angular frequency
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59;
+      const dt = Math.max(0.01, tc - t);
+      const m = 0.33 + shockPressure * 0.1; // power law exponent
+      // LPPLS: A + B*(tc-t)^m * (1 + C*cos(omega*ln(tc-t) + phi))
+      const powerLaw = Math.pow(dt, m);
+      const logPeriodic = 0.2 * Math.cos(omega * Math.log(dt) + avgOmega * 0.3);
+      const signal = 1 - powerLaw * (1 + logPeriodic);
+      points.push(Math.max(0, Math.min(1, signal * (0.7 + shockPressure * 0.3))));
+    }
+    return points;
+  }, [graphData.nodes, shocks]);
+
   return (
     <>
       {/* Three Criticality Modules */}
@@ -276,113 +336,71 @@ function ParetoPanel() {
       </div>
       <div className="space-y-2">
         {/* CSD — Cascade Structural Damage */}
-        <div className="p-2.5 border rounded space-y-1.5" style={{
-          borderColor: `${getCritColor(csdEpochs)}30`,
-          backgroundColor: `${getCritColor(csdEpochs)}05`,
-        }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(csdEpochs) }}>
-                CSD
-              </div>
-              <div className="text-[7px] font-mono text-text-muted">CASCADE STRUCTURAL DAMAGE</div>
-            </div>
-            <div className="text-right">
-              <span
-                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
-                style={{ color: getCritColor(csdEpochs) }}
-              >
-                T-{csdEpochs}
-              </span>
-              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
-            </div>
-          </div>
-          <div className="h-1 w-full bg-border rounded overflow-hidden">
-            <div className="h-full rounded transition-all duration-500" style={{
-              width: `${Math.min(100, (csdEpochs / 200) * 100)}%`,
-              backgroundColor: getCritColor(csdEpochs),
-              opacity: 0.7,
-            }} />
-          </div>
-          <div className="text-[7px] font-mono text-text-muted">
-            Spectral radius propagation — epochs until cascade failure exceeds recovery capacity
-          </div>
-        </div>
+        <CriticalityCard
+          abbrev="CSD"
+          fullName="CASCADE STRUCTURAL DAMAGE"
+          epochs={csdEpochs}
+          maxEpochs={200}
+          color={getCritColor(csdEpochs)}
+          expanded={!!expandedCrit.csd}
+          onToggle={() => toggleCrit("csd")}
+          timeSeries={csdTimeSeries}
+          shortDesc="Spectral radius propagation — epochs until cascade failure exceeds recovery capacity"
+          methodology={[
+            `Measures the largest eigenvalue (\u03BBmax) of the network's weighted adjacency matrix.`,
+            `When \u03BBmax \u2265 1.0, perturbations amplify through the graph rather than decay — a single node failure cascades through downstream dependencies exponentially.`,
+            `T-minus countdown estimates epochs until cumulative cascade load exceeds the network's damping coefficient, meaning recovery capacity is overwhelmed.`,
+          ]}
+          formula={`\u03BBmax = max eigenvalue(W) | CSD critical when \u03BBmax \u2265 1.0`}
+          assessment={`Current \u03BBmax derived from ${graphData.edges.length} edges, weighted by source node \u03A9-fragility and edge confidence.`}
+        />
 
         {/* PH — Persistent Homology */}
-        <div className="p-2.5 border rounded space-y-1.5" style={{
-          borderColor: `${getCritColor(phEpochs)}30`,
-          backgroundColor: `${getCritColor(phEpochs)}05`,
-        }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(phEpochs) }}>
-                PH
-              </div>
-              <div className="text-[7px] font-mono text-text-muted">PERSISTENT HOMOLOGY</div>
-            </div>
-            <div className="text-right">
-              <span
-                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
-                style={{ color: getCritColor(phEpochs) }}
-              >
-                T-{phEpochs}
-              </span>
-              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
-            </div>
-          </div>
-          <div className="h-1 w-full bg-border rounded overflow-hidden">
-            <div className="h-full rounded transition-all duration-500" style={{
-              width: `${Math.min(100, (phEpochs / 300) * 100)}%`,
-              backgroundColor: getCritColor(phEpochs),
-              opacity: 0.7,
-            }} />
-          </div>
-          <div className="text-[7px] font-mono text-text-muted">
-            Topological fragility holes — epochs until high-{"\u03A9"} cluster boundaries collapse
-          </div>
-        </div>
+        <CriticalityCard
+          abbrev="PH"
+          fullName="PERSISTENT HOMOLOGY"
+          epochs={phEpochs}
+          maxEpochs={300}
+          color={getCritColor(phEpochs)}
+          expanded={!!expandedCrit.ph}
+          onToggle={() => toggleCrit("ph")}
+          timeSeries={phTimeSeries}
+          shortDesc={`Topological fragility holes — epochs until high-\u03A9 cluster boundaries collapse`}
+          methodology={[
+            `Tracks topological features (Betti numbers) of the fragility landscape as a filtration parameter increases.`,
+            `High-\u03A9 nodes form clusters whose boundaries define "holes" in the causal topology — persistent holes indicate structurally isolated fragility pockets.`,
+            `When holes collapse (Betti numbers drop), previously isolated fragility clusters merge, creating system-wide contagion pathways.`,
+          ]}
+          formula={`\u03B2k = rank Hk(X) | PH critical when \u03B21 \u2192 0`}
+          assessment={`${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} of ${graphData.nodes.length} nodes exceed \u03A9 > 7.0 fragility threshold, forming topological cluster boundaries.`}
+        />
 
         {/* LPPLS — Log-Periodic Power Law Singularity */}
-        <div className="p-2.5 border rounded space-y-1.5" style={{
-          borderColor: `${getCritColor(lpplsEpochs)}30`,
-          backgroundColor: `${getCritColor(lpplsEpochs)}05`,
-        }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: getCritColor(lpplsEpochs) }}>
-                LPPLS
-              </div>
-              <div className="text-[7px] font-mono text-text-muted">LOG-PERIODIC POWER LAW SINGULARITY</div>
-            </div>
-            <div className="text-right">
-              <span
-                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
-                style={{ color: getCritColor(lpplsEpochs) }}
-              >
-                T-{lpplsEpochs}
-              </span>
-              <div className="text-[7px] font-mono text-text-muted">EPOCHS</div>
-            </div>
-          </div>
-          <div className="h-1 w-full bg-border rounded overflow-hidden">
-            <div className="h-full rounded transition-all duration-500" style={{
-              width: `${Math.min(100, (lpplsEpochs / 250) * 100)}%`,
-              backgroundColor: getCritColor(lpplsEpochs),
-              opacity: 0.7,
-            }} />
-          </div>
-          <div className="text-[7px] font-mono text-text-muted">
-            Super-exponential fragility growth — epochs until singularity (tc) is reached
-          </div>
-        </div>
+        <CriticalityCard
+          abbrev="LPPLS"
+          fullName="LOG-PERIODIC POWER LAW SINGULARITY"
+          epochs={lpplsEpochs}
+          maxEpochs={250}
+          color={getCritColor(lpplsEpochs)}
+          expanded={!!expandedCrit.lppls}
+          onToggle={() => toggleCrit("lppls")}
+          timeSeries={lpplsTimeSeries}
+          shortDesc="Super-exponential fragility growth — epochs until singularity (tc) is reached"
+          methodology={[
+            `Fits the LPPLS model to network fragility time series: y(t) = A + B(tc \u2212 t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc \u2212 t) + \u03C6)]`,
+            `The characteristic log-periodic oscillations with increasing frequency signal an approaching critical time (tc) where the system transitions to a new regime.`,
+            `Originally developed for financial crash prediction (Sornette), applied here to causal network fragility acceleration.`,
+          ]}
+          formula={`tc = critical time | \u03C9 = log-periodic freq | m = power law exponent`}
+          assessment={`Average \u03A9-fragility: ${(graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length)).toFixed(2)} — acceleration factor: ${((graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length) / 10) * (1 + shocks.reduce((s, sh) => s + sh.severity, 0))).toFixed(3)}`}
+        />
       </div>
 
       {/* Ω-Fragility Assessment */}
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted mt-3">
+      <div className="font-[family-name:var(--font-michroma)] text-[11px] tracking-wider text-text-muted mt-3">
         {"\u03A9"}-FRAGILITY ASSESSMENT
       </div>
-      <div className="text-[9px] font-mono text-text-muted space-y-1">
+      <div className="text-[10px] font-mono text-text-muted space-y-1">
         <div>Buffer: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.buffer.toFixed(1)}%</span></div>
         <div>Status: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.status}</span></div>
         <div>Active Scenarios: {shocks.length}</div>
@@ -689,6 +707,183 @@ function CascadeHeader() {
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Criticality Card (collapsible with time series) ────────────
+
+function CritSparkline({ data, color, height = 48 }: { data: number[]; color: string; height?: number }) {
+  const width = 260;
+  const pad = 2;
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (width - pad * 2);
+    const y = pad + (1 - v) * (height - pad * 2);
+    return `${x},${y}`;
+  });
+  const line = pts.join(" ");
+  // Area fill under the curve
+  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="rounded">
+      {/* Grid lines */}
+      {[0.25, 0.5, 0.75].map((frac) => (
+        <line
+          key={frac}
+          x1={pad} y1={pad + frac * (height - pad * 2)}
+          x2={width - pad} y2={pad + frac * (height - pad * 2)}
+          stroke="rgba(90,94,114,0.15)" strokeWidth={0.5}
+        />
+      ))}
+      {/* Area fill */}
+      <polygon points={area} fill={color} opacity={0.08} />
+      {/* Line */}
+      <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} opacity={0.8} />
+      {/* Current value dot */}
+      {data.length > 0 && (
+        <circle
+          cx={width - pad}
+          cy={pad + (1 - data[data.length - 1]) * (height - pad * 2)}
+          r={2.5}
+          fill={color}
+        />
+      )}
+      {/* Epoch labels */}
+      <text x={pad + 2} y={height - 3} fontSize={7} fill="rgba(90,94,114,0.5)" fontFamily="monospace">0</text>
+      <text x={width - pad - 12} y={height - 3} fontSize={7} fill="rgba(90,94,114,0.5)" fontFamily="monospace">now</text>
+    </svg>
+  );
+}
+
+function CriticalityCard({
+  abbrev,
+  fullName,
+  epochs,
+  maxEpochs,
+  color,
+  expanded,
+  onToggle,
+  timeSeries,
+  shortDesc,
+  methodology,
+  formula,
+  assessment,
+}: {
+  abbrev: string;
+  fullName: string;
+  epochs: number;
+  maxEpochs: number;
+  color: string;
+  expanded: boolean;
+  onToggle: () => void;
+  timeSeries: number[];
+  shortDesc: string;
+  methodology: string[];
+  formula: string;
+  assessment: string;
+}) {
+  return (
+    <div
+      className="border rounded overflow-hidden transition-all duration-300"
+      style={{
+        borderColor: `${color}30`,
+        backgroundColor: `${color}05`,
+      }}
+    >
+      {/* Header — always visible, clickable to expand */}
+      <button
+        onClick={onToggle}
+        className="w-full p-2.5 text-left space-y-1.5 hover:brightness-110 transition-all"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color }}>
+              {abbrev}
+            </div>
+            <div className="text-[8px] font-mono text-text-muted">{fullName}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <span
+                className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
+                style={{ color }}
+              >
+                T-{epochs}
+              </span>
+              <div className="text-[8px] font-mono text-text-muted">EPOCHS</div>
+            </div>
+            <span
+              className="text-[10px] transition-transform duration-200"
+              style={{ color, transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
+            >
+              {"\u25BC"}
+            </span>
+          </div>
+        </div>
+        <div className="h-1 w-full bg-border rounded overflow-hidden">
+          <div className="h-full rounded transition-all duration-500" style={{
+            width: `${Math.min(100, (epochs / maxEpochs) * 100)}%`,
+            backgroundColor: color,
+            opacity: 0.7,
+          }} />
+        </div>
+        <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+          {shortDesc}
+        </div>
+      </button>
+
+      {/* Expandable detail section */}
+      {expanded && (
+        <div className="px-2.5 pb-2.5 space-y-2.5 border-t" style={{ borderColor: `${color}20` }}>
+          {/* Time Series Chart */}
+          <div className="mt-2">
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              TEMPORAL SIGNAL
+            </div>
+            <div className="border rounded p-1" style={{
+              borderColor: `${color}15`,
+              backgroundColor: "rgba(0,0,0,0.15)",
+            }}>
+              <CritSparkline data={timeSeries} color={color} height={56} />
+            </div>
+          </div>
+
+          {/* Methodology explanation */}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              METHODOLOGY
+            </div>
+            <div className="space-y-1.5">
+              {methodology.map((line, i) => (
+                <div key={i} className="text-[9px] font-mono text-text-muted leading-relaxed">
+                  {line}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Formula */}
+          <div className="p-2 rounded border" style={{
+            borderColor: `${color}20`,
+            backgroundColor: `${color}08`,
+          }}>
+            <div className="text-[10px] font-mono" style={{ color }}>
+              {formula}
+            </div>
+          </div>
+
+          {/* Current assessment */}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              CURRENT ASSESSMENT
+            </div>
+            <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+              {assessment}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

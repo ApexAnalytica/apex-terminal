@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
+import { useTemporalGraph } from "./useTemporalGraph";
 import type { CausalGraph } from "@/lib/types";
 
 /**
@@ -13,11 +14,16 @@ const DOMAIN_MAP: Record<string, string[]> = {
 
 /**
  * Returns graph data filtered to only the domains selected in the
- * DomainSelector. If no domains are selected, returns the full graph.
+ * DomainSelector. Uses temporal graph data when timeline is scrubbed
+ * (non-live), so edges/nodes reflect their historical state.
  */
 export function useFilteredGraph(): CausalGraph {
-  const graphData = useApexStore((s) => s.graphData);
+  const baseGraphData = useApexStore((s) => s.graphData);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const { graph: temporalGraph, isTemporalActive } = useTemporalGraph();
+
+  // Use temporal graph when available and scrubbed; fall back to base
+  const graphData = isTemporalActive ? temporalGraph : baseGraphData;
 
   return useMemo(() => {
     // No filter active — show everything

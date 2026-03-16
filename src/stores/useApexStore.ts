@@ -622,7 +622,7 @@ export const useApexStore = create<ApexState>((set) => ({
   initTemporalData: () =>
     set((s) => {
       if (s.temporalData) return s;
-      const data = generateTemporalData(s.graphData.nodes, 60);
+      const data = generateTemporalData(s.graphData.nodes, s.graphData.edges, 60);
       return {
         temporalData: data,
         timelineRange: {

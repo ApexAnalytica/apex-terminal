@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getNodeStateAt, getVisibleNodesAt, getEventsInRange } from "@/lib/temporal-data";
-import type { CausalGraph, CausalNode, CausalEdge, OmegaFragilityProfile } from "@/lib/types";
+import { getNodeStateAt, getEdgeStateAt, getVisibleNodesAt, getEventsInRange } from "@/lib/temporal-data";
+import type { CausalGraph, CausalNode, CausalEdge } from "@/lib/types";
 import type { TemporalEvent } from "@/lib/temporal-data";
 
 export interface TemporalGraphSnapshot {
@@ -16,7 +16,7 @@ export interface TemporalGraphSnapshot {
 /**
  * Hook that returns a transformed graph based on the current timeline position.
  * When isLive is true, returns the original graph unmodified.
- * When scrubbed to a past position, adjusts omega scores and filters nodes.
+ * When scrubbed to a past position, adjusts omega scores, edge weights, and filters nodes.
  */
 export function useTemporalGraph(): TemporalGraphSnapshot {
   const graphData = useApexStore((s) => s.graphData);
@@ -57,10 +57,29 @@ export function useTemporalGraph(): TemporalGraphSnapshot {
 
     const visibleNodeIds = new Set(transformedNodes.map((n) => n.id));
 
-    // Filter edges to only include those between visible nodes
-    const transformedEdges: CausalEdge[] = graphData.edges.filter(
-      (e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target),
-    );
+    // Transform edges — apply temporal weight/confidence/stress changes
+    const transformedEdges: CausalEdge[] = graphData.edges
+      .filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+      .map((edge) => {
+        const edgeData = temporalData.edges.get(edge.id);
+        if (!edgeData) return edge;
+
+        const state = getEdgeStateAt(edgeData, ts);
+        if (!state) return edge;
+
+        // Apply temporal state to edge properties
+        return {
+          ...edge,
+          weight: state.weight,
+          confidence: state.confidence,
+          // When strained, reclassify as "temporal" type to show animated dashes
+          type: state.isStrained && edge.type === "directed"
+            ? ("temporal" as const)
+            : edge.type,
+          // Mark edges under high stress as inconsistent (visual: red dashed)
+          isInconsistent: state.stressSignal > 0.8 ? true : edge.isInconsistent,
+        };
+      });
 
     const graph: CausalGraph = {
       nodes: transformedNodes,

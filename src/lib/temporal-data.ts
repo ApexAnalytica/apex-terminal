@@ -1,4 +1,4 @@
-import type { CausalNode, OmegaFragilityProfile } from "./types";
+import type { CausalNode, CausalEdge, OmegaFragilityProfile } from "./types";
 
 // ─── Temporal Types ──────────────────────────────────────────────
 export type TimeGranularity = "hour" | "day" | "week" | "month";
@@ -26,8 +26,23 @@ export interface TemporalNodeData {
   history: NodeTemporalState[];
 }
 
+/** Edge state at a point in time — derived from connected node stress levels */
+export interface EdgeTemporalState {
+  timestamp: number;
+  weight: number;        // dynamic weight (0-1) modulated by node stress
+  confidence: number;    // dynamic confidence (0-1)
+  stressSignal: number;  // 0-1 stress propagation intensity through this edge
+  isStrained: boolean;   // true when connected nodes are under high stress
+}
+
+export interface TemporalEdgeData {
+  edgeId: string;
+  history: EdgeTemporalState[];
+}
+
 export interface TemporalDataset {
   nodes: Map<string, TemporalNodeData>;
+  edges: Map<string, TemporalEdgeData>;
   events: TemporalEvent[];
   rangeStart: Date;
   rangeEnd: Date;
@@ -97,6 +112,7 @@ const EVENT_TEMPLATES: Omit<TemporalEvent, "id" | "date">[] = [
 // ─── Generator ──────────────────────────────────────────────────
 export function generateTemporalData(
   nodes: CausalNode[],
+  edges: CausalEdge[],
   daysBack: number = 60,
 ): TemporalDataset {
   const rand = seededRandom(42);
@@ -185,7 +201,54 @@ export function generateTemporalData(
     }
   }
 
-  return { nodes: nodeMap, events, rangeStart, rangeEnd };
+  // ── Generate temporal edge states ──
+  // Edge weight/confidence/stress are derived from connected node omega over time
+  const edgeMap = new Map<string, TemporalEdgeData>();
+
+  for (const edge of edges) {
+    const sourceNode = nodeMap.get(edge.source);
+    const targetNode = nodeMap.get(edge.target);
+    if (!sourceNode || !targetNode) continue;
+
+    const edgeHistory: EdgeTemporalState[] = [];
+    const baseWeight = edge.weight;
+    const baseConfidence = edge.confidence;
+
+    // Walk through timestamps — use source node's history as time axis
+    for (const srcSnap of sourceNode.history) {
+      const ts = srcSnap.timestamp;
+      const tgtSnap = getNodeStateAt(targetNode, ts);
+      if (!tgtSnap) continue;
+
+      // Stress signal: average of how far both nodes deviate from their baselines
+      const srcStress = Math.max(0, (srcSnap.omegaComposite - 5) / 5); // 0-1 when omega > 5
+      const tgtStress = Math.max(0, (tgtSnap.omegaComposite - 5) / 5);
+      const avgStress = (srcStress + tgtStress) / 2;
+
+      // When nodes are stressed, edge weight increases (more load on the link)
+      // but confidence drops (higher uncertainty under stress)
+      const stressMultiplier = 1 + avgStress * 0.4; // up to 1.4x weight
+      const confidenceDrop = 1 - avgStress * 0.3;   // down to 0.7x confidence
+
+      const dynamicWeight = Math.min(1, baseWeight * stressMultiplier);
+      const dynamicConfidence = Math.max(0.2, baseConfidence * confidenceDrop);
+
+      // Stress signal for rendering (opacity/glow effects)
+      const stressSignal = Math.min(1, avgStress * 1.2);
+
+      edgeHistory.push({
+        timestamp: ts,
+        weight: Math.round(dynamicWeight * 1000) / 1000,
+        confidence: Math.round(dynamicConfidence * 1000) / 1000,
+        stressSignal: Math.round(stressSignal * 1000) / 1000,
+        isStrained: avgStress > 0.5,
+      });
+    }
+
+    edgeMap.set(edge.id, { edgeId: edge.id, history: edgeHistory });
+  }
+
+  return { nodes: nodeMap, edges: edgeMap, events, rangeStart, rangeEnd };
 }
 
 // ─── Query Helpers ──────────────────────────────────────────────
@@ -224,6 +287,27 @@ export function getVisibleNodesAt(
     }
   }
   return visible;
+}
+
+/** Get the edge state at a specific point in time */
+export function getEdgeStateAt(
+  temporal: TemporalEdgeData,
+  timestamp: number,
+): EdgeTemporalState | null {
+  if (temporal.history.length === 0) return null;
+
+  // Binary search for nearest snapshot <= timestamp
+  let lo = 0;
+  let hi = temporal.history.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (temporal.history[mid].timestamp <= timestamp) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return temporal.history[lo].timestamp <= timestamp ? temporal.history[lo] : null;
 }
 
 /** Get events in a date range */

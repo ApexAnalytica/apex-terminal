@@ -12,7 +12,7 @@ export const DOMAIN_CARDS = [
     color: "#ff6d00",
     colorVar: "var(--accent-orange)",
     description: "Systemic banking failures, credit default cascades, liquidity traps",
-    hasData: false,
+    hasData: true,
   },
   {
     id: "supply-chain",
@@ -30,7 +30,7 @@ export const DOMAIN_CARDS = [
     color: "#ffab00",
     colorVar: "var(--accent-amber)",
     description: "Currency crises, debt restructuring, capital flight contagion",
-    hasData: false,
+    hasData: true,
   },
   {
     id: "infrastructure",

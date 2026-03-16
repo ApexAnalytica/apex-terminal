@@ -133,6 +133,21 @@ export const HEADER_MAP: Record<string, string> = {
   is_confounded: "isConfounded",
   is_restricted: "isRestricted",
   is_inconsistent: "isInconsistent",
+  fund_name: "label",
+  fund_complex: "label",
+  indicator: "label",
+  variable: "label",
+  metric: "label",
+  country_code: "domain",
+  iso3: "domain",
+  economy: "domain",
+  fx_reserve: "physicalConstraint",
+  crisis_type: "category",
+  event_type: "category",
+  flow_type: "category",
+  haircut_pct: "weight",
+  contagion_score: "composite",
+  penn_world_table: "discoverySource",
 };
 
 export function parseCSV(content: string): ParsedGraph {

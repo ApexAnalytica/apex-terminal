@@ -7,14 +7,8 @@ import type { CausalGraph } from "@/lib/types";
  * A selector ID can match multiple graph domains.
  */
 const DOMAIN_MAP: Record<string, string[]> = {
-  "financial-contagion": ["Dollar Funding"],
-  "supply-chain": ["EUV Lithography"],
-  "sovereign-risk": ["Geopolitical"],
-  "infrastructure": ["Data Centers", "Undersea Cables"],
-  "ai-systems": ["AI Compute"],
-  "energy-systems": ["HVDC Power", "Energy Grid", "Rare Earth", "Saudi Aramco Energy", "QatarEnergy LNG"],
-  "manufacturing": ["Fertilizer", "QAFCO Fertilizer", "Ma'aden Phosphate"],
-  "frontier-science": ["Frontier Science"],
+  "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
+  "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
 };
 
 /**

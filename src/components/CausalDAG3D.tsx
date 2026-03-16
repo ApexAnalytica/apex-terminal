@@ -168,6 +168,86 @@ function ReplayTickDriver() {
   return null;
 }
 
+// Shift+drag rectangle selection — runs inside the R3F Canvas
+function ShiftDragSelect({
+  posMap,
+  graphNodes,
+  onSelect,
+  selectionBoxRef,
+}: {
+  posMap: Record<string, [number, number, number]>;
+  graphNodes: { id: string }[];
+  onSelect: (ids: string[]) => void;
+  selectionBoxRef: React.MutableRefObject<{ x1: number; y1: number; x2: number; y2: number } | null>;
+}) {
+  const { camera, gl, size: canvasSize } = useThree();
+  const dragging = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onDown = (e: PointerEvent) => {
+      if (!e.shiftKey) return;
+      dragging.current = true;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      startRef.current = { x, y };
+      selectionBoxRef.current = { x1: x, y1: y, x2: x, y2: y };
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const x2 = e.clientX - rect.left;
+      const y2 = e.clientY - rect.top;
+      selectionBoxRef.current = { ...startRef.current, x1: startRef.current.x, y1: startRef.current.y, x2, y2 };
+    };
+
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      const b = selectionBoxRef.current;
+      if (!b) return;
+
+      const minX = Math.min(b.x1, b.x2);
+      const maxX = Math.max(b.x1, b.x2);
+      const minY = Math.min(b.y1, b.y2);
+      const maxY = Math.max(b.y1, b.y2);
+
+      selectionBoxRef.current = null;
+
+      if (maxX - minX < 5 && maxY - minY < 5) return;
+
+      const ids: string[] = [];
+      const vec = new THREE.Vector3();
+      for (const node of graphNodes) {
+        const pos = posMap[node.id];
+        if (!pos) continue;
+        vec.set(pos[0], pos[1], pos[2]).project(camera);
+        const sx = ((vec.x + 1) / 2) * canvasSize.width;
+        const sy = ((-vec.y + 1) / 2) * canvasSize.height;
+        if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+          ids.push(node.id);
+        }
+      }
+      onSelect(ids);
+    };
+
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    return () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+    };
+  }, [gl, graphNodes, posMap, camera, canvasSize, onSelect, selectionBoxRef]);
+
+  return null;
+}
+
 export default function CausalDAG3D() {
   const graphData = useFilteredGraph();
   const {
@@ -178,6 +258,8 @@ export default function CausalDAG3D() {
     setInterventionTarget,
     selectedNode,
     setSelectedNode,
+    selectedNodes: multiSelectedNodes,
+    setSelectedNodes,
     scissorsMode,
     severedEdges,
     severEdge,
@@ -192,6 +274,15 @@ export default function CausalDAG3D() {
     interventionEpochs,
     activeTimeline,
   } = useApexStore();
+
+  const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+
+  const handleShiftSelect = useCallback(
+    (ids: string[]) => {
+      setSelectedNodes(ids);
+    },
+    [setSelectedNodes]
+  );
 
   // Derive current snapshot from active timeline
   const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
@@ -462,6 +553,25 @@ export default function CausalDAG3D() {
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <DAGOverlay />
+      {multiSelectedNodes.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 50,
+            padding: "6px 12px",
+            borderRadius: 4,
+            border: "1px solid rgba(0, 229, 255, 0.4)",
+            background: "rgba(10, 11, 16, 0.9)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <span style={{ fontSize: 10, fontFamily: "monospace", color: "#00e5ff" }}>
+            {multiSelectedNodes.length} node{multiSelectedNodes.length !== 1 ? "s" : ""} selected
+          </span>
+        </div>
+      )}
       <DAGErrorBoundary>
       <Canvas
         key={canvasKey}
@@ -494,7 +604,8 @@ export default function CausalDAG3D() {
 
             const isTarget = interventionTarget === node.id;
             const isRestricted = truthFilter === "verified" && node.isRestricted;
-            const isSelected = selectedNode === node.id;
+            const isMultiSelected = multiSelectedNodes.includes(node.id);
+            const isSelected = selectedNode === node.id || isMultiSelected;
             const isNeighborOfSelected = selectedNeighborNodes.has(node.id);
             const anyNodeSelected = selectedNode !== null;
 
@@ -581,6 +692,12 @@ export default function CausalDAG3D() {
 
           <CameraRig posMap={posMap} />
           <ReplayTickDriver />
+          <ShiftDragSelect
+            posMap={posMap}
+            graphNodes={graphData.nodes}
+            onSelect={handleShiftSelect}
+            selectionBoxRef={selectionBoxRef}
+          />
       </Canvas>
       </DAGErrorBoundary>
     </div>

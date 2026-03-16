@@ -74,6 +74,10 @@ interface ApexState {
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
 
+  // Multi-selection (lasso/area select)
+  selectedNodes: string[];
+  setSelectedNodes: (nodeIds: string[]) => void;
+
   // Intervention mode
   interventionMode: boolean;
   interventionTarget: string | null;
@@ -236,6 +240,10 @@ export const useApexStore = create<ApexState>((set) => ({
   // Selected node
   selectedNode: null,
   setSelectedNode: (nodeId) => set({ selectedNode: nodeId }),
+
+  // Multi-selection
+  selectedNodes: [],
+  setSelectedNodes: (nodeIds) => set({ selectedNodes: nodeIds }),
 
   // Intervention
   interventionMode: false,

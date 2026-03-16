@@ -190,7 +190,6 @@ export default function DAGNode3D({
           position={[0, size * 1.6 + 1.5, 0]}
           center
           style={{ pointerEvents: "none" }}
-          distanceFactor={35}
         >
           <div
             style={{
@@ -230,7 +229,6 @@ export default function DAGNode3D({
           position={[0, size + (isSelected ? 4.5 : 3), 0]}
           center
           style={{ pointerEvents: "none" }}
-          distanceFactor={40}
         >
           <div
             style={{

@@ -257,7 +257,7 @@ export default function NodeInspector() {
                 <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1.5">
                   CONNECTED EDGES ({connectedEdges.length})
                 </div>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
+                <div className="space-y-1 max-h-32 overflow-y-auto overflow-x-hidden">
                   {connectedEdges.map((edge) => {
                     const isSource = edge.source === node.id;
                     const otherNode = graphData.nodes.find(
@@ -266,7 +266,7 @@ export default function NodeInspector() {
                     return (
                       <div
                         key={edge.id}
-                        className="text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated flex items-center gap-1"
+                        className="text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated flex items-start gap-1 min-w-0"
                       >
                         <span className="text-text-muted">
                           {isSource ? "\u2192" : "\u2190"}
@@ -274,7 +274,7 @@ export default function NodeInspector() {
                         <span className="text-foreground truncate flex-1">
                           {otherNode?.shortLabel ?? "?"}
                         </span>
-                        <span className="text-text-muted text-[7px] flex-shrink-0">
+                        <span className="text-text-muted text-[7px] min-w-0 break-words">
                           {edge.physicalMechanism}
                         </span>
                       </div>

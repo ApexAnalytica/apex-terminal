@@ -12,6 +12,8 @@ const DOMAIN_MAP: Record<string, string[]> = {
   "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
   "financial-contagion": ["Financial Contagion"],
   "sovereign-risk": ["Sovereign Risk"],
+  "supply-chain": ["Supply Chain Food Security"],
+  "infrastructure": ["Undersea Cable Infrastructure"],
 };
 
 /**

@@ -96,11 +96,15 @@ export default function SystemCopilot() {
   const [showSettings, setShowSettings] = useState(false);
   const [showDatasets, setShowDatasets] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
   const streamingMsgRef = useRef<string | null>(null);
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const lastSpokenMsgRef = useRef<string | null>(null);
 
   const isLlmActive = copilotProvider === "ollama" || copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
@@ -127,6 +131,54 @@ export default function SystemCopilot() {
     setContextBadge(label);
     if (badgeTimerRef.current) clearTimeout(badgeTimerRef.current);
     badgeTimerRef.current = setTimeout(() => setContextBadge(null), 3000);
+  }, []);
+
+  // ─── Voice Output (Text-to-Speech) ─────────────────────
+  const speakText = useCallback((text: string) => {
+    if (!ttsEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const clean = text
+      .replace(/[*_#`~]/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\n{2,}/g, ". ")
+      .replace(/\n/g, ", ")
+      .trim();
+
+    if (!clean) return;
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 0.95;
+    utterance.pitch = 0.85;
+    utterance.volume = 1;
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(
+      (v) => v.name.includes("Daniel") || v.name.includes("Google UK English Male") || v.name.includes("Alex")
+    ) ?? voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("male"))
+      ?? voices.find((v) => v.lang.startsWith("en"));
+    if (preferred) utterance.voice = preferred;
+
+    window.speechSynthesis.speak(utterance);
+  }, [ttsEnabled]);
+
+  // Auto-speak assistant responses when TTS is enabled
+  useEffect(() => {
+    if (!ttsEnabled) return;
+    const lastMsg = copilotMessages[copilotMessages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.content) return;
+    if (lastMsg.id === lastSpokenMsgRef.current) return;
+    if (isLlmStreaming) return;
+
+    lastSpokenMsgRef.current = lastMsg.id;
+    speakText(lastMsg.content);
+  }, [copilotMessages, ttsEnabled, isLlmStreaming, speakText]);
+
+  // Load voices (some browsers load them async)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+    }
   }, []);
 
   // Inject node context message when selection changes
@@ -372,6 +424,69 @@ export default function SystemCopilot() {
     ]
   );
 
+  // ─── Voice Input (Speech-to-Text) ────────────────────────
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addCopilotMessage({
+        id: `sys-voice-${Date.now()}`,
+        role: "system",
+        content: "Speech recognition not supported in this browser.",
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setInput(transcript);
+
+      if (event.results[event.results.length - 1].isFinal) {
+        setInput(transcript);
+        setTimeout(() => {
+          const trimmed = transcript.trim();
+          if (trimmed) {
+            const userMsg: CopilotMessage = {
+              id: `user-${Date.now()}`,
+              role: "user",
+              content: trimmed,
+              timestamp: Date.now(),
+            };
+            addCopilotMessage(userMsg);
+            if (isLlmActive) {
+              handleStreamingQuery(trimmed);
+            } else {
+              const responses = processQuery(trimmed, graphData);
+              responses.forEach((msg) => addCopilotMessage(msg));
+            }
+            setInput("");
+          }
+        }, 100);
+      }
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [addCopilotMessage, isLlmActive, handleStreamingQuery, graphData]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
+
   const handleAction = (action: CopilotAction) => {
     const userContent = action.replace(/_/g, " ");
     const userMsg: CopilotMessage = {
@@ -452,6 +567,20 @@ export default function SystemCopilot() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* TTS toggle */}
+            <button
+              onClick={() => {
+                const next = !ttsEnabled;
+                setTtsEnabled(next);
+                if (!next && typeof window !== "undefined") window.speechSynthesis?.cancel();
+              }}
+              className={`text-[11px] transition-colors p-1 ${
+                ttsEnabled ? "text-accent-green" : "text-text-muted hover:text-accent-green"
+              }`}
+              title={ttsEnabled ? "Voice Output ON — click to disable" : "Enable Voice Output"}
+            >
+              {ttsEnabled ? "\uD83D\uDD0A" : "\uD83D\uDD07"}
+            </button>
             {importedDatasets.length > 0 && (
               <button
                 onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) setShowSettings(false); }}
@@ -791,6 +920,18 @@ export default function SystemCopilot() {
             placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
             spellCheck={false}
           />
+          <button
+            onClick={isListening ? stopListening : startListening}
+            disabled={isLlmStreaming}
+            className={`text-[12px] px-1.5 py-1.5 rounded transition-colors disabled:opacity-40 ${
+              isListening
+                ? "text-accent-red bg-accent-red/10 animate-pulse"
+                : "text-text-muted hover:text-accent-cyan hover:bg-accent-cyan/10"
+            }`}
+            title={isListening ? "Stop listening" : "Voice input"}
+          >
+            {isListening ? "\u23F9" : "\uD83C\uDF99"}
+          </button>
           <button
             onClick={handleSubmit}
             disabled={isLlmStreaming}

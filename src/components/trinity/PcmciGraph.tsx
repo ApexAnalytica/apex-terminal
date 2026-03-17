@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { getCategoryColor } from "@/lib/graph-data";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
@@ -80,16 +80,44 @@ export default function PcmciGraph() {
     );
   }
 
+  const [showInfo, setShowInfo] = useState(false);
+
   return (
     <div className="p-2 h-full flex flex-col">
       <div className="flex items-center justify-between mb-1">
-        <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-amber">
-          PCMCI+
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-amber">
+            PCMCI+
+          </span>
+          <button
+            onClick={() => setShowInfo(!showInfo)}
+            className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
+            style={{
+              color: showInfo ? "#ffab00" : "#5a5e72",
+              borderColor: showInfo ? "rgba(255,171,0,0.3)" : "rgba(90,94,114,0.3)",
+              backgroundColor: showInfo ? "rgba(255,171,0,0.08)" : "transparent",
+            }}
+          >
+            {showInfo ? "\u2212" : "?"}
+          </button>
+        </div>
         <span className="text-[8px] text-text-muted font-mono">
           {pcmciNodes.length} nodes | Temporal
         </span>
       </div>
+      {showInfo && (
+        <div className="mb-1.5 p-2 rounded border border-accent-amber/20 bg-accent-amber/5 space-y-1">
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            <span className="text-accent-amber font-bold">Temporal Causal Discovery</span> identifies time-lagged causal relationships using the PCMCI+ algorithm (Peter Spirtes{"'"} PC + Momentary Conditional Independence).
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            Columns represent time steps: <span className="text-accent-amber">T-2</span> (past) {"\u2192"} <span className="text-accent-amber">T-0</span> (present). Arrows crossing columns show how shocks propagate with delays {"\u2014"} pipeline transit, procurement cycles, construction timelines.
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            Unlike DCD above, these edges have <span className="text-accent-amber">lag {">"} 0</span>: a disruption at the source doesn{"'"}t hit the target until lag epochs later. Steeper arrows = longer delays.
+          </div>
+        </div>
+      )}
       <svg
         viewBox="0 0 260 120"
         className="flex-1 w-full"

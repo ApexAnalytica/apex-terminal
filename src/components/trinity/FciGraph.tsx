@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { getCategoryColor } from "@/lib/graph-data";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
@@ -65,16 +65,44 @@ export default function FciGraph() {
     );
   }
 
+  const [showInfo, setShowInfo] = useState(false);
+
   return (
     <div className="p-2 h-full flex flex-col">
       <div className="flex items-center justify-between mb-1">
-        <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-red">
-          FCI
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-red">
+            FCI
+          </span>
+          <button
+            onClick={() => setShowInfo(!showInfo)}
+            className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
+            style={{
+              color: showInfo ? "#ff1744" : "#5a5e72",
+              borderColor: showInfo ? "rgba(255,23,68,0.3)" : "rgba(90,94,114,0.3)",
+              backgroundColor: showInfo ? "rgba(255,23,68,0.08)" : "transparent",
+            }}
+          >
+            {showInfo ? "\u2212" : "?"}
+          </button>
+        </div>
         <span className="text-[8px] text-text-muted font-mono">
           {fciNodes.length} nodes | Latent PAG
         </span>
       </div>
+      {showInfo && (
+        <div className="mb-1.5 p-2 rounded border border-accent-red/20 bg-accent-red/5 space-y-1">
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            <span className="text-accent-red font-bold">Fast Causal Inference</span> detects latent confounders {"\u2014"} hidden common causes that make two nodes appear correlated without a direct causal link.
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            <span className="text-accent-red">Dashed red edges</span> with {"\"?\""}  markers indicate uncertain causal direction due to a potential unobserved variable driving both endpoints (e.g., shared geopolitical factors).
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            Solid edges are confident directed links. Red-filled nodes are flagged as confounded. Circular layout emphasizes the uncertainty {"\u2014"} no implied causal hierarchy.
+          </div>
+        </div>
+      )}
       <svg
         viewBox="0 0 260 120"
         className="flex-1 w-full"

@@ -14,6 +14,7 @@ import ReactFlow, {
   BackgroundVariant,
   SelectionMode,
   OnSelectionChangeFunc,
+  MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
@@ -385,6 +386,9 @@ export default function CausalDAG2D() {
           target: e.target,
           type: "default",
           animated: e.type === "temporal" || propagationSignal > 0.3,
+          markerEnd: e.type === "directed" || e.type === "temporal"
+            ? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: edgeColor }
+            : undefined,
           style: {
             stroke: edgeColor,
             strokeWidth,

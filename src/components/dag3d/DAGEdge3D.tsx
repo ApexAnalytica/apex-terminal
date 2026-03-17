@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
@@ -56,6 +57,8 @@ export default function DAGEdge3D({
   epochState,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
+  const particleRef = useRef<THREE.Mesh>(null);
+  const curveRef = useRef<THREE.QuadraticBezierCurve3 | null>(null);
   const baseColor = getEdgeColor(edge, isVerifiedInconsistent, isCrossDomain);
   const color = isAblated ? "#e040fb" : isSevered ? "#ff1744" : isConsequenceEdge ? "#ff6d00" : baseColor;
   const lineWidth = 0.5 + edge.weight * 1.5;
@@ -73,6 +76,7 @@ export default function DAGEdge3D({
     mid.add(offset);
 
     const curve = new THREE.QuadraticBezierCurve3(src, mid, tgt);
+    curveRef.current = curve;
     const pts = curve.getPoints(24);
 
     // Arrow at 80% along path
@@ -109,6 +113,20 @@ export default function DAGEdge3D({
   const lineOpacity = selectionDim ? 0.05 : isConnectedToSelected ? 1.0 : Math.min(1, baseOpacity);
   const arrowBaseOpacity = isSevered ? 0 : isDimmed ? 0.15 : (0.7 + propBoost);
   const arrowOpacity = selectionDim ? 0.05 : isConnectedToSelected ? 1.0 : Math.min(1, arrowBaseOpacity);
+
+  // Animate flowing particle along the edge curve
+  const shouldAnimate = !isSevered && !isAblated && !selectionDim && (edge.type === "directed" || edge.type === "temporal" || propSignal > 0.3);
+  const animSpeed = edge.type === "temporal" ? 0.35 : 0.25 + propSignal * 0.4;
+
+  useFrame((_, delta) => {
+    if (!particleRef.current || !curveRef.current || !shouldAnimate) return;
+    const t = ((performance.now() * 0.001 * animSpeed) % 1);
+    const pos = curveRef.current.getPoint(t);
+    particleRef.current.position.set(pos.x, pos.y, pos.z);
+    // Pulse the scale slightly for a glowing effect
+    const pulse = 1 + Math.sin(performance.now() * 0.005) * 0.3;
+    particleRef.current.scale.setScalar(pulse);
+  });
 
   return (
     <group>
@@ -163,6 +181,18 @@ export default function DAGEdge3D({
           opacity={arrowOpacity}
         />
       </mesh>
+
+      {/* Animated flowing particle */}
+      {shouldAnimate && (
+        <mesh ref={particleRef}>
+          <sphereGeometry args={[0.12 + edge.weight * 0.08, 8, 8]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={lineOpacity * 0.9}
+          />
+        </mesh>
+      )}
 
       {/* Hover: physical mechanism label */}
       {hovered && edge.physicalMechanism && (

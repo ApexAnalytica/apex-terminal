@@ -162,16 +162,44 @@ export default function DcdGraph() {
     );
   }
 
+  const [showInfo, setShowInfo] = useState(false);
+
   return (
     <div className="p-2 h-full flex flex-col">
       <div className="flex items-center justify-between mb-1">
-        <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-cyan">
-          DCD / NOTEARS
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-cyan">
+            DCD / NOTEARS
+          </span>
+          <button
+            onClick={() => setShowInfo(!showInfo)}
+            className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
+            style={{
+              color: showInfo ? "#00e5ff" : "#5a5e72",
+              borderColor: showInfo ? "rgba(0,229,255,0.3)" : "rgba(90,94,114,0.3)",
+              backgroundColor: showInfo ? "rgba(0,229,255,0.08)" : "transparent",
+            }}
+          >
+            {showInfo ? "\u2212" : "?"}
+          </button>
+        </div>
         <span className="text-[8px] text-text-muted font-mono">
           {dcdNodes.length} nodes | Structural
         </span>
       </div>
+      {showInfo && (
+        <div className="mb-1.5 p-2 rounded border border-accent-cyan/20 bg-accent-cyan/5 space-y-1">
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            <span className="text-accent-cyan font-bold">Directed Causal Discovery</span> uses the NOTEARS algorithm to discover the primary directed acyclic structure of the supply chain.
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            Nodes represent assets/entities. Directed edges (arrows) show causal influence from source to target. Edge thickness encodes causal strength (weight). Node size scales with {"\u03A9"}-fragility score.
+          </div>
+          <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+            This view captures <span className="text-accent-cyan">instantaneous causality</span> only (lag=0). Time-lagged relationships appear in PCMCI+ below. Hover nodes/edges for details.
+          </div>
+        </div>
+      )}
       <svg
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}
         className="flex-1 w-full"

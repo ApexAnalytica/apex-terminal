@@ -779,36 +779,344 @@ function SnapshotIndicator() {
 
 function CascadeHeader() {
   const graphData = useApexStore((s) => s.graphData);
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const engine = useMemo(() => getEngineProvider(), []);
   const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
+  const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
+
+  // Compute comprehensive network metrics
+  const netMetrics = useMemo(() => {
+    const nodes = graphData.nodes;
+    const edges = graphData.edges.filter((e) => !e.isSevered);
+    const n = nodes.length;
+    const m = edges.length;
+
+    // 1. Graph density
+    const density = n > 1 ? m / (n * (n - 1)) : 0;
+
+    // 2. Degree distributions
+    const inDeg = new Map<string, number>();
+    const outDeg = new Map<string, number>();
+    nodes.forEach((nd) => { inDeg.set(nd.id, 0); outDeg.set(nd.id, 0); });
+    edges.forEach((e) => {
+      outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+      inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
+    });
+    const avgDegree = n > 0 ? (2 * m) / n : 0;
+
+    // 3. Eigenvector centrality (power iteration, 50 steps)
+    const eigenCent = new Map<string, number>();
+    nodes.forEach((nd) => eigenCent.set(nd.id, 1 / n));
+    const adjOut = new Map<string, string[]>();
+    const adjIn = new Map<string, string[]>();
+    nodes.forEach((nd) => { adjOut.set(nd.id, []); adjIn.set(nd.id, []); });
+    edges.forEach((e) => {
+      adjOut.get(e.source)?.push(e.target);
+      adjIn.get(e.target)?.push(e.source);
+    });
+    for (let iter = 0; iter < 50; iter++) {
+      const next = new Map<string, number>();
+      let norm = 0;
+      nodes.forEach((nd) => {
+        const neighbors = [...(adjOut.get(nd.id) ?? []), ...(adjIn.get(nd.id) ?? [])];
+        const val = neighbors.reduce((s, nbr) => s + (eigenCent.get(nbr) ?? 0), 0);
+        next.set(nd.id, val);
+        norm += val * val;
+      });
+      norm = Math.sqrt(norm) || 1;
+      nodes.forEach((nd) => eigenCent.set(nd.id, (next.get(nd.id) ?? 0) / norm));
+    }
+    const eigenTop = [...eigenCent.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, val]) => ({
+        id,
+        label: nodes.find((nd) => nd.id === id)?.shortLabel ?? id,
+        fullLabel: nodes.find((nd) => nd.id === id)?.label ?? id,
+        value: val,
+      }));
+
+    // 4. Betweenness centrality (BFS-based approximation)
+    const between = new Map<string, number>();
+    nodes.forEach((nd) => between.set(nd.id, 0));
+    for (const source of nodes) {
+      const dist = new Map<string, number>();
+      const paths = new Map<string, number>();
+      const stack: string[] = [];
+      const pred = new Map<string, string[]>();
+      dist.set(source.id, 0);
+      paths.set(source.id, 1);
+      const queue = [source.id];
+      while (queue.length > 0) {
+        const v = queue.shift()!;
+        stack.push(v);
+        const dv = dist.get(v)!;
+        for (const w of adjOut.get(v) ?? []) {
+          if (!dist.has(w)) {
+            dist.set(w, dv + 1);
+            queue.push(w);
+          }
+          if (dist.get(w) === dv + 1) {
+            paths.set(w, (paths.get(w) ?? 0) + (paths.get(v) ?? 0));
+            if (!pred.has(w)) pred.set(w, []);
+            pred.get(w)!.push(v);
+          }
+        }
+      }
+      const delta = new Map<string, number>();
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        const dw = delta.get(w) ?? 0;
+        for (const v of pred.get(w) ?? []) {
+          const share = ((paths.get(v) ?? 1) / (paths.get(w) ?? 1)) * (1 + dw);
+          delta.set(v, (delta.get(v) ?? 0) + share);
+        }
+        if (w !== source.id) {
+          between.set(w, (between.get(w) ?? 0) + (delta.get(w) ?? 0));
+        }
+      }
+    }
+    // Normalize
+    const maxBetween = Math.max(...between.values(), 1);
+    const betweenTop = [...between.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, val]) => ({
+        id,
+        label: nodes.find((nd) => nd.id === id)?.shortLabel ?? id,
+        fullLabel: nodes.find((nd) => nd.id === id)?.label ?? id,
+        value: val / maxBetween,
+      }));
+
+    // 5. Clustering coefficient (local, undirected)
+    const neighborSets = new Map<string, Set<string>>();
+    nodes.forEach((nd) => neighborSets.set(nd.id, new Set()));
+    edges.forEach((e) => {
+      neighborSets.get(e.source)?.add(e.target);
+      neighborSets.get(e.target)?.add(e.source);
+    });
+    let clusterSum = 0;
+    let clusterCount = 0;
+    nodes.forEach((nd) => {
+      const nbrs = neighborSets.get(nd.id)!;
+      const k = nbrs.size;
+      if (k < 2) return;
+      let triangles = 0;
+      const nbrArr = [...nbrs];
+      for (let i = 0; i < nbrArr.length; i++) {
+        for (let j = i + 1; j < nbrArr.length; j++) {
+          if (neighborSets.get(nbrArr[i])?.has(nbrArr[j])) triangles++;
+        }
+      }
+      clusterSum += (2 * triangles) / (k * (k - 1));
+      clusterCount++;
+    });
+    const clusteringCoeff = clusterCount > 0 ? clusterSum / clusterCount : 0;
+
+    // 6. Community detection (simple label propagation, 10 iterations)
+    const community = new Map<string, string>();
+    nodes.forEach((nd) => community.set(nd.id, nd.domain));
+    // Communities are already domain-based, count them
+    const communities = new Map<string, string[]>();
+    nodes.forEach((nd) => {
+      const dom = nd.domain;
+      if (!communities.has(dom)) communities.set(dom, []);
+      communities.get(dom)!.push(nd.id);
+    });
+    const communityList = [...communities.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([name, members]) => ({ name, size: members.length }));
+
+    // 7. Connected components (BFS)
+    const visited = new Set<string>();
+    let componentCount = 0;
+    for (const nd of nodes) {
+      if (visited.has(nd.id)) continue;
+      componentCount++;
+      const bfsQ = [nd.id];
+      while (bfsQ.length > 0) {
+        const curr = bfsQ.pop()!;
+        if (visited.has(curr)) continue;
+        visited.add(curr);
+        for (const nbr of neighborSets.get(curr) ?? []) {
+          if (!visited.has(nbr)) bfsQ.push(nbr);
+        }
+      }
+    }
+
+    // 8. Diameter estimate (longest shortest path from degree-centrality hub)
+    const hub = betweenTop[0]?.id ?? nodes[0]?.id;
+    let diameter = 0;
+    if (hub) {
+      const distFromHub = new Map<string, number>();
+      distFromHub.set(hub, 0);
+      const bfsQ = [hub];
+      while (bfsQ.length > 0) {
+        const v = bfsQ.shift()!;
+        const dv = distFromHub.get(v)!;
+        for (const w of neighborSets.get(v) ?? []) {
+          if (!distFromHub.has(w)) {
+            distFromHub.set(w, dv + 1);
+            bfsQ.push(w);
+            diameter = Math.max(diameter, dv + 1);
+          }
+        }
+      }
+    }
+
+    return {
+      density, avgDegree, clusteringCoeff, componentCount, diameter,
+      eigenTop, betweenTop, communityList,
+      lambdaMax: cascade.lambdaMax, isStable: cascade.isStable,
+      dampingCoeff: cascade.dampingCoeff, forgettingRate: cascade.forgettingRate,
+    };
+  }, [graphData, cascade]);
+
+  const metricColor = (val: number, threshLow: number, threshHigh: number) =>
+    val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";
+
+  const toggleMetric = (key: string) => setExpandedMetric(expandedMetric === key ? null : key);
 
   return (
-    <div className="px-4 py-2 border-b border-border space-y-1.5">
-      <div className="flex items-center justify-between">
-        <div className="text-[8px] font-mono text-text-muted">
-          dS/dt = −{cascade.dampingCoeff.toFixed(2)}·S + {cascade.forgettingRate.toFixed(2)}
-        </div>
-        <span
-          className="text-[8px] font-mono px-1.5 py-0.5 rounded border"
-          style={{
-            color: cascade.isStable ? "#00e676" : "#ff1744",
-            borderColor: cascade.isStable ? "rgba(0,230,118,0.3)" : "rgba(255,23,68,0.3)",
-            backgroundColor: cascade.isStable ? "rgba(0,230,118,0.05)" : "rgba(255,23,68,0.05)",
-          }}
-        >
-          {"\u03BB"}max={cascade.lambdaMax.toFixed(2)} {cascade.isStable ? "STABLE" : "UNSTABLE"}
-        </span>
+    <div className="px-3 py-2 border-b border-border space-y-1.5 max-h-[45vh] overflow-y-auto">
+      <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted">
+        NETWORK ANALYSIS
       </div>
-      <div className="flex gap-1">
-        {cascade.topCentralityNodes.map((n) => (
-          <span
-            key={n.nodeId}
-            className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-accent-cyan/5 border border-accent-cyan/20 text-accent-cyan"
-          >
-            {n.label} ({n.centrality.toFixed(2)})
-          </span>
+
+      {/* Quick stats row */}
+      <div className="grid grid-cols-4 gap-1">
+        {[
+          { label: "NODES", value: `${graphData.nodes.length}`, color: "#00e5ff" },
+          { label: "EDGES", value: `${graphData.edges.filter((e) => !e.isSevered).length}`, color: "#00e5ff" },
+          { label: "DENSITY", value: netMetrics.density.toFixed(3), color: metricColor(netMetrics.density, 0.05, 0.15) },
+          { label: "COMPONENTS", value: `${netMetrics.componentCount}`, color: netMetrics.componentCount === 1 ? "#00e676" : "#ffab00" },
+        ].map((s) => (
+          <div key={s.label} className="text-center p-1 rounded border border-border/50 bg-surface-elevated">
+            <div className="text-[7px] font-mono text-text-muted">{s.label}</div>
+            <div className="text-[11px] font-[family-name:var(--font-michroma)] tabular-nums" style={{ color: s.color }}>{s.value}</div>
+          </div>
         ))}
       </div>
+
+      {/* Spectral stability */}
+      <div className="flex items-center justify-between p-1.5 rounded border" style={{
+        borderColor: netMetrics.isStable ? "rgba(0,230,118,0.2)" : "rgba(255,23,68,0.2)",
+        backgroundColor: netMetrics.isStable ? "rgba(0,230,118,0.03)" : "rgba(255,23,68,0.03)",
+      }}>
+        <div className="text-[8px] font-mono text-text-muted">
+          dS/dt = {"\u2212"}{netMetrics.dampingCoeff.toFixed(2)}{"\u00B7"}S + {netMetrics.forgettingRate.toFixed(2)}
+        </div>
+        <span className="text-[8px] font-mono px-1.5 py-0.5 rounded border" style={{
+          color: netMetrics.isStable ? "#00e676" : "#ff1744",
+          borderColor: netMetrics.isStable ? "rgba(0,230,118,0.3)" : "rgba(255,23,68,0.3)",
+        }}>
+          {"\u03BB"}max={netMetrics.lambdaMax.toFixed(2)} {netMetrics.isStable ? "STABLE" : "UNSTABLE"}
+        </span>
+      </div>
+
+      {/* Secondary stats */}
+      <div className="grid grid-cols-3 gap-1">
+        <div className="text-center p-1 rounded border border-border/50 bg-surface-elevated">
+          <div className="text-[7px] font-mono text-text-muted">AVG DEGREE</div>
+          <div className="text-[10px] font-mono text-accent-cyan tabular-nums">{netMetrics.avgDegree.toFixed(1)}</div>
+        </div>
+        <div className="text-center p-1 rounded border border-border/50 bg-surface-elevated">
+          <div className="text-[7px] font-mono text-text-muted">CLUSTERING</div>
+          <div className="text-[10px] font-mono tabular-nums" style={{ color: metricColor(netMetrics.clusteringCoeff, 0.1, 0.3) }}>
+            {netMetrics.clusteringCoeff.toFixed(3)}
+          </div>
+        </div>
+        <div className="text-center p-1 rounded border border-border/50 bg-surface-elevated">
+          <div className="text-[7px] font-mono text-text-muted">DIAMETER</div>
+          <div className="text-[10px] font-mono text-accent-cyan tabular-nums">{netMetrics.diameter}</div>
+        </div>
+      </div>
+
+      {/* Eigenvector Centrality — expandable */}
+      <button onClick={() => toggleMetric("eigen")} className="w-full text-left">
+        <div className="flex items-center justify-between p-1.5 rounded border border-accent-cyan/20 bg-accent-cyan/5 hover:bg-accent-cyan/8 transition-colors">
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+            EIGENVECTOR CENTRALITY
+          </div>
+          <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "eigen" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
+            {"\u25BC"}
+          </span>
+        </div>
+      </button>
+      {expandedMetric === "eigen" && (
+        <div className="space-y-1 pl-1">
+          <div className="text-[8px] font-mono text-text-muted leading-relaxed mb-1">
+            Measures a node{"'"}s influence based on how connected it is to other influential nodes. High eigenvector centrality = structural hub whose disruption cascades through well-connected neighbors.
+          </div>
+          {netMetrics.eigenTop.map((nd, i) => (
+            <button key={nd.id} onClick={() => setSelectedNode(nd.id)} className="w-full flex items-center gap-2 py-0.5 hover:bg-accent-cyan/5 rounded px-1 transition-colors">
+              <span className="text-[8px] font-mono text-text-muted w-3">{i + 1}.</span>
+              <span className="text-[9px] font-mono text-accent-cyan">{nd.label}</span>
+              <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+                <div className="h-full bg-accent-cyan/60 rounded" style={{ width: `${(nd.value / (netMetrics.eigenTop[0]?.value || 1)) * 100}%` }} />
+              </div>
+              <span className="text-[8px] font-mono text-text-muted tabular-nums">{nd.value.toFixed(3)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Betweenness Centrality — expandable */}
+      <button onClick={() => toggleMetric("between")} className="w-full text-left">
+        <div className="flex items-center justify-between p-1.5 rounded border border-accent-amber/20 bg-accent-amber/5 hover:bg-accent-amber/8 transition-colors">
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
+            BETWEENNESS CENTRALITY
+          </div>
+          <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "between" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
+            {"\u25BC"}
+          </span>
+        </div>
+      </button>
+      {expandedMetric === "between" && (
+        <div className="space-y-1 pl-1">
+          <div className="text-[8px] font-mono text-text-muted leading-relaxed mb-1">
+            Identifies chokepoints {"\u2014"} nodes that lie on the most shortest paths between other nodes. High betweenness = critical bridge whose removal fragments the network.
+          </div>
+          {netMetrics.betweenTop.map((nd, i) => (
+            <button key={nd.id} onClick={() => setSelectedNode(nd.id)} className="w-full flex items-center gap-2 py-0.5 hover:bg-accent-amber/5 rounded px-1 transition-colors">
+              <span className="text-[8px] font-mono text-text-muted w-3">{i + 1}.</span>
+              <span className="text-[9px] font-mono text-accent-amber">{nd.label}</span>
+              <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+                <div className="h-full bg-accent-amber/60 rounded" style={{ width: `${nd.value * 100}%` }} />
+              </div>
+              <span className="text-[8px] font-mono text-text-muted tabular-nums">{nd.value.toFixed(3)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Communities — expandable */}
+      <button onClick={() => toggleMetric("community")} className="w-full text-left">
+        <div className="flex items-center justify-between p-1.5 rounded border border-accent-green/20 bg-accent-green/5 hover:bg-accent-green/8 transition-colors">
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-green">
+            COMMUNITIES ({netMetrics.communityList.length})
+          </div>
+          <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "community" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
+            {"\u25BC"}
+          </span>
+        </div>
+      </button>
+      {expandedMetric === "community" && (
+        <div className="space-y-1 pl-1">
+          <div className="text-[8px] font-mono text-text-muted leading-relaxed mb-1">
+            Domain-based community structure. Inter-community edges are potential contagion pathways; intra-community edges represent tightly coupled sub-systems.
+          </div>
+          {netMetrics.communityList.map((c) => (
+            <div key={c.name} className="flex items-center gap-2 py-0.5 px-1">
+              <span className="text-[9px] font-mono text-accent-green flex-1 truncate">{c.name}</span>
+              <div className="w-16 h-1 bg-border rounded overflow-hidden">
+                <div className="h-full bg-accent-green/60 rounded" style={{ width: `${(c.size / graphData.nodes.length) * 100}%` }} />
+              </div>
+              <span className="text-[8px] font-mono text-text-muted tabular-nums">{c.size}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

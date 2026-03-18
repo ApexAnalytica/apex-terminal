@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "apex-dev",
+      "runtimeExecutable": "/Users/Junaid/.nvm/versions/node/v20.20.1/bin/node",
+      "runtimeArgs": ["/Users/Junaid/Documents/apex-terminal/.claude/worktrees/compassionate-joliot/.claude/start-dev.js", "dev", "-p", "3002"],
+      "port": 3002,
+      "autoPort": false
+    }
+  ]
+}

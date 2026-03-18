@@ -229,6 +229,8 @@ export default function CausalDAG2D() {
     baselineEpochs,
     interventionEpochs,
     activeTimeline,
+    isolateSelection,
+    selectedNodes: multiSelectedNodes,
   } = useApexStore();
 
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
@@ -348,6 +350,13 @@ export default function CausalDAG2D() {
     });
   }, [graphData, truthFilter, currentSnapshot, idHash]);
 
+  // Filter nodes for isolation mode
+  const visibleNodes = useMemo(() => {
+    if (!isolateSelection || multiSelectedNodes.length === 0) return nodes;
+    const selSet = new Set(multiSelectedNodes);
+    return nodes.filter((n) => selSet.has(n.id));
+  }, [nodes, isolateSelection, multiSelectedNodes]);
+
   const edges: Edge[] = useMemo(
     () =>
       graphData.edges.map((e) => {
@@ -409,6 +418,13 @@ export default function CausalDAG2D() {
     [graphData, truthFilter, currentSnapshot, selectedEdge]
   );
 
+  // Filter edges for isolation mode
+  const visibleEdges = useMemo(() => {
+    if (!isolateSelection || multiSelectedNodes.length === 0) return edges;
+    const selSet = new Set(multiSelectedNodes);
+    return edges.filter((e) => selSet.has(e.source) && selSet.has(e.target));
+  }, [edges, isolateSelection, multiSelectedNodes]);
+
   const onInit = useCallback(() => {}, []);
 
   const onEdgeClick: EdgeMouseHandler = useCallback(
@@ -457,8 +473,8 @@ export default function CausalDAG2D() {
     <div className="w-full h-full relative">
       <DAGOverlay />
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={visibleNodes}
+        edges={visibleEdges}
         nodeTypes={nodeTypes}
         onInit={onInit}
         onNodeClick={onNodeClick}

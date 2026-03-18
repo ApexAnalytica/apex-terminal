@@ -405,6 +405,66 @@ export async function streamLlmQuery(
       content: m.content,
     }));
 
+  // For Ollama, call directly from browser to local server (bypasses Vercel)
+  if (opts.provider === "ollama") {
+    const ollamaUrl = opts.ollamaUrl || "http://localhost:11434";
+    const ollamaMessages = [
+      { role: "system", content: systemContext },
+      ...messages.map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+    ];
+
+    const res = await fetch(`${ollamaUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: opts.model,
+        messages: ollamaMessages,
+        stream: true,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Ollama error: HTTP ${res.status}`);
+    }
+
+    if (!res.body) {
+      throw new Error("No response body from Ollama");
+    }
+
+    // Transform Ollama's NDJSON stream to plain text stream
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split("\n")) {
+              if (!line.trim()) continue;
+              try {
+                const json = JSON.parse(line);
+                if (json.message?.content) {
+                  controller.enqueue(encoder.encode(json.message.content));
+                }
+              } catch { /* skip non-JSON lines */ }
+            }
+          }
+        } catch (err) {
+          controller.error(err);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+  }
+
   const res = await fetch("/api/copilot", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -414,7 +474,6 @@ export async function streamLlmQuery(
       apiKey: opts.apiKey,
       model: opts.model,
       provider: opts.provider,
-      ollamaUrl: opts.ollamaUrl,
     }),
   });
 

@@ -43,14 +43,11 @@ export default function HeaderBar() {
       {/* Left: Logo */}
       <div className="flex items-center gap-4">
         <div className="flex flex-col">
-          <span className="font-[family-name:var(--font-michroma)] text-[13px] tracking-[0.2em] text-foreground">
-            APEX
-          </span>
-          <span className="font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.35em] text-text-muted -mt-0.5">
-            ANALYTICA
-          </span>
-          <span className="font-[family-name:var(--font-michroma)] text-[7px] tracking-[0.4em] text-accent-cyan/60 -mt-0.5">
+          <span className="font-[family-name:var(--font-michroma)] text-[15px] tracking-[0.3em] text-accent-cyan font-medium">
             MANIFOLD
+          </span>
+          <span className="font-[family-name:var(--font-michroma)] text-[7px] tracking-[0.25em] text-text-muted -mt-0.5">
+            by APEX ANALYTICA
           </span>
         </div>
         <div className="h-8 w-px bg-border" />

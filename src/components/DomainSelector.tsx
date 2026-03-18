@@ -12,7 +12,7 @@ export const DOMAIN_CARDS = [
     color: "#ff6d00",
     colorVar: "var(--accent-orange)",
     description: "Systemic banking failures, credit default cascades, liquidity traps",
-    hasData: false,
+    hasData: true,
   },
   {
     id: "supply-chain",
@@ -20,8 +20,8 @@ export const DOMAIN_CARDS = [
     icon: "\u{1F517}",
     color: "#00e5ff",
     colorVar: "var(--accent-cyan)",
-    description: "Critical material bottlenecks, logistics disruption, supplier concentration",
-    hasData: false,
+    description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission, strategic reserves",
+    hasData: true,
   },
   {
     id: "sovereign-risk",
@@ -30,7 +30,7 @@ export const DOMAIN_CARDS = [
     color: "#ffab00",
     colorVar: "var(--accent-amber)",
     description: "Currency crises, debt restructuring, capital flight contagion",
-    hasData: false,
+    hasData: true,
   },
   {
     id: "infrastructure",
@@ -38,8 +38,8 @@ export const DOMAIN_CARDS = [
     icon: "\u{1F3D7}",
     color: "#7c4dff",
     colorVar: "var(--accent-purple)",
-    description: "Grid failures, telecom outages, transportation network collapse",
-    hasData: false,
+    description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine landing station concentration",
+    hasData: true,
   },
   {
     id: "ai-systems",

@@ -10,6 +10,10 @@ import type { CausalGraph } from "@/lib/types";
 const DOMAIN_MAP: Record<string, string[]> = {
   "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
   "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
+  "financial-contagion": ["Financial Contagion"],
+  "sovereign-risk": ["Sovereign Risk"],
+  "supply-chain": ["Supply Chain Food Security"],
+  "infrastructure": ["Undersea Cable Infrastructure"],
 };
 
 /**

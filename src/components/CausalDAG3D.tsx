@@ -272,6 +272,7 @@ export default function CausalDAG3D() {
     setSelectedNode,
     selectedNodes: multiSelectedNodes,
     setSelectedNodes,
+    isolateSelection,
     scissorsMode,
     severedEdges,
     severEdge,
@@ -612,6 +613,9 @@ export default function CausalDAG3D() {
             const pos = posMap[node.id];
             if (!pos) return null;
 
+            // Hide non-selected nodes when isolation is active
+            if (isolateSelection && multiSelectedNodes.length > 0 && !multiSelectedNodes.includes(node.id)) return null;
+
             const isTarget = interventionTarget === node.id;
             const isRestricted = truthFilter === "verified" && node.isRestricted;
             const isMultiSelected = multiSelectedNodes.includes(node.id);
@@ -655,6 +659,9 @@ export default function CausalDAG3D() {
             const srcPos = posMap[edge.source];
             const tgtPos = posMap[edge.target];
             if (!srcPos || !tgtPos) return null;
+
+            // Hide edges that don't connect two selected nodes when isolation is active
+            if (isolateSelection && multiSelectedNodes.length > 0 && (!multiSelectedNodes.includes(edge.source) || !multiSelectedNodes.includes(edge.target))) return null;
 
             const isHighlighted =
               interventionMode &&

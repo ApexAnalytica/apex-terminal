@@ -6,7 +6,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function DAGOverlay() {
-  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, selectedNodes, setSelectedNodes, isLive, timelinePosition } = useApexStore();
+  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, selectedNodes, setSelectedNodes, isolateSelection, setIsolateSelection, addCopilotMessage, isLive, timelinePosition } = useApexStore();
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
@@ -156,7 +156,7 @@ export default function DAGOverlay() {
                 {selectedNodes.length} NODES SELECTED
               </div>
               <button
-                onClick={() => setSelectedNodes([])}
+                onClick={() => { setSelectedNodes([]); setIsolateSelection(false); }}
                 className="text-[7px] font-mono text-accent-red hover:text-red-400 transition-colors px-1"
               >
                 CLEAR ALL
@@ -169,7 +169,11 @@ export default function DAGOverlay() {
                   <div key={nodeId} className="flex items-center justify-between gap-1 py-0.5">
                     <span className="text-[8px] text-text-muted truncate">{node?.label ?? nodeId}</span>
                     <button
-                      onClick={() => setSelectedNodes(selectedNodes.filter((id) => id !== nodeId))}
+                      onClick={() => {
+                        const next = selectedNodes.filter((id) => id !== nodeId);
+                        setSelectedNodes(next);
+                        if (next.length === 0) setIsolateSelection(false);
+                      }}
                       className="text-[7px] text-text-muted/50 hover:text-accent-red transition-colors flex-shrink-0"
                     >
                       ✕
@@ -177,6 +181,46 @@ export default function DAGOverlay() {
                   </div>
                 );
               })}
+            </div>
+            {/* Action buttons */}
+            <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-border/50">
+              <button
+                onClick={() => setIsolateSelection(!isolateSelection)}
+                className={`flex-1 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-1 rounded border transition-colors ${
+                  isolateSelection
+                    ? "border-accent-amber/60 text-accent-amber bg-accent-amber/10"
+                    : "border-border text-text-muted hover:text-accent-amber hover:border-accent-amber/40"
+                }`}
+              >
+                {isolateSelection ? "SHOW ALL" : "ISOLATE"}
+              </button>
+              <button
+                onClick={() => {
+                  const nodeLabels = selectedNodes.map((id) => {
+                    const n = activeGraph.nodes.find((node) => node.id === id);
+                    return n ? n.label : id;
+                  });
+                  const selSet = new Set(selectedNodes);
+                  const subEdges = activeGraph.edges.filter((e) => selSet.has(e.source) && selSet.has(e.target));
+                  const edgeDescs = subEdges.map((e) => {
+                    const src = activeGraph.nodes.find((n) => n.id === e.source)?.label ?? e.source;
+                    const tgt = activeGraph.nodes.find((n) => n.id === e.target)?.label ?? e.target;
+                    return `${src} → ${tgt} (${e.type}, w=${e.weight}, mechanism: ${e.physicalMechanism || "N/A"})`;
+                  });
+                  const prompt = `ANALYZE SELECTION: The user has selected ${selectedNodes.length} nodes in the causal DAG. Provide a macro analysis of this subgraph — what are the key causal pathways, systemic risks, and cascading vulnerabilities? How do these nodes interact and what are the implications?\n\nSelected nodes: ${nodeLabels.join(", ")}\n\nEdges within selection (${subEdges.length}):\n${edgeDescs.join("\n")}`;
+                  addCopilotMessage({
+                    id: `user-sel-${Date.now()}`,
+                    role: "user",
+                    content: `ANALYZE SELECTION (${selectedNodes.length} nodes)`,
+                    timestamp: Date.now(),
+                  });
+                  // Dispatch to copilot via a custom event that SystemCopilot listens for
+                  window.dispatchEvent(new CustomEvent("apex-analyze-selection", { detail: { prompt } }));
+                }}
+                className="flex-1 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-1 rounded border border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/10 transition-colors"
+              >
+                ANALYZE
+              </button>
             </div>
           </div>
         </div>

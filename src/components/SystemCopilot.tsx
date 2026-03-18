@@ -424,6 +424,25 @@ export default function SystemCopilot() {
     ]
   );
 
+  // Listen for analyze-selection events from DAGOverlay
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.prompt && isLlmActive) {
+        handleStreamingQuery(detail.prompt);
+      } else if (detail?.prompt) {
+        addCopilotMessage({
+          id: `sys-sel-${Date.now()}`,
+          role: "assistant",
+          content: "LLM not configured. Please set up Gemini or Ollama in settings to analyze selections.",
+          timestamp: Date.now(),
+        });
+      }
+    };
+    window.addEventListener("apex-analyze-selection", handler);
+    return () => window.removeEventListener("apex-analyze-selection", handler);
+  }, [isLlmActive, handleStreamingQuery, addCopilotMessage]);
+
   // ─── Voice Input (Speech-to-Text) ────────────────────────
   const startListening = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

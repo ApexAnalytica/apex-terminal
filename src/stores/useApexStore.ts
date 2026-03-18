@@ -78,6 +78,10 @@ interface ApexState {
   selectedNodes: string[];
   setSelectedNodes: (nodeIds: string[]) => void;
 
+  // Isolate selection — hide non-selected nodes
+  isolateSelection: boolean;
+  setIsolateSelection: (on: boolean) => void;
+
   // Intervention mode
   interventionMode: boolean;
   interventionTarget: string | null;
@@ -248,6 +252,10 @@ export const useApexStore = create<ApexState>((set) => ({
   // Multi-selection
   selectedNodes: [],
   setSelectedNodes: (nodeIds) => set({ selectedNodes: nodeIds }),
+
+  // Isolate selection
+  isolateSelection: false,
+  setIsolateSelection: (on) => set({ isolateSelection: on }),
 
   // Intervention
   interventionMode: false,

@@ -57,6 +57,13 @@ function formatFullDate(ts: number): string {
   });
 }
 
+function formatShortDate(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /** Generate evenly-spaced tick marks for the timeline */
 function generateTicks(
   start: number,
@@ -102,12 +109,14 @@ export default function TimeDial() {
   const {
     timelinePosition,
     timelineRange,
+    timelineSelection,
     isLive,
     timelineGranularity,
     temporalData,
     setTimelinePosition,
     setIsLive,
     setTimelineGranularity,
+    setTimelineSelection,
     initTemporalData,
     goLive,
     // Replay state
@@ -132,6 +141,8 @@ export default function TimeDial() {
 
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRangeSelecting, setIsRangeSelecting] = useState(false);
+  const [rangeAnchor, setRangeAnchor] = useState<number | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<TemporalEvent | null>(null);
 
   // Initialize temporal data on mount
@@ -155,6 +166,15 @@ export default function TimeDial() {
     ? maxEpoch > 0 ? currentEpoch / maxEpoch : 0
     : range > 0 ? (timelinePosition - start) / range : 1;
 
+  // Selection as fractions 0-1
+  const selectionFracs = useMemo(() => {
+    if (!timelineSelection || range <= 0) return null;
+    return {
+      start: Math.max(0, (timelineSelection.start - start) / range),
+      end: Math.min(1, (timelineSelection.end - start) / range),
+    };
+  }, [timelineSelection, start, range]);
+
   // Tick marks (only for historical mode)
   const ticks = useMemo(
     () => generateTicks(start, end, timelineGranularity),
@@ -165,6 +185,23 @@ export default function TimeDial() {
   const events = useMemo(
     () => (temporalData ? getEventsInRange(temporalData, start, end) : []),
     [temporalData, start, end],
+  );
+
+  // Events within selection (for context)
+  const selectionEventCount = useMemo(() => {
+    if (!timelineSelection || !temporalData) return 0;
+    return getEventsInRange(temporalData, timelineSelection.start, timelineSelection.end).length;
+  }, [timelineSelection, temporalData]);
+
+  // Convert pixel position to timestamp
+  const pixelToTimestamp = useCallback(
+    (clientX: number): number => {
+      if (!trackRef.current) return start;
+      const rect = trackRef.current.getBoundingClientRect();
+      const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return start + fraction * range;
+    },
+    [start, range],
   );
 
   // Convert pixel position to timestamp (historical) or epoch (replay)
@@ -191,23 +228,45 @@ export default function TimeDial() {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
-      setIsDragging(true);
-      handleTrackScrub(e.clientX);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+      // Alt+drag = range selection (historical mode only)
+      if (e.altKey && !replayActive) {
+        setIsRangeSelecting(true);
+        const ts = pixelToTimestamp(e.clientX);
+        setRangeAnchor(ts);
+        setTimelineSelection({ start: ts, end: ts });
+        return;
+      }
+
+      // Normal drag = scrub
+      setIsDragging(true);
+      setTimelineSelection(null); // Clear selection on normal click
+      handleTrackScrub(e.clientX);
     },
-    [handleTrackScrub],
+    [handleTrackScrub, replayActive, pixelToTimestamp, setTimelineSelection],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (isRangeSelecting && rangeAnchor !== null) {
+        const ts = pixelToTimestamp(e.clientX);
+        setTimelineSelection({
+          start: Math.min(rangeAnchor, ts),
+          end: Math.max(rangeAnchor, ts),
+        });
+        return;
+      }
       if (!isDragging) return;
       handleTrackScrub(e.clientX);
     },
-    [isDragging, handleTrackScrub],
+    [isDragging, isRangeSelecting, rangeAnchor, handleTrackScrub, pixelToTimestamp, setTimelineSelection],
   );
 
   const handlePointerUp = useCallback(() => {
     setIsDragging(false);
+    setIsRangeSelecting(false);
+    setRangeAnchor(null);
   }, []);
 
   // Criticality display for cascade mode
@@ -287,6 +346,13 @@ export default function TimeDial() {
 
       // Historical-mode shortcuts (Shift+Arrow)
       if (!replayActive) {
+        // Escape clears time window selection
+        if (e.key === "Escape" && timelineSelection) {
+          e.preventDefault();
+          setTimelineSelection(null);
+          return;
+        }
+
         const DAY = 86400000;
         let step = 0;
 
@@ -324,9 +390,9 @@ export default function TimeDial() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     replayActive, replayPlaying, replaySpeed, timelineGranularity,
-    timelinePosition, start, end, setTimelinePosition, goLive,
+    timelinePosition, timelineSelection, start, end, setTimelinePosition, goLive,
     setReplayPlaying, stepEpoch, setReplaySpeed, branchFromCurrentEpoch,
-    stopReplay,
+    stopReplay, setTimelineSelection,
   ]);
 
   if (!temporalData) return null;
@@ -347,6 +413,17 @@ export default function TimeDial() {
             >
               Cascade
             </motion.span>
+          ) : timelineSelection ? (
+            <motion.span
+              key="window"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              className="text-[8px] font-[family-name:var(--font-michroma)] tracking-[0.15em] uppercase"
+              style={{ color: "var(--accent-cyan)" }}
+            >
+              Window
+            </motion.span>
           ) : (
             <motion.span
               key="timedial"
@@ -362,9 +439,11 @@ export default function TimeDial() {
         <span className="text-[9px] font-mono text-foreground">
           {replayActive
             ? `E${currentEpoch}/${maxEpoch}`
-            : isLive
-              ? "LIVE"
-              : formatDate(timelinePosition, timelineGranularity)}
+            : timelineSelection
+              ? `${Math.round((timelineSelection.end - timelineSelection.start) / 86400000)}d`
+              : isLive
+                ? "LIVE"
+                : formatDate(timelinePosition, timelineGranularity)}
         </span>
       </div>
 
@@ -393,7 +472,7 @@ export default function TimeDial() {
               style={{ color: "var(--accent-amber)" }}
               title="Play/Pause (Space)"
             >
-              {replayPlaying ? "▐▐" : "▶"}
+              {replayPlaying ? "\u2590\u2590" : "\u25B6"}
             </button>
             {/* Step forward */}
             <button
@@ -462,7 +541,7 @@ export default function TimeDial() {
 
       {/* Timeline track */}
       <div className="flex-1 flex flex-col gap-1">
-        {/* Date at cursor / epoch count */}
+        {/* Date at cursor / epoch count / selection range */}
         <div className="flex justify-between items-center h-3">
           {replayActive ? (
             <>
@@ -478,6 +557,18 @@ export default function TimeDial() {
                 style={{ color: critColor }}
               >
                 {critLabel}
+              </span>
+            </>
+          ) : timelineSelection ? (
+            <>
+              <span className="text-[8px] font-mono" style={{ color: "var(--accent-cyan)" }}>
+                {formatShortDate(timelineSelection.start)}
+              </span>
+              <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: "var(--accent-cyan)" }}>
+                {selectionEventCount > 0 ? `${selectionEventCount} event${selectionEventCount > 1 ? "s" : ""} in window` : "Alt+drag to adjust"}
+              </span>
+              <span className="text-[8px] font-mono" style={{ color: "var(--accent-cyan)" }}>
+                {formatShortDate(timelineSelection.end)}
               </span>
             </>
           ) : (
@@ -522,6 +613,21 @@ export default function TimeDial() {
                   : "linear-gradient(90deg, rgba(0,229,255,0.03), rgba(0,229,255,0.12))",
             }}
           />
+
+          {/* Time window selection overlay */}
+          {!replayActive && selectionFracs && (
+            <div
+              className="absolute top-0 h-full z-10 pointer-events-none rounded"
+              style={{
+                left: `${selectionFracs.start * 100}%`,
+                width: `${(selectionFracs.end - selectionFracs.start) * 100}%`,
+                background: "rgba(0,229,255,0.15)",
+                borderLeft: "2px solid rgba(0,229,255,0.6)",
+                borderRight: "2px solid rgba(0,229,255,0.6)",
+                boxShadow: "inset 0 0 8px rgba(0,229,255,0.1)",
+              }}
+            />
+          )}
 
           {/* Cascade epoch markers — show epoch positions as small amber ticks */}
           {replayActive && maxEpoch > 0 && (
@@ -638,6 +744,26 @@ export default function TimeDial() {
         {/* Bottom tick labels spacer */}
         <div className="h-2" />
       </div>
+
+      {/* Time window clear button — shown when selection is active */}
+      <AnimatePresence>
+        {!replayActive && timelineSelection && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            onClick={() => setTimelineSelection(null)}
+            className="px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors hover:bg-red-500/10 whitespace-nowrap"
+            style={{
+              color: "var(--accent-red)",
+              border: "1px solid rgba(255, 23, 68, 0.3)",
+            }}
+            title="Clear time window (Escape)"
+          >
+            CLEAR
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Cascade mode: omega buffer + timeline tabs + branch + stop */}
       <AnimatePresence>
@@ -763,7 +889,7 @@ export default function TimeDial() {
               background: "rgba(255, 171, 0, 0.08)",
             }}
           >
-            <span className="text-[10px]">▶</span>
+            <span className="text-[10px]">{"\u25B6"}</span>
             <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-[0.1em]">
               CASCADE
             </span>

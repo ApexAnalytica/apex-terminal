@@ -196,10 +196,12 @@ interface ApexState {
   isLive: boolean; // whether following real-time
   timelineGranularity: TimeGranularity;
   temporalData: TemporalDataset | null;
+  timelineSelection: { start: number; end: number } | null; // user-selected date range window
   setTimelinePosition: (ts: number) => void;
   setTimelineRange: (range: { start: number; end: number }) => void;
   setIsLive: (live: boolean) => void;
   setTimelineGranularity: (g: TimeGranularity) => void;
+  setTimelineSelection: (sel: { start: number; end: number } | null) => void;
   initTemporalData: () => void;
   goLive: () => void;
 }
@@ -626,6 +628,7 @@ export const useApexStore = create<ApexState>((set) => ({
   },
   isLive: true,
   timelineGranularity: "day",
+  timelineSelection: null,
   temporalData: null,
 
   setTimelinePosition: (ts) =>
@@ -642,6 +645,9 @@ export const useApexStore = create<ApexState>((set) => ({
 
   setTimelineGranularity: (g) =>
     set({ timelineGranularity: g }),
+
+  setTimelineSelection: (sel) =>
+    set({ timelineSelection: sel }),
 
   initTemporalData: () =>
     set((s) => {

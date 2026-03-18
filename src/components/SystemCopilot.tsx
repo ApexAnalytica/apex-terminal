@@ -13,7 +13,7 @@ import {
 import { processLlmActions } from "@/lib/copilot-actions";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
-import { serializeGraphContext, serializeSnapshotContext } from "@/lib/copilot-context";
+import { serializeGraphContext, serializeSnapshotContext, serializeTimeWindowContext } from "@/lib/copilot-context";
 import { buildSnapshot } from "@/lib/snapshots/serializer";
 
 const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
@@ -330,9 +330,16 @@ export default function SystemCopilot() {
         ];
 
         // Enrich system context with snapshot data if available
-        const snapshotContext = snapshotHistory.length > 0
+        let snapshotContext = snapshotHistory.length > 0
           ? serializeSnapshotContext(snapshotHistory)
           : "";
+
+        // Add temporal window context if a time range is selected
+        const timelineSel = useApexStore.getState().timelineSelection;
+        const tempData = useApexStore.getState().temporalData;
+        if (timelineSel && tempData) {
+          snapshotContext += serializeTimeWindowContext(timelineSel, tempData, graphData);
+        }
 
         const stream = await streamLlmQuery({
           copilotMessages: allMessages,

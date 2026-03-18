@@ -467,7 +467,8 @@ export default function CausalDAG2D() {
         onSelectionChange={onSelectionChange}
         selectionMode={SelectionMode.Partial}
         selectionOnDrag
-        panOnDrag={[1]}
+        selectionKeyCode="Shift"
+        panOnDrag
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}

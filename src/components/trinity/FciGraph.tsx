@@ -27,12 +27,18 @@ export default function FciGraph() {
   const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+
+  const selSet = useMemo(() => new Set(multiSelectedNodes), [multiSelectedNodes]);
+  const isScoped = isolateSelection && selSet.size > 0;
 
   const fciNodes = useMemo(() => {
-    return graphData.nodes.filter(
+    const base = graphData.nodes.filter(
       (n) => n.isConfounded || n.discoverySource === "FCI"
     );
-  }, [graphData.nodes]);
+    return isScoped ? base.filter((n) => selSet.has(n.id)) : base;
+  }, [graphData.nodes, isScoped, selSet]);
 
   const fciEdges = useMemo(() => {
     const nodeIds = new Set(fciNodes.map((n) => n.id));

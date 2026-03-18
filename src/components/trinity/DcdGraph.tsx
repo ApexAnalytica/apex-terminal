@@ -111,14 +111,20 @@ export default function DcdGraph() {
   const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
 
+  const selSet = useMemo(() => new Set(multiSelectedNodes), [multiSelectedNodes]);
+  const isScoped = isolateSelection && selSet.size > 0;
+
   const dcdNodes = useMemo(() => {
-    return graphData.nodes.filter(
+    const base = graphData.nodes.filter(
       (n) => n.discoverySource === "DCD" || n.discoverySource === "merged"
     );
-  }, [graphData.nodes]);
+    return isScoped ? base.filter((n) => selSet.has(n.id)) : base;
+  }, [graphData.nodes, isScoped, selSet]);
 
   const dcdEdges = useMemo(() => {
     const nodeIds = new Set(dcdNodes.map((n) => n.id));

@@ -691,11 +691,10 @@ function AxiomLibrary() {
                 )}
               </div>
               <div className="text-accent-green mt-0.5">{axiom.formalNotation}</div>
-              {hasViolations && (
-                <div className="text-accent-red mt-0.5 text-[8px]">
-                  {axiom.description}
-                </div>
-              )}
+              <div className="text-foreground mt-0.5 text-[8px]">{axiom.plainText}</div>
+              <div className="text-text-muted mt-0.5 text-[8px]" style={{ opacity: 0.7 }}>
+                {axiom.description}
+              </div>
             </div>
           );
         })}

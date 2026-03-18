@@ -144,6 +144,9 @@ export default function TimeDial() {
   const [isRangeSelecting, setIsRangeSelecting] = useState(false);
   const [rangeAnchor, setRangeAnchor] = useState<number | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<TemporalEvent | null>(null);
+  const [historicalPlaying, setHistoricalPlaying] = useState(false);
+  const historicalPlayRef = useRef<number | null>(null);
+  const lastTickRef = useRef<number>(0);
 
   // Initialize temporal data on mount
   useEffect(() => {
@@ -151,6 +154,61 @@ export default function TimeDial() {
   }, [initTemporalData]);
 
   const { start, end } = timelineRange;
+
+  // Determine step size for historical playback based on granularity
+  const historicalStepMs = useMemo(() => {
+    const DAY = 86400000;
+    switch (timelineGranularity) {
+      case "hour": return DAY / 24;
+      case "day": return DAY;
+      case "week": return DAY * 7;
+      case "month": return DAY * 30;
+    }
+  }, [timelineGranularity]);
+
+  // Historical playback animation loop
+  useEffect(() => {
+    if (!historicalPlaying || replayActive) {
+      if (historicalPlayRef.current !== null) {
+        cancelAnimationFrame(historicalPlayRef.current);
+        historicalPlayRef.current = null;
+      }
+      return;
+    }
+
+    const tick = (now: number) => {
+      if (!historicalPlaying) return;
+
+      // Advance every ~150ms
+      if (now - lastTickRef.current >= 150) {
+        lastTickRef.current = now;
+        const currentPos = useApexStore.getState().timelinePosition;
+        const newPos = currentPos + historicalStepMs;
+        const timeEnd = useApexStore.getState().timelineRange.end;
+
+        if (newPos >= timeEnd) {
+          // Reached the end — auto-pause and go live
+          setHistoricalPlaying(false);
+          goLive();
+          return;
+        }
+
+        setTimelinePosition(newPos);
+      }
+
+      historicalPlayRef.current = requestAnimationFrame(tick);
+    };
+
+    lastTickRef.current = performance.now();
+    historicalPlayRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (historicalPlayRef.current !== null) {
+        cancelAnimationFrame(historicalPlayRef.current);
+        historicalPlayRef.current = null;
+      }
+    };
+  }, [historicalPlaying, replayActive, historicalStepMs, setTimelinePosition, goLive]);
   const range = end - start;
 
   // Replay derived state
@@ -344,8 +402,15 @@ export default function TimeDial() {
         }
       }
 
-      // Historical-mode shortcuts (Shift+Arrow)
+      // Historical-mode shortcuts (Shift+Arrow, Space for play/pause)
       if (!replayActive) {
+        // Space toggles historical playback
+        if (e.key === " ") {
+          e.preventDefault();
+          setHistoricalPlaying((prev) => !prev);
+          return;
+        }
+
         // Escape clears time window selection
         if (e.key === "Escape" && timelineSelection) {
           e.preventDefault();
@@ -392,7 +457,7 @@ export default function TimeDial() {
     replayActive, replayPlaying, replaySpeed, timelineGranularity,
     timelinePosition, timelineSelection, start, end, setTimelinePosition, goLive,
     setReplayPlaying, stepEpoch, setReplaySpeed, branchFromCurrentEpoch,
-    stopReplay, setTimelineSelection,
+    stopReplay, setTimelineSelection, setHistoricalPlaying,
   ]);
 
   if (!temporalData) return null;
@@ -506,35 +571,54 @@ export default function TimeDial() {
         )}
       </AnimatePresence>
 
-      {/* Granularity selector — hidden during cascade */}
+      {/* Granularity selector + historical play button — hidden during cascade */}
       <AnimatePresence>
         {!replayActive && (
           <motion.div
             initial={{ opacity: 0, width: 0 }}
             animate={{ opacity: 1, width: "auto" }}
             exit={{ opacity: 0, width: 0 }}
-            className="flex gap-0.5 rounded border border-border overflow-hidden"
+            className="flex items-center gap-1 overflow-hidden"
           >
-            {GRANULARITY_OPTIONS.map((opt) => (
+            <div className="flex gap-0.5 rounded border border-border overflow-hidden">
+              {GRANULARITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTimelineGranularity(opt.value)}
+                  className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                  style={{
+                    backgroundColor:
+                      timelineGranularity === opt.value
+                        ? "rgba(0,229,255,0.15)"
+                        : "transparent",
+                    color:
+                      timelineGranularity === opt.value
+                        ? "var(--accent-cyan)"
+                        : "var(--text-muted)",
+                    borderRight: "1px solid var(--border)",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {/* Historical play/pause button — only in non-live, non-replay mode */}
+            {!isLive && (
               <button
-                key={opt.value}
-                onClick={() => setTimelineGranularity(opt.value)}
-                className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                onClick={() => setHistoricalPlaying(!historicalPlaying)}
+                className="w-6 h-6 flex items-center justify-center rounded border transition-colors hover:bg-white/10"
                 style={{
-                  backgroundColor:
-                    timelineGranularity === opt.value
-                      ? "rgba(0,229,255,0.15)"
-                      : "transparent",
-                  color:
-                    timelineGranularity === opt.value
-                      ? "var(--accent-cyan)"
-                      : "var(--text-muted)",
-                  borderRight: "1px solid var(--border)",
+                  color: historicalPlaying ? "var(--accent-cyan)" : "var(--text-muted)",
+                  borderColor: historicalPlaying ? "rgba(0,229,255,0.4)" : "var(--border)",
+                  backgroundColor: historicalPlaying ? "rgba(0,229,255,0.1)" : "transparent",
                 }}
+                title="Play/Pause historical scrub (Space)"
               >
-                {opt.label}
+                <span className="text-[10px]">
+                  {historicalPlaying ? "\u2590\u2590" : "\u25B6"}
+                </span>
               </button>
-            ))}
+            )}
           </motion.div>
         )}
       </AnimatePresence>

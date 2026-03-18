@@ -190,6 +190,7 @@ export interface TarskiAxiom {
   name: string;
   formalNotation: string;
   description: string;
+  plainText: string;
 }
 
 export interface ProofTrace {

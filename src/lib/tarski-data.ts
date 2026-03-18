@@ -12,6 +12,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Temporal Priority",
     formalNotation: "∀e∈Edges, Lag(e) ≥ 0",
     description: "Effects cannot precede causes — causal edges must have non-negative temporal lag",
+    plainText: "Causes must happen before their effects — no time travel allowed.",
   },
   {
     id: "A-02",
@@ -19,6 +20,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Flow Conservation",
     formalNotation: "Σw_in(v) ≥ Σw_out(v) · (1 − loss)",
     description: "Throughput entering a node must account for outbound flow — mass/energy balance must hold across processing hubs",
+    plainText: "What goes into a node must account for what comes out — nothing appears from nowhere.",
   },
   {
     id: "A-03",
@@ -26,6 +28,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "DAG Integrity",
     formalNotation: "∄ path v→⋯→v",
     description: "No directed cycles in the causal structure — feedback loops must be broken by temporal lag",
+    plainText: "The causal chain can't loop back on itself — A can't cause B if B already caused A.",
   },
   {
     id: "A-04",
@@ -33,6 +36,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Chokepoint Throughput Ceiling",
     formalNotation: "Flow(chokepoint) ≤ Capacity(chokepoint)",
     description: "Maritime chokepoints (Strait of Hormuz) impose hard throughput limits on all downstream flows",
+    plainText: "Chokepoints like the Strait of Hormuz have a maximum capacity — you can't push more through than they can handle.",
   },
   {
     id: "A-05",
@@ -40,6 +44,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Single-Source Fragility",
     formalNotation: "InDegree(v)=1 ∧ C(v)≥7 → FRAGILE",
     description: "A node with only one inbound supplier and high cascade load is structurally fragile — no redundancy path exists",
+    plainText: "If a node depends on just one supplier and carries heavy load, it's dangerously fragile.",
   },
 
   // Level 1 — Regulatory / Geopolitical (red alert, manual override)
@@ -49,6 +54,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Jurisdictional Concentration",
     formalNotation: "J(v) ≥ 8 ∧ w(e) ≥ 0.7 → FLAG",
     description: "High-weight edges connected to nodes with extreme jurisdictional hazard (sanctions, conflict zones, export controls) require manual verification",
+    plainText: "High-impact connections to sanctioned or conflict-zone nodes need manual review.",
   },
   {
     id: "R-02",
@@ -56,6 +62,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Force Majeure Exposure",
     formalNotation: "FM_trigger → suspend(obligations)",
     description: "Nodes in conflict-adjacent jurisdictions with high restoration latency may face force majeure contract suspension",
+    plainText: "Nodes in war-adjacent regions may have contracts suspended due to force majeure.",
   },
   {
     id: "R-03",
@@ -63,6 +70,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Export Route Monopoly",
     formalNotation: "∀ export_path(v) ∋ chokepoint → RESTRICTED",
     description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk",
+    plainText: "If every export route goes through one chokepoint, that's a concentration risk.",
   },
   {
     id: "R-04",
@@ -70,6 +78,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Cross-Domain Dependency",
     formalNotation: "domain(source) ≠ domain(target) ∧ conf < 0.7 → UNVERIFIED",
     description: "Cross-domain edges with low confidence may represent assumed rather than verified causal relationships",
+    plainText: "Cross-domain links with low confidence might be assumed rather than proven.",
   },
 
   // Level 2 — Heuristic (flagged as anomaly)
@@ -79,6 +88,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Capacity Saturation",
     formalNotation: "ΩF(v) > 9.0 → ANOMALY",
     description: "Nodes with composite fragility exceeding 9.0 are at saturation — any additional shock may trigger cascade failure",
+    plainText: "A node's fragility score is maxed out — any additional shock could break it.",
   },
   {
     id: "H-02",
@@ -86,6 +96,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     name: "Cascade Amplification",
     formalNotation: "C(v) ≥ 9 ∧ OutDegree(v) ≥ 3 → AMPLIFIER",
     description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly",
+    plainText: "A highly loaded node with many outbound connections amplifies disruption exponentially.",
   },
 ];
 

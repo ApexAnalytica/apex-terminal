@@ -5,6 +5,7 @@ import { getCategoryColor } from "@/lib/graph-data";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { CausalNode } from "@/lib/types";
+import { getNodeStateAt, getEdgeStateAt } from "@/lib/temporal-data";
 
 // Time-layered layout: T-2, T-1, T-0
 const TIME_COLS = [
@@ -13,15 +14,62 @@ const TIME_COLS = [
   { label: "T-0", x: 220 },
 ];
 
+/** Compute per-edge delta between window start and end states */
+function computeEdgeDeltas(
+  edgeId: string,
+  temporalData: Parameters<typeof getEdgeStateAt>[0] extends infer T ? { edges: Map<string, T> } : never,
+  windowStart: number,
+  windowEnd: number,
+): { weightDelta: number; stressDelta: number; significantChange: boolean } | null {
+  const edgeTemporal = temporalData.edges.get(edgeId);
+  if (!edgeTemporal) return null;
+
+  const stateAtStart = getEdgeStateAt(edgeTemporal, windowStart);
+  const stateAtEnd = getEdgeStateAt(edgeTemporal, windowEnd);
+  if (!stateAtStart || !stateAtEnd) return null;
+
+  const weightDelta = stateAtEnd.weight - stateAtStart.weight;
+  const stressDelta = stateAtEnd.stressSignal - stateAtStart.stressSignal;
+  const significantChange = Math.abs(weightDelta) > 0.05 || Math.abs(stressDelta) > 0.15;
+
+  return { weightDelta, stressDelta, significantChange };
+}
+
+/** Compute per-node opacity based on omega delta within the window */
+function computeNodeOpacity(
+  nodeId: string,
+  temporalData: Parameters<typeof getNodeStateAt>[0] extends infer T ? { nodes: Map<string, T> } : never,
+  windowStart: number,
+  windowEnd: number,
+): { opacity: number; omegaDelta: number } {
+  const nodeTemporal = temporalData.nodes.get(nodeId);
+  if (!nodeTemporal) return { opacity: 0.2, omegaDelta: 0 };
+
+  const stateAtStart = getNodeStateAt(nodeTemporal, windowStart);
+  const stateAtEnd = getNodeStateAt(nodeTemporal, windowEnd);
+  if (!stateAtStart || !stateAtEnd) return { opacity: 0.2, omegaDelta: 0 };
+
+  const omegaDelta = stateAtEnd.omegaComposite - stateAtStart.omegaComposite;
+  // Higher absolute delta → higher opacity (more active in the window)
+  const normalizedDelta = Math.min(1, Math.abs(omegaDelta) / 2);
+  const opacity = 0.15 + normalizedDelta * 0.85; // range 0.15 - 1.0
+
+  return { opacity, omegaDelta };
+}
+
 export default function PcmciGraph() {
   const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+  const timelineSelection = useApexStore((s) => s.timelineSelection);
+  const temporalData = useApexStore((s) => s.temporalData);
 
   const selSet = useMemo(() => new Set(multiSelectedNodes), [multiSelectedNodes]);
   const isScoped = isolateSelection && selSet.size > 0;
+
+  const windowActive = !!(timelineSelection && temporalData);
 
   const pcmciNodes = useMemo(() => {
     // Start with PCMCI+ and merged nodes
@@ -54,6 +102,27 @@ export default function PcmciGraph() {
       (e) => e.lag > 0 && nodeIds.has(e.source) && nodeIds.has(e.target)
     );
   }, [graphData.edges, pcmciNodes]);
+
+  // Compute edge deltas when window is active
+  const edgeDeltas = useMemo(() => {
+    if (!windowActive || !timelineSelection || !temporalData) return new Map<string, { weightDelta: number; stressDelta: number; significantChange: boolean }>();
+    const map = new Map<string, { weightDelta: number; stressDelta: number; significantChange: boolean }>();
+    for (const edge of pcmciEdges) {
+      const delta = computeEdgeDeltas(edge.id, temporalData, timelineSelection.start, timelineSelection.end);
+      if (delta) map.set(edge.id, delta);
+    }
+    return map;
+  }, [windowActive, timelineSelection, temporalData, pcmciEdges]);
+
+  // Compute node opacities when window is active
+  const nodeOpacities = useMemo(() => {
+    if (!windowActive || !timelineSelection || !temporalData) return new Map<string, { opacity: number; omegaDelta: number }>();
+    const map = new Map<string, { opacity: number; omegaDelta: number }>();
+    for (const node of pcmciNodes) {
+      map.set(node.id, computeNodeOpacity(node.id, temporalData, timelineSelection.start, timelineSelection.end));
+    }
+    return map;
+  }, [windowActive, timelineSelection, temporalData, pcmciNodes]);
 
   const positioned = useMemo(() => {
     // Distribute nodes across time columns based on position in causal chain
@@ -106,6 +175,19 @@ export default function PcmciGraph() {
           >
             {showInfo ? "\u2212" : "?"}
           </button>
+          {/* Window Active badge */}
+          {windowActive && (
+            <span
+              className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded"
+              style={{
+                color: "#00e5ff",
+                backgroundColor: "rgba(0,229,255,0.12)",
+                border: "1px solid rgba(0,229,255,0.3)",
+              }}
+            >
+              WINDOW ACTIVE
+            </span>
+          )}
         </div>
         <span className="text-[8px] text-text-muted font-mono">
           {pcmciNodes.length} nodes | Temporal
@@ -163,6 +245,25 @@ export default function PcmciGraph() {
           const src = posMap[edge.source];
           const tgt = posMap[edge.target];
           if (!src || !tgt) return null;
+
+          const delta = edgeDeltas.get(edge.id);
+          let edgeColor = "#ffab00";
+          let edgeOpacity = 0.6;
+          let edgeWidth = 0.5 + edge.weight;
+
+          if (windowActive && delta) {
+            if (delta.significantChange) {
+              // Significant change: highlight with cyan, thicker, more opaque
+              edgeColor = delta.weightDelta > 0 ? "#ff1744" : "#00e5ff";
+              edgeOpacity = 0.9;
+              edgeWidth = 1 + Math.min(2, Math.abs(delta.weightDelta) * 4) + edge.weight;
+            } else {
+              // Stable edge: dim it
+              edgeOpacity = 0.2;
+              edgeWidth = 0.3 + edge.weight * 0.5;
+            }
+          }
+
           return (
             <line
               key={edge.id}
@@ -170,9 +271,9 @@ export default function PcmciGraph() {
               y1={src.y}
               x2={tgt.x}
               y2={tgt.y}
-              stroke="#ffab00"
-              strokeWidth={0.5 + edge.weight}
-              strokeOpacity={0.6}
+              stroke={edgeColor}
+              strokeWidth={edgeWidth}
+              strokeOpacity={edgeOpacity}
               markerEnd="url(#arrow-pcmci)"
             />
           );
@@ -182,10 +283,13 @@ export default function PcmciGraph() {
         {positioned.map((node) => {
           const color = getCategoryColor(node.category);
           const isActive = selectedNode === node.id;
+          const nodeData = nodeOpacities.get(node.id);
+          const nodeOpacity = windowActive && nodeData ? nodeData.opacity : 1;
+
           return (
             <g
               key={node.id}
-              style={{ cursor: "pointer" }}
+              style={{ cursor: "pointer", opacity: windowActive ? nodeOpacity : 1 }}
               onClick={() => setSelectedNode(isActive ? null : node.id)}
             >
               <circle

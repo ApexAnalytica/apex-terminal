@@ -780,14 +780,22 @@ function SnapshotIndicator() {
 function CascadeHeader() {
   const graphData = useApexStore((s) => s.graphData);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
   const engine = useMemo(() => getEngineProvider(), []);
   const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
 
   // Compute comprehensive network metrics
   const netMetrics = useMemo(() => {
-    const nodes = graphData.nodes;
-    const edges = graphData.edges.filter((e) => !e.isSevered);
+    const allNodes = graphData.nodes;
+    const allEdges = graphData.edges.filter((e) => !e.isSevered);
+
+    // Scope to selection if any
+    const selSet = new Set(selectedNodes);
+    const isScoped = selSet.size > 0;
+    const nodes = isScoped ? allNodes.filter((n) => selSet.has(n.id)) : allNodes;
+    const edges = isScoped ? allEdges.filter((e) => selSet.has(e.source) && selSet.has(e.target)) : allEdges;
+
     const n = nodes.length;
     const m = edges.length;
 
@@ -969,8 +977,11 @@ function CascadeHeader() {
       eigenTop, betweenTop, communityList,
       lambdaMax: cascade.lambdaMax, isStable: cascade.isStable,
       dampingCoeff: cascade.dampingCoeff, forgettingRate: cascade.forgettingRate,
+      nodeCount: n, edgeCount: m,
+      totalNodeCount: allNodes.length, totalEdgeCount: allEdges.length,
+      isScoped,
     };
-  }, [graphData, cascade]);
+  }, [graphData, cascade, selectedNodes]);
 
   const metricColor = (val: number, threshLow: number, threshHigh: number) =>
     val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";
@@ -983,11 +994,18 @@ function CascadeHeader() {
         NETWORK ANALYSIS
       </div>
 
+      {/* Scoped indicator */}
+      {netMetrics.isScoped && (
+        <div className="text-[7px] font-mono px-2 py-0.5 rounded border border-accent-amber/30 bg-accent-amber/5 text-accent-amber text-center">
+          SCOPED TO {netMetrics.nodeCount} SELECTED NODES
+        </div>
+      )}
+
       {/* Quick stats row */}
       <div className="grid grid-cols-4 gap-1">
         {[
-          { label: "NODES", value: `${graphData.nodes.length}`, color: "#00e5ff" },
-          { label: "EDGES", value: `${graphData.edges.filter((e) => !e.isSevered).length}`, color: "#00e5ff" },
+          { label: "NODES", value: `${netMetrics.nodeCount}${netMetrics.isScoped ? ` / ${netMetrics.totalNodeCount}` : ""}`, color: netMetrics.isScoped ? "#ffab00" : "#00e5ff" },
+          { label: "EDGES", value: `${netMetrics.edgeCount}${netMetrics.isScoped ? ` / ${netMetrics.totalEdgeCount}` : ""}`, color: netMetrics.isScoped ? "#ffab00" : "#00e5ff" },
           { label: "DENSITY", value: netMetrics.density.toFixed(3), color: metricColor(netMetrics.density, 0.05, 0.15) },
           { label: "COMPONENTS", value: `${netMetrics.componentCount}`, color: netMetrics.componentCount === 1 ? "#00e676" : "#ffab00" },
         ].map((s) => (

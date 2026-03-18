@@ -61,8 +61,10 @@ const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({
   posMap,
+  shiftDragging,
 }: {
   posMap: Record<string, [number, number, number]>;
+  shiftDragging?: boolean;
 }) {
   const { camera } = useThree();
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -132,7 +134,7 @@ function CameraRig({
       zoomSpeed={0.8}
       minDistance={5}
       maxDistance={400}
-      enabled={controlsEnabled}
+      enabled={controlsEnabled && !shiftDragging}
     />
   );
 }
@@ -174,11 +176,15 @@ function ShiftDragSelect({
   graphNodes,
   onSelect,
   selectionBoxRef,
+  setSelectionRect,
+  setShiftDragging,
 }: {
   posMap: Record<string, [number, number, number]>;
   graphNodes: { id: string }[];
   onSelect: (ids: string[]) => void;
   selectionBoxRef: React.MutableRefObject<{ x1: number; y1: number; x2: number; y2: number } | null>;
+  setSelectionRect: (rect: { x1: number; y1: number; x2: number; y2: number } | null) => void;
+  setShiftDragging: (dragging: boolean) => void;
 }) {
   const { camera, gl, size: canvasSize } = useThree();
   const dragging = useRef(false);
@@ -190,11 +196,13 @@ function ShiftDragSelect({
     const onDown = (e: PointerEvent) => {
       if (!e.shiftKey) return;
       dragging.current = true;
+      setShiftDragging(true);
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       startRef.current = { x, y };
       selectionBoxRef.current = { x1: x, y1: y, x2: x, y2: y };
+      setSelectionRect({ x1: x, y1: y, x2: x, y2: y });
     };
 
     const onMove = (e: PointerEvent) => {
@@ -202,12 +210,15 @@ function ShiftDragSelect({
       const rect = canvas.getBoundingClientRect();
       const x2 = e.clientX - rect.left;
       const y2 = e.clientY - rect.top;
-      selectionBoxRef.current = { ...startRef.current, x1: startRef.current.x, y1: startRef.current.y, x2, y2 };
+      const box = { x1: startRef.current.x, y1: startRef.current.y, x2, y2 };
+      selectionBoxRef.current = box;
+      setSelectionRect(box);
     };
 
     const onUp = () => {
       if (!dragging.current) return;
       dragging.current = false;
+      setShiftDragging(false);
       const b = selectionBoxRef.current;
       if (!b) return;
 
@@ -217,6 +228,7 @@ function ShiftDragSelect({
       const maxY = Math.max(b.y1, b.y2);
 
       selectionBoxRef.current = null;
+      setSelectionRect(null);
 
       if (maxX - minX < 5 && maxY - minY < 5) return;
 
@@ -243,7 +255,7 @@ function ShiftDragSelect({
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
     };
-  }, [gl, graphNodes, posMap, camera, canvasSize, onSelect, selectionBoxRef]);
+  }, [gl, graphNodes, posMap, camera, canvasSize, onSelect, selectionBoxRef, setSelectionRect, setShiftDragging]);
 
   return null;
 }
@@ -276,6 +288,8 @@ export default function CausalDAG3D() {
   } = useApexStore();
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [shiftDragging, setShiftDragging] = useState(false);
 
   const handleShiftSelect = useCallback(
     (ids: string[]) => {
@@ -553,24 +567,20 @@ export default function CausalDAG3D() {
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <DAGOverlay />
-      {multiSelectedNodes.length > 0 && (
+      {selectionRect && (
         <div
           style={{
             position: "absolute",
-            top: 12,
-            right: 12,
-            zIndex: 50,
-            padding: "6px 12px",
-            borderRadius: 4,
-            border: "1px solid rgba(0, 229, 255, 0.4)",
-            background: "rgba(10, 11, 16, 0.9)",
-            backdropFilter: "blur(4px)",
+            left: Math.min(selectionRect.x1, selectionRect.x2),
+            top: Math.min(selectionRect.y1, selectionRect.y2),
+            width: Math.abs(selectionRect.x2 - selectionRect.x1),
+            height: Math.abs(selectionRect.y2 - selectionRect.y1),
+            border: "1px solid rgba(0, 229, 255, 0.6)",
+            backgroundColor: "rgba(0, 229, 255, 0.08)",
+            pointerEvents: "none",
+            zIndex: 40,
           }}
-        >
-          <span style={{ fontSize: 10, fontFamily: "monospace", color: "#00e5ff" }}>
-            {multiSelectedNodes.length} node{multiSelectedNodes.length !== 1 ? "s" : ""} selected
-          </span>
-        </div>
+        />
       )}
       <DAGErrorBoundary>
       <Canvas
@@ -690,13 +700,15 @@ export default function CausalDAG3D() {
             );
           })}
 
-          <CameraRig posMap={posMap} />
+          <CameraRig posMap={posMap} shiftDragging={shiftDragging} />
           <ReplayTickDriver />
           <ShiftDragSelect
             posMap={posMap}
             graphNodes={graphData.nodes}
             onSelect={handleShiftSelect}
             selectionBoxRef={selectionBoxRef}
+            setSelectionRect={setSelectionRect}
+            setShiftDragging={setShiftDragging}
           />
       </Canvas>
       </DAGErrorBoundary>

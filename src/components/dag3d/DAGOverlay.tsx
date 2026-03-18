@@ -6,7 +6,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function DAGOverlay() {
-  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, setSelectedNodes, isLive, timelinePosition } = useApexStore();
+  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, selectedNodes, setSelectedNodes, isLive, timelinePosition } = useApexStore();
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
@@ -147,6 +147,41 @@ export default function DAGOverlay() {
         </div>
       </div>
 
+      {/* Selection panel — below Top-Ω */}
+      {selectedNodes.length > 0 && (
+        <div className="absolute right-3 pointer-events-auto" style={{ top: "calc(3rem + 180px)" }}>
+          <div className="text-[8px] font-mono px-2 py-1.5 rounded border border-accent-cyan/40 bg-surface-elevated/80 max-w-[200px]">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+                {selectedNodes.length} NODES SELECTED
+              </div>
+              <button
+                onClick={() => setSelectedNodes([])}
+                className="text-[7px] font-mono text-accent-red hover:text-red-400 transition-colors px-1"
+              >
+                CLEAR ALL
+              </button>
+            </div>
+            <div className="flex flex-col gap-0.5 max-h-[120px] overflow-y-auto">
+              {selectedNodes.map((nodeId) => {
+                const node = activeGraph.nodes.find((n) => n.id === nodeId);
+                return (
+                  <div key={nodeId} className="flex items-center justify-between gap-1 py-0.5">
+                    <span className="text-[8px] text-text-muted truncate">{node?.label ?? nodeId}</span>
+                    <button
+                      onClick={() => setSelectedNodes(selectedNodes.filter((id) => id !== nodeId))}
+                      className="text-[7px] text-text-muted/50 hover:text-accent-red transition-colors flex-shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Left: Domain legend (interactive) */}
       <div className="absolute bottom-12 left-3 pointer-events-auto">
         <div className="text-[8px] font-mono px-2 py-1.5 rounded border border-border bg-surface-elevated/80">
@@ -209,7 +244,7 @@ export default function DAGOverlay() {
       {viewMode === "3d" && (
         <div className="absolute bottom-3 right-3">
           <div className="text-[8px] font-mono text-text-muted/50">
-            DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | DOUBLE-CLICK: FOCUS | ESC: DESELECT
+            DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | SHIFT+DRAG: SELECT | DOUBLE-CLICK: FOCUS | ESC: DESELECT
           </div>
         </div>
       )}

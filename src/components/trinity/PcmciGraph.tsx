@@ -17,6 +17,11 @@ export default function PcmciGraph() {
   const graphData = useFilteredGraph();
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+
+  const selSet = useMemo(() => new Set(multiSelectedNodes), [multiSelectedNodes]);
+  const isScoped = isolateSelection && selSet.size > 0;
 
   const pcmciNodes = useMemo(() => {
     // Start with PCMCI+ and merged nodes
@@ -39,8 +44,9 @@ export default function PcmciGraph() {
       }
     });
 
-    return [...baseNodes, ...extras];
-  }, [graphData.nodes, graphData.edges]);
+    const allNodes = [...baseNodes, ...extras];
+    return isScoped ? allNodes.filter((n) => selSet.has(n.id)) : allNodes;
+  }, [graphData.nodes, graphData.edges, isScoped, selSet]);
 
   const pcmciEdges = useMemo(() => {
     const nodeIds = new Set(pcmciNodes.map((n) => n.id));

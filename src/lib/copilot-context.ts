@@ -2,6 +2,8 @@ import { CausalGraph, CausalNode, CausalEdge } from "./types";
 import type { SystemStateSnapshot } from "./snapshots/types";
 import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
+import type { TemporalDataset } from "./temporal-data";
+import { getEventsInRange, getNodeStateAt } from "./temporal-data";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -292,6 +294,77 @@ export function serializeSnapshotContext(
     }
     lines.push("");
   }
+
+  return lines.join("\n");
+}
+
+// ─── Time Window Context ──────────────────────────────────────
+
+export function serializeTimeWindowContext(
+  selection: { start: number; end: number },
+  temporalData: TemporalDataset,
+  graph: CausalGraph,
+): string {
+  const lines: string[] = [];
+  const startDate = new Date(selection.start);
+  const endDate = new Date(selection.end);
+  const durationDays = Math.round((selection.end - selection.start) / 86400000);
+
+  lines.push("\n=== SELECTED TIME WINDOW ===");
+  lines.push(`From: ${startDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`);
+  lines.push(`To: ${endDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`);
+  lines.push(`Duration: ${durationDays} day${durationDays !== 1 ? "s" : ""}`);
+  lines.push("");
+
+  // Events in the window
+  const windowEvents = getEventsInRange(temporalData, selection.start, selection.end);
+  if (windowEvents.length > 0) {
+    lines.push("Events in window:");
+    for (const evt of windowEvents) {
+      lines.push(`  \u2022 ${evt.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2014 ${evt.label} (severity: ${(evt.severity * 100).toFixed(0)}%)`);
+      lines.push(`    ${evt.description}`);
+      lines.push(`    Affected: ${evt.affectedNodeIds.join(", ")}`);
+    }
+    lines.push("");
+  } else {
+    lines.push("No recorded events in this window.\n");
+  }
+
+  // Node omega trends in the window (top movers)
+  const nodeDeltas: { nodeId: string; label: string; startOmega: number; endOmega: number; delta: number }[] = [];
+
+  for (const node of graph.nodes) {
+    const nodeData = temporalData.nodes.get(node.id);
+    if (!nodeData) continue;
+
+    const startState = getNodeStateAt(nodeData, selection.start);
+    const endState = getNodeStateAt(nodeData, selection.end);
+    if (!startState || !endState) continue;
+
+    const delta = endState.omegaComposite - startState.omegaComposite;
+    nodeDeltas.push({
+      nodeId: node.id,
+      label: node.shortLabel || node.label,
+      startOmega: startState.omegaComposite,
+      endOmega: endState.omegaComposite,
+      delta,
+    });
+  }
+
+  // Sort by absolute delta, show top movers
+  nodeDeltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const topMovers = nodeDeltas.slice(0, 8);
+
+  if (topMovers.length > 0) {
+    lines.push("Top \u03A9-fragility movers in window:");
+    for (const m of topMovers) {
+      const arrow = m.delta > 0 ? "\u2191" : m.delta < 0 ? "\u2193" : "\u2192";
+      lines.push(`  ${arrow} ${m.label}: \u03A9 ${m.startOmega.toFixed(1)} \u2192 ${m.endOmega.toFixed(1)} (${m.delta > 0 ? "+" : ""}${m.delta.toFixed(2)})`);
+    }
+    lines.push("");
+  }
+
+  lines.push("IMPORTANT: The user has selected this time window. Contextualize your analysis to this specific period. Reference events and trends within this window.");
 
   return lines.join("\n");
 }

@@ -42,10 +42,10 @@ export default function InterdictionPanel() {
   return (
     <div className="space-y-2 pt-3 border-t border-border">
       <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
-        NETWORK INTERDICTION
+        CASCADE DEFENSE
       </div>
       <div className="text-[8px] font-mono text-text-muted">
-        Minimax optimization — find optimal interventions to minimize worst-case cascade damage
+        Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
       </div>
 
       {/* Controls */}
@@ -96,7 +96,7 @@ export default function InterdictionPanel() {
           background: computing ? "rgba(255, 171, 0, 0.15)" : "rgba(255, 171, 0, 0.05)",
         }}
       >
-        {computing ? "COMPUTING MINIMAX..." : "SOLVE INTERDICTION"}
+        {computing ? "COMPUTING MINIMAX..." : "SOLVE CASCADE DEFENSE"}
       </button>
 
       {!canRun && (
@@ -137,7 +137,7 @@ export default function InterdictionPanel() {
           {result.interventions.length > 0 ? (
             <div className="space-y-1">
               <div className="text-[8px] font-mono text-text-muted">
-                OPTIMAL INTERVENTIONS ({result.interventions.length})
+                OPTIMAL DEFENSIVE CUTS ({result.interventions.length})
               </div>
               {result.interventions.map((c, i) => (
                 <div

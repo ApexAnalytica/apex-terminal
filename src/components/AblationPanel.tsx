@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { computeAblationComparison, AblationComparison } from "@/lib/ablation-engine";
-import { streamLlmQuery } from "@/lib/copilot-engine";
 
 export default function AblationPanel() {
   const {
@@ -14,10 +13,8 @@ export default function AblationPanel() {
     resetAblation,
     startAblationReplay,
     graphData,
+    addCopilotMessage,
   } = useApexStore();
-
-  const [interpretation, setInterpretation] = useState<string | null>(null);
-  const [interpreting, setInterpreting] = useState(false);
 
   const comparison = useMemo(() => {
     if (ablatedNodeIds.length === 0 && ablatedEdgeIds.length === 0) return null;
@@ -26,7 +23,7 @@ export default function AblationPanel() {
 
   const hasSelections = ablatedNodeIds.length > 0 || ablatedEdgeIds.length > 0;
 
-  // Get names of ablated nodes for context
+  // Get names of ablated nodes/edges for context
   const ablatedNodeNames = useMemo(() => {
     return ablatedNodeIds.map((id) => {
       const node = graphData.nodes.find((n) => n.id === id);
@@ -40,62 +37,24 @@ export default function AblationPanel() {
       if (!edge) return id;
       const src = graphData.nodes.find((n) => n.id === edge.source);
       const tgt = graphData.nodes.find((n) => n.id === edge.target);
-      return `${src?.shortLabel ?? edge.source} → ${tgt?.shortLabel ?? edge.target}`;
+      return `${src?.shortLabel ?? edge.source} \u2192 ${tgt?.shortLabel ?? edge.target}`;
     });
   }, [ablatedEdgeIds, graphData]);
 
-  const requestInterpretation = useCallback(async (comp: AblationComparison) => {
-    setInterpreting(true);
-    setInterpretation(null);
-
-    // Build a focused prompt for the LLM
+  const requestInterpretation = useCallback((comp: AblationComparison) => {
     const prompt = buildAblationPrompt(comp, ablatedNodeNames, ablatedEdgeLabels);
 
-    try {
-      // Get LLM settings from store (mirror SystemCopilot's provider logic)
-      const state = useApexStore.getState();
-      const provider = state.llmProvider === "ollama" ? "ollama" : "gemini";
-      const model = provider === "ollama" ? state.ollamaModel : state.geminiModel;
-      const apiKey = provider === "ollama" ? "ollama-local" : state.geminiApiKey;
-      const ollamaUrl = state.ollamaUrl || "http://localhost:11434";
+    // Add a user message to the copilot chat
+    addCopilotMessage({
+      id: `abl-req-${Date.now()}`,
+      role: "user",
+      content: `INTERPRET ABLATION (${ablatedNodeIds.length} nodes, ${ablatedEdgeIds.length} edges removed)`,
+      timestamp: Date.now(),
+    });
 
-      const stream = await streamLlmQuery({
-        copilotMessages: [
-          { id: "abl-1", role: "user", content: prompt, timestamp: Date.now() },
-        ],
-        graph: graphData,
-        apiKey,
-        model,
-        provider,
-        selectedNode: null,
-        severedEdges: [],
-        shocks: [],
-        interventionMode: false,
-        interventionTarget: null,
-        ollamaUrl,
-      });
-
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        fullText += decoder.decode(value, { stream: true });
-        setInterpretation(fullText);
-      }
-    } catch (err) {
-      setInterpretation(`⚠ Could not generate interpretation: ${err instanceof Error ? err.message : "Unknown error"}. Make sure Ollama is running.`);
-    } finally {
-      setInterpreting(false);
-    }
-  }, [ablatedNodeNames, ablatedEdgeLabels, graphData]);
-
-  const handleReset = useCallback(() => {
-    resetAblation();
-    setInterpretation(null);
-  }, [resetAblation]);
+    // Dispatch to SystemCopilot for LLM streaming (same pattern as ANALYZE)
+    window.dispatchEvent(new CustomEvent("apex-ablation-interpret", { detail: { prompt } }));
+  }, [ablatedNodeNames, ablatedEdgeLabels, ablatedNodeIds.length, ablatedEdgeIds.length, addCopilotMessage]);
 
   return (
     <div className="mt-3 pt-3 border-t border-border space-y-2">
@@ -153,37 +112,19 @@ export default function AblationPanel() {
             </div>
           )}
 
-          {/* LLM Interpretation */}
+          {/* Interpret button — sends to copilot chat */}
           {comparison && (
             <button
               onClick={() => requestInterpretation(comparison)}
-              disabled={interpreting}
-              className="w-full text-[8px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1.5 rounded border transition-colors disabled:opacity-50"
+              className="w-full text-[8px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1.5 rounded border transition-colors"
               style={{
-                borderColor: interpreting ? "rgba(224,64,251,0.6)" : "rgba(0,229,255,0.4)",
-                color: interpreting ? "#e040fb" : "var(--accent-cyan)",
-                backgroundColor: interpreting ? "rgba(224,64,251,0.08)" : "rgba(0,229,255,0.05)",
+                borderColor: "rgba(0,229,255,0.4)",
+                color: "var(--accent-cyan)",
+                backgroundColor: "rgba(0,229,255,0.05)",
               }}
             >
-              {interpreting ? "INTERPRETING..." : interpretation ? "RE-INTERPRET" : "INTERPRET WITH AI"}
+              INTERPRET WITH AI
             </button>
-          )}
-
-          {interpretation && (
-            <div
-              className="p-2.5 rounded border text-[8px] font-mono leading-relaxed overflow-y-auto"
-              style={{
-                borderColor: "rgba(0,229,255,0.2)",
-                backgroundColor: "rgba(0,229,255,0.03)",
-                color: "var(--foreground)",
-                maxHeight: "200px",
-              }}
-            >
-              <div className="font-[family-name:var(--font-michroma)] text-[7px] tracking-wider text-accent-cyan mb-1.5">
-                AI INTERPRETATION
-              </div>
-              <div className="whitespace-pre-wrap">{interpretation}</div>
-            </div>
           )}
 
           <div className="flex gap-2">
@@ -199,7 +140,7 @@ export default function AblationPanel() {
               APPLY TO REPLAY
             </button>
             <button
-              onClick={handleReset}
+              onClick={resetAblation}
               className="text-[8px] font-mono px-2 py-1.5 rounded border border-border text-text-muted hover:text-accent-red transition-colors"
             >
               RESET
@@ -218,7 +159,7 @@ function buildAblationPrompt(
   ablatedNodeNames: string[],
   ablatedEdgeLabels: string[]
 ): string {
-  return `You are a causal network analyst. Interpret the following ablation results in 3-4 concise sentences. Explain what removing these elements means for system resilience, cascade risk, and stability. Be specific about the practical implications — avoid restating the raw numbers.
+  return `You are a causal network analyst. Interpret the following ablation results in 3-4 concise sentences. Explain what removing these elements means for system resilience, cascade risk, and stability. Be specific about the practical implications \u2014 avoid restating the raw numbers.
 
 ABLATED NODES: ${ablatedNodeNames.join(", ") || "none"}
 ABLATED EDGES: ${ablatedEdgeLabels.join("; ") || "none"}

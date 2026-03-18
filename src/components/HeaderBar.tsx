@@ -49,6 +49,9 @@ export default function HeaderBar() {
           <span className="font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.35em] text-text-muted -mt-0.5">
             ANALYTICA
           </span>
+          <span className="font-[family-name:var(--font-michroma)] text-[7px] tracking-[0.4em] text-accent-cyan/60 -mt-0.5">
+            MANIFOLD
+          </span>
         </div>
         <div className="h-8 w-px bg-border" />
 

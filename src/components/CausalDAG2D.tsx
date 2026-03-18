@@ -480,7 +480,7 @@ export default function CausalDAG2D() {
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
       {selectedNodesCount > 0 && (
-        <div className="absolute top-3 right-3 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">
           <span className="text-[10px] font-mono text-accent-cyan">
             {selectedNodesCount} node{selectedNodesCount !== 1 ? "s" : ""} selected
           </span>

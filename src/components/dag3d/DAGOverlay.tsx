@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function DAGOverlay() {
-  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, isLive, timelinePosition } = useApexStore();
+  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, setSelectedNodes, isLive, timelinePosition } = useApexStore();
+  const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
   const meta = activeGraph.metadata;
@@ -100,54 +101,96 @@ export default function DAGOverlay() {
         </div>
       )}
 
-      {/* Top Right below controls: Top-Ω ranking */}
-      <div className="absolute top-12 right-3">
+      {/* Top Right below controls: Top-Ω ranking (interactive) */}
+      <div className="absolute top-12 right-3 pointer-events-auto">
         <div className="text-[8px] font-mono px-2 py-1.5 rounded border border-border bg-surface-elevated/80">
           <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-            TOP-{"\u03A9"} NODES
+            TOP-{"\u03A9"} NODES <span className="text-text-muted/40">— click to focus</span>
           </div>
-          {topOmega.map((node, i) => (
-            <div key={node.id} className="flex items-center gap-1.5 py-0.5">
-              <span className="text-[7px] text-text-muted w-3">{i + 1}.</span>
-              <span
-                className="text-[8px] font-bold"
+          {topOmega.map((node, i) => {
+            const isActive = selectedNode === node.id;
+            const scoreColor = node.omegaFragility.composite > 9 ? "#ff1744"
+              : node.omegaFragility.composite >= 7 ? "#ffab00"
+              : "#00e676";
+            return (
+              <div
+                key={node.id}
+                className="flex items-center gap-1.5 py-0.5 cursor-pointer rounded px-1 -mx-1 transition-colors hover:bg-white/5"
                 style={{
-                  color: node.omegaFragility.composite > 9 ? "#ff1744"
-                    : node.omegaFragility.composite >= 7 ? "#ffab00"
-                    : "#00e676",
+                  backgroundColor: isActive ? "rgba(0,229,255,0.08)" : undefined,
+                  borderLeft: isActive ? "2px solid var(--accent-cyan)" : "2px solid transparent",
+                }}
+                onClick={() => {
+                  setSelectedNode(isActive ? null : node.id);
+                  if (activeDomain) {
+                    setActiveDomain(null);
+                    setSelectedNodes([]);
+                  }
                 }}
               >
-                {node.omegaFragility.composite.toFixed(1)}
-              </span>
-              <span className="text-[8px] text-text-muted truncate max-w-[120px]">
-                {node.label}
-              </span>
-            </div>
-          ))}
+                <span className="text-[7px] text-text-muted w-3">{i + 1}.</span>
+                <span
+                  className="text-[8px] font-bold"
+                  style={{ color: scoreColor }}
+                >
+                  {node.omegaFragility.composite.toFixed(1)}
+                </span>
+                <span
+                  className="text-[8px] truncate max-w-[120px]"
+                  style={{ color: isActive ? "var(--accent-cyan)" : "var(--text-muted)" }}
+                >
+                  {node.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Bottom Left: Domain legend */}
-      <div className="absolute bottom-12 left-3">
+      {/* Bottom Left: Domain legend (interactive) */}
+      <div className="absolute bottom-12 left-3 pointer-events-auto">
         <div className="text-[8px] font-mono px-2 py-1.5 rounded border border-border bg-surface-elevated/80">
           <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-            DOMAINS
+            DOMAINS <span className="text-text-muted/40">— click to highlight</span>
           </div>
           <div className="flex flex-col gap-0.5">
-            {domainCounts.map(([domain, count]) => (
-              <div key={domain} className="flex items-center gap-1.5">
+            {domainCounts.map(([domain, count]) => {
+              const isActive = activeDomain === domain;
+              const domainColor = getDomainColor(domain);
+              return (
                 <div
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: getDomainColor(domain) }}
-                />
-                <span className="text-[8px] text-text-muted">
-                  {domain}
-                </span>
-                <span className="text-[7px] text-text-muted/50">
-                  ({count})
-                </span>
-              </div>
-            ))}
+                  key={domain}
+                  className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 py-0.5 transition-colors hover:bg-white/5"
+                  style={{
+                    backgroundColor: isActive ? `${domainColor}15` : undefined,
+                    borderLeft: isActive ? `2px solid ${domainColor}` : "2px solid transparent",
+                  }}
+                  onClick={() => {
+                    if (isActive) {
+                      setActiveDomain(null);
+                      setSelectedNodes([]);
+                    } else {
+                      setActiveDomain(domain);
+                      const nodeIds = activeGraph.nodes
+                        .filter((n) => n.domain === domain)
+                        .map((n) => n.id);
+                      setSelectedNodes(nodeIds);
+                    }
+                  }}
+                >
+                  <div
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: domainColor }}
+                  />
+                  <span className="text-[8px]" style={{ color: isActive ? domainColor : "var(--text-muted)" }}>
+                    {domain}
+                  </span>
+                  <span className="text-[7px] text-text-muted/50">
+                    ({count})
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -149,6 +149,12 @@ interface ApexState {
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
 
+  // Data layer filters (what to show in the 3D universe)
+  visibleCategories: Set<string>; // node categories to show (empty = all)
+  visibleDiscoverySources: Set<string>; // discovery sources to show (empty = all)
+  setVisibleCategories: (categories: Set<string>) => void;
+  setVisibleDiscoverySources: (sources: Set<string>) => void;
+
   // Import modal
   importModalOpen: boolean;
   setImportModalOpen: (open: boolean) => void;
@@ -442,6 +448,12 @@ export const useApexStore = create<ApexState>((set) => ({
   setSelectedDomains: (domains) => set({ selectedDomains: domains }),
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
+
+  // Data layer filters
+  visibleCategories: new Set<string>(),
+  visibleDiscoverySources: new Set<string>(),
+  setVisibleCategories: (categories) => set({ visibleCategories: categories }),
+  setVisibleDiscoverySources: (sources) => set({ visibleDiscoverySources: sources }),
 
   // Import
   importModalOpen: false,

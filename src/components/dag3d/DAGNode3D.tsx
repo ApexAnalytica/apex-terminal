@@ -62,7 +62,7 @@ export default function DAGNode3D({
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
   const t = composite / 10;
-  const size = 0.5 + Math.pow(t, 2.2) * 4.5; // range 0.5–5.0, power curve
+  const size = 0.2 + Math.pow(t, 2.2) * 1.0; // range 0.2–1.2, compact to reduce overlap
   const glowColor = isConsequence ? "#ff6d00" : getOmegaGlowColor(composite);
   const shockGlow = epochState ? epochState.shockIntensity : 0;
 
@@ -187,7 +187,7 @@ export default function DAGNode3D({
       {/* Label — always visible, HTML overlay above glow radius */}
       {!dimmed && (
         <Html
-          position={[0, size * 1.6 + 1.5, 0]}
+          position={[0, size * 1.6 + 0.6, 0]}
           center
           style={{ pointerEvents: "none" }}
         >
@@ -201,7 +201,7 @@ export default function DAGNode3D({
           >
             <div
               style={{
-                fontSize: isSelected ? "13px" : "10px",
+                fontSize: isSelected ? "11px" : "8px",
                 fontWeight: "bold",
                 color: isSelected ? "#00e5ff" : hovered ? "#ffffff" : color,
                 textShadow: "0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)",
@@ -211,7 +211,7 @@ export default function DAGNode3D({
             </div>
             <div
               style={{
-                fontSize: isSelected ? "10px" : "8px",
+                fontSize: isSelected ? "8px" : "7px",
                 color: isSelected ? "rgba(0,229,255,0.7)" : "rgba(90,94,114,1)",
                 textShadow: "0 0 4px rgba(0,0,0,0.9)",
                 marginTop: "1px",
@@ -226,7 +226,7 @@ export default function DAGNode3D({
       {/* Hover Detail Card */}
       {hovered && !dimmed && (
         <Html
-          position={[0, size + (isSelected ? 4.5 : 3), 0]}
+          position={[0, size + (isSelected ? 3.5 : 2.5), 0]}
           center
           style={{ pointerEvents: "none" }}
         >

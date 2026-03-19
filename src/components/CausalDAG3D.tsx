@@ -68,6 +68,7 @@ function CameraRig({
 }) {
   const { camera } = useThree();
   const selectedNode = useApexStore((s) => s.selectedNode);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
   const [controlsEnabled, setControlsEnabled] = useState(true);
   const animating = useRef(false);
   const progress = useRef(0);
@@ -75,12 +76,87 @@ function CameraRig({
   const endPos = useRef(new THREE.Vector3());
   const startTarget = useRef(new THREE.Vector3());
   const endTarget = useRef(new THREE.Vector3());
+  // Keep a ref to posMap so the effect can read current positions without depending on them
+  const posMapRef = useRef(posMap);
+  posMapRef.current = posMap;
+  // Track previous selection to only animate on actual changes
+  const prevSelectionKey = useRef("");
 
   const orbitControlsRef = useRef<any>(null);
 
+  // Helper: compute centroid and camera position to fit a set of node positions
+  const computeFitCamera = useCallback((nodeIds: string[], currentPosMap: Record<string, [number, number, number]>) => {
+    const positions = nodeIds.map((id) => currentPosMap[id]).filter(Boolean) as [number, number, number][];
+    if (positions.length === 0) return null;
+
+    // Centroid
+    let cx = 0, cy = 0, cz = 0;
+    for (const [x, y, z] of positions) { cx += x; cy += y; cz += z; }
+    cx /= positions.length;
+    cy /= positions.length;
+    cz /= positions.length;
+
+    if (positions.length === 1) {
+      return {
+        target: new THREE.Vector3(cx, cy, cz),
+        position: new THREE.Vector3(cx + 18, cy + 14, cz + 30),
+      };
+    }
+
+    // Bounding box extent
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (const [x, y, z] of positions) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+    }
+    const extentX = maxX - minX;
+    const extentY = maxY - minY;
+    const extentZ = maxZ - minZ;
+    const maxExtent = Math.max(extentX, extentY, extentZ, 10);
+
+    // Pull camera back proportional to spread, with some offset for perspective
+    const dist = maxExtent * 1.2 + 20;
+    return {
+      target: new THREE.Vector3(cx, cy, cz),
+      position: new THREE.Vector3(cx + dist * 0.35, cy + dist * 0.25, cz + dist * 0.6),
+    };
+  }, []);
+
+  // Build a stable key from selection state — only animate when this actually changes
+  const selectionKey = multiSelectedNodes.length > 0
+    ? `multi:${[...multiSelectedNodes].sort().join(",")}`
+    : selectedNode
+      ? `single:${selectedNode}`
+      : "none";
+
   useEffect(() => {
-    if (selectedNode && posMap[selectedNode]) {
-      const [nx, ny, nz] = posMap[selectedNode];
+    // Skip if selection hasn't actually changed
+    if (prevSelectionKey.current === selectionKey) return;
+    prevSelectionKey.current = selectionKey;
+
+    const pm = posMapRef.current;
+
+    // Priority 1: Multi-selection (isolate or shift-select)
+    if (multiSelectedNodes.length > 0) {
+      const fit = computeFitCamera(multiSelectedNodes, pm);
+      if (fit) {
+        startPos.current.copy(camera.position);
+        endPos.current.copy(fit.position);
+        startTarget.current.copy(orbitControlsRef.current?.target ?? HOME_TARGET);
+        endTarget.current.copy(fit.target);
+        progress.current = 0;
+        animating.current = true;
+        setControlsEnabled(false);
+      }
+      return;
+    }
+
+    // Priority 2: Single node selection
+    if (selectedNode && pm[selectedNode]) {
+      const [nx, ny, nz] = pm[selectedNode];
       startPos.current.copy(camera.position);
       endPos.current.set(nx + 18, ny + 14, nz + 30);
       startTarget.current.copy(
@@ -90,18 +166,24 @@ function CameraRig({
       progress.current = 0;
       animating.current = true;
       setControlsEnabled(false);
-    } else if (!selectedNode) {
-      startPos.current.copy(camera.position);
-      endPos.current.copy(HOME_POS);
-      startTarget.current.copy(
-        orbitControlsRef.current?.target ?? HOME_TARGET
-      );
-      endTarget.current.copy(HOME_TARGET);
-      progress.current = 0;
-      animating.current = true;
-      setControlsEnabled(false);
+      return;
     }
-  }, [selectedNode, posMap, camera]);
+
+    // Priority 3: Nothing selected — fit to all nodes (zoom back out)
+    const allIds = Object.keys(pm);
+    if (allIds.length > 0) {
+      const fit = computeFitCamera(allIds, pm);
+      if (fit) {
+        startPos.current.copy(camera.position);
+        endPos.current.copy(fit.position);
+        startTarget.current.copy(orbitControlsRef.current?.target ?? HOME_TARGET);
+        endTarget.current.copy(fit.target);
+        progress.current = 0;
+        animating.current = true;
+        setControlsEnabled(false);
+      }
+    }
+  }, [selectionKey, selectedNode, multiSelectedNodes, camera, computeFitCamera]);
 
   useFrame((_, delta) => {
     if (!animating.current) return;

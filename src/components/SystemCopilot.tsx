@@ -109,6 +109,10 @@ export default function SystemCopilot() {
   const isLlmActive = copilotProvider === "ollama" || copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
 
+  // Stable refs for event handlers to avoid stale closures in CustomEvent listeners
+  const handleStreamingQueryRef = useRef<(q: string) => void>(() => {});
+  const isLlmActiveRef = useRef(isLlmActive);
+
   // Click-outside to close datasets panel
   useEffect(() => {
     if (!showDatasets) return;
@@ -431,12 +435,16 @@ export default function SystemCopilot() {
     ]
   );
 
-  // Listen for analyze-selection events from DAGOverlay
+  // Keep refs in sync so event listeners always call latest versions
+  handleStreamingQueryRef.current = handleStreamingQuery;
+  isLlmActiveRef.current = isLlmActive;
+
+  // Listen for analyze-selection events from DAGOverlay (stable listener via refs)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.prompt && isLlmActive) {
-        handleStreamingQuery(detail.prompt);
+      if (detail?.prompt && isLlmActiveRef.current) {
+        handleStreamingQueryRef.current(detail.prompt);
       } else if (detail?.prompt) {
         addCopilotMessage({
           id: `sys-sel-${Date.now()}`,
@@ -448,14 +456,14 @@ export default function SystemCopilot() {
     };
     window.addEventListener("apex-analyze-selection", handler);
     return () => window.removeEventListener("apex-analyze-selection", handler);
-  }, [isLlmActive, handleStreamingQuery, addCopilotMessage]);
+  }, [addCopilotMessage]);
 
-  // Listen for ablation interpretation events from AblationPanel
+  // Listen for ablation interpretation events from AblationPanel (stable listener via refs)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.prompt && isLlmActive) {
-        handleStreamingQuery(detail.prompt);
+      if (detail?.prompt && isLlmActiveRef.current) {
+        handleStreamingQueryRef.current(detail.prompt);
       } else if (detail?.prompt) {
         addCopilotMessage({
           id: `sys-abl-${Date.now()}`,
@@ -467,7 +475,7 @@ export default function SystemCopilot() {
     };
     window.addEventListener("apex-ablation-interpret", handler);
     return () => window.removeEventListener("apex-ablation-interpret", handler);
-  }, [isLlmActive, handleStreamingQuery, addCopilotMessage]);
+  }, [addCopilotMessage]);
 
   // ─── Voice Input (Speech-to-Text) ────────────────────────
   const startListening = useCallback(() => {

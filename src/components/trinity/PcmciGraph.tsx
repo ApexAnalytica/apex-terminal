@@ -144,6 +144,8 @@ export default function PcmciGraph() {
     return m;
   }, [positioned]);
 
+  const [showInfo, setShowInfo] = useState(false);
+
   if (pcmciNodes.length === 0) {
     return (
       <div className="p-2 h-full flex flex-col items-center justify-center">
@@ -154,8 +156,6 @@ export default function PcmciGraph() {
       </div>
     );
   }
-
-  const [showInfo, setShowInfo] = useState(false);
 
   return (
     <div className="p-2 h-full flex flex-col">

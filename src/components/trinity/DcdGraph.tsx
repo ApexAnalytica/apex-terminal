@@ -157,6 +157,8 @@ export default function DcdGraph() {
     return dcdEdges.find((e) => e.id === hoveredEdge) ?? null;
   }, [hoveredEdge, dcdEdges]);
 
+  const [showInfo, setShowInfo] = useState(false);
+
   if (dcdNodes.length === 0) {
     return (
       <div className="p-2 h-full flex flex-col items-center justify-center">
@@ -167,8 +169,6 @@ export default function DcdGraph() {
       </div>
     );
   }
-
-  const [showInfo, setShowInfo] = useState(false);
 
   return (
     <div className="p-2 h-full flex flex-col">

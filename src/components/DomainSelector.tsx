@@ -3,6 +3,26 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import type { NodeCategory } from "@/lib/types";
+
+const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
+  { id: "economic", label: "ECONOMIC", icon: "📊" },
+  { id: "finance", label: "FINANCE", icon: "💰" },
+  { id: "energy", label: "ENERGY", icon: "⚡" },
+  { id: "infrastructure", label: "INFRASTRUCTURE", icon: "🏗" },
+  { id: "manufacturing", label: "MANUFACTURING", icon: "🏭" },
+  { id: "agriculture", label: "AGRICULTURE", icon: "🌾" },
+  { id: "geopolitical", label: "GEOPOLITICAL", icon: "🌐" },
+  { id: "communications", label: "COMMUNICATIONS", icon: "📡" },
+  { id: "science", label: "SCIENCE", icon: "🔬" },
+];
+
+const DISCOVERY_SOURCES = [
+  { id: "DCD", label: "DCD / NOTEARS", desc: "Structural" },
+  { id: "PCMCI+", label: "PCMCI+", desc: "Temporal" },
+  { id: "FCI", label: "FCI", desc: "Latent confounders" },
+  { id: "merged", label: "MERGED", desc: "Cross-engine" },
+];
 
 export const DOMAIN_CARDS = [
   {
@@ -140,10 +160,15 @@ export default function DomainSelector() {
     isMultiDomainMode,
     setIsMultiDomainMode,
     setSelectedDomains,
+    setVisibleCategories,
+    setVisibleDiscoverySources,
   } = useApexStore();
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
   const [localMulti, setLocalMulti] = useState(false);
+  const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
+  const [localSources, setLocalSources] = useState<Set<string>>(new Set());
+  const [showDataLayers, setShowDataLayers] = useState(false);
 
   const toggleDomain = useCallback(
     (id: string) => {
@@ -168,12 +193,32 @@ export default function DomainSelector() {
     []
   );
 
+  const toggleCategory = useCallback((id: string) => {
+    setLocalCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSource = useCallback((id: string) => {
+    setLocalSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const handleLaunch = useCallback(() => {
     if (localSelected.length === 0) return;
     setSelectedDomains(localSelected);
     setIsMultiDomainMode(localMulti);
+    setVisibleCategories(localCategories);
+    setVisibleDiscoverySources(localSources);
     setDomainSelectorOpen(false);
-  }, [localSelected, localMulti, setSelectedDomains, setIsMultiDomainMode, setDomainSelectorOpen]);
+  }, [localSelected, localMulti, localCategories, localSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
 
   const cascadeExamples = getCascadeExamples(localSelected);
 
@@ -320,6 +365,102 @@ export default function DomainSelector() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Data Layers */}
+            <div className="px-6 pb-2">
+              <button
+                onClick={() => setShowDataLayers((p) => !p)}
+                className="flex items-center gap-2 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-cyan transition-colors"
+              >
+                <span style={{ transform: showDataLayers ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
+                DATA LAYERS
+                <span className="text-[7px] font-mono text-text-muted/50">
+                  {localCategories.size === 0 && localSources.size === 0 ? "ALL" : `${localCategories.size + localSources.size} filters`}
+                </span>
+              </button>
+              <AnimatePresence>
+                {showDataLayers && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-2 space-y-3">
+                      {/* Node Categories */}
+                      <div>
+                        <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-1.5">
+                          NODE CATEGORIES
+                          <span className="ml-2 text-[7px] font-mono text-text-muted/40">
+                            {localCategories.size === 0 ? "showing all" : `${localCategories.size} selected`}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {NODE_CATEGORIES.map((cat) => {
+                            const active = localCategories.size === 0 || localCategories.has(cat.id);
+                            return (
+                              <button
+                                key={cat.id}
+                                onClick={() => toggleCategory(cat.id)}
+                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
+                                style={{
+                                  borderColor: localCategories.has(cat.id) ? "var(--accent-cyan)" : "var(--border)",
+                                  backgroundColor: localCategories.has(cat.id) ? "rgba(0,229,255,0.08)" : "transparent",
+                                  color: active ? "var(--foreground)" : "var(--text-muted)",
+                                  opacity: active ? 1 : 0.4,
+                                }}
+                              >
+                                {cat.icon} {cat.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Discovery Sources */}
+                      <div>
+                        <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-1.5">
+                          DISCOVERY ENGINES
+                          <span className="ml-2 text-[7px] font-mono text-text-muted/40">
+                            {localSources.size === 0 ? "showing all" : `${localSources.size} selected`}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {DISCOVERY_SOURCES.map((src) => {
+                            const active = localSources.size === 0 || localSources.has(src.id);
+                            return (
+                              <button
+                                key={src.id}
+                                onClick={() => toggleSource(src.id)}
+                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
+                                style={{
+                                  borderColor: localSources.has(src.id) ? "var(--accent-cyan)" : "var(--border)",
+                                  backgroundColor: localSources.has(src.id) ? "rgba(0,229,255,0.08)" : "transparent",
+                                  color: active ? "var(--foreground)" : "var(--text-muted)",
+                                  opacity: active ? 1 : 0.4,
+                                }}
+                              >
+                                {src.label} <span className="text-text-muted/50">{src.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {(localCategories.size > 0 || localSources.size > 0) && (
+                        <button
+                          onClick={() => { setLocalCategories(new Set()); setLocalSources(new Set()); }}
+                          className="text-[7px] font-mono text-accent-cyan/60 hover:text-accent-cyan transition-colors"
+                        >
+                          ✕ CLEAR ALL FILTERS
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-border flex items-center justify-between">

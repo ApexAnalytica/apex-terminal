@@ -27,124 +27,158 @@ const DISCOVERY_SOURCES = [
   { id: "merged", label: "MERGED", desc: "Cross-engine" },
 ];
 
-const DATA_SOURCES = [
-  {
-    id: "middle-east-playbooks",
-    label: "Middle East Playbooks",
-    desc: "Saudi Aramco, QatarEnergy LNG, QAFCO, Ma'aden, supply chain, sovereign risk, infrastructure",
-    nodeCount: MAIN_GRAPH.nodes.length,
-    edgeCount: MAIN_GRAPH.edges.length,
-    color: "#00e5ff",
-    hasData: true,
-  },
-  {
-    id: "athena-isr",
-    label: "Athena ISR",
-    desc: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
-    nodeCount: ATHENA_GRAPH.nodes.length,
-    edgeCount: ATHENA_GRAPH.edges.length,
-    color: "#ff6d00",
-    hasData: true,
-  },
-  {
-    id: "satellite-networks",
-    label: "Satellite Networks",
-    desc: "Starlink, GPS III, launch vehicles, ground stations, space weather",
-    nodeCount: 0,
-    edgeCount: 0,
-    color: "#7c4dff",
-    hasData: false,
-  },
-] as const;
+// ─── Grouped domain structure ────────────────────────────────────
+// Each domain knows which dataset it pulls from (for auto-loading)
 
-function buildGraphFromSources(sourceIds: string[]): CausalGraph {
-  let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
-  for (const id of sourceIds) {
-    if (id === "middle-east-playbooks") {
-      const { graph: merged } = mergeGraphs(graph, { nodes: MAIN_GRAPH.nodes, edges: MAIN_GRAPH.edges });
-      graph = merged;
-    } else if (id === "athena-isr") {
-      const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
-      graph = merged;
-    }
-  }
-  return graph;
+interface DomainCard {
+  id: string;
+  label: string;
+  icon: string;
+  color: string;
+  colorVar: string;
+  description: string;
+  hasData: boolean;
+  dataset: "main" | "athena"; // which graph to load
 }
 
-export const DOMAIN_CARDS = [
+interface DomainGroup {
+  label: string;
+  color: string;
+  domains: DomainCard[];
+}
+
+const DOMAIN_GROUPS: DomainGroup[] = [
   {
-    id: "financial-contagion",
-    label: "Financial Contagion Risk",
-    icon: "\u{1F3E6}",
-    color: "#ff6d00",
-    colorVar: "var(--accent-orange)",
-    description: "Systemic banking failures, credit default cascades, liquidity traps",
-    hasData: true,
-  },
-  {
-    id: "supply-chain",
-    label: "Supply Chain Shock Risk",
-    icon: "\u{1F517}",
-    color: "#00e5ff",
-    colorVar: "var(--accent-cyan)",
-    description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission, strategic reserves",
-    hasData: true,
-  },
-  {
-    id: "sovereign-risk",
-    label: "Emerging Market Sovereign Risk",
-    icon: "\u{1F30D}",
-    color: "#ffab00",
-    colorVar: "var(--accent-amber)",
-    description: "Currency crises, debt restructuring, capital flight contagion",
-    hasData: true,
-  },
-  {
-    id: "infrastructure",
-    label: "Infrastructure Resilience Risk",
-    icon: "\u{1F3D7}",
-    color: "#7c4dff",
-    colorVar: "var(--accent-purple)",
-    description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine landing station concentration",
-    hasData: true,
-  },
-  {
-    id: "ai-systems",
-    label: "Scaled AI System Risk",
-    icon: "\u{1F916}",
-    color: "#00e676",
-    colorVar: "var(--accent-green)",
-    description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
-    hasData: true,
-  },
-  {
-    id: "energy-systems",
-    label: "Energy Systems",
-    icon: "\u{26A1}",
+    label: "MENA ENERGY & COMMODITIES",
     color: "#ff1744",
-    colorVar: "var(--accent-red)",
-    description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
-    hasData: true,
+    domains: [
+      {
+        id: "energy-systems",
+        label: "Energy Systems",
+        icon: "\u{26A1}",
+        color: "#ff1744",
+        colorVar: "var(--accent-red)",
+        description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
+        hasData: true,
+        dataset: "main",
+      },
+      {
+        id: "manufacturing",
+        label: "Fertilizer & Agrochemical",
+        icon: "\u{1F3ED}",
+        color: "#448aff",
+        colorVar: "var(--accent-blue)",
+        description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
+        hasData: true,
+        dataset: "main",
+      },
+      {
+        id: "supply-chain",
+        label: "Supply Chain Shock Risk",
+        icon: "\u{1F517}",
+        color: "#00e5ff",
+        colorVar: "var(--accent-cyan)",
+        description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission",
+        hasData: true,
+        dataset: "main",
+      },
+    ],
   },
   {
-    id: "manufacturing",
-    label: "Fertilizer & Agrochemical",
-    icon: "\u{1F3ED}",
-    color: "#448aff",
-    colorVar: "var(--accent-blue)",
-    description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
-    hasData: true,
+    label: "FINANCIAL & SOVEREIGN",
+    color: "#ffab00",
+    domains: [
+      {
+        id: "financial-contagion",
+        label: "Financial Contagion Risk",
+        icon: "\u{1F3E6}",
+        color: "#ff6d00",
+        colorVar: "var(--accent-orange)",
+        description: "Systemic banking failures, credit default cascades, liquidity traps",
+        hasData: true,
+        dataset: "main",
+      },
+      {
+        id: "sovereign-risk",
+        label: "Emerging Market Sovereign Risk",
+        icon: "\u{1F30D}",
+        color: "#ffab00",
+        colorVar: "var(--accent-amber)",
+        description: "Currency crises, debt restructuring, capital flight contagion",
+        hasData: true,
+        dataset: "main",
+      },
+    ],
   },
   {
-    id: "frontier-science",
-    label: "Frontier Science",
-    icon: "\u269B\uFE0F",
+    label: "INFRASTRUCTURE & DEFENSE",
+    color: "#7c4dff",
+    domains: [
+      {
+        id: "infrastructure",
+        label: "Infrastructure Resilience",
+        icon: "\u{1F3D7}",
+        color: "#7c4dff",
+        colorVar: "var(--accent-purple)",
+        description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine",
+        hasData: true,
+        dataset: "main",
+      },
+      {
+        id: "defense-isr",
+        label: "Defense & ISR",
+        icon: "\u{1F6E1}\uFE0F",
+        color: "#00e676",
+        colorVar: "var(--accent-green)",
+        description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
+        hasData: true,
+        dataset: "athena",
+      },
+    ],
+  },
+  {
+    label: "FRONTIER",
     color: "#e040fb",
-    colorVar: "var(--accent-magenta)",
-    description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
-    hasData: false,
+    domains: [
+      {
+        id: "frontier-science",
+        label: "Frontier Science",
+        icon: "\u269B\uFE0F",
+        color: "#e040fb",
+        colorVar: "var(--accent-magenta)",
+        description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
+        hasData: false,
+        dataset: "main",
+      },
+    ],
   },
-] as const;
+];
+
+// Flat list for export (used by HeaderBar etc.)
+export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
+
+// Build the graph from selected domains — auto-includes the right datasets
+function buildGraphFromDomains(domainIds: string[]): CausalGraph {
+  const selectedDomains = domainIds.map((id) =>
+    DOMAIN_CARDS.find((d) => d.id === id)
+  ).filter(Boolean) as DomainCard[];
+
+  const needsMain = selectedDomains.some((d) => d.dataset === "main");
+  const needsAthena = selectedDomains.some((d) => d.dataset === "athena");
+
+  let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
+
+  if (needsMain) {
+    const { graph: merged } = mergeGraphs(graph, { nodes: MAIN_GRAPH.nodes, edges: MAIN_GRAPH.edges });
+    graph = merged;
+  }
+  if (needsAthena) {
+    const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
+    graph = merged;
+  }
+
+  return graph;
+}
 
 const CASCADE_EXAMPLES: Record<string, string> = {
   "energy-systems+manufacturing":
@@ -155,36 +189,40 @@ const CASCADE_EXAMPLES: Record<string, string> = {
     "Sovereign default \u2192 bank exposure losses \u2192 cross-border contagion \u2192 currency crisis",
   "financial-contagion+infrastructure":
     "Infrastructure bond default \u2192 municipal credit freeze \u2192 utility service degradation",
-  "financial-contagion+ai-systems":
-    "AI compute capex pullback \u2192 chip vendor revenue shock \u2192 semiconductor credit tightening",
+  "financial-contagion+defense-isr":
+    "Defense budget sequestration \u2192 ISR procurement freeze \u2192 capability gap \u2192 deterrence erosion",
   "supply-chain+sovereign-risk":
     "Export ban \u2192 critical mineral shortage \u2192 manufacturing re-routing \u2192 cost inflation",
   "supply-chain+infrastructure":
     "Port failure \u2192 rerouting bottleneck \u2192 energy grid overload \u2192 cascading blackouts",
-  "supply-chain+ai-systems":
-    "Chip fab disruption \u2192 GPU allocation crisis \u2192 AI training delays \u2192 compute rationing",
+  "supply-chain+defense-isr":
+    "Chip fab disruption \u2192 GPU allocation crisis \u2192 edge AI inference halt \u2192 drone fleet grounded",
   "sovereign-risk+infrastructure":
     "Fiscal crisis \u2192 infrastructure maintenance cuts \u2192 grid instability \u2192 industrial output drop",
-  "sovereign-risk+ai-systems":
-    "Data sovereignty laws \u2192 compute localization \u2192 efficiency loss \u2192 AI capability fragmentation",
-  "infrastructure+ai-systems":
-    "Power grid failure \u2192 data center outage \u2192 AI service disruption \u2192 dependent system cascades",
+  "sovereign-risk+defense-isr":
+    "Arms embargo \u2192 SATCOM relay denial \u2192 ISR blackout \u2192 strategic blindspot",
+  "infrastructure+defense-isr":
+    "Subsea cable cut \u2192 SATCOM overload \u2192 ISR data latency \u2192 kill chain degradation",
   "energy-systems+financial-contagion":
     "Grid instability \u2192 utility bond default \u2192 energy credit freeze \u2192 rolling blackout financing gap",
   "energy-systems+supply-chain":
     "Transformer shortage \u2192 grid expansion halt \u2192 industrial power rationing \u2192 manufacturing delays",
   "energy-systems+sovereign-risk":
-    "Nuclear fuel enrichment bottleneck \u2192 energy import dependency \u2192 sovereign credit downgrade",
+    "Oil revenue collapse \u2192 sovereign credit downgrade \u2192 capital flight \u2192 currency crisis",
   "energy-systems+infrastructure":
     "HVDC cable failure \u2192 grid island separation \u2192 frequency instability \u2192 cascading load shed",
-  "ai-systems+energy-systems":
-    "AI data center load surge \u2192 grid capacity breach \u2192 emergency curtailment \u2192 compute rationing",
+  "energy-systems+defense-isr":
+    "Energy grid attack \u2192 data center outage \u2192 AI inference halt \u2192 swarm coordination failure",
   "financial-contagion+manufacturing":
-    "Credit contraction \u2192 biomanufacturing capex freeze \u2192 vaccine production gap \u2192 pandemic vulnerability",
+    "Credit contraction \u2192 agrochemical capex freeze \u2192 fertilizer production gap \u2192 food price shock",
   "manufacturing+supply-chain":
-    "Rare earth embargo \u2192 industrial robotics shortage \u2192 factory automation halt \u2192 output collapse",
+    "Phosphate embargo \u2192 fertilizer shortage \u2192 crop yield collapse \u2192 food security crisis",
   "manufacturing+sovereign-risk":
     "Export controls \u2192 fertilizer supply disruption \u2192 food price shock \u2192 sovereign instability",
+  "manufacturing+defense-isr":
+    "Chip embargo \u2192 secure compute shortage \u2192 ISR processing bottleneck \u2192 intelligence gap",
+  "defense-isr+infrastructure":
+    "Anti-satellite strike \u2192 GPS degradation \u2192 navigation system failure \u2192 logistics breakdown",
 };
 
 function getCascadeExamples(domainIds: string[]): string[] {
@@ -218,7 +256,6 @@ export default function DomainSelector() {
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
-  const [localDataSources, setLocalDataSources] = useState<string[]>(["middle-east-playbooks"]);
 
   const toggleDomain = useCallback(
     (id: string) => {
@@ -236,7 +273,6 @@ export default function DomainSelector() {
     (multi: boolean) => {
       setLocalMulti(multi);
       if (!multi) {
-        // In single mode keep only first selection
         setLocalSelected((prev) => (prev.length > 0 ? [prev[0]] : []));
       }
     },
@@ -261,26 +297,31 @@ export default function DomainSelector() {
     });
   }, []);
 
-  const toggleDataSource = useCallback((id: string) => {
-    setLocalDataSources((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
-  }, []);
-
   const handleLaunch = useCallback(() => {
     if (localSelected.length === 0) return;
-    // Build and set the merged graph from selected data sources
-    const mergedGraph = buildGraphFromSources(localDataSources);
+    // Auto-build graph from selected domains (loads correct datasets)
+    const mergedGraph = buildGraphFromDomains(localSelected);
     setGraphData(mergedGraph);
-    setSelectedDataSources(localDataSources);
+    // Track which datasets were loaded
+    const datasets: string[] = [];
+    const cards = localSelected.map((id) => DOMAIN_CARDS.find((d) => d.id === id)).filter(Boolean) as DomainCard[];
+    if (cards.some((d) => d.dataset === "main")) datasets.push("middle-east-playbooks");
+    if (cards.some((d) => d.dataset === "athena")) datasets.push("athena-isr");
+    setSelectedDataSources(datasets);
     setSelectedDomains(localSelected);
     setIsMultiDomainMode(localMulti);
     setVisibleCategories(localCategories);
     setVisibleDiscoverySources(localSources);
     setDomainSelectorOpen(false);
-  }, [localSelected, localMulti, localCategories, localSources, localDataSources, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
+  }, [localSelected, localMulti, localCategories, localSources, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
 
   const cascadeExamples = getCascadeExamples(localSelected);
+
+  // Compute which datasets will be loaded based on current selection
+  const selectedCards = localSelected.map((id) => DOMAIN_CARDS.find((d) => d.id === id)).filter(Boolean) as DomainCard[];
+  const willLoadMain = selectedCards.some((d) => d.dataset === "main");
+  const willLoadAthena = selectedCards.some((d) => d.dataset === "athena");
+  const totalNodes = (willLoadMain ? MAIN_GRAPH.nodes.length : 0) + (willLoadAthena ? ATHENA_GRAPH.nodes.length : 0);
 
   return (
     <AnimatePresence>
@@ -342,59 +383,71 @@ export default function DomainSelector() {
               )}
             </div>
 
-            {/* Domain Cards */}
-            <div className="px-6 py-4 grid gap-1.5 max-h-[400px] overflow-y-auto">
-              {DOMAIN_CARDS.map((domain) => {
-                const isSelected = localSelected.includes(domain.id);
-                const isDisabled =
-                  !domain.hasData ||
-                  (!isSelected && localMulti && localSelected.length >= 3);
-
-                return (
-                  <button
-                    key={domain.id}
-                    onClick={() => !isDisabled && toggleDomain(domain.id)}
-                    className="flex items-center gap-3 px-4 py-2.5 rounded border transition-all text-left"
-                    style={{
-                      borderColor: isSelected ? domain.color : "var(--border)",
-                      backgroundColor: isSelected
-                        ? `${domain.color}10`
-                        : "var(--surface)",
-                      opacity: isDisabled ? 0.35 : 1,
-                      cursor: isDisabled ? "not-allowed" : "pointer",
-                      boxShadow: isSelected
-                        ? `0 0 12px ${domain.color}20, 0 0 4px ${domain.color}15`
-                        : "none",
-                    }}
+            {/* Grouped Domain Cards */}
+            <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-4">
+              {DOMAIN_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <div
+                    className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider mb-1.5"
+                    style={{ color: group.color + "99" }}
                   >
-                    <span className="text-xl flex-shrink-0">{domain.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
-                        style={{ color: isSelected ? domain.color : domain.hasData ? "var(--foreground)" : "var(--text-muted)" }}
-                      >
-                        {domain.label.toUpperCase()}
-                        {!domain.hasData && (
-                          <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
-                            COMING SOON
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[9px] font-mono text-text-muted mt-0.5 truncate">
-                        {domain.description}
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <span
-                        className="text-[10px] font-mono flex-shrink-0"
-                        style={{ color: domain.color }}
-                      >
-                        ACTIVE
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                    {group.label}
+                  </div>
+                  <div className="grid gap-1.5">
+                    {group.domains.map((domain) => {
+                      const isSelected = localSelected.includes(domain.id);
+                      const isDisabled =
+                        !domain.hasData ||
+                        (!isSelected && localMulti && localSelected.length >= 3);
+
+                      return (
+                        <button
+                          key={domain.id}
+                          onClick={() => !isDisabled && toggleDomain(domain.id)}
+                          className="flex items-center gap-3 px-4 py-2.5 rounded border transition-all text-left"
+                          style={{
+                            borderColor: isSelected ? domain.color : "var(--border)",
+                            backgroundColor: isSelected
+                              ? `${domain.color}10`
+                              : "var(--surface)",
+                            opacity: isDisabled ? 0.35 : 1,
+                            cursor: isDisabled ? "not-allowed" : "pointer",
+                            boxShadow: isSelected
+                              ? `0 0 12px ${domain.color}20, 0 0 4px ${domain.color}15`
+                              : "none",
+                          }}
+                        >
+                          <span className="text-xl flex-shrink-0">{domain.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div
+                              className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
+                              style={{ color: isSelected ? domain.color : domain.hasData ? "var(--foreground)" : "var(--text-muted)" }}
+                            >
+                              {domain.label.toUpperCase()}
+                              {!domain.hasData && (
+                                <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
+                                  COMING SOON
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[9px] font-mono text-text-muted mt-0.5 truncate">
+                              {domain.description}
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span
+                              className="text-[10px] font-mono flex-shrink-0"
+                              style={{ color: domain.color }}
+                            >
+                              ACTIVE
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Cascade Examples */}
@@ -425,65 +478,6 @@ export default function DomainSelector() {
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* Data Sources */}
-            <div className="px-6 pb-3">
-              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-2">
-                DATA SOURCES
-                <span className="ml-2 text-[7px] font-mono text-text-muted/50">
-                  {localDataSources.length} active
-                </span>
-              </div>
-              <div className="space-y-1">
-                {DATA_SOURCES.map((src) => {
-                  const active = localDataSources.includes(src.id);
-                  return (
-                    <button
-                      key={src.id}
-                      onClick={() => src.hasData && toggleDataSource(src.id)}
-                      className="flex items-center gap-3 w-full px-3 py-2 rounded border transition-all text-left"
-                      style={{
-                        borderColor: active ? src.color : "var(--border)",
-                        backgroundColor: active ? `${src.color}10` : "var(--surface)",
-                        opacity: src.hasData ? 1 : 0.35,
-                        cursor: src.hasData ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      <div
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: active ? src.color : "var(--border)" }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
-                          style={{ color: active ? src.color : src.hasData ? "var(--foreground)" : "var(--text-muted)" }}
-                        >
-                          {src.label.toUpperCase()}
-                          {!src.hasData && (
-                            <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
-                              COMING SOON
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[8px] font-mono text-text-muted mt-0.5 truncate">
-                          {src.desc}
-                        </div>
-                      </div>
-                      {src.hasData && (
-                        <span className="text-[7px] font-mono text-text-muted/60 flex-shrink-0">
-                          {src.nodeCount}n / {src.edgeCount}e
-                        </span>
-                      )}
-                      {active && (
-                        <span className="text-[8px] font-mono flex-shrink-0" style={{ color: src.color }}>
-                          ON
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Data Layers */}
             <div className="px-6 pb-2">
@@ -586,7 +580,7 @@ export default function DomainSelector() {
               <span className="text-[9px] font-mono text-text-muted">
                 {localSelected.length === 0
                   ? "No domain selected"
-                  : `${localSelected.length} domain${localSelected.length > 1 ? "s" : ""} selected`}
+                  : `${localSelected.length} domain${localSelected.length > 1 ? "s" : ""} selected${totalNodes > 0 ? ` \u00B7 ${totalNodes} nodes` : ""}`}
               </span>
               <button
                 onClick={handleLaunch}

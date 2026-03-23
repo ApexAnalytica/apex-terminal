@@ -3,7 +3,10 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import type { NodeCategory } from "@/lib/types";
+import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
+import { ATHENA_GRAPH } from "@/lib/athena-graph-data";
+import { mergeGraphs } from "@/lib/import/merge";
+import type { NodeCategory, CausalGraph } from "@/lib/types";
 
 const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "economic", label: "ECONOMIC", icon: "📊" },
@@ -23,6 +26,50 @@ const DISCOVERY_SOURCES = [
   { id: "FCI", label: "FCI", desc: "Latent confounders" },
   { id: "merged", label: "MERGED", desc: "Cross-engine" },
 ];
+
+const DATA_SOURCES = [
+  {
+    id: "middle-east-playbooks",
+    label: "Middle East Playbooks",
+    desc: "Saudi Aramco, QatarEnergy LNG, QAFCO, Ma'aden, supply chain, sovereign risk, infrastructure",
+    nodeCount: MAIN_GRAPH.nodes.length,
+    edgeCount: MAIN_GRAPH.edges.length,
+    color: "#00e5ff",
+    hasData: true,
+  },
+  {
+    id: "athena-isr",
+    label: "Athena ISR",
+    desc: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
+    nodeCount: ATHENA_GRAPH.nodes.length,
+    edgeCount: ATHENA_GRAPH.edges.length,
+    color: "#ff6d00",
+    hasData: true,
+  },
+  {
+    id: "satellite-networks",
+    label: "Satellite Networks",
+    desc: "Starlink, GPS III, launch vehicles, ground stations, space weather",
+    nodeCount: 0,
+    edgeCount: 0,
+    color: "#7c4dff",
+    hasData: false,
+  },
+] as const;
+
+function buildGraphFromSources(sourceIds: string[]): CausalGraph {
+  let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
+  for (const id of sourceIds) {
+    if (id === "middle-east-playbooks") {
+      const { graph: merged } = mergeGraphs(graph, { nodes: MAIN_GRAPH.nodes, edges: MAIN_GRAPH.edges });
+      graph = merged;
+    } else if (id === "athena-isr") {
+      const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
+      graph = merged;
+    }
+  }
+  return graph;
+}
 
 export const DOMAIN_CARDS = [
   {
@@ -67,8 +114,8 @@ export const DOMAIN_CARDS = [
     icon: "\u{1F916}",
     color: "#00e676",
     colorVar: "var(--accent-green)",
-    description: "Compute concentration, model failures, AI supply chain disruption",
-    hasData: false,
+    description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
+    hasData: true,
   },
   {
     id: "energy-systems",
@@ -162,6 +209,8 @@ export default function DomainSelector() {
     setSelectedDomains,
     setVisibleCategories,
     setVisibleDiscoverySources,
+    setSelectedDataSources,
+    setGraphData,
   } = useApexStore();
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
@@ -169,6 +218,7 @@ export default function DomainSelector() {
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
+  const [localDataSources, setLocalDataSources] = useState<string[]>(["middle-east-playbooks"]);
 
   const toggleDomain = useCallback(
     (id: string) => {
@@ -211,14 +261,24 @@ export default function DomainSelector() {
     });
   }, []);
 
+  const toggleDataSource = useCallback((id: string) => {
+    setLocalDataSources((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  }, []);
+
   const handleLaunch = useCallback(() => {
     if (localSelected.length === 0) return;
+    // Build and set the merged graph from selected data sources
+    const mergedGraph = buildGraphFromSources(localDataSources);
+    setGraphData(mergedGraph);
+    setSelectedDataSources(localDataSources);
     setSelectedDomains(localSelected);
     setIsMultiDomainMode(localMulti);
     setVisibleCategories(localCategories);
     setVisibleDiscoverySources(localSources);
     setDomainSelectorOpen(false);
-  }, [localSelected, localMulti, localCategories, localSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
+  }, [localSelected, localMulti, localCategories, localSources, localDataSources, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
 
   const cascadeExamples = getCascadeExamples(localSelected);
 
@@ -365,6 +425,65 @@ export default function DomainSelector() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Data Sources */}
+            <div className="px-6 pb-3">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-2">
+                DATA SOURCES
+                <span className="ml-2 text-[7px] font-mono text-text-muted/50">
+                  {localDataSources.length} active
+                </span>
+              </div>
+              <div className="space-y-1">
+                {DATA_SOURCES.map((src) => {
+                  const active = localDataSources.includes(src.id);
+                  return (
+                    <button
+                      key={src.id}
+                      onClick={() => src.hasData && toggleDataSource(src.id)}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded border transition-all text-left"
+                      style={{
+                        borderColor: active ? src.color : "var(--border)",
+                        backgroundColor: active ? `${src.color}10` : "var(--surface)",
+                        opacity: src.hasData ? 1 : 0.35,
+                        cursor: src.hasData ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: active ? src.color : "var(--border)" }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
+                          style={{ color: active ? src.color : src.hasData ? "var(--foreground)" : "var(--text-muted)" }}
+                        >
+                          {src.label.toUpperCase()}
+                          {!src.hasData && (
+                            <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
+                              COMING SOON
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[8px] font-mono text-text-muted mt-0.5 truncate">
+                          {src.desc}
+                        </div>
+                      </div>
+                      {src.hasData && (
+                        <span className="text-[7px] font-mono text-text-muted/60 flex-shrink-0">
+                          {src.nodeCount}n / {src.edgeCount}e
+                        </span>
+                      )}
+                      {active && (
+                        <span className="text-[8px] font-mono flex-shrink-0" style={{ color: src.color }}>
+                          ON
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Data Layers */}
             <div className="px-6 pb-2">

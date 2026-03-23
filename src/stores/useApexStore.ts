@@ -149,6 +149,10 @@ interface ApexState {
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
 
+  // Data source selection (which datasets to load)
+  selectedDataSources: string[];
+  setSelectedDataSources: (sources: string[]) => void;
+
   // Data layer filters (what to show in the 3D universe)
   visibleCategories: Set<string>; // node categories to show (empty = all)
   visibleDiscoverySources: Set<string>; // discovery sources to show (empty = all)
@@ -370,13 +374,13 @@ export const useApexStore = create<ApexState>((set) => ({
     set((s) => ({ copilotMessages: [...s.copilotMessages, msg] })),
 
   // LLM config
-  llmProvider: "gemini" as LLMProvider,
+  llmProvider: "ollama" as LLMProvider,
   claudeApiKey: "",
   geminiApiKey: "",
   claudeModel: "claude-sonnet-4-20250514",
   geminiModel: "gemini-2.0-flash",
   ollamaUrl: "http://localhost:11434",
-  ollamaModel: "llama3.1:8b",
+  ollamaModel: "deepseek-r1:8b",
   isLlmStreaming: false,
   setLlmProvider: (provider) => set({ llmProvider: provider }),
   setClaudeApiKey: (key) => set({ claudeApiKey: key }),
@@ -448,6 +452,10 @@ export const useApexStore = create<ApexState>((set) => ({
   setSelectedDomains: (domains) => set({ selectedDomains: domains }),
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
+
+  // Data sources
+  selectedDataSources: ["middle-east-playbooks"],
+  setSelectedDataSources: (sources) => set({ selectedDataSources: sources }),
 
   // Data layer filters
   visibleCategories: new Set<string>(),

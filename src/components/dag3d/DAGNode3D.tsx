@@ -62,7 +62,7 @@ export default function DAGNode3D({
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
   const t = composite / 10;
-  const size = 0.2 + Math.pow(t, 2.2) * 1.0; // range 0.2–1.2, compact to reduce overlap
+  const size = 0.15 + Math.pow(t, 2.2) * 0.55; // range 0.15–0.7, compact to reduce overlap
   const glowColor = isConsequence ? "#ff6d00" : getOmegaGlowColor(composite);
   const shockGlow = epochState ? epochState.shockIntensity : 0;
 

@@ -14,6 +14,8 @@ const DOMAIN_MAP: Record<string, string[]> = {
   "sovereign-risk": ["Sovereign Risk"],
   "supply-chain": ["Supply Chain Food Security"],
   "infrastructure": ["Undersea Cable Infrastructure"],
+  // Athena ISR domains
+  "ai-systems": ["Drone Swarms", "SATCOM", "ISR Fusion", "Chip Embargo", "Secure Compute", "Kill Chain"],
 };
 
 /**

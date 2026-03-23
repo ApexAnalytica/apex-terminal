@@ -33,16 +33,21 @@ export interface NodePosition {
 
 // Domain z-layer targets (before normalization)
 const DOMAIN_Z_OFFSETS: Record<string, number> = {
-  "EUV Lithography": -4,
-  "Undersea Cables": -2,
-  "Rare Earth": -1,
-  "HVDC Power": 0,
-  "AI Compute": 1,
-  "Fertilizer": 2.5,
-  "Data Centers": -3,
-  "Dollar Funding": 3,
-  "Geopolitical": 4,
-  "Energy Grid": 0.5,
+  "Saudi Aramco Energy": -3,
+  "QatarEnergy LNG": -1.5,
+  "QAFCO Fertilizer": 0,
+  "Ma'aden Phosphate": 1,
+  "Financial Contagion": 2.5,
+  "Sovereign Risk": 3.5,
+  "Supply Chain Food Security": -0.5,
+  "Undersea Cable Infrastructure": -4,
+  // Athena ISR domains
+  "Drone Swarms": 4,
+  "SATCOM": 3,
+  "ISR Fusion": 2,
+  "Chip Embargo": 1,
+  "Secure Compute": 0,
+  "Kill Chain": -1,
 };
 
 // Target bounding box half-extents for the final layout
@@ -79,17 +84,28 @@ export function computeLayout3D(
     target: e.target,
   }));
 
+  // Build adjacency to identify connected vs disconnected nodes
+  const connected = new Set<string>();
+  for (const link of simLinks) {
+    const src = typeof link.source === "string" ? link.source : link.source.id;
+    const tgt = typeof link.target === "string" ? link.target : link.target.id;
+    connected.add(src);
+    connected.add(tgt);
+  }
+
   // d3-force-3d types are incomplete — runtime API accepts (nodes, nDim)
   const sim = (forceSimulation as any)(simNodes, 3)
     .force(
       "link",
       forceLink(simLinks)
         .id((d: any) => d.id)
-        .distance(25)
-        .strength(0.4)
+        .distance(20)
+        .strength(0.5)
     )
-    .force("charge", forceManyBody().strength(-120))
-    .force("center", forceCenter(0, 0, 0))
+    .force("charge", forceManyBody().strength((d: any) =>
+      connected.has(d.id) ? -100 : -30
+    ))
+    .force("center", forceCenter(0, 0, 0).strength(0.15))
     .velocityDecay(0.4)
     .stop();
 

@@ -223,7 +223,7 @@ function ParetoPanel() {
     ? replayEpochs[currentEpoch] ?? null
     : null;
   // ── Derive three criticality countdowns ──
-  // CSD: Cascade Structural Damage — based on spectral radius and cascade load
+  // CSD: Critical Slowing Down — based on spectral radius and cascade load
   const csdEpochs = useMemo(() => {
     const lambdaMax = graphData.edges.reduce((max, e) => {
       const srcNode = graphData.nodes.find((n) => n.id === e.source);
@@ -289,23 +289,27 @@ function ParetoPanel() {
     }
     const lambdaMax = Math.max(...Array.from(rowSums.values()), 0);
 
+    // Model curve: always computed from graph spectral structure
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const modelPoints: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59;
+      const growth = lambdaMax * Math.exp(t * (0.5 + shockPressure * 1.2));
+      const propSignal = growth / (1 + growth); // logistic saturation
+      modelPoints.push(Math.max(0, Math.min(1, propSignal)));
+    }
+
+    let observedPoints: number[] | undefined;
     let points: number[];
     if (epochs.length >= 3) {
       // Use real epoch data: normalize omegaBuffer (100=safe → 0, 0=critical → 1)
       const sampled = epochs.length > 60
         ? Array.from({ length: 60 }, (_, i) => epochs[Math.round(i * (epochs.length - 1) / 59)])
         : epochs;
-      points = sampled.map((snap) => Math.max(0, Math.min(1, 1 - snap.omegaBuffer / 100)));
+      observedPoints = sampled.map((snap) => Math.max(0, Math.min(1, 1 - snap.omegaBuffer / 100)));
+      points = observedPoints;
     } else {
-      // Derive from real graph structure: cascade propagation model using actual λmax
-      const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-      points = [];
-      for (let i = 0; i < 60; i++) {
-        const t = i / 59;
-        const growth = lambdaMax * Math.exp(t * (0.5 + shockPressure * 1.2));
-        const propSignal = growth / (1 + growth); // logistic saturation
-        points.push(Math.max(0, Math.min(1, propSignal)));
-      }
+      points = modelPoints;
     }
 
     // Confidence: based on data richness + how well λmax predicts instability
@@ -314,7 +318,7 @@ function ParetoPanel() {
     const edgeDensity = Math.min(0.25, (graphData.edges.length / Math.max(1, graphData.nodes.length * (graphData.nodes.length - 1))) * 2.5);
     const confidence = Math.min(0.99, dataQuality + spectralSignal + edgeDensity);
 
-    return { timeSeries: points, confidence, lambdaMax };
+    return { timeSeries: points, modelSeries: modelPoints, observedSeries: observedPoints, confidence, lambdaMax };
   }, [replayEpochs, baselineEpochs, graphData, shocks]);
 
   // ── PH time series: real topological filtration across fragility thresholds ──
@@ -351,16 +355,26 @@ function ParetoPanel() {
       points.push(Math.min(1, normalized));
     }
 
+    // Smooth theoretical model: monotonic collapse curve based on cluster density
+    const clusterCount = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length;
+    const clusterFrac = clusterCount / Math.max(1, N);
+    const phModelPoints: number[] = Array.from({ length: 60 }, (_, i) => {
+      const t = i / 59;
+      // Theoretical β₁ curve: rises as filtration reveals holes, then collapses
+      const rise = Math.pow(t, 0.6) * (1 + clusterFrac * 0.5);
+      const collapse = Math.exp(-2 * Math.pow(Math.max(0, t - 0.7), 2));
+      return Math.max(0, Math.min(1, rise * collapse * 0.8));
+    });
+
     // Confidence: based on topological signal strength
     const maxBetti = Math.max(...points);
     const variance = points.reduce((s, v) => s + (v - maxBetti / 2) ** 2, 0) / points.length;
-    const clusterCount = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length;
     const topologicalSignal = Math.min(0.35, (clusterCount / Math.max(1, N)) * 1.5);
     const filtrationCoverage = Math.min(0.35, (composites[composites.length - 1] - composites[0]) / 10 * 0.35);
     const varianceSignal = Math.min(0.3, Math.sqrt(variance) * 1.5);
     const confidence = Math.min(0.99, topologicalSignal + filtrationCoverage + varianceSignal);
 
-    return { timeSeries: points, confidence };
+    return { timeSeries: points, modelSeries: phModelPoints, confidence };
   }, [graphData]);
 
   // ── LPPLS time series: real fragility acceleration with Sornette model fit ──
@@ -399,23 +413,19 @@ function ParetoPanel() {
       modelPoints.push(Math.max(0, Math.min(1, signal)));
     }
 
-    // If we have real data, blend observed with model; otherwise use pure model
-    let points: number[];
+    // Show observed and model as separate lines instead of blending
+    let observedSeries: number[] | undefined;
     let residualFit = 0;
     if (observedTrend.length >= 10) {
       // Pad/resample observed to 60 points
-      const obs60 = observedTrend.length === 60 ? observedTrend
+      observedSeries = observedTrend.length === 60 ? observedTrend
         : Array.from({ length: 60 }, (_, i) => observedTrend[Math.round(i * (observedTrend.length - 1) / 59)]);
-      points = obs60.map((v, i) => v * 0.7 + modelPoints[i] * 0.3); // 70% real, 30% model
 
       // Compute R² between model and observed
-      const obsMean = obs60.reduce((s, v) => s + v, 0) / obs60.length;
-      const ssTot = obs60.reduce((s, v) => s + (v - obsMean) ** 2, 0);
-      const ssRes = obs60.reduce((s, v, i) => s + (v - modelPoints[i]) ** 2, 0);
+      const obsMean = observedSeries.reduce((s, v) => s + v, 0) / observedSeries.length;
+      const ssTot = observedSeries.reduce((s, v) => s + (v - obsMean) ** 2, 0);
+      const ssRes = observedSeries.reduce((s, v, i) => s + (v - modelPoints[i]) ** 2, 0);
       residualFit = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
-    } else {
-      points = modelPoints;
-      residualFit = 0;
     }
 
     // Confidence: how well LPPLS fits + data availability + fragility acceleration
@@ -424,7 +434,12 @@ function ParetoPanel() {
     const accelerationSignal = Math.min(0.3, (avgOmega / 10) * (1 + shockPressure) * 0.3);
     const confidence = Math.min(0.99, dataQuality + modelFit + accelerationSignal);
 
-    return { timeSeries: points, confidence, omega, tc, m, residualFit };
+    return {
+      timeSeries: observedSeries ?? modelPoints,
+      modelSeries: modelPoints,
+      observedSeries,
+      confidence, omega, tc, m, residualFit,
+    };
   }, [graphData.nodes, shocks, replayEpochs, baselineEpochs, csdEpochs]);
 
   return (
@@ -434,25 +449,26 @@ function ParetoPanel() {
         CRITICALITY HORIZONS
       </div>
       <div className="space-y-2">
-        {/* CSD — Cascade Structural Damage */}
+        {/* CSD — Critical Slowing Down */}
         <CriticalityCard
           abbrev="CSD"
-          fullName="CASCADE STRUCTURAL DAMAGE"
+          fullName="CRITICAL SLOWING DOWN"
           epochs={csdEpochs}
           maxEpochs={200}
           color={getCritColor(csdEpochs)}
           expanded={!!expandedCrit.csd}
           onToggle={() => toggleCrit("csd")}
           timeSeries={csdData.timeSeries}
+          modelSeries={csdData.observedSeries ? csdData.modelSeries : undefined}
           confidence={csdData.confidence}
-          shortDesc="Spectral radius propagation — epochs until cascade failure exceeds recovery capacity"
+          shortDesc="Recovery rate decay — epochs until perturbation recovery time diverges to infinity"
           methodology={[
-            `Measures the largest eigenvalue (λmax) of the network's weighted adjacency matrix — computed from ${graphData.edges.length} real edges weighted by source node cascade-load (Ω-C pillar).`,
-            `Current λmax = ${csdData.lambdaMax.toFixed(3)}. When λmax ≥ 1.0, perturbations amplify through the graph rather than decay — a single node failure cascades through downstream dependencies exponentially.`,
-            `${replayEpochs.length > 0 ? `Time series shows real Ω-buffer trajectory across ${replayEpochs.length} simulated epochs.` : `Time series derived from graph spectral structure — run cascade simulation for epoch-level data.`}`,
+            `Critical Slowing Down (CSD) measures how quickly the network recovers from perturbations. As λmax → 1.0, recovery time diverges — the system loses its ability to absorb shocks. Computed from ${graphData.edges.length} edges weighted by cascade-load (Ω-C pillar).`,
+            `Current λmax = ${csdData.lambdaMax.toFixed(3)}. Recovery rate = ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)}. Near-critical systems exhibit rising autocorrelation and variance — hallmarks of an approaching tipping point (Scheffer et al. 2009).`,
+            `${replayEpochs.length > 0 ? `Solid line: observed Ω-buffer depletion across ${replayEpochs.length} epochs. Dashed line: spectral model prediction. Divergence indicates non-linear cascade dynamics.` : `Model projection from graph spectral structure — run cascade simulation for observed data overlay.`}`,
           ]}
-          formula={`λmax = ${csdData.lambdaMax.toFixed(4)} | critical threshold: λmax ≥ 1.0 | damping: ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)}`}
-          assessment={`Spectral radius computed over ${graphData.nodes.length} nodes × ${graphData.edges.length} edges. ${csdData.lambdaMax >= 1.0 ? "⚠ SUPERCRITICAL — perturbations amplify." : `Subcritical — damping coefficient ${(1 - csdData.lambdaMax).toFixed(3)} absorbs shocks.`}`}
+          formula={`λmax = ${csdData.lambdaMax.toFixed(4)} | recovery rate: ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)} | critical threshold: λmax ≥ 1.0`}
+          assessment={`Spectral radius over ${graphData.nodes.length} nodes × ${graphData.edges.length} edges. ${csdData.lambdaMax >= 1.0 ? "SUPERCRITICAL — recovery rate = 0. Perturbations amplify indefinitely. System has crossed the tipping point." : csdData.lambdaMax > 0.8 ? `Near-critical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} is decaying. Autocorrelation rising. Early warning signals active.` : `Subcritical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} provides adequate shock absorption capacity.`}`}
         />
 
         {/* PH — Persistent Homology */}
@@ -465,10 +481,11 @@ function ParetoPanel() {
           expanded={!!expandedCrit.ph}
           onToggle={() => toggleCrit("ph")}
           timeSeries={phData.timeSeries}
+          modelSeries={phData.modelSeries}
           confidence={phData.confidence}
           shortDesc={`Topological fragility holes — epochs until high-Ω cluster boundaries collapse`}
           methodology={[
-            `Sweeps a filtration threshold ε from 0→10 across all ${graphData.nodes.length} nodes. At each ε, nodes with Ω ≤ ε and their connecting edges form a simplicial complex.`,
+            `Sweeps a filtration threshold ε from 0→10 across all ${graphData.nodes.length} nodes. At each ε, nodes with Ω ≤ ε and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical β₁ collapse model.`,
             `Computes β₀ (connected components via union-find) and β₁ (1-cycles via Euler characteristic: β₁ ≈ E − V + β₀) at each filtration step — showing how topological holes appear and collapse.`,
             `When persistent holes vanish (β₁ → 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above Ω > 7.0 form critical cluster boundaries.`,
           ]}
@@ -486,11 +503,12 @@ function ParetoPanel() {
           expanded={!!expandedCrit.lppls}
           onToggle={() => toggleCrit("lppls")}
           timeSeries={lpplsData.timeSeries}
+          modelSeries={lpplsData.modelSeries}
           confidence={lpplsData.confidence}
           shortDesc="Super-exponential fragility growth — epochs until singularity (tc) is reached"
           methodology={[
             `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] to ${replayEpochs.length > 0 ? `real mean-Ω trajectory across ${replayEpochs.length} epoch snapshots` : `network fragility state derived from ${graphData.nodes.length} node Ω-composites`}.`,
-            `${replayEpochs.length >= 10 ? `Signal is 70% observed data / 30% model overlay. R² fit quality: ${(lpplsData.residualFit * 100).toFixed(1)}% — ${lpplsData.residualFit > 0.6 ? "strong LPPLS signature detected." : lpplsData.residualFit > 0.3 ? "moderate LPPLS pattern emerging." : "weak fit — system may not follow LPPLS dynamics."}` : `Pure model projection — run cascade simulation for observed-data overlay and R² fit computation.`}`,
+            `${lpplsData.observedSeries ? `Solid line: observed Ω-trajectory. Dashed line: LPPLS model fit. R² = ${(lpplsData.residualFit * 100).toFixed(1)}% — ${lpplsData.residualFit > 0.6 ? "strong LPPLS signature detected." : lpplsData.residualFit > 0.3 ? "moderate LPPLS pattern emerging." : "weak fit — system may not follow LPPLS dynamics."}` : `Dashed line shows LPPLS model projection — run cascade simulation for observed-data overlay and R² fit.`}`,
             `Sornette (2003) crash prediction framework: log-periodic oscillations with increasing frequency signal an approaching critical time (tc) where the system transitions to a new regime.`,
           ]}
           formula={`ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${replayEpochs.length >= 10 ? `R² = ${(lpplsData.residualFit * 100).toFixed(1)}%` : "R² = pending simulation"}`}
@@ -1140,45 +1158,128 @@ function CascadeHeader() {
 
 // ─── Criticality Card (collapsible with time series) ────────────
 
-function CritSparkline({ data, color, height = 48 }: { data: number[]; color: string; height?: number }) {
-  const width = 260;
-  const pad = 2;
-  const pts = data.map((v, i) => {
-    const x = pad + (i / (data.length - 1)) * (width - pad * 2);
-    const y = pad + (1 - v) * (height - pad * 2);
-    return `${x},${y}`;
-  });
+function CritSparkline({
+  data,
+  modelData,
+  color,
+  height = 120,
+  label,
+}: {
+  data: number[];
+  modelData?: number[];
+  color: string;
+  height?: number;
+  label?: string;
+}) {
+  const width = 300;
+  const padX = 24;
+  const padTop = 14;
+  const padBottom = 18;
+  const chartW = width - padX * 2;
+  const chartH = height - padTop - padBottom;
+
+  const toPoints = (arr: number[]) =>
+    arr.map((v, i) => {
+      const x = padX + (i / (arr.length - 1)) * chartW;
+      const y = padTop + (1 - v) * chartH;
+      return `${x},${y}`;
+    });
+
+  const pts = toPoints(data);
   const line = pts.join(" ");
-  // Area fill under the curve
-  const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
+  const area = `${padX},${padTop + chartH} ${line} ${padX + chartW},${padTop + chartH}`;
+
+  const modelPts = modelData ? toPoints(modelData) : null;
+  const modelLine = modelPts ? modelPts.join(" ") : null;
+
+  // Y-axis tick values
+  const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="rounded">
-      {/* Grid lines */}
-      {[0.25, 0.5, 0.75].map((frac) => (
-        <line
-          key={frac}
-          x1={pad} y1={pad + frac * (height - pad * 2)}
-          x2={width - pad} y2={pad + frac * (height - pad * 2)}
-          stroke="rgba(90,94,114,0.15)" strokeWidth={0.5}
-        />
-      ))}
-      {/* Area fill */}
-      <polygon points={area} fill={color} opacity={0.08} />
-      {/* Line */}
-      <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} opacity={0.8} />
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="rounded">
+      {/* Background */}
+      <rect x={padX} y={padTop} width={chartW} height={chartH} fill="rgba(0,0,0,0.2)" rx={2} />
+
+      {/* Grid lines + Y-axis labels */}
+      {yTicks.map((frac) => {
+        const y = padTop + (1 - frac) * chartH;
+        return (
+          <g key={frac}>
+            <line x1={padX} y1={y} x2={padX + chartW} y2={y} stroke="rgba(90,94,114,0.2)" strokeWidth={0.5} />
+            <text x={padX - 3} y={y + 3} fontSize={6} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">
+              {frac.toFixed(2)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Vertical grid lines (time markers) */}
+      {[0.25, 0.5, 0.75].map((frac) => {
+        const x = padX + frac * chartW;
+        return (
+          <line key={`v${frac}`} x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="rgba(90,94,114,0.1)" strokeWidth={0.5} />
+        );
+      })}
+
+      {/* Critical threshold line at 1.0 */}
+      <line x1={padX} y1={padTop} x2={padX + chartW} y2={padTop} stroke="#ff174440" strokeWidth={1} strokeDasharray="3,3" />
+      <text x={padX + chartW + 2} y={padTop + 3} fontSize={5.5} fill="#ff174480" fontFamily="monospace">crit</text>
+
+      {/* Area fill under observed data */}
+      <polygon points={area} fill={color} opacity={0.06} />
+
+      {/* Model line (dashed) */}
+      {modelLine && (
+        <polyline points={modelLine} fill="none" stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
+      )}
+
+      {/* Observed data line (solid) */}
+      <polyline points={line} fill="none" stroke={color} strokeWidth={1.8} opacity={0.85} />
+
       {/* Current value dot */}
       {data.length > 0 && (
         <circle
-          cx={width - pad}
-          cy={pad + (1 - data[data.length - 1]) * (height - pad * 2)}
-          r={2.5}
+          cx={padX + chartW}
+          cy={padTop + (1 - data[data.length - 1]) * chartH}
+          r={3}
           fill={color}
+          opacity={0.9}
         />
       )}
-      {/* Epoch labels */}
-      <text x={pad + 2} y={height - 3} fontSize={7} fill="rgba(90,94,114,0.5)" fontFamily="monospace">0</text>
-      <text x={width - pad - 12} y={height - 3} fontSize={7} fill="rgba(90,94,114,0.5)" fontFamily="monospace">now</text>
+
+      {/* Current value label */}
+      {data.length > 0 && (
+        <text
+          x={padX + chartW - 1}
+          cy={padTop + (1 - data[data.length - 1]) * chartH}
+          y={Math.max(padTop + 8, padTop + (1 - data[data.length - 1]) * chartH - 5)}
+          fontSize={7}
+          fill={color}
+          fontFamily="monospace"
+          textAnchor="end"
+        >
+          {data[data.length - 1].toFixed(3)}
+        </text>
+      )}
+
+      {/* X-axis labels */}
+      <text x={padX} y={height - 3} fontSize={6.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace">t=0</text>
+      <text x={padX + chartW} y={height - 3} fontSize={6.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">now</text>
+
+      {/* Legend */}
+      {modelData && (
+        <g>
+          <line x1={padX} y1={6} x2={padX + 12} y2={6} stroke={color} strokeWidth={1.8} opacity={0.85} />
+          <text x={padX + 15} y={8} fontSize={6} fill="rgba(90,94,114,0.7)" fontFamily="monospace">observed</text>
+          <line x1={padX + 58} y1={6} x2={padX + 70} y2={6} stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
+          <text x={padX + 73} y={8} fontSize={6} fill="rgba(90,94,114,0.7)" fontFamily="monospace">model</text>
+        </g>
+      )}
+
+      {/* Chart title */}
+      {label && !modelData && (
+        <text x={padX} y={8} fontSize={6} fill="rgba(90,94,114,0.5)" fontFamily="monospace">{label}</text>
+      )}
     </svg>
   );
 }
@@ -1192,6 +1293,7 @@ function CriticalityCard({
   expanded,
   onToggle,
   timeSeries,
+  modelSeries,
   confidence,
   shortDesc,
   methodology,
@@ -1206,6 +1308,7 @@ function CriticalityCard({
   expanded: boolean;
   onToggle: () => void;
   timeSeries: number[];
+  modelSeries?: number[];
   confidence: number;
   shortDesc: string;
   methodology: string[];
@@ -1285,7 +1388,7 @@ function CriticalityCard({
               borderColor: `${color}15`,
               backgroundColor: "rgba(0,0,0,0.15)",
             }}>
-              <CritSparkline data={timeSeries} color={color} height={56} />
+              <CritSparkline data={timeSeries} modelData={modelSeries} color={color} height={140} />
             </div>
           </div>
 

@@ -101,9 +101,10 @@ export default function DAGEdge3D({
     return geometry;
   }, [points]);
 
-  const useDashed = isAblated || isSevered || edge.type === "confounded" || isVerifiedInconsistent || isCrossDomain;
-  const dashSize = useDashed ? (isAblated ? 0.6 : isSevered ? 0.6 : isCrossDomain ? 0.8 : 0.5) : 0;
-  const gapSize = useDashed ? (isAblated ? 0.4 : isSevered ? 0.4 : isCrossDomain ? 0.4 : 0.3) : 0;
+  // Dashes: match 2D — only confounded, inconsistent, ablated, severed (NOT cross-domain)
+  const useDashed = isAblated || isSevered || edge.type === "confounded" || isVerifiedInconsistent;
+  const dashSize = useDashed ? (isAblated ? 0.6 : isSevered ? 0.6 : 0.5) : 0;
+  const gapSize = useDashed ? (isAblated ? 0.4 : isSevered ? 0.4 : 0.3) : 0;
 
   // Selection-aware opacity: dim non-connected edges when a node is selected
   const selectionDim = anyNodeSelected && !isConnectedToSelected;
@@ -172,15 +173,17 @@ export default function DAGEdge3D({
         </line>
       )}
 
-      {/* Arrowhead */}
-      <mesh position={arrowPosition} rotation={arrowRotation}>
-        <coneGeometry args={[0.2 + edge.weight * 0.15, 0.6, 6]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={arrowOpacity}
-        />
-      </mesh>
+      {/* Arrowhead — only for directed/temporal edges (match 2D behavior) */}
+      {(edge.type === "directed" || edge.type === "temporal") && (
+        <mesh position={arrowPosition} rotation={arrowRotation}>
+          <coneGeometry args={[0.2 + edge.weight * 0.15, 0.6, 6]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={arrowOpacity}
+          />
+        </mesh>
+      )}
 
       {/* Animated flowing particle */}
       {shouldAnimate && (

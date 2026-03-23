@@ -106,7 +106,8 @@ export default function SystemCopilot() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenMsgRef = useRef<string | null>(null);
 
-  const isLlmActive = copilotProvider === "ollama" || copilotApiKey.length > 0;
+  // Gemini is always active — server-side env var provides the key if client doesn't
+  const isLlmActive = copilotProvider === "ollama" || copilotProvider === "gemini" || copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
 
   // Stable refs for event handlers to avoid stale closures in CustomEvent listeners

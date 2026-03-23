@@ -4,6 +4,7 @@
 
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "./omega-engine";
+import { DOMAIN_CARDS, buildGraphFromDomains } from "@/components/DomainSelector";
 
 export interface ParsedAction {
   type: string;
@@ -125,12 +126,34 @@ export function executeAction(action: ParsedAction): string | null {
     }
 
     case "set_domains": {
-      const domains = action.param.split(",").map((d) => d.trim()).filter(Boolean);
-      if (domains.length > 0) {
-        store.setSelectedDomains(domains);
-        return `Filtered to domains: ${domains.join(", ")}`;
+      const domainIds = action.param.split(",").map((d) => d.trim()).filter(Boolean);
+      // Validate domain IDs against known domains
+      const validIds = domainIds.filter((id) => DOMAIN_CARDS.find((d) => d.id === id && d.hasData));
+      if (validIds.length > 0) {
+        // Rebuild graph from the selected domains
+        const graph = buildGraphFromDomains(validIds);
+        store.setGraphData(graph);
+        store.setSelectedDomains(validIds);
+        store.setIsMultiDomainMode(validIds.length > 1);
+        const labels = validIds.map((id) => DOMAIN_CARDS.find((d) => d.id === id)?.label ?? id);
+        return `Filtered network to: ${labels.join(", ")} (${graph.metadata.totalNodes} nodes, ${graph.metadata.totalEdges} edges)`;
       }
-      return "No valid domains specified";
+      return `No valid domains found. Available: ${DOMAIN_CARDS.filter((d) => d.hasData).map((d) => d.id).join(", ")}`;
+    }
+
+    case "select_domains": {
+      // Alias for set_domains — LLM may use either
+      const domainIds = action.param.split(",").map((d) => d.trim()).filter(Boolean);
+      const validIds = domainIds.filter((id) => DOMAIN_CARDS.find((d) => d.id === id && d.hasData));
+      if (validIds.length > 0) {
+        const graph = buildGraphFromDomains(validIds);
+        store.setGraphData(graph);
+        store.setSelectedDomains(validIds);
+        store.setIsMultiDomainMode(validIds.length > 1);
+        const labels = validIds.map((id) => DOMAIN_CARDS.find((d) => d.id === id)?.label ?? id);
+        return `Filtered network to: ${labels.join(", ")} (${graph.metadata.totalNodes} nodes, ${graph.metadata.totalEdges} edges)`;
+      }
+      return `No valid domains found. Available: ${DOMAIN_CARDS.filter((d) => d.hasData).map((d) => d.id).join(", ")}`;
     }
 
     default:

@@ -1558,10 +1558,21 @@ function CriticalityCard({
             </div>
           </div>
 
-          {/* Methodology explanation */}
-          <div>
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              METHODOLOGY
+          {/* Methodology explanation — click to speak */}
+          <div
+            className="cursor-pointer hover:bg-surface-elevated/50 rounded p-1 -m-1 transition-colors group"
+            onClick={() => window.dispatchEvent(new CustomEvent("apex-speak-content", {
+              detail: { title: `${abbrev} \u2014 Methodology`, text: methodology.join(" ") }
+            }))}
+            title="Click to read aloud"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                METHODOLOGY
+              </div>
+              <div className="text-[6px] font-mono text-text-muted opacity-0 group-hover:opacity-60 transition-opacity">
+                {"\uD83D\uDD0A"} read aloud
+              </div>
             </div>
             <div className="space-y-1.5">
               {methodology.map((line, i) => (
@@ -1582,10 +1593,21 @@ function CriticalityCard({
             </div>
           </div>
 
-          {/* Current assessment */}
-          <div>
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              CURRENT ASSESSMENT
+          {/* Current assessment — click to speak */}
+          <div
+            className="cursor-pointer hover:bg-surface-elevated/50 rounded p-1 -m-1 transition-colors group"
+            onClick={() => window.dispatchEvent(new CustomEvent("apex-speak-content", {
+              detail: { title: `${abbrev} \u2014 Assessment`, text: assessment }
+            }))}
+            title="Click to read aloud"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                CURRENT ASSESSMENT
+              </div>
+              <div className="text-[6px] font-mono text-text-muted opacity-0 group-hover:opacity-60 transition-opacity">
+                {"\uD83D\uDD0A"} read aloud
+              </div>
             </div>
             <div className="text-[9px] font-mono text-text-muted leading-relaxed">
               {assessment}

@@ -17,94 +17,119 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
     targetSelector: null,
-    title: "WELCOME TO APEX",
+    title: "WELCOME TO MANIFOLD",
     description:
-      "APEX Analytica is a causal-inference workbench for discovering, verifying, and stress-testing causal graphs. This tour highlights the key regions of the interface.",
+      "APEX Analytica MANIFOLD is a causal-inference platform for discovering, verifying, and stress-testing causal networks across multiple domains. It combines four analysis engines with an AI copilot, 3D graph visualization, and real-time criticality monitoring. This tour will walk you through every feature.",
     tooltipPosition: "center",
+  },
+  {
+    id: "domain-selection",
+    targetSelector: '[data-tour="module-tabs"]',
+    title: "DOMAIN SELECTION",
+    description:
+      "Start by selecting your analysis domains. Click the domain selector to choose from categories like Saudi Aramco Energy, QatarEnergy LNG, QAFCO Fertilizer, Ma\u2019aden Phosphate, and more. You can select as many domains as you want \u2014 the platform builds cross-domain causal connections automatically, letting you compare risks across completely different sectors.",
+    tooltipPosition: "bottom",
   },
   {
     id: "module-tabs",
     targetSelector: '[data-tour="module-tabs"]',
-    title: "MODULE TABS",
+    title: "ENGINE TABS",
     description:
-      "Switch between the four analysis engines: Spirtes (structure discovery), Tarski (truth verification), Pearl (counterfactuals), and Pareto (criticality warnings).",
+      "Four analysis engines power the platform. SPIRTES discovers causal structure from data. TARSKI verifies edges against physical laws. PEARL runs counterfactual interventions (do-calculus). PARETO monitors tail risk and criticality horizons. Click any tab to switch \u2014 the right panel updates to show that engine\u2019s controls.",
     tooltipPosition: "bottom",
+  },
+  {
+    id: "dag-canvas",
+    targetSelector: '[data-tour="dag-canvas"]',
+    title: "CAUSAL NETWORK \u2014 2D & 3D",
+    description:
+      "The central canvas renders the causal directed acyclic graph. Toggle between 2D (flat layout with animated causal flow) and 3D (WebGL with orbit controls). In 3D: drag to rotate, scroll to zoom, click nodes to inspect. Directed edges show arrows; dashed lines indicate confounded relationships. Node size and color intensity reflect \u03A9-Fragility scores \u2014 hotter colors mean higher systemic risk.",
+    tooltipPosition: "top",
+  },
+  {
+    id: "node-inspection",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "NODE INSPECTOR",
+    description:
+      "Click any node to open the Node Inspector in the right panel. It shows the node\u2019s \u03A9-Fragility composite score (0\u201310) broken into five pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth. Each pillar is expandable with a detailed explanation, formula, and physical constraint. Connected edges are listed below with causal mechanisms. Click any explanation text to have it read aloud by the AI copilot.",
+    tooltipPosition: "left",
   },
   {
     id: "spirtes-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "SPIRTES ENGINE",
+    title: "SPIRTES ENGINE \u2014 STRUCTURE DISCOVERY",
     description:
-      "The Spirtes Engine runs structural causal discovery. The header shows the spectral radius (\u03BB_max) \u2014 values below 1.0 mean the cascade is stable. Below it, the Trinity panel displays three algorithm sub-graphs.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
-  },
-  {
-    id: "spirtes-graphs",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "TRINITY SUB-GRAPHS",
-    description:
-      "DCD/NOTEARS discovers nonlinear structure \u2014 nodes arranged in a circle with directed arrows showing causal flow. PCMCI+ reveals temporal lags \u2014 nodes laid out in T\u20112/T\u20111/T\u20110 columns showing how effects propagate over time. FCI detects hidden confounders \u2014 dashed red edges with \u2018?\u2019 markers flag latent common causes.",
+      "The Spirtes Engine runs three causal discovery algorithms in parallel. The cascade header shows spectral radius (\u03BBmax) \u2014 when below 1.0 the network is stable. The Trinity panel renders three sub-graphs: DCD/NOTEARS (nonlinear structure in circular layout), PCMCI+ (temporal lags across T-2/T-1/T-0 columns), and FCI (hidden confounder detection with dashed edges and \u2018?\u2019 markers for latent causes).",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
   },
   {
     id: "tarski-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "TARSKI ENGINE",
+    title: "TARSKI ENGINE \u2014 TRUTH VERIFICATION",
     description:
-      "The Tarski Engine verifies the DAG against physical and regulatory axioms. Toggle RAW/VERIFIED to see which edges fail. The axiom library has 3 levels: L0 (physics \u2014 immutable), L1 (regulatory \u2014 red alert), L2 (heuristic \u2014 anomaly flags). In VERIFIED mode, proof traces show which axioms each edge violated and the solver used.",
+      "The Tarski Engine verifies every edge against a library of physical and regulatory axioms. Toggle between RAW (all edges) and VERIFIED (only edges that pass). Axioms are tiered: L0 = physics (immutable laws like thermodynamics), L1 = regulatory (sanctions, export controls), L2 = heuristic (statistical anomaly flags). Expand any edge to see its proof trace \u2014 which axioms were checked, which failed, and the solver used (SMT, interval arithmetic, or constraint propagation).",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("tarski"),
   },
   {
     id: "pearl-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "PEARL ENGINE",
+    title: "PEARL ENGINE \u2014 COUNTERFACTUAL ANALYSIS",
     description:
-      "The Pearl Engine enables counterfactual reasoning via do-calculus. Intervention Controls let you select a do(X) target node. The scissors tool severs causal links. Ablation removes nodes/edges and replays the cascade to compare. Network Interdiction runs minimax optimization to find the best edges to cut for minimal damage.",
+      "The Pearl Engine implements do-calculus for structural interventions. Select a do(X) target node to isolate it from upstream causes. Use the scissors tool to sever individual causal links. The Ablation panel lets you remove nodes or edges and replay the cascade to compare baseline vs. intervention outcomes. Network Interdiction runs minimax optimization to identify the most cost-effective edges to cut for maximum damage reduction.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pearl"),
   },
   {
     id: "pareto-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "PARETO ENGINE",
+    title: "PARETO ENGINE \u2014 CRITICALITY HORIZONS",
     description:
-      "The Pareto Engine monitors tail risk. The Doomsday Clock shows the time-to-failure horizon — a relative measure scaled to the system's dynamics — along with regime type and dragon king probability. The \u03A9-Fragility Assessment tracks buffer depletion. Below, the top critical nodes are ranked by \u03A9 score. Use the Shock Injector to stress-test with preset scenarios like Taiwan Blockade or Carrington Event.",
+      "The Pareto Engine tracks three independent criticality measures. CSD (Critical Slowing Down) monitors recovery rate decay via spectral radius \u2014 as \u03BBmax approaches 1.0, the system loses its ability to absorb shocks. PH (Persistent Homology) sweeps a filtration to detect topological fragility holes. LPPLS (Log-Periodic Power Law Singularity) fits the Sornette crash prediction model. Each shows a T-N epoch countdown with confidence scores.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
+  },
+  {
+    id: "pareto-charts",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "INTERACTIVE CRITICALITY CHARTS",
+    description:
+      "Expand any criticality card to see its temporal signal chart. Hover to see exact values at each timestep (observed data as solid line, model fit as dashed line). Click \u201C\u25C0 expand panel\u201D to widen the right panel for a larger, more legible chart view. The expanded chart shows observed vs. model values and the residual. Each card also shows model confidence, methodology, formula, and current assessment.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
+  },
+  {
+    id: "pareto-shocks",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "SHOCK INJECTION & TOP CRITICAL NODES",
+    description:
+      "Below the criticality horizons, the \u03A9-Fragility Assessment shows the system\u2019s buffer (NOMINAL/ELEVATED/CRITICAL/OMEGA_BREACH). The top 8 most critical nodes are ranked by \u03A9-score \u2014 click any to select it in the graph. The Scenario Injector lets you stress-test with preset shocks: Strait of Hormuz Closure, Abqaiq Processing Attack, Ras Laffan LNG Train Outage, and more. Each shock has a calibrated severity that depletes the \u03A9-buffer.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
   {
     id: "cd-omega",
     targetSelector: '[data-tour="cd-omega"]',
-    title: "CD\u03A9 MONITOR",
+    title: "CD\u03A9 DOOMSDAY MONITOR",
     description:
-      "The Causal Distance Omega monitor tracks system-wide robustness in real time. Watch the buffer level and status indicators as shocks propagate.",
+      "The Causal Distance Omega monitor is always visible in the header. The segmented buffer bar shows depletion (green \u2192 amber \u2192 red). It displays: time-to-failure (T-Nd), regime type (STABLE, MELT_UP, CRASH, PHASE_TRANSITION, STAGNATION), and Dragon King probability. The bar flashes when the system enters OMEGA_BREACH. Active shock count is shown alongside the alert level indicator.",
     tooltipPosition: "bottom",
-  },
-  {
-    id: "dag-canvas",
-    targetSelector: '[data-tour="dag-canvas"]',
-    title: "CAUSAL DAG",
-    description:
-      "The 3D directed acyclic graph visualizes causal relationships between variables. Click nodes to inspect, drag to rotate, scroll to zoom.",
-    tooltipPosition: "top",
   },
   {
     id: "system-copilot",
     targetSelector: '[data-tour="system-copilot"]',
-    title: "SYSTEM COPILOT",
+    title: "AI SYSTEM COPILOT",
     description:
-      "The AI copilot answers questions about your causal graph, explains rejections, and runs analyses. Type queries or use the action buttons.",
+      "The left panel is your AI copilot powered by Gemini. Type questions about the network, ask for explanations, or request analysis. The copilot has full context of the graph structure, active shocks, and engine outputs. It supports voice input (microphone icon) and voice output (speaker icon \u2014 reads responses aloud). Action buttons provide one-click analysis: Discover Structure, Explain Rejection, Verify Logic.",
     tooltipPosition: "right",
   },
   {
-    id: "action-buttons",
-    targetSelector: '[data-tour="action-buttons"]',
-    title: "ACTION BUTTONS",
+    id: "voice-features",
+    targetSelector: '[data-tour="system-copilot"]',
+    title: "VOICE I/O & CLICK-TO-SPEAK",
     description:
-      "Quick-launch common analyses: Discover Structure runs causal discovery, Explain Rejection interprets failed edges, and Verify Logic checks axiom consistency.",
+      "Enable the speaker icon (\uD83D\uDD0A) for voice output \u2014 the copilot will read all responses aloud in a Jarvis-style voice. Use the microphone icon (\uD83C\uDF99\uFE0F) for voice input \u2014 speak your query instead of typing. Additionally, click any explanation text in the Node Inspector or Module Panel to have it rendered in the copilot and spoken aloud. This lets you click around the interface and have every detail explained audibly.",
     tooltipPosition: "right",
   },
   {
@@ -112,32 +137,48 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="action-buttons"]',
     title: "COMPUTE WITH CLAUDE",
     description:
-      "Compute with Claude generates a System State Snapshot \u2014 a structured analysis of the entire graph. Claude handles computation; Gemini reads the results to answer your questions. If no Claude key is set, a local snapshot is computed instead.",
+      "The COMPUTE WITH CLAUDE button generates a comprehensive System State Snapshot \u2014 a structured analysis of all nodes, edges, engine outputs, and criticality metrics. Claude performs the deep computation; Gemini reads the results to answer follow-up questions. If no Claude API key is configured, a local snapshot is computed from the graph structure. Snapshots are shown as a status badge in the copilot.",
     tooltipPosition: "right",
+  },
+  {
+    id: "time-dial",
+    targetSelector: '[data-tour="risk-flow"]',
+    title: "TIME DIAL & CASCADE REPLAY",
+    description:
+      "The timeline scrubber at the bottom controls cascade replay. After injecting shocks and running a cascade simulation, drag the dial to scrub through epochs \u2014 watch nodes activate, edges propagate, and the \u03A9-buffer deplete in real time. Switch between baseline and intervention timelines to compare outcomes. Use keyboard arrows for fine control, or let it auto-play.",
+    tooltipPosition: "top",
   },
   {
     id: "risk-flow",
     targetSelector: '[data-tour="risk-flow"]',
-    title: "RISK PROPAGATION",
+    title: "RISK PROPAGATION CARDS",
     description:
-      "Risk cards show per-node vulnerability scores. Click a card to focus the DAG on that node and see its causal neighborhood.",
+      "The risk card strip shows per-node vulnerability scores in a scrollable horizontal band. Cards are color-coded by severity. Click any card to select that node in the DAG and open its inspector. During cascade replay, cards update in real time to reflect shock propagation.",
     tooltipPosition: "top",
   },
   {
-    id: "module-panel",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "MODULE PANEL",
+    id: "view-toggle",
+    targetSelector: '[data-tour="module-tabs"]',
+    title: "2D / 3D VIEW TOGGLE",
     description:
-      "This panel changes based on the active module. You\u2019ve now seen all four.",
-    tooltipPosition: "left",
+      "Switch between 2D and 3D graph views using the toggle in the header. Both views stay mounted to prevent WebGL context loss. In 2D, directed edges show animated dashes for one-way causal flow. In 3D, arrows appear only on directed/temporal edges. Node positioning is consistent across both views. Shift+drag to box-select multiple nodes for subgraph analysis.",
+    tooltipPosition: "bottom",
   },
   {
     id: "import-button",
     targetSelector: '[data-tour="import-button"]',
-    title: "IMPORT DATA",
+    title: "IMPORT YOUR OWN DATA",
     description:
-      "Import your own datasets (CSV, JSON, or adjacency matrices) to build custom causal graphs and run analyses on your data.",
+      "Import custom datasets via CSV, JSON, or adjacency matrices to build your own causal graphs. The platform auto-detects format and maps your data into the \u03A9-Fragility framework. All four engines \u2014 structure discovery, truth verification, counterfactual analysis, and criticality monitoring \u2014 work on imported data just as they do on the built-in domains.",
     tooltipPosition: "bottom",
+  },
+  {
+    id: "finish",
+    targetSelector: null,
+    title: "YOU\u2019RE READY",
+    description:
+      "You\u2019ve seen every major feature. Start by selecting domains, exploring nodes in the 3D graph, and running analyses with the AI copilot. Inject shocks to stress-test, use Pearl for counterfactual reasoning, and monitor the criticality horizons in real time. Click the \u201C?\u201D button anytime to relaunch this tour. For voice interaction, enable the speaker and microphone icons in the copilot.",
+    tooltipPosition: "center",
   },
 ];
 

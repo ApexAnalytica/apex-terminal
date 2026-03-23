@@ -22,6 +22,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor } from "@/lib/graph-data";
 import DAGOverlay from "./dag3d/DAGOverlay";
+import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
 import type { CausalEdge, EpochSnapshot } from "@/lib/types";
 import { AnimatePresence } from "framer-motion";
@@ -470,7 +471,8 @@ export default function CausalDAG2D() {
     : "";
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
+      <CanvasWatermark />
       <DAGOverlay />
       <ReactFlow
         nodes={visibleNodes}

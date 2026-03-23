@@ -12,6 +12,7 @@ import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D from "./dag3d/DAGNode3D";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
+import CanvasWatermark from "./CanvasWatermark";
 // ReplayControls is now integrated into TimeDial
 import { useReplayTick } from "@/lib/useReplayTick";
 import { EpochSnapshot } from "@/lib/types";
@@ -648,7 +649,8 @@ export default function CausalDAG3D() {
   }, [selectedNode, setSelectedNode]);
 
   return (
-    <div style={{ position: "absolute", inset: 0 }}>
+    <div style={{ position: "absolute", inset: 0 }} onContextMenu={(e) => e.preventDefault()}>
+      <CanvasWatermark />
       <DAGOverlay />
       {selectionRect && (
         <div

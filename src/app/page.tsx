@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
+import { protectGraphData } from "@/lib/data-protection";
+import { MAIN_GRAPH } from "@/lib/graph-data";
 import HeaderBar from "@/components/HeaderBar";
 import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
@@ -29,8 +32,34 @@ const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
 
+  // Protect graph data from console extraction
+  useEffect(() => {
+    protectGraphData(MAIN_GRAPH);
+  }, []);
+
+  // Block DevTools shortcuts in production
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") return;
+    const block = (e: KeyboardEvent) => {
+      // Ctrl/Cmd+U (view source), Ctrl/Cmd+Shift+I (devtools), F12
+      if (
+        (e.ctrlKey && e.key === "u") ||
+        (e.ctrlKey && e.shiftKey && e.key === "I") ||
+        (e.metaKey && e.altKey && e.key === "i") ||
+        e.key === "F12"
+      ) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", block);
+    return () => window.removeEventListener("keydown", block);
+  }, []);
+
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
+    <div
+      className="flex flex-col h-screen w-screen overflow-hidden bg-background no-select"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* Overlays */}
       <ImportModal />
       <DomainSelector />

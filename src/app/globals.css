@@ -184,3 +184,56 @@ body.ablation-cursor,
 body.ablation-cursor canvas {
   cursor: crosshair !important;
 }
+
+/* ── Anti-copy protections ── */
+[data-no-copy],
+.no-select {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Hide edge metadata unless hovered */
+.edge-meta-hidden {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.25s ease, max-height 0.25s ease;
+}
+
+.edge-card:hover .edge-meta-hidden {
+  opacity: 1;
+  max-height: 80px;
+}
+
+/* Watermark grid */
+.watermark-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 45;
+  overflow: hidden;
+  opacity: 0.055;
+}
+
+.watermark-grid .wm-inner {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 60px 80px;
+  transform: rotate(-30deg);
+}
+
+.watermark-grid .wm-text {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-cyan);
+  white-space: nowrap;
+}

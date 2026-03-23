@@ -266,15 +266,17 @@ export default function NodeInspector() {
                     return (
                       <div
                         key={edge.id}
-                        className="text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated flex items-start gap-1 min-w-0"
+                        className="edge-card text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated min-w-0"
                       >
-                        <span className="text-text-muted">
-                          {isSource ? "\u2192" : "\u2190"}
-                        </span>
-                        <span className="text-foreground truncate flex-1">
-                          {otherNode?.shortLabel ?? "?"}
-                        </span>
-                        <span className="text-text-muted text-[7px] min-w-0 break-words">
+                        <div className="flex items-start gap-1">
+                          <span className="text-text-muted">
+                            {isSource ? "\u2192" : "\u2190"}
+                          </span>
+                          <span className="text-foreground truncate flex-1">
+                            {otherNode?.shortLabel ?? "?"}
+                          </span>
+                        </div>
+                        <span className="edge-meta-hidden text-text-muted text-[7px] min-w-0 break-words block mt-0.5">
                           {edge.physicalMechanism}
                         </span>
                       </div>

@@ -221,8 +221,14 @@ export async function POST(req: NextRequest) {
       ollamaUrl?: string;
     };
 
+    // Resolve API key: use client-provided key, or fall back to server env var
+    const resolvedApiKey = apiKey
+      || (provider === "gemini" || !provider ? process.env.GEMINI_API_KEY : undefined)
+      || (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined)
+      || "";
+
     // Ollama doesn't need an API key
-    if (!apiKey && provider !== "ollama") {
+    if (!resolvedApiKey && provider !== "ollama") {
       return new Response(JSON.stringify({ error: "API key required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -241,9 +247,9 @@ export async function POST(req: NextRequest) {
     if (resolvedProvider === "ollama") {
       readable = streamOllama(ollamaUrl || "http://localhost:11434", model, fullSystem, messages);
     } else if (resolvedProvider === "gemini") {
-      readable = streamGemini(apiKey, model, fullSystem, messages);
+      readable = streamGemini(resolvedApiKey, model, fullSystem, messages);
     } else {
-      readable = streamAnthropic(apiKey, model, fullSystem, messages, 2048);
+      readable = streamAnthropic(resolvedApiKey, model, fullSystem, messages, 2048);
     }
 
     return new Response(readable, {

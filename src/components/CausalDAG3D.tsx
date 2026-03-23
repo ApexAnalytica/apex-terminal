@@ -382,11 +382,12 @@ export default function CausalDAG3D() {
     [setSelectedNodes]
   );
 
-  // Derive current snapshot from active timeline
+  // Derive current snapshot from active timeline — clamp epoch index to valid range
   const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
+  const clampedEpoch = Math.min(currentEpoch, Math.max(0, replayEpochs.length - 1));
   const currentSnapshot: EpochSnapshot | null =
     replayActive && replayEpochs.length > 0
-      ? replayEpochs[currentEpoch] ?? null
+      ? replayEpochs[clampedEpoch] ?? null
       : null;
 
   const canvasKey = useWebGLRecovery();

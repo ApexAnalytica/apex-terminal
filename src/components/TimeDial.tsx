@@ -214,14 +214,15 @@ export default function TimeDial() {
   // Replay derived state
   const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
   const maxEpoch = Math.max(0, replayEpochs.length - 1);
+  const clampedEpoch = Math.min(currentEpoch, maxEpoch);
   const currentSnapshot = replayActive && replayEpochs.length > 0
-    ? replayEpochs[currentEpoch] ?? null
+    ? replayEpochs[clampedEpoch] ?? null
     : null;
   const hasBranch = interventionEpochs.length > 0;
 
   // Position as fraction 0-1
   const positionFraction = replayActive
-    ? maxEpoch > 0 ? currentEpoch / maxEpoch : 0
+    ? maxEpoch > 0 ? clampedEpoch / maxEpoch : 0
     : range > 0 ? (timelinePosition - start) / range : 1;
 
   // Selection as fractions 0-1
@@ -270,8 +271,8 @@ export default function TimeDial() {
       const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 
       if (replayActive) {
-        // Map fraction to epoch
-        const epoch = Math.round(fraction * maxEpoch);
+        // Map fraction to epoch — clamp to valid range
+        const epoch = Math.min(maxEpoch, Math.max(0, Math.round(fraction * maxEpoch)));
         setCurrentEpoch(epoch);
         setReplayPlaying(false);
       } else {

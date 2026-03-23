@@ -239,11 +239,12 @@ export default function CausalDAG2D() {
   // Drive replay ticking in DOM (outside R3F Canvas)
   useReplayTickDOM();
 
-  // Derive current snapshot
+  // Derive current snapshot — clamp epoch index to valid range
   const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
+  const clampedEpoch = Math.min(currentEpoch, Math.max(0, replayEpochs.length - 1));
   const currentSnapshot: EpochSnapshot | null =
     replayActive && replayEpochs.length > 0
-      ? replayEpochs[currentEpoch] ?? null
+      ? replayEpochs[clampedEpoch] ?? null
       : null;
 
   const CONTRACTION = 0.18;

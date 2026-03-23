@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
@@ -1158,23 +1158,27 @@ function CascadeHeader() {
 
 // ─── Criticality Card (collapsible with time series) ────────────
 
-function CritSparkline({
+function CritSparklineChart({
   data,
   modelData,
   color,
-  height = 120,
-  label,
+  width,
+  height,
+  hoverIndex,
+  scaledFont,
 }: {
   data: number[];
   modelData?: number[];
   color: string;
-  height?: number;
-  label?: string;
+  width: number;
+  height: number;
+  hoverIndex: number | null;
+  scaledFont?: number;
 }) {
-  const width = 300;
-  const padX = 24;
-  const padTop = 14;
-  const padBottom = 18;
+  const fs = scaledFont ?? 6;
+  const padX = Math.round(width * 0.08);
+  const padTop = Math.round(height * 0.1);
+  const padBottom = Math.round(height * 0.12);
   const chartW = width - padX * 2;
   const chartH = height - padTop - padBottom;
 
@@ -1192,11 +1196,10 @@ function CritSparkline({
   const modelPts = modelData ? toPoints(modelData) : null;
   const modelLine = modelPts ? modelPts.join(" ") : null;
 
-  // Y-axis tick values
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="rounded">
+    <>
       {/* Background */}
       <rect x={padX} y={padTop} width={chartW} height={chartH} fill="rgba(0,0,0,0.2)" rx={2} />
 
@@ -1206,26 +1209,23 @@ function CritSparkline({
         return (
           <g key={frac}>
             <line x1={padX} y1={y} x2={padX + chartW} y2={y} stroke="rgba(90,94,114,0.2)" strokeWidth={0.5} />
-            <text x={padX - 3} y={y + 3} fontSize={6} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">
+            <text x={padX - 3} y={y + fs * 0.5} fontSize={fs} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">
               {frac.toFixed(2)}
             </text>
           </g>
         );
       })}
 
-      {/* Vertical grid lines (time markers) */}
-      {[0.25, 0.5, 0.75].map((frac) => {
-        const x = padX + frac * chartW;
-        return (
-          <line key={`v${frac}`} x1={x} y1={padTop} x2={x} y2={padTop + chartH} stroke="rgba(90,94,114,0.1)" strokeWidth={0.5} />
-        );
-      })}
+      {/* Vertical grid lines */}
+      {[0.25, 0.5, 0.75].map((frac) => (
+        <line key={`v${frac}`} x1={padX + frac * chartW} y1={padTop} x2={padX + frac * chartW} y2={padTop + chartH} stroke="rgba(90,94,114,0.1)" strokeWidth={0.5} />
+      ))}
 
-      {/* Critical threshold line at 1.0 */}
+      {/* Critical threshold */}
       <line x1={padX} y1={padTop} x2={padX + chartW} y2={padTop} stroke="#ff174440" strokeWidth={1} strokeDasharray="3,3" />
-      <text x={padX + chartW + 2} y={padTop + 3} fontSize={5.5} fill="#ff174480" fontFamily="monospace">crit</text>
+      <text x={padX + chartW + 2} y={padTop + fs * 0.6} fontSize={fs * 0.9} fill="#ff174480" fontFamily="monospace">crit</text>
 
-      {/* Area fill under observed data */}
+      {/* Area fill */}
       <polygon points={area} fill={color} opacity={0.06} />
 
       {/* Model line (dashed) */}
@@ -1233,27 +1233,20 @@ function CritSparkline({
         <polyline points={modelLine} fill="none" stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
       )}
 
-      {/* Observed data line (solid) */}
+      {/* Observed line (solid) */}
       <polyline points={line} fill="none" stroke={color} strokeWidth={1.8} opacity={0.85} />
 
       {/* Current value dot */}
       {data.length > 0 && (
-        <circle
-          cx={padX + chartW}
-          cy={padTop + (1 - data[data.length - 1]) * chartH}
-          r={3}
-          fill={color}
-          opacity={0.9}
-        />
+        <circle cx={padX + chartW} cy={padTop + (1 - data[data.length - 1]) * chartH} r={3} fill={color} opacity={0.9} />
       )}
 
       {/* Current value label */}
       {data.length > 0 && (
         <text
           x={padX + chartW - 1}
-          cy={padTop + (1 - data[data.length - 1]) * chartH}
-          y={Math.max(padTop + 8, padTop + (1 - data[data.length - 1]) * chartH - 5)}
-          fontSize={7}
+          y={Math.max(padTop + fs + 2, padTop + (1 - data[data.length - 1]) * chartH - 4)}
+          fontSize={fs + 1}
           fill={color}
           fontFamily="monospace"
           textAnchor="end"
@@ -1263,24 +1256,228 @@ function CritSparkline({
       )}
 
       {/* X-axis labels */}
-      <text x={padX} y={height - 3} fontSize={6.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace">t=0</text>
-      <text x={padX + chartW} y={height - 3} fontSize={6.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">now</text>
+      <text x={padX} y={height - 3} fontSize={fs + 0.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace">t=0</text>
+      <text x={padX + chartW} y={height - 3} fontSize={fs + 0.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">now</text>
 
       {/* Legend */}
       {modelData && (
         <g>
-          <line x1={padX} y1={6} x2={padX + 12} y2={6} stroke={color} strokeWidth={1.8} opacity={0.85} />
-          <text x={padX + 15} y={8} fontSize={6} fill="rgba(90,94,114,0.7)" fontFamily="monospace">observed</text>
-          <line x1={padX + 58} y1={6} x2={padX + 70} y2={6} stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
-          <text x={padX + 73} y={8} fontSize={6} fill="rgba(90,94,114,0.7)" fontFamily="monospace">model</text>
+          <line x1={padX} y1={fs} x2={padX + 12} y2={fs} stroke={color} strokeWidth={1.8} opacity={0.85} />
+          <text x={padX + 15} y={fs + 2} fontSize={fs} fill="rgba(90,94,114,0.7)" fontFamily="monospace">observed</text>
+          <line x1={padX + 58} y1={fs} x2={padX + 70} y2={fs} stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
+          <text x={padX + 73} y={fs + 2} fontSize={fs} fill="rgba(90,94,114,0.7)" fontFamily="monospace">model</text>
         </g>
       )}
 
-      {/* Chart title */}
-      {label && !modelData && (
-        <text x={padX} y={8} fontSize={6} fill="rgba(90,94,114,0.5)" fontFamily="monospace">{label}</text>
+      {/* Hover crosshair + tooltip */}
+      {hoverIndex !== null && hoverIndex >= 0 && hoverIndex < data.length && (
+        (() => {
+          const hx = padX + (hoverIndex / (data.length - 1)) * chartW;
+          const hy = padTop + (1 - data[hoverIndex]) * chartH;
+          const modelVal = modelData?.[hoverIndex];
+          const modelY = modelVal != null ? padTop + (1 - modelVal) * chartH : null;
+          const tooltipW = 72;
+          const tooltipH = modelVal != null ? 38 : 24;
+          const tooltipX = hx + tooltipW + 8 > padX + chartW ? hx - tooltipW - 8 : hx + 8;
+          const tooltipY = Math.max(padTop, Math.min(padTop + chartH - tooltipH, hy - tooltipH / 2));
+          return (
+            <g>
+              {/* Vertical crosshair */}
+              <line x1={hx} y1={padTop} x2={hx} y2={padTop + chartH} stroke={color} strokeWidth={0.7} opacity={0.5} strokeDasharray="2,2" />
+              {/* Observed dot */}
+              <circle cx={hx} cy={hy} r={3.5} fill={color} opacity={0.9} />
+              {/* Model dot */}
+              {modelY !== null && <circle cx={hx} cy={modelY} r={2.5} fill={color} opacity={0.4} />}
+              {/* Tooltip background */}
+              <rect x={tooltipX} y={tooltipY} width={tooltipW} height={tooltipH} rx={3} fill="rgba(10,11,16,0.92)" stroke={`${color}40`} strokeWidth={0.5} />
+              {/* Tooltip text */}
+              <text x={tooltipX + 4} y={tooltipY + fs + 4} fontSize={fs + 0.5} fill={color} fontFamily="monospace" fontWeight="bold">
+                t={hoverIndex}/{data.length - 1}
+              </text>
+              <text x={tooltipX + 4} y={tooltipY + fs * 2 + 8} fontSize={fs} fill="rgba(200,205,220,0.9)" fontFamily="monospace">
+                obs: {data[hoverIndex].toFixed(4)}
+              </text>
+              {modelVal != null && (
+                <text x={tooltipX + 4} y={tooltipY + fs * 3 + 12} fontSize={fs} fill="rgba(200,205,220,0.6)" fontFamily="monospace">
+                  mdl: {modelVal.toFixed(4)}
+                </text>
+              )}
+            </g>
+          );
+        })()
       )}
-    </svg>
+    </>
+  );
+}
+
+function CritSparkline({
+  data,
+  modelData,
+  color,
+  height = 120,
+  abbrev,
+  fullName,
+  formula,
+}: {
+  data: number[];
+  modelData?: number[];
+  color: string;
+  height?: number;
+  abbrev?: string;
+  fullName?: string;
+  formula?: string;
+}) {
+  const width = 300;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      const svg = e.currentTarget;
+      const rect = svg.getBoundingClientRect();
+      const padX = Math.round(width * 0.08);
+      const chartW = width - padX * 2;
+      // Convert screen coords to SVG viewBox coords
+      const svgX = ((e.clientX - rect.left) / rect.width) * width;
+      const frac = (svgX - padX) / chartW;
+      if (frac < 0 || frac > 1) { setHoverIndex(null); return; }
+      const idx = Math.round(frac * (data.length - 1));
+      setHoverIndex(Math.max(0, Math.min(data.length - 1, idx)));
+    },
+    [data.length],
+  );
+
+  const handleMouseLeave = useCallback(() => setHoverIndex(null), []);
+
+  return (
+    <>
+      <svg
+        ref={svgRef}
+        width="100%"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="rounded cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onClick={() => setIsExpanded(true)}
+      >
+        <CritSparklineChart data={data} modelData={modelData} color={color} width={width} height={height} hoverIndex={hoverIndex} />
+      </svg>
+
+      {/* Expanded modal overlay */}
+      {isExpanded && (
+        <CritExpandedModal
+          data={data}
+          modelData={modelData}
+          color={color}
+          abbrev={abbrev}
+          fullName={fullName}
+          formula={formula}
+          onClose={() => setIsExpanded(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function CritExpandedModal({
+  data,
+  modelData,
+  color,
+  abbrev,
+  fullName,
+  formula,
+  onClose,
+}: {
+  data: number[];
+  modelData?: number[];
+  color: string;
+  abbrev?: string;
+  fullName?: string;
+  formula?: string;
+  onClose: () => void;
+}) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const modalW = 720;
+  const modalH = 340;
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const padX = Math.round(modalW * 0.08);
+      const chartW = modalW - padX * 2;
+      const svgX = ((e.clientX - rect.left) / rect.width) * modalW;
+      const frac = (svgX - padX) / chartW;
+      if (frac < 0 || frac > 1) { setHoverIndex(null); return; }
+      const idx = Math.round(frac * (data.length - 1));
+      setHoverIndex(Math.max(0, Math.min(data.length - 1, idx)));
+    },
+    [data.length],
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      onClick={onClose}
+      style={{ backgroundColor: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
+    >
+      <div
+        className="relative rounded-lg border p-4"
+        style={{
+          backgroundColor: "rgba(10,11,16,0.97)",
+          borderColor: `${color}30`,
+          maxWidth: "90vw",
+          maxHeight: "90vh",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="font-[family-name:var(--font-michroma)] text-[12px] tracking-wider" style={{ color }}>
+              {abbrev}
+            </span>
+            <span className="text-[10px] font-mono text-text-muted ml-2">{fullName}</span>
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-foreground text-[14px] px-2 py-1 rounded hover:bg-surface-elevated transition-colors">
+            {"\u2715"}
+          </button>
+        </div>
+
+        {/* Large chart */}
+        <svg
+          width="100%"
+          viewBox={`0 0 ${modalW} ${modalH}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="rounded cursor-crosshair"
+          style={{ width: "min(720px, 85vw)", height: "auto" }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoverIndex(null)}
+        >
+          <CritSparklineChart data={data} modelData={modelData} color={color} width={modalW} height={modalH} hoverIndex={hoverIndex} scaledFont={9} />
+        </svg>
+
+        {/* Formula bar */}
+        {formula && (
+          <div className="mt-2 px-2 py-1.5 rounded border text-[10px] font-mono" style={{ color, borderColor: `${color}20`, backgroundColor: `${color}08` }}>
+            {formula}
+          </div>
+        )}
+
+        {/* Data table on hover */}
+        {hoverIndex !== null && (
+          <div className="mt-2 flex gap-4 text-[9px] font-mono text-text-muted">
+            <span>Step: <span className="text-foreground">{hoverIndex}/{data.length - 1}</span></span>
+            <span>Observed: <span style={{ color }}>{data[hoverIndex]?.toFixed(5)}</span></span>
+            {modelData && <span>Model: <span style={{ color, opacity: 0.6 }}>{modelData[hoverIndex]?.toFixed(5)}</span></span>}
+            {modelData && (
+              <span>Residual: <span className="text-foreground">{Math.abs(data[hoverIndex] - (modelData[hoverIndex] ?? 0)).toFixed(5)}</span></span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1381,14 +1578,19 @@ function CriticalityCard({
         <div className="px-2.5 pb-2.5 space-y-2.5 border-t" style={{ borderColor: `${color}20` }}>
           {/* Time Series Chart */}
           <div className="mt-2">
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              TEMPORAL SIGNAL
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                TEMPORAL SIGNAL
+              </div>
+              <div className="text-[7px] font-mono text-text-muted opacity-50">
+                hover for values {"\u2022"} click to expand
+              </div>
             </div>
             <div className="border rounded p-1" style={{
               borderColor: `${color}15`,
               backgroundColor: "rgba(0,0,0,0.15)",
             }}>
-              <CritSparkline data={timeSeries} modelData={modelSeries} color={color} height={140} />
+              <CritSparkline data={timeSeries} modelData={modelSeries} color={color} height={140} abbrev={abbrev} fullName={fullName} formula={formula} />
             </div>
           </div>
 

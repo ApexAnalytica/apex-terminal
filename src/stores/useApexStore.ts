@@ -603,7 +603,15 @@ export const useApexStore = create<ApexState>((set) => ({
 
   setReplayPlaying: (playing) => set({ replayPlaying: playing }),
   setReplaySpeed: (speed) => set({ replaySpeed: speed }),
-  setCurrentEpoch: (epoch) => set({ currentEpoch: epoch }),
+  setCurrentEpoch: (epoch) =>
+    set((s) => {
+      const epochs =
+        s.activeTimeline === "baseline"
+          ? s.baselineEpochs
+          : s.interventionEpochs;
+      const maxEpoch = Math.max(0, epochs.length - 1);
+      return { currentEpoch: Math.max(0, Math.min(maxEpoch, epoch)) };
+    }),
 
   stepEpoch: (delta) =>
     set((s) => {

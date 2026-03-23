@@ -14,9 +14,19 @@ import NodeInspector from "./NodeInspector";
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
+  const [expandedChart, setExpandedChart] = useState<string | null>(null);
+  const isWide = expandedChart !== null;
 
   return (
-    <aside className="flex flex-col w-80 border-l border-border bg-surface h-full overflow-hidden" data-tour="module-panel">
+    <aside
+      className="flex flex-col border-l border-border bg-surface h-full overflow-hidden"
+      data-tour="module-panel"
+      style={{
+        width: isWide ? 640 : 320,
+        minWidth: isWide ? 640 : 320,
+        transition: "width 0.35s cubic-bezier(0.4,0,0.2,1), min-width 0.35s cubic-bezier(0.4,0,0.2,1)",
+      }}
+    >
       {/* Module Header */}
       <div className="px-4 py-3 border-b border-border bg-surface-elevated">
         <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted uppercase">
@@ -66,7 +76,7 @@ export default function ModulePanel() {
               then run interdiction to find optimal defensive interventions.
             </div>
             <SnapshotIndicator />
-            <ParetoPanel />
+            <ParetoPanel expandedChart={expandedChart} setExpandedChart={setExpandedChart} />
             <InterdictionPanel />
           </div>
         )}
@@ -201,7 +211,13 @@ function TarskiPanel() {
   );
 }
 
-function ParetoPanel() {
+function ParetoPanel({
+  expandedChart,
+  setExpandedChart,
+}: {
+  expandedChart: string | null;
+  setExpandedChart: (id: string | null) => void;
+}) {
   const shocks = useApexStore((s) => s.shocks);
   const addShock = useApexStore((s) => s.addShock);
   const removeShock = useApexStore((s) => s.removeShock);
@@ -460,6 +476,8 @@ function ParetoPanel() {
           onToggle={() => toggleCrit("csd")}
           timeSeries={csdData.timeSeries}
           modelSeries={csdData.observedSeries ? csdData.modelSeries : undefined}
+          chartExpanded={expandedChart === "csd"}
+          onChartExpand={() => setExpandedChart(expandedChart === "csd" ? null : "csd")}
           confidence={csdData.confidence}
           shortDesc="Recovery rate decay — epochs until perturbation recovery time diverges to infinity"
           methodology={[
@@ -482,6 +500,8 @@ function ParetoPanel() {
           onToggle={() => toggleCrit("ph")}
           timeSeries={phData.timeSeries}
           modelSeries={phData.modelSeries}
+          chartExpanded={expandedChart === "ph"}
+          onChartExpand={() => setExpandedChart(expandedChart === "ph" ? null : "ph")}
           confidence={phData.confidence}
           shortDesc={`Topological fragility holes — epochs until high-Ω cluster boundaries collapse`}
           methodology={[
@@ -504,6 +524,8 @@ function ParetoPanel() {
           onToggle={() => toggleCrit("lppls")}
           timeSeries={lpplsData.timeSeries}
           modelSeries={lpplsData.modelSeries}
+          chartExpanded={expandedChart === "lppls"}
+          onChartExpand={() => setExpandedChart(expandedChart === "lppls" ? null : "lppls")}
           confidence={lpplsData.confidence}
           shortDesc="Super-exponential fragility growth — epochs until singularity (tc) is reached"
           methodology={[
@@ -1318,6 +1340,7 @@ function CritSparkline({
   abbrev,
   fullName,
   formula,
+  isExpanded,
 }: {
   data: number[];
   modelData?: number[];
@@ -1326,157 +1349,58 @@ function CritSparkline({
   abbrev?: string;
   fullName?: string;
   formula?: string;
+  isExpanded?: boolean;
 }) {
-  const width = 300;
-  const svgRef = useRef<SVGSVGElement>(null);
+  const svgW = isExpanded ? 580 : 300;
+  const svgH = height;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<SVGSVGElement>) => {
-      const svg = e.currentTarget;
-      const rect = svg.getBoundingClientRect();
-      const padX = Math.round(width * 0.08);
-      const chartW = width - padX * 2;
-      // Convert screen coords to SVG viewBox coords
-      const svgX = ((e.clientX - rect.left) / rect.width) * width;
-      const frac = (svgX - padX) / chartW;
-      if (frac < 0 || frac > 1) { setHoverIndex(null); return; }
-      const idx = Math.round(frac * (data.length - 1));
-      setHoverIndex(Math.max(0, Math.min(data.length - 1, idx)));
-    },
-    [data.length],
-  );
-
-  const handleMouseLeave = useCallback(() => setHoverIndex(null), []);
-
-  return (
-    <>
-      <svg
-        ref={svgRef}
-        width="100%"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="rounded cursor-crosshair"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onClick={() => setIsExpanded(true)}
-      >
-        <CritSparklineChart data={data} modelData={modelData} color={color} width={width} height={height} hoverIndex={hoverIndex} />
-      </svg>
-
-      {/* Expanded modal overlay */}
-      {isExpanded && (
-        <CritExpandedModal
-          data={data}
-          modelData={modelData}
-          color={color}
-          abbrev={abbrev}
-          fullName={fullName}
-          formula={formula}
-          onClose={() => setIsExpanded(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function CritExpandedModal({
-  data,
-  modelData,
-  color,
-  abbrev,
-  fullName,
-  formula,
-  onClose,
-}: {
-  data: number[];
-  modelData?: number[];
-  color: string;
-  abbrev?: string;
-  fullName?: string;
-  formula?: string;
-  onClose: () => void;
-}) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const modalW = 720;
-  const modalH = 340;
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
-      const padX = Math.round(modalW * 0.08);
-      const chartW = modalW - padX * 2;
-      const svgX = ((e.clientX - rect.left) / rect.width) * modalW;
+      const padX = Math.round(svgW * 0.08);
+      const chartW = svgW - padX * 2;
+      const svgX = ((e.clientX - rect.left) / rect.width) * svgW;
       const frac = (svgX - padX) / chartW;
       if (frac < 0 || frac > 1) { setHoverIndex(null); return; }
       const idx = Math.round(frac * (data.length - 1));
       setHoverIndex(Math.max(0, Math.min(data.length - 1, idx)));
     },
-    [data.length],
+    [data.length, svgW],
   );
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      onClick={onClose}
-      style={{ backgroundColor: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
-    >
-      <div
-        className="relative rounded-lg border p-4"
-        style={{
-          backgroundColor: "rgba(10,11,16,0.97)",
-          borderColor: `${color}30`,
-          maxWidth: "90vw",
-          maxHeight: "90vh",
-        }}
-        onClick={(e) => e.stopPropagation()}
+    <div>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="rounded cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIndex(null)}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <span className="font-[family-name:var(--font-michroma)] text-[12px] tracking-wider" style={{ color }}>
-              {abbrev}
-            </span>
-            <span className="text-[10px] font-mono text-text-muted ml-2">{fullName}</span>
-          </div>
-          <button onClick={onClose} className="text-text-muted hover:text-foreground text-[14px] px-2 py-1 rounded hover:bg-surface-elevated transition-colors">
-            {"\u2715"}
-          </button>
+        <CritSparklineChart
+          data={data}
+          modelData={modelData}
+          color={color}
+          width={svgW}
+          height={svgH}
+          hoverIndex={hoverIndex}
+          scaledFont={isExpanded ? 8 : 6}
+        />
+      </svg>
+
+      {/* Hover data readout — shown below chart */}
+      {hoverIndex !== null && (
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[8px] font-mono text-text-muted px-1">
+          <span>t={hoverIndex}/{data.length - 1}</span>
+          <span>obs: <span style={{ color }}>{data[hoverIndex]?.toFixed(4)}</span></span>
+          {modelData && <span>mdl: <span style={{ color, opacity: 0.6 }}>{modelData[hoverIndex]?.toFixed(4)}</span></span>}
+          {modelData && (
+            <span>Δ: <span className="text-foreground">{Math.abs(data[hoverIndex] - (modelData[hoverIndex] ?? 0)).toFixed(4)}</span></span>
+          )}
         </div>
-
-        {/* Large chart */}
-        <svg
-          width="100%"
-          viewBox={`0 0 ${modalW} ${modalH}`}
-          preserveAspectRatio="xMidYMid meet"
-          className="rounded cursor-crosshair"
-          style={{ width: "min(720px, 85vw)", height: "auto" }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIndex(null)}
-        >
-          <CritSparklineChart data={data} modelData={modelData} color={color} width={modalW} height={modalH} hoverIndex={hoverIndex} scaledFont={9} />
-        </svg>
-
-        {/* Formula bar */}
-        {formula && (
-          <div className="mt-2 px-2 py-1.5 rounded border text-[10px] font-mono" style={{ color, borderColor: `${color}20`, backgroundColor: `${color}08` }}>
-            {formula}
-          </div>
-        )}
-
-        {/* Data table on hover */}
-        {hoverIndex !== null && (
-          <div className="mt-2 flex gap-4 text-[9px] font-mono text-text-muted">
-            <span>Step: <span className="text-foreground">{hoverIndex}/{data.length - 1}</span></span>
-            <span>Observed: <span style={{ color }}>{data[hoverIndex]?.toFixed(5)}</span></span>
-            {modelData && <span>Model: <span style={{ color, opacity: 0.6 }}>{modelData[hoverIndex]?.toFixed(5)}</span></span>}
-            {modelData && (
-              <span>Residual: <span className="text-foreground">{Math.abs(data[hoverIndex] - (modelData[hoverIndex] ?? 0)).toFixed(5)}</span></span>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -1491,6 +1415,8 @@ function CriticalityCard({
   onToggle,
   timeSeries,
   modelSeries,
+  chartExpanded,
+  onChartExpand,
   confidence,
   shortDesc,
   methodology,
@@ -1506,6 +1432,8 @@ function CriticalityCard({
   onToggle: () => void;
   timeSeries: number[];
   modelSeries?: number[];
+  chartExpanded?: boolean;
+  onChartExpand?: () => void;
   confidence: number;
   shortDesc: string;
   methodology: string[];
@@ -1582,15 +1510,27 @@ function CriticalityCard({
               <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
                 TEMPORAL SIGNAL
               </div>
-              <div className="text-[7px] font-mono text-text-muted opacity-50">
-                hover for values {"\u2022"} click to expand
-              </div>
+              <button
+                onClick={onChartExpand}
+                className="text-[7px] font-mono text-text-muted opacity-60 hover:opacity-100 transition-opacity"
+              >
+                {chartExpanded ? "▶ collapse panel" : "◀ expand panel"}
+              </button>
             </div>
-            <div className="border rounded p-1" style={{
+            <div className="border rounded p-1 transition-all duration-300" style={{
               borderColor: `${color}15`,
               backgroundColor: "rgba(0,0,0,0.15)",
             }}>
-              <CritSparkline data={timeSeries} modelData={modelSeries} color={color} height={140} abbrev={abbrev} fullName={fullName} formula={formula} />
+              <CritSparkline
+                data={timeSeries}
+                modelData={modelSeries}
+                color={color}
+                height={chartExpanded ? 240 : 140}
+                abbrev={abbrev}
+                fullName={fullName}
+                formula={formula}
+                isExpanded={!!chartExpanded}
+              />
             </div>
           </div>
 

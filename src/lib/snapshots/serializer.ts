@@ -25,8 +25,15 @@ export function buildSnapshot(input: BuildSnapshotInput): SystemStateSnapshot {
     input;
 
   // Derive node states — use epoch data if replaying, otherwise static graph
+  // Clamp epoch index to valid range to prevent undefined access
+  const clampedEpoch =
+    epochs && currentEpoch != null
+      ? Math.max(0, Math.min(currentEpoch, epochs.length - 1))
+      : undefined;
   const epochSnap =
-    epochs && currentEpoch != null ? epochs[currentEpoch] : undefined;
+    epochs && clampedEpoch != null && epochs.length > 0
+      ? epochs[clampedEpoch]
+      : undefined;
 
   const nodes: SnapshotNode[] = graph.nodes.map((n) => {
     const epochState = epochSnap?.nodeStates[n.id];

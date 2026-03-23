@@ -4,6 +4,7 @@ import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 import type { TemporalDataset } from "./temporal-data";
 import { getEventsInRange, getNodeStateAt } from "./temporal-data";
+import { DOMAIN_CARDS } from "@/components/DomainSelector";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -51,6 +52,32 @@ export function serializeGraphContext(
   opts: ContextOptions
 ): string {
   const lines: string[] = [];
+
+  // Available actions
+  lines.push("=== COPILOT ACTIONS ===");
+  lines.push("You can control the graph by emitting action tags in your response.");
+  lines.push("Format: <<<ACTION:type:param>>>");
+  lines.push("Available actions:");
+  lines.push("  select_node:<node_id or label> — Select and highlight a node");
+  lines.push("  set_domains:<id1,id2,...> — Filter network to specific domains (rebuilds graph)");
+  lines.push("  add_shock:<shock_id> — Inject a stress scenario");
+  lines.push("  remove_shock:<shock_id> — Remove an active shock");
+  lines.push("  sever_edge:<edge_id> — Pearl link-break on an edge");
+  lines.push("  reset_severed — Reset all severed edges");
+  lines.push("  set_module:<spirtes|tarski|pearl|pareto> — Switch analysis module");
+  lines.push("  set_view:<2d|3d> — Switch visualization mode");
+  lines.push("  start_replay / stop_replay — Control cascade animation");
+  lines.push("");
+  lines.push("=== AVAILABLE DOMAINS ===");
+  const available = DOMAIN_CARDS.filter((d) => d.hasData);
+  for (const d of available) {
+    lines.push(`  ${d.id}: ${d.label} — ${d.description}`);
+  }
+  lines.push("");
+  lines.push("SMART FILTERING: When a user describes their role, strategy, or context (e.g., 'I am a CDS trader'),");
+  lines.push("determine which domains are most relevant and emit <<<ACTION:set_domains:id1,id2,...>>>.");
+  lines.push("Then explain WHY those domains matter for their specific use case and what causal paths to watch.");
+  lines.push("");
 
   // Graph metadata
   lines.push("=== GRAPH METADATA ===");

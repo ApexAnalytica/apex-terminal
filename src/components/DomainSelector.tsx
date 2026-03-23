@@ -158,7 +158,7 @@ const DOMAIN_GROUPS: DomainGroup[] = [
 export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
 
 // Build the graph from selected domains — auto-includes the right datasets
-function buildGraphFromDomains(domainIds: string[]): CausalGraph {
+export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
   const selectedDomains = domainIds.map((id) =>
     DOMAIN_CARDS.find((d) => d.id === id)
   ).filter(Boolean) as DomainCard[];
@@ -262,7 +262,6 @@ export default function DomainSelector() {
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
-        if (prev.length >= 3) return prev;
         return [...prev, id];
       });
     },
@@ -378,7 +377,7 @@ export default function DomainSelector() {
               </button>
               {localMulti && (
                 <span className="text-[8px] font-mono text-text-muted self-center ml-2">
-                  Select 2-3 domains
+                  Select any combination
                 </span>
               )}
             </div>
@@ -396,9 +395,7 @@ export default function DomainSelector() {
                   <div className="grid gap-1.5">
                     {group.domains.map((domain) => {
                       const isSelected = localSelected.includes(domain.id);
-                      const isDisabled =
-                        !domain.hasData ||
-                        (!isSelected && localMulti && localSelected.length >= 3);
+                      const isDisabled = !domain.hasData;
 
                       return (
                         <button

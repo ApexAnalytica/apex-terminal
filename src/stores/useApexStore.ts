@@ -221,9 +221,9 @@ export const useApexStore = create<ApexState>((set) => ({
   activeModule: "spirtes",
   setActiveModule: (id) => set({ activeModule: id }),
 
-  // Graph
-  graphData: MAIN_GRAPH,
-  initialGraph: MAIN_GRAPH,
+  // Graph — start empty; populated when user selects domains in DomainSelector
+  graphData: EMPTY_GRAPH,
+  initialGraph: EMPTY_GRAPH,
   setGraphData: (g) => set({ graphData: g, initialGraph: g }),
 
   // Shocks

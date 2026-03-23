@@ -49,8 +49,13 @@ export default function Home() {
           {/* DAG Canvas — relative container with explicit flex sizing,
                children use absolute positioning to fill */}
           <div className="flex-1 relative min-h-0" data-tour="dag-canvas" style={{ contain: "strict" }}>
-            <div className="absolute inset-0">
-              {viewMode === "3d" ? <CausalDAG3D /> : <CausalDAG2D />}
+            {/* Keep both views mounted to prevent WebGL context loss on toggle;
+                hide inactive view with CSS instead of unmounting */}
+            <div className="absolute inset-0" style={{ display: viewMode === "3d" ? "block" : "none" }}>
+              <CausalDAG3D />
+            </div>
+            <div className="absolute inset-0" style={{ display: viewMode === "2d" ? "block" : "none" }}>
+              <CausalDAG2D />
             </div>
             {/* Client deployment CTA */}
             <Link

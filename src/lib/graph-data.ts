@@ -1919,7 +1919,6 @@ const EDGES: CausalEdge[] = [
   { id: "sc_food_price_inflation__fc_sovereign_default", source: "sc_food_price_inflation", target: "fc_sovereign_default", weight: 0.55, lag: 3, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Food price crises trigger social unrest and fiscal overruns in fragile states, accelerating sovereign debt distress and default risk." },
   { id: "sc_strategic_reserves__sr_china_gdp", source: "sc_strategic_reserves", target: "sr_china_gdp", weight: 0.35, lag: 2, type: "temporal", confidence: 0.5, isInconsistent: false, physicalMechanism: "MENA strategic reserve drawdowns increase global grain demand competition, raising import costs for China's food security program." },
   { id: "sc_food_price_inflation__sr_brazil_gdp", source: "sc_food_price_inflation", target: "sr_brazil_gdp", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Global food inflation boosts Brazil agri-export revenues short-term but raises domestic input costs and inflation, constraining monetary policy." },
-
 ];
 
 const METADATA: GraphMetadata = {

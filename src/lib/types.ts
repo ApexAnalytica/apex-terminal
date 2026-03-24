@@ -163,7 +163,7 @@ export interface RiskPropagationCard {
 }
 
 // ─── View State ──────────────────────────────────────────────────
-export type ViewMode = "2d" | "3d";
+export type ViewMode = "2d" | "3d" | "map";
 export type TruthFilter = "raw" | "verified";
 
 // ─── Regime & Doomsday ──────────────────────────────────────────
@@ -191,6 +191,12 @@ export interface TarskiAxiom {
   formalNotation: string;
   description: string;
   plainText: string;
+  /** Which graph-domain keywords make this axiom more relevant */
+  relevantDomains?: string[];
+  /** One-liner: what structure this axiom looks for */
+  checksFor?: string;
+  /** SVG-friendly mini-diagram label (e.g. "A → B → A  ✗") */
+  diagramHint?: string;
 }
 
 export interface ProofTrace {

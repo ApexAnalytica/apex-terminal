@@ -29,6 +29,18 @@ const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
   ),
 });
 
+// Dynamic import for Map view (no SSR — MapLibre needs DOM)
+const CausalDAGMap = dynamic(() => import("@/components/CausalDAGMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="text-[10px] font-mono text-text-muted animate-pulse">
+        INITIALIZING MAP RENDERER...
+      </div>
+    </div>
+  ),
+});
+
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
 
@@ -100,6 +112,11 @@ export default function Home() {
             >
               <CausalDAG2D />
             </div>
+            {viewMode === "map" && (
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <CausalDAGMap />
+              </div>
+            )}
             {/* Client deployment CTA */}
             <Link
               href="/client"

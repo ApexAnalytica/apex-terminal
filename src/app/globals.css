@@ -237,3 +237,19 @@ body.ablation-cursor canvas {
   color: var(--accent-cyan);
   white-space: nowrap;
 }
+
+/* MapLibre popup overrides */
+.maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.maplibregl-popup-tip {
+  display: none !important;
+}
+
+.maplibregl-popup-close-button {
+  display: none !important;
+}

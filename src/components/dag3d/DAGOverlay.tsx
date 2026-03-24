@@ -63,17 +63,25 @@ export default function DAGOverlay() {
       {/* Top Right: Method badges + controls */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
         <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
-          RENDERING: {viewMode === "3d" ? "WEBGL_3D" : "REACTFLOW_2D"}
+          RENDERING: {viewMode === "3d" ? "WEBGL_3D" : viewMode === "2d" ? "REACTFLOW_2D" : "MAPLIBRE_GEO"}
         </span>
         <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
           METHOD: DCD / NOTEARS
         </span>
-        <button
-          onClick={() => setViewMode(viewMode === "3d" ? "2d" : "3d")}
-          className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-2.5 py-1 rounded border border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/10 transition-colors"
-        >
-          {viewMode === "3d" ? "\u2192 2D" : "\u2192 3D"}
-        </button>
+        {/* View mode cycle buttons */}
+        {(["3d", "2d", "map"] as const).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-2.5 py-1 rounded border transition-colors ${
+              viewMode === mode
+                ? "border-accent-cyan text-accent-cyan bg-accent-cyan/10"
+                : "border-border text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40"
+            }`}
+          >
+            {mode === "3d" ? "3D" : mode === "2d" ? "2D" : "MAP"}
+          </button>
+        ))}
       </div>
 
       {/* Temporal scrub indicator */}
@@ -289,6 +297,13 @@ export default function DAGOverlay() {
         <div className="absolute bottom-3 right-3">
           <div className="text-[8px] font-mono text-text-muted/50">
             DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | SHIFT+DRAG: SELECT | DOUBLE-CLICK: FOCUS | ESC: DESELECT
+          </div>
+        </div>
+      )}
+      {viewMode === "map" && (
+        <div className="absolute bottom-3 right-3">
+          <div className="text-[8px] font-mono text-text-muted/50">
+            DRAG: PAN | SCROLL: ZOOM | CLICK: SELECT | SHIFT+CLICK: MULTI-SELECT | HOVER: INSPECT
           </div>
         </div>
       )}

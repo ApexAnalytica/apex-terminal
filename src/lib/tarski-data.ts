@@ -453,3 +453,66 @@ export const AXIOM_CHECKS: Record<string, AxiomCheckFn> = {
   "R-03": () => [],
   "R-04": () => [],
 };
+
+// ─── Axiom Relevance Scoring ──
+
+export interface ScoredAxiom {
+  axiom: TarskiAxiom;
+  relevanceScore: number;
+  reason: string;
+}
+
+/**
+ * Score each axiom's relevance to the current graph based on domain overlap,
+ * node categories, and structural properties.
+ */
+export function scoreAxiomRelevance(graph: CausalGraph): ScoredAxiom[] {
+  const domains = new Set(graph.nodes.map((n) => n.domain));
+  const categories = new Set(graph.nodes.map((n) => n.category));
+  const hasHighOmega = graph.nodes.some((n) => n.omegaFragility.composite > 7);
+  const hasInconsistent = graph.edges.some((e) => e.isInconsistent);
+
+  return AXIOM_LIBRARY.map((axiom) => {
+    let score = 0.2; // baseline
+    let reason = "General applicability";
+
+    // Physical laws always relevant
+    if (axiom.level === 0) {
+      score = 0.8;
+      reason = "Physical law — always applicable";
+    }
+
+    // Domain-specific axioms score higher when matching domains exist
+    const axiomText = `${axiom.label} ${axiom.description}`.toLowerCase();
+    if (axiomText.includes("energy") && (domains.has("Saudi Aramco Energy") || domains.has("QatarEnergy LNG"))) {
+      score = Math.max(score, 0.7);
+      reason = "Matches energy domain nodes";
+    }
+    if (axiomText.includes("fertilizer") && (domains.has("QAFCO Fertilizers") || domains.has("Ma\u2019aden Phosphate"))) {
+      score = Math.max(score, 0.7);
+      reason = "Matches fertilizer domain nodes";
+    }
+    if (axiomText.includes("financial") && domains.has("Financial Contagion")) {
+      score = Math.max(score, 0.7);
+      reason = "Matches financial contagion domain";
+    }
+    if (axiomText.includes("cable") && domains.has("Undersea Cable Infrastructure")) {
+      score = Math.max(score, 0.65);
+      reason = "Matches infrastructure domain";
+    }
+
+    // Boost resilience axioms when high omega nodes present
+    if (axiom.level >= 2 && hasHighOmega) {
+      score = Math.max(score, 0.5);
+      reason = "High-Ω nodes detected — resilience axioms relevant";
+    }
+
+    // Boost consistency axioms when inconsistencies exist
+    if (axiomText.includes("consist") && hasInconsistent) {
+      score = Math.max(score, 0.6);
+      reason = "Inconsistent edges detected";
+    }
+
+    return { axiom, relevanceScore: score, reason };
+  }).sort((a, b) => b.relevanceScore - a.relevanceScore);
+}

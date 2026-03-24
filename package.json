@@ -21,6 +21,7 @@
     "@reactflow/background": "^11.3.14",
     "@reactflow/controls": "^11.2.14",
     "@reactflow/core": "^11.11.4",
+    "@vis.gl/react-maplibre": "^8.1.0",
     "d3-force-3d": "^3.0.6",
     "framer-motion": "^12.34.3",
     "maplibre-gl": "^4.7.1",

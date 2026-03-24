@@ -160,8 +160,11 @@ function DAGEdge3DInner({
 
   useFrame(() => {
     if (!lineRef.current) return;
-    const mat = lineRef.current.material as THREE.LineDashedMaterial;
-    if (!mat || !("dashOffset" in mat)) return;
+    const rawMat = lineRef.current.material;
+    if (!rawMat || Array.isArray(rawMat)) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mat = rawMat as any;
+    if (typeof mat.dashOffset !== "number") return;
 
     if (shouldAnimate) {
       // Animate dashOffset — negative moves dashes forward (source → target)
@@ -194,7 +197,8 @@ function DAGEdge3DInner({
           confounded = static dashed orange line
           inconsistent = static dashed red line */}
       {useDashed ? (
-        <line ref={lineRef as React.Ref<THREE.Line>}>
+        // @ts-expect-error — R3F <line> is THREE.Line, not SVG line
+        <line ref={lineRef}>
           <bufferGeometry attach="geometry" {...lineGeometry} />
           <lineDashedMaterial
             color={color}
@@ -206,7 +210,8 @@ function DAGEdge3DInner({
           />
         </line>
       ) : (
-        <line ref={lineRef as React.Ref<THREE.Line>}>
+        // @ts-expect-error — R3F <line> is THREE.Line, not SVG line
+        <line ref={lineRef}>
           <bufferGeometry attach="geometry" {...lineGeometry} />
           <lineBasicMaterial
             color={color}

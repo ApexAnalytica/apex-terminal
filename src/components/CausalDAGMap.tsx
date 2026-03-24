@@ -119,6 +119,21 @@ export default function CausalDAGMap() {
       const perpLng = midLng + (-dy / dist) * curveAmount;
       const perpLat = midLat + (dx / dist) * curveAmount;
 
+      // Edge color — matches 2D/3D exactly:
+      //   directed  → cyan (#00e5ff)
+      //   temporal  → amber (#ffab00)
+      //   confounded → orange (#ff6d00)
+      //   inconsistent → red (#ff1744)
+      const edgeColor = edge.isInconsistent
+        ? "#ff1744"
+        : edge.type === "temporal"
+          ? "#ffab00"
+          : edge.type === "confounded"
+            ? "#ff6d00"
+            : "#00e5ff";
+
+      const isDashed = edge.type === "temporal" || edge.type === "confounded" || edge.isInconsistent;
+
       // Create a 3-point line (source → curve midpoint → target)
       features.push({
         type: "Feature",
@@ -130,21 +145,27 @@ export default function CausalDAGMap() {
           id: edge.id,
           weight: edge.weight,
           type: edge.type,
-          opacity: isDimmed ? 0.05 : edge.type === "confounded" ? 0.2 : 0.35,
-          color:
-            edge.isInconsistent
-              ? "#ff1744"
-              : edge.type === "confounded"
-                ? "#ffab00"
-                : "rgba(255,255,255,0.5)",
+          opacity: isDimmed ? 0.05 : 0.5,
+          color: edgeColor,
           width: edge.weight * 2 + 0.5,
-          dashArray: edge.type === "confounded" ? [4, 4] : undefined,
+          isDashed: isDashed ? 1 : 0,
         },
       });
     });
 
     return { type: "FeatureCollection", features };
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection]);
+
+  // Split edges into solid and dashed for separate MapLibre layers
+  const solidEdgeGeoJSON = useMemo<FeatureCollection<LineString>>(() => ({
+    type: "FeatureCollection",
+    features: edgeGeoJSON.features.filter(f => !f.properties?.isDashed),
+  }), [edgeGeoJSON]);
+
+  const dashedEdgeGeoJSON = useMemo<FeatureCollection<LineString>>(() => ({
+    type: "FeatureCollection",
+    features: edgeGeoJSON.features.filter(f => f.properties?.isDashed),
+  }), [edgeGeoJSON]);
 
   // Click handler
   const onNodeClick = useCallback(
@@ -261,15 +282,33 @@ export default function CausalDAGMap() {
         cursor={hoveredNode ? "pointer" : "grab"}
         attributionControl={false}
       >
-        {/* Edge lines */}
-        <Source id="edges" type="geojson" data={edgeGeoJSON}>
+        {/* Solid edge lines (directed = cyan solid) */}
+        <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
-            id="edge-lines"
+            id="edge-lines-solid"
             type="line"
             paint={{
               "line-color": ["get", "color"],
               "line-opacity": ["get", "opacity"],
               "line-width": ["get", "width"],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
+        {/* Dashed edge lines (temporal = amber dashed, confounded = orange dashed) */}
+        <Source id="edges-dashed" type="geojson" data={dashedEdgeGeoJSON}>
+          <Layer
+            id="edge-lines-dashed"
+            type="line"
+            paint={{
+              "line-color": ["get", "color"],
+              "line-opacity": ["get", "opacity"],
+              "line-width": ["get", "width"],
+              "line-dasharray": [4, 3],
             }}
             layout={{
               "line-cap": "round",

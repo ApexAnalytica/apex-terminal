@@ -62,9 +62,11 @@ const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({
   posMap,
+  topologyKey,
   shiftDragging,
 }: {
   posMap: Record<string, [number, number, number]>;
+  topologyKey: string;
   shiftDragging?: boolean;
 }) {
   const { camera } = useThree();
@@ -82,6 +84,7 @@ function CameraRig({
   posMapRef.current = posMap;
   // Track previous selection to only animate on actual changes
   const prevSelectionKey = useRef("");
+  const prevTopologyKey = useRef(topologyKey);
 
   const orbitControlsRef = useRef<any>(null);
 
@@ -186,6 +189,30 @@ function CameraRig({
     }
   }, [selectionKey, selectedNode, multiSelectedNodes, camera, computeFitCamera]);
 
+  // Auto-refit camera when topology changes (domains added/removed)
+  useEffect(() => {
+    if (prevTopologyKey.current === topologyKey) return;
+    prevTopologyKey.current = topologyKey;
+
+    // Delay slightly so positions are settled
+    const timer = setTimeout(() => {
+      const pm = posMapRef.current;
+      const allIds = Object.keys(pm);
+      if (allIds.length === 0) return;
+      const fit = computeFitCamera(allIds, pm);
+      if (fit) {
+        startPos.current.copy(camera.position);
+        endPos.current.copy(fit.position);
+        startTarget.current.copy(orbitControlsRef.current?.target ?? HOME_TARGET);
+        endTarget.current.copy(fit.target);
+        progress.current = 0;
+        animating.current = true;
+        setControlsEnabled(false);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [topologyKey, camera, computeFitCamera]);
+
   useFrame((_, delta) => {
     if (!animating.current) return;
     progress.current = Math.min(1, progress.current + delta * 2.5);
@@ -225,27 +252,66 @@ function CameraRig({
 // Monitors WebGL context and forces remount on context loss
 function useWebGLRecovery() {
   const [canvasKey, setCanvasKey] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    // Find the canvas after mount
+    let onLost: ((e: Event) => void) | null = null;
+    let onRestored: (() => void) | null = null;
+    let canvas: HTMLCanvasElement | null = null;
+
+    // Delay to let Canvas mount
     const timer = setTimeout(() => {
-      const canvas = document.querySelector("canvas");
-      if (canvas) {
-        canvasRef.current = canvas;
-        const onLost = (e: Event) => {
-          e.preventDefault();
-          console.warn("[DAG3D] WebGL context lost — scheduling recovery");
-          setTimeout(() => setCanvasKey((k) => k + 1), 1000);
-        };
-        canvas.addEventListener("webglcontextlost", onLost);
-        return () => canvas.removeEventListener("webglcontextlost", onLost);
-      }
+      canvas = document.querySelector("canvas");
+      if (!canvas) return;
+
+      onLost = (e: Event) => {
+        e.preventDefault();
+        console.warn("[DAG3D] WebGL context lost — scheduling recovery");
+        setTimeout(() => setCanvasKey((k) => k + 1), 1000);
+      };
+      onRestored = () => {
+        console.info("[DAG3D] WebGL context restored");
+      };
+
+      canvas.addEventListener("webglcontextlost", onLost);
+      canvas.addEventListener("webglcontextrestored", onRestored);
     }, 500);
-    return () => clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer);
+      if (canvas && onLost) canvas.removeEventListener("webglcontextlost", onLost);
+      if (canvas && onRestored) canvas.removeEventListener("webglcontextrestored", onRestored);
+    };
   }, [canvasKey]);
 
   return canvasKey;
+}
+
+// Monitors frame rendering inside the R3F canvas — if no frames render for 3s,
+// forces a scene invalidate to recover from frozen/black state
+function FrameMonitor() {
+  const { invalidate, gl } = useThree();
+  const lastFrameTime = useRef(performance.now());
+
+  useFrame(() => {
+    lastFrameTime.current = performance.now();
+  });
+
+  useEffect(() => {
+    const check = setInterval(() => {
+      const elapsed = performance.now() - lastFrameTime.current;
+      if (elapsed > 3000) {
+        console.warn("[DAG3D] No frames for 3s — forcing invalidate");
+        // Check if context is still alive
+        const ctx = gl.getContext();
+        if (ctx && !ctx.isContextLost()) {
+          invalidate();
+        }
+      }
+    }, 2000);
+    return () => clearInterval(check);
+  }, [invalidate, gl]);
+
+  return null;
 }
 
 function ReplayTickDriver() {
@@ -393,15 +459,30 @@ export default function CausalDAG3D() {
   const canvasKey = useWebGLRecovery();
   const positionsRef = useRef<NodePosition[]>([]);
 
+  // Stable topology key — only recompute layout when nodes/edges are added/removed,
+  // NOT when omega scores or other properties change during temporal scrubbing.
+  // This prevents the force simulation from re-running on every dial tick.
+  const topologyKey = useMemo(() => {
+    const nk = graphData.nodes.map((n) => n.id).sort().join(",");
+    const ek = graphData.edges.map((e) => `${e.source}>${e.target}`).sort().join(",");
+    return nk + "|" + ek;
+  }, [graphData]);
+
+  // Keep a ref to current graphData so layout computation can access current nodes/edges
+  const graphDataForLayoutRef = useRef(graphData);
+  graphDataForLayoutRef.current = graphData;
+
   const positions = useMemo(() => {
+    const g = graphDataForLayoutRef.current;
     const result = computeLayout3D(
-      graphData.nodes,
-      graphData.edges,
+      g.nodes,
+      g.edges,
       positionsRef.current.length > 0 ? positionsRef.current : undefined
     );
     positionsRef.current = result;
     return result;
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
 
   const basePosMap = useMemo(() => {
     const map: Record<string, [number, number, number]> = {};
@@ -673,7 +754,7 @@ export default function CausalDAG3D() {
         key={canvasKey}
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
@@ -792,7 +873,8 @@ export default function CausalDAG3D() {
             );
           })}
 
-          <CameraRig posMap={posMap} shiftDragging={shiftDragging} />
+          <CameraRig posMap={posMap} topologyKey={topologyKey} shiftDragging={shiftDragging} />
+          <FrameMonitor />
           <ReplayTickDriver />
           <ShiftDragSelect
             posMap={posMap}

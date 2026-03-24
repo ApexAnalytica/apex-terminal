@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -15,6 +15,8 @@ import ReactFlow, {
   SelectionMode,
   OnSelectionChangeFunc,
   MarkerType,
+  useReactFlow,
+  ReactFlowProvider,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
@@ -221,7 +223,39 @@ function EdgeInspector({
 
 const nodeTypes = { causal: CausalNode2D };
 
-export default function CausalDAG2D() {
+/**
+ * Helper: re-fits the viewport when the 2D view becomes visible
+ * (both views are always mounted; display: none/block toggles visibility).
+ * Also re-fits when topology changes (nodes added/removed).
+ */
+function FitViewOnVisible({ nodeCount }: { nodeCount: number }) {
+  const { fitView } = useReactFlow();
+  const viewMode = useApexStore((s) => s.viewMode);
+  const prevViewMode = useRef(viewMode);
+  const prevNodeCount = useRef(nodeCount);
+  const hasFittedOnce = useRef(false);
+
+  useEffect(() => {
+    const becameVisible = prevViewMode.current !== "2d" && viewMode === "2d";
+    const topologyChanged = prevNodeCount.current !== nodeCount;
+    const firstMount = !hasFittedOnce.current && viewMode === "2d" && nodeCount > 0;
+    prevViewMode.current = viewMode;
+    prevNodeCount.current = nodeCount;
+
+    if (becameVisible || topologyChanged || firstMount) {
+      hasFittedOnce.current = true;
+      // Small delay to let ReactFlow finish rendering the nodes
+      const timer = setTimeout(() => {
+        fitView({ padding: 0.3, duration: 300 });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode, nodeCount, fitView]);
+
+  return null;
+}
+
+function CausalDAG2DInner() {
   const graphData = useFilteredGraph();
   const {
     truthFilter,
@@ -298,13 +332,10 @@ export default function CausalDAG2D() {
       const base = positions.get(n.id) ?? { x: 0, y: 0 };
       const omega = n.omegaFragility.composite;
 
-      // Smooth gradual drift based on omega — continuous function, no popping
-      // omega ranges 0-10, so drift is gentle and proportional
-      const h = idHash(n.id);
-      const driftX = Math.sin(omega * 0.3 + h * 0.0007) * 10;
-      const driftY = Math.cos(omega * 0.25 + h * 0.0011) * 8;
-      let posX = base.x + driftX;
-      let posY = base.y + driftY;
+      // Positions are purely structural — no omega-dependent drift.
+      // This prevents position shifts during temporal scrubbing.
+      let posX = base.x;
+      let posY = base.y;
 
       // Apply contraction during replay
       if (currentSnapshot) {
@@ -498,6 +529,7 @@ export default function CausalDAG2D() {
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
         <Controls showInteractive={false} position="bottom-right" />
+        <FitViewOnVisible nodeCount={visibleNodes.length} />
       </ReactFlow>
       {selectedNodesCount > 0 && (
         <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">
@@ -518,5 +550,13 @@ export default function CausalDAG2D() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function CausalDAG2D() {
+  return (
+    <ReactFlowProvider>
+      <CausalDAG2DInner />
+    </ReactFlowProvider>
   );
 }

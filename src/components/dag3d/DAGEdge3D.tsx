@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
 import * as THREE from "three";
@@ -63,17 +63,28 @@ export default function DAGEdge3D({
   const color = isAblated ? "#e040fb" : isSevered ? "#ff1744" : isConsequenceEdge ? "#ff6d00" : baseColor;
   const lineWidth = 0.5 + edge.weight * 1.5;
 
+  // Deterministic curve offset based on edge ID — prevents random re-rolls on rerender
+  const curveOffset = useMemo(() => {
+    let h = 0;
+    for (let i = 0; i < edge.id.length; i++) {
+      h = ((h << 5) - h + edge.id.charCodeAt(i)) | 0;
+    }
+    const seed = Math.abs(h);
+    return new THREE.Vector3(
+      ((seed % 100) / 100 - 0.5) * 2,
+      (((seed >> 8) % 100) / 100 - 0.5) * 2,
+      (((seed >> 16) % 100) / 100 - 0.5) * 2
+    );
+  }, [edge.id]);
+
+  // Use string key for position comparison to avoid array reference issues
+  const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
+
   const { points, arrowPosition, arrowRotation, midpoint } = useMemo(() => {
     const src = new THREE.Vector3(...sourcePos);
     const tgt = new THREE.Vector3(...targetPos);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
-    // Add slight curve
-    const offset = new THREE.Vector3(
-      (Math.random() - 0.5) * 2,
-      (Math.random() - 0.5) * 2,
-      (Math.random() - 0.5) * 2
-    );
-    mid.add(offset);
+    mid.add(curveOffset);
 
     const curve = new THREE.QuadraticBezierCurve3(src, mid, tgt);
     curveRef.current = curve;
@@ -94,12 +105,26 @@ export default function DAGEdge3D({
       arrowRotation: euler,
       midpoint: midPt,
     };
-  }, [sourcePos, targetPos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posKey, curveOffset]);
 
+  const prevGeometryRef = useRef<THREE.BufferGeometry | null>(null);
   const lineGeometry = useMemo(() => {
+    // Dispose previous geometry to prevent GPU memory leak
+    if (prevGeometryRef.current) {
+      prevGeometryRef.current.dispose();
+    }
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    prevGeometryRef.current = geometry;
     return geometry;
   }, [points]);
+
+  // Dispose geometry on unmount
+  useEffect(() => {
+    return () => {
+      if (prevGeometryRef.current) prevGeometryRef.current.dispose();
+    };
+  }, []);
 
   // Dashes: match 2D — only confounded, inconsistent, ablated, severed (NOT cross-domain)
   const useDashed = isAblated || isSevered || edge.type === "confounded" || isVerifiedInconsistent;

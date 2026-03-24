@@ -9,7 +9,7 @@ import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeLayout3D, NodePosition } from "@/lib/graph-layout";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
-import DAGNode3D from "./dag3d/DAGNode3D";
+import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
@@ -234,6 +234,15 @@ function CameraRig({
     }
   });
 
+  // Hide <Html> labels during active orbit to prevent DOM overhead
+  const onOrbitStart = useCallback(() => {
+    orbitActiveRef.current = true;
+  }, []);
+  const onOrbitEnd = useCallback(() => {
+    // Small delay to let damping settle before re-showing labels
+    setTimeout(() => { orbitActiveRef.current = false; }, 150);
+  }, []);
+
   return (
     <OrbitControls
       ref={orbitControlsRef}
@@ -245,6 +254,8 @@ function CameraRig({
       minDistance={5}
       maxDistance={400}
       enabled={controlsEnabled && !shiftDragging}
+      onStart={onOrbitStart}
+      onEnd={onOrbitEnd}
     />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
 import * as THREE from "three";
@@ -37,7 +37,7 @@ function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean, isCross
   }
 }
 
-export default function DAGEdge3D({
+function DAGEdge3DInner({
   edge,
   sourcePos,
   targetPos,
@@ -252,3 +252,6 @@ export default function DAGEdge3D({
     </group>
   );
 }
+
+const DAGEdge3D = React.memo(DAGEdge3DInner);
+export default DAGEdge3D;

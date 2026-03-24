@@ -1,11 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+
+// Shared flag: set by CameraRig when orbit controls are actively dragging.
+// Nodes skip rendering <Html> labels during rotation to prevent DOM overhead
+// that causes GPU timeout and black screen with 100+ nodes.
+export const orbitActiveRef = { current: false };
 
 interface DAGNode3DProps {
   node: CausalNode;
@@ -37,7 +42,7 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
-export default function DAGNode3D({
+function DAGNode3DInner({
   node,
   position,
   isInterventionTarget,
@@ -184,12 +189,14 @@ export default function DAGNode3D({
         </mesh>
       )}
 
-      {/* Label — always visible, HTML overlay above glow radius */}
-      {!dimmed && (
+      {/* Label — hidden during active orbit rotation to prevent DOM overhead
+           that causes GPU timeout with 100+ nodes */}
+      {!dimmed && !orbitActiveRef.current && (
         <Html
           position={[0, size * 1.6 + 0.6, 0]}
           center
           style={{ pointerEvents: "none" }}
+          zIndexRange={[0, 0]}
         >
           <div
             style={{
@@ -325,3 +332,6 @@ export default function DAGNode3D({
     </group>
   );
 }
+
+const DAGNode3D = React.memo(DAGNode3DInner);
+export default DAGNode3D;

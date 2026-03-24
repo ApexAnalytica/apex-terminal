@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getNodeStateAt, getEdgeStateAt, getVisibleNodesAt, getEventsInRange } from "@/lib/temporal-data";
+import { getNodeStateAt, getEdgeStateAt, getEventsInRange } from "@/lib/temporal-data";
 import type { CausalGraph, CausalNode, CausalEdge } from "@/lib/types";
 import type { TemporalEvent } from "@/lib/temporal-data";
 
@@ -36,12 +36,11 @@ export function useTemporalGraph(): TemporalGraphSnapshot {
 
     const ts = timelinePosition;
 
-    // Determine which nodes are visible at this time
-    const visibleIds = new Set(getVisibleNodesAt(temporalData, ts));
-
     // Transform nodes with historical omega values
+    // IMPORTANT: Never filter nodes out — always keep all base graph nodes visible
+    // to prevent layout recomputation and black screen during scrubbing.
+    // Only modify omega scores based on temporal state.
     const transformedNodes: CausalNode[] = graphData.nodes
-      .filter((n) => visibleIds.has(n.id))
       .map((node) => {
         const nodeData = temporalData.nodes.get(node.id);
         if (!nodeData) return node;

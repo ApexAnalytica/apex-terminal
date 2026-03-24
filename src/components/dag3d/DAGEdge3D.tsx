@@ -26,9 +26,15 @@ interface DAGEdge3DProps {
   epochState?: EdgeEpochState;
 }
 
-function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean, isCrossDomain: boolean): string {
+/**
+ * Edge color — matches 2D ReactFlow edge styling:
+ *   directed  → cyan (#00e5ff)  — solid line
+ *   temporal  → amber (#ffab00) — animated dashed line
+ *   confounded → orange (#ff6d00) — static dashed line
+ *   inconsistent → red (#ff1744) — overrides type color
+ */
+function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string {
   if (isVerifiedInconsistent) return "#ff1744";
-  if (isCrossDomain) return "#e040fb";
   switch (edge.type) {
     case "directed": return "#00e5ff";
     case "temporal": return "#ffab00";
@@ -57,9 +63,11 @@ function DAGEdge3DInner({
   epochState,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
-  const particleRef = useRef<THREE.Mesh>(null);
+  const lineRef = useRef<THREE.Line>(null);
   const curveRef = useRef<THREE.QuadraticBezierCurve3 | null>(null);
-  const baseColor = getEdgeColor(edge, isVerifiedInconsistent, isCrossDomain);
+
+  // Color: match 2D exactly (no cross-domain magenta — keeps it clean)
+  const baseColor = getEdgeColor(edge, isVerifiedInconsistent);
   const color = isAblated ? "#e040fb" : isSevered ? "#ff1744" : isConsequenceEdge ? "#ff6d00" : baseColor;
   const lineWidth = 0.5 + edge.weight * 1.5;
 
@@ -80,7 +88,7 @@ function DAGEdge3DInner({
   // Use string key for position comparison to avoid array reference issues
   const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
 
-  const { points, arrowPosition, arrowRotation, midpoint } = useMemo(() => {
+  const { points, midpoint } = useMemo(() => {
     const src = new THREE.Vector3(...sourcePos);
     const tgt = new THREE.Vector3(...targetPos);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
@@ -88,70 +96,77 @@ function DAGEdge3DInner({
 
     const curve = new THREE.QuadraticBezierCurve3(src, mid, tgt);
     curveRef.current = curve;
-    const pts = curve.getPoints(24);
-
-    // Arrow at 80% along path
-    const arrowPos = curve.getPoint(0.8);
-    const tangent = curve.getTangent(0.8);
-    const quaternion = new THREE.Quaternion();
-    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent.normalize());
-    const euler = new THREE.Euler().setFromQuaternion(quaternion);
+    const pts = curve.getPoints(32); // more points for smoother curves
 
     const midPt = curve.getPoint(0.5);
-
-    return {
-      points: pts,
-      arrowPosition: arrowPos,
-      arrowRotation: euler,
-      midpoint: midPt,
-    };
+    return { points: pts, midpoint: midPt };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posKey, curveOffset]);
 
   const prevGeometryRef = useRef<THREE.BufferGeometry | null>(null);
   const lineGeometry = useMemo(() => {
-    // Dispose previous geometry to prevent GPU memory leak
-    if (prevGeometryRef.current) {
-      prevGeometryRef.current.dispose();
-    }
+    if (prevGeometryRef.current) prevGeometryRef.current.dispose();
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    // computeLineDistances is required for dashed lines to work in Three.js
+    const line = new THREE.Line(geometry);
+    line.computeLineDistances();
+    const distances = line.geometry.attributes.lineDistance;
+    geometry.setAttribute("lineDistance", distances);
     prevGeometryRef.current = geometry;
     return geometry;
   }, [points]);
 
-  // Dispose geometry on unmount
   useEffect(() => {
     return () => {
       if (prevGeometryRef.current) prevGeometryRef.current.dispose();
     };
   }, []);
 
-  // Dashes: match 2D — only confounded, inconsistent, ablated, severed (NOT cross-domain)
-  const useDashed = isAblated || isSevered || edge.type === "confounded" || isVerifiedInconsistent;
-  const dashSize = useDashed ? (isAblated ? 0.6 : isSevered ? 0.6 : 0.5) : 0;
-  const gapSize = useDashed ? (isAblated ? 0.4 : isSevered ? 0.4 : 0.3) : 0;
+  // Dash configuration — matching 2D behavior:
+  //   directed:    solid line (no dashes)
+  //   temporal:    dashed + animated flow (like 2D's animated: true)
+  //   confounded:  dashed, static (like 2D's strokeDasharray)
+  //   inconsistent: dashed, static
+  //   ablated/severed: dashed, static
+  const isTemporalFlow = edge.type === "temporal";
+  const useDashed =
+    isAblated || isSevered || edge.type === "confounded" ||
+    isVerifiedInconsistent || isTemporalFlow;
 
-  // Selection-aware opacity: dim non-connected edges when a node is selected
+  const dashSize = isTemporalFlow ? 0.6 : (isAblated || isSevered) ? 0.6 : 0.5;
+  const gapSize = isTemporalFlow ? 0.4 : (isAblated || isSevered) ? 0.4 : 0.3;
+
+  // Selection-aware opacity — consistent with 2D dimming
   const selectionDim = anyNodeSelected && !isConnectedToSelected;
   const propSignal = epochState ? epochState.propagationSignal : 0;
-  const propBoost = propSignal * 0.5; // brighter edges during propagation
-  const baseOpacity = isAblated ? 0.15 : isSevered ? 0.25 : isDimmed ? 0.15 : isHighlighted ? 0.9 : hovered ? 0.8 : isConsequenceEdge ? 0.85 : (0.5 + propBoost);
-  const lineOpacity = selectionDim ? 0.05 : isConnectedToSelected ? 1.0 : Math.min(1, baseOpacity);
-  const arrowBaseOpacity = isSevered ? 0 : isDimmed ? 0.15 : (0.7 + propBoost);
-  const arrowOpacity = selectionDim ? 0.05 : isConnectedToSelected ? 1.0 : Math.min(1, arrowBaseOpacity);
+  const propBoost = propSignal * 0.5;
+  const baseOpacity = isAblated ? 0.15
+    : isSevered ? 0.25
+    : isDimmed ? 0.15
+    : isHighlighted ? 0.9
+    : hovered ? 0.8
+    : isConsequenceEdge ? 0.85
+    : (0.5 + propBoost);
+  const lineOpacity = selectionDim ? 0.05
+    : isConnectedToSelected ? 1.0
+    : Math.min(1, baseOpacity);
 
-  // Animate flowing particle along the edge curve
-  const shouldAnimate = !isSevered && !isAblated && !selectionDim && (edge.type === "directed" || edge.type === "temporal" || propSignal > 0.3);
-  const animSpeed = edge.type === "temporal" ? 0.35 : 0.25 + propSignal * 0.4;
+  // Animate dash offset for temporal/causal edges — creates the
+  // flowing dashed line effect that matches the 2D CSS animation.
+  // Also animate when propagation signal is active.
+  const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
+    (isTemporalFlow || propSignal > 0.3);
+  const animSpeed = isTemporalFlow ? 1.5 : 1.0 + propSignal * 1.5;
 
-  useFrame((_, delta) => {
-    if (!particleRef.current || !curveRef.current || !shouldAnimate) return;
-    const t = ((performance.now() * 0.001 * animSpeed) % 1);
-    const pos = curveRef.current.getPoint(t);
-    particleRef.current.position.set(pos.x, pos.y, pos.z);
-    // Pulse the scale slightly for a glowing effect
-    const pulse = 1 + Math.sin(performance.now() * 0.005) * 0.3;
-    particleRef.current.scale.setScalar(pulse);
+  useFrame(() => {
+    if (!lineRef.current) return;
+    const mat = lineRef.current.material as THREE.LineDashedMaterial;
+    if (!mat || !("dashOffset" in mat)) return;
+
+    if (shouldAnimate) {
+      // Animate dashOffset — negative moves dashes forward (source → target)
+      mat.dashOffset -= 0.015 * animSpeed;
+    }
   });
 
   return (
@@ -173,9 +188,13 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
-      {/* Edge line */}
+      {/* Edge line — consistent with 2D:
+          directed = solid cyan line
+          temporal = animated dashed amber line (flowing toward target)
+          confounded = static dashed orange line
+          inconsistent = static dashed red line */}
       {useDashed ? (
-        <line>
+        <line ref={lineRef as React.Ref<THREE.Line>}>
           <bufferGeometry attach="geometry" {...lineGeometry} />
           <lineDashedMaterial
             color={color}
@@ -187,7 +206,7 @@ function DAGEdge3DInner({
           />
         </line>
       ) : (
-        <line>
+        <line ref={lineRef as React.Ref<THREE.Line>}>
           <bufferGeometry attach="geometry" {...lineGeometry} />
           <lineBasicMaterial
             color={color}
@@ -196,30 +215,6 @@ function DAGEdge3DInner({
             linewidth={lineWidth}
           />
         </line>
-      )}
-
-      {/* Arrowhead — only for directed/temporal edges (match 2D behavior) */}
-      {(edge.type === "directed" || edge.type === "temporal") && (
-        <mesh position={arrowPosition} rotation={arrowRotation}>
-          <coneGeometry args={[0.2 + edge.weight * 0.15, 0.6, 6]} />
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={arrowOpacity}
-          />
-        </mesh>
-      )}
-
-      {/* Animated flowing particle */}
-      {shouldAnimate && (
-        <mesh ref={particleRef}>
-          <sphereGeometry args={[0.12 + edge.weight * 0.08, 8, 8]} />
-          <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={lineOpacity * 0.9}
-          />
-        </mesh>
       )}
 
       {/* Hover: physical mechanism label */}

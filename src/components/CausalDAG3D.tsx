@@ -446,6 +446,7 @@ export default function CausalDAG3D() {
     baselineEpochs,
     interventionEpochs,
     activeTimeline,
+    isLive,
   } = useApexStore();
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -503,62 +504,142 @@ export default function CausalDAG3D() {
     return map;
   }, [positions]);
 
-  // Dynamic positions: during replay, nodes contract toward activated neighbors
-  // based on shock intensity — visualizes hypersynchronization/convulsion
-  const posMap = useMemo(() => {
-    if (!currentSnapshot) return basePosMap;
+  // Build adjacency for neighbor lookup (shared by both replay & historical contraction)
+  const neighbors = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const edge of graphData.edges) {
+      if (!map.has(edge.source)) map.set(edge.source, []);
+      if (!map.has(edge.target)) map.set(edge.target, []);
+      map.get(edge.source)!.push(edge.target);
+      map.get(edge.target)!.push(edge.source);
+    }
+    return map;
+  }, [graphData.edges]);
 
-    const CONTRACTION = 0.18; // max fraction of distance to contract
+  // Store baseline omega scores (live/initial values) as a reference point.
+  // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
+  const baselineOmegaRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    if (isLive) {
+      const map: Record<string, number> = {};
+      graphData.nodes.forEach((n) => { map[n.id] = n.omegaFragility.composite; });
+      baselineOmegaRef.current = map;
+    }
+  }, [isLive, graphData.nodes]);
+
+  // Compute a key from omega scores that changes as the user scrubs.
+  const omegaKey = useMemo(() => {
+    return graphData.nodes.map((n) => `${n.id}:${n.omegaFragility.composite.toFixed(2)}`).join("|");
+  }, [graphData.nodes]);
+
+  // Dynamic positions: nodes move based on stress changes.
+  // During REPLAY: contraction via shockIntensity (existing behavior).
+  // During HISTORICAL SCRUB: movement driven by omega delta from baseline —
+  //   nodes whose omega rises pull inward toward stressed neighbors,
+  //   nodes whose omega drops push outward (relaxation).
+  // During LIVE: return base positions (no movement).
+  const posMap = useMemo(() => {
+    // Live mode — no animation
+    if (isLive && !currentSnapshot) return basePosMap;
+
+    const PULL_STRENGTH = 0.35;  // max inward contraction fraction
+    const PUSH_STRENGTH = 0.15;  // max outward relaxation fraction
     const map: Record<string, [number, number, number]> = {};
 
-    // Build adjacency for neighbor lookup
-    const neighbors = new Map<string, string[]>();
-    for (const edge of graphData.edges) {
-      if (!neighbors.has(edge.source)) neighbors.set(edge.source, []);
-      if (!neighbors.has(edge.target)) neighbors.set(edge.target, []);
-      neighbors.get(edge.source)!.push(edge.target);
-      neighbors.get(edge.target)!.push(edge.source);
-    }
+    // Get stress for each node
+    const getStress = (nodeId: string): number => {
+      if (currentSnapshot) {
+        const state = currentSnapshot.nodeStates[nodeId];
+        return state ? state.shockIntensity : 0;
+      }
+      // Historical mode: use delta from baseline
+      const node = graphData.nodes.find((n) => n.id === nodeId);
+      if (!node) return 0;
+      const baseline = baselineOmegaRef.current[nodeId] ?? node.omegaFragility.composite;
+      const delta = node.omegaFragility.composite - baseline;
+      // Delta range roughly -3 to +3, map to -1 to +1
+      return Math.max(-1, Math.min(1, delta / 3));
+    };
 
-    for (const id of Object.keys(basePosMap)) {
+    // Compute network centroid (gravity center)
+    const ids = Object.keys(basePosMap);
+    let gx = 0, gy = 0, gz = 0;
+    for (const id of ids) {
+      const p = basePosMap[id];
+      gx += p[0]; gy += p[1]; gz += p[2];
+    }
+    gx /= ids.length; gy /= ids.length; gz /= ids.length;
+
+    // Check if there's any meaningful change
+    let hasChange = !!currentSnapshot;
+    if (!hasChange) {
+      for (const id of ids) {
+        const s = Math.abs(getStress(id));
+        if (s > 0.05) { hasChange = true; break; }
+      }
+    }
+    if (!hasChange) return basePosMap;
+
+    for (const id of ids) {
       const base = basePosMap[id];
-      const state = currentSnapshot.nodeStates[id];
-      if (!state || state.shockIntensity < 0.01) {
+      const stress = getStress(id); // -1 to +1 (neg = relaxed, pos = stressed)
+
+      if (Math.abs(stress) < 0.02) {
         map[id] = base;
         continue;
       }
 
-      // Compute weighted center of activated neighbors
-      const nbs = neighbors.get(id) ?? [];
-      let cx = 0, cy = 0, cz = 0, totalWeight = 0;
-      for (const nbId of nbs) {
-        const nbState = currentSnapshot.nodeStates[nbId];
-        const nbPos = basePosMap[nbId];
-        if (!nbPos) continue;
-        const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
-        cx += nbPos[0] * w;
-        cy += nbPos[1] * w;
-        cz += nbPos[2] * w;
-        totalWeight += w;
-      }
+      if (stress > 0) {
+        // POSITIVE stress: pull toward weighted center of stressed neighbors
+        const nbs = neighbors.get(id) ?? [];
+        let cx = 0, cy = 0, cz = 0, totalWeight = 0;
+        for (const nbId of nbs) {
+          const nbStress = getStress(nbId);
+          const nbPos = basePosMap[nbId];
+          if (!nbPos) continue;
+          const w = nbStress > 0 ? 0.3 + nbStress * 0.7 : 0.1;
+          cx += nbPos[0] * w; cy += nbPos[1] * w; cz += nbPos[2] * w;
+          totalWeight += w;
+        }
 
-      if (totalWeight > 0) {
-        cx /= totalWeight;
-        cy /= totalWeight;
-        cz /= totalWeight;
-        const pull = state.shockIntensity * CONTRACTION;
-        map[id] = [
-          base[0] + (cx - base[0]) * pull,
-          base[1] + (cy - base[1]) * pull,
-          base[2] + (cz - base[2]) * pull,
-        ];
+        if (totalWeight > 0) {
+          cx /= totalWeight; cy /= totalWeight; cz /= totalWeight;
+          // Blend between neighbor-pull and centroid-pull
+          const targetX = cx * 0.7 + gx * 0.3;
+          const targetY = cy * 0.7 + gy * 0.3;
+          const targetZ = cz * 0.7 + gz * 0.3;
+          const pull = stress * PULL_STRENGTH;
+          map[id] = [
+            base[0] + (targetX - base[0]) * pull,
+            base[1] + (targetY - base[1]) * pull,
+            base[2] + (targetZ - base[2]) * pull,
+          ];
+        } else {
+          // No neighbors: pull toward centroid
+          const pull = stress * PULL_STRENGTH * 0.5;
+          map[id] = [
+            base[0] + (gx - base[0]) * pull,
+            base[1] + (gy - base[1]) * pull,
+            base[2] + (gz - base[2]) * pull,
+          ];
+        }
       } else {
-        map[id] = base;
+        // NEGATIVE stress (relaxation): push away from centroid
+        const push = Math.abs(stress) * PUSH_STRENGTH;
+        const dx = base[0] - gx;
+        const dy = base[1] - gy;
+        const dz = base[2] - gz;
+        map[id] = [
+          base[0] + dx * push,
+          base[1] + dy * push,
+          base[2] + dz * push,
+        ];
       }
     }
 
     return map;
-  }, [basePosMap, currentSnapshot, graphData.edges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 
@@ -814,7 +895,14 @@ export default function CausalDAG3D() {
                 isGreyedOut={greyedOutNodes.has(node.id) || disconnectedNodes.has(node.id)}
                 isAblated={ablatedNodeIds.includes(node.id)}
                 ablationMode={ablationMode}
-                epochState={currentSnapshot?.nodeStates[node.id]}
+                epochState={currentSnapshot?.nodeStates[node.id] ?? (
+                  !isLive ? {
+                    omegaComposite: node.omegaFragility.composite,
+                    omegaProfile: node.omegaFragility,
+                    shockIntensity: Math.max(0, Math.min(1, (node.omegaFragility.composite - 5) / 5)),
+                    isActivated: node.omegaFragility.composite > 7,
+                  } : undefined
+                )}
                 onDoubleClick={() => handleDoubleClick(node.id)}
                 onClick={() => {
                   if (ablationMode) {

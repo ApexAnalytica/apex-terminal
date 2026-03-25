@@ -412,6 +412,7 @@ export default function TimeDial() {
           return;
         }
 
+
         // Escape clears time window selection
         if (e.key === "Escape" && timelineSelection) {
           e.preventDefault();

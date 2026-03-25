@@ -105,7 +105,7 @@ export function computeLayout3D(
     .force("charge", forceManyBody().strength((d: any) =>
       connected.has(d.id) ? -100 : -30
     ))
-    .force("center", forceCenter(0, 0, 0))
+    .force("center", forceCenter(0, 0, 0).strength(0.15))
     .velocityDecay(0.4)
     .stop();
 

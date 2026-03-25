@@ -541,35 +541,35 @@ export default function CausalDAG3D() {
 
   // Dynamic positions: nodes move based on stress changes.
   // During REPLAY: contraction via shockIntensity (existing behavior).
-  // During HISTORICAL SCRUB: movement driven by omega delta from baseline —
-  //   nodes whose omega rises pull inward toward stressed neighbors,
-  //   nodes whose omega drops push outward (relaxation).
+  // During HISTORICAL SCRUB: nodes with HIGH omega pull toward their stressed
+  //   neighbors and the centroid; nodes with LOW omega push outward.
+  //   Movement is driven by absolute omega level (not delta), ensuring visible change.
   // During LIVE: return base positions (no movement).
   const posMap = useMemo(() => {
     // Live mode — no animation
     if (isLive && !currentSnapshot) return basePosMap;
 
-    const PULL_STRENGTH = 0.35;  // max inward contraction fraction
-    const PUSH_STRENGTH = 0.15;  // max outward relaxation fraction
     const map: Record<string, [number, number, number]> = {};
 
-    // Get stress for each node
+    // Get stress for each node (0 to 1 scale)
     const getStress = (nodeId: string): number => {
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[nodeId];
         return state ? state.shockIntensity : 0;
       }
-      // Historical mode: use delta from baseline
+      // Historical mode: use the temporal omega value directly
+      // High omega (>5) = stressed, pulls inward
+      // Low omega (<5) = relaxed, pushes outward
       const node = graphData.nodes.find((n) => n.id === nodeId);
       if (!node) return 0;
-      const baseline = baselineOmegaRef.current[nodeId] ?? node.omegaFragility.composite;
-      const delta = node.omegaFragility.composite - baseline;
-      // Delta range roughly -3 to +3, map to -1 to +1
-      return Math.max(-1, Math.min(1, delta / 3));
+      const omega = node.omegaFragility.composite;
+      // Map 0-10 omega to -1 to +1 stress (5 = neutral)
+      return Math.max(-1, Math.min(1, (omega - 5) / 4));
     };
 
-    // Compute network centroid (gravity center)
+    // Compute network centroid
     const ids = Object.keys(basePosMap);
+    if (ids.length === 0) return basePosMap;
     let gx = 0, gy = 0, gz = 0;
     for (const id of ids) {
       const p = basePosMap[id];
@@ -577,69 +577,86 @@ export default function CausalDAG3D() {
     }
     gx /= ids.length; gy /= ids.length; gz /= ids.length;
 
-    // Check if there's any meaningful change
-    let hasChange = !!currentSnapshot;
-    if (!hasChange) {
-      for (const id of ids) {
-        const s = Math.abs(getStress(id));
-        if (s > 0.05) { hasChange = true; break; }
-      }
+    // Compute per-domain centroids for more structured movement
+    const domainCentroids: Record<string, [number, number, number, number]> = {};
+    for (const node of graphData.nodes) {
+      const p = basePosMap[node.id];
+      if (!p) continue;
+      if (!domainCentroids[node.domain]) domainCentroids[node.domain] = [0, 0, 0, 0];
+      domainCentroids[node.domain][0] += p[0];
+      domainCentroids[node.domain][1] += p[1];
+      domainCentroids[node.domain][2] += p[2];
+      domainCentroids[node.domain][3] += 1;
     }
-    if (!hasChange) return basePosMap;
+    for (const d in domainCentroids) {
+      const c = domainCentroids[d];
+      c[0] /= c[3]; c[1] /= c[3]; c[2] /= c[3];
+    }
+
+    const PULL_MAX = 0.45;  // max inward contraction
+    const PUSH_MAX = 0.25;  // max outward expansion
 
     for (const id of ids) {
       const base = basePosMap[id];
-      const stress = getStress(id); // -1 to +1 (neg = relaxed, pos = stressed)
+      const stress = getStress(id);
 
-      if (Math.abs(stress) < 0.02) {
+      if (Math.abs(stress) < 0.05) {
         map[id] = base;
         continue;
       }
 
+      const node = graphData.nodes.find((n) => n.id === id);
+      const dc = node ? domainCentroids[node.domain] : null;
+
       if (stress > 0) {
-        // POSITIVE stress: pull toward weighted center of stressed neighbors
+        // HIGH OMEGA: pull toward stressed neighbors + domain centroid
         const nbs = neighbors.get(id) ?? [];
         let cx = 0, cy = 0, cz = 0, totalWeight = 0;
         for (const nbId of nbs) {
           const nbStress = getStress(nbId);
           const nbPos = basePosMap[nbId];
           if (!nbPos) continue;
-          const w = nbStress > 0 ? 0.3 + nbStress * 0.7 : 0.1;
+          const w = nbStress > 0 ? 0.4 + nbStress * 0.6 : 0.15;
           cx += nbPos[0] * w; cy += nbPos[1] * w; cz += nbPos[2] * w;
           totalWeight += w;
         }
 
+        // Target: blend of stressed neighbor center, domain centroid, global centroid
+        let tx: number, ty: number, tz: number;
         if (totalWeight > 0) {
           cx /= totalWeight; cy /= totalWeight; cz /= totalWeight;
-          // Blend between neighbor-pull and centroid-pull
-          const targetX = cx * 0.7 + gx * 0.3;
-          const targetY = cy * 0.7 + gy * 0.3;
-          const targetZ = cz * 0.7 + gz * 0.3;
-          const pull = stress * PULL_STRENGTH;
-          map[id] = [
-            base[0] + (targetX - base[0]) * pull,
-            base[1] + (targetY - base[1]) * pull,
-            base[2] + (targetZ - base[2]) * pull,
-          ];
+          tx = cx * 0.5 + (dc ? dc[0] : gx) * 0.3 + gx * 0.2;
+          ty = cy * 0.5 + (dc ? dc[1] : gy) * 0.3 + gy * 0.2;
+          tz = cz * 0.5 + (dc ? dc[2] : gz) * 0.3 + gz * 0.2;
         } else {
-          // No neighbors: pull toward centroid
-          const pull = stress * PULL_STRENGTH * 0.5;
-          map[id] = [
-            base[0] + (gx - base[0]) * pull,
-            base[1] + (gy - base[1]) * pull,
-            base[2] + (gz - base[2]) * pull,
-          ];
+          tx = (dc ? dc[0] : gx) * 0.6 + gx * 0.4;
+          ty = (dc ? dc[1] : gy) * 0.6 + gy * 0.4;
+          tz = (dc ? dc[2] : gz) * 0.6 + gz * 0.4;
         }
-      } else {
-        // NEGATIVE stress (relaxation): push away from centroid
-        const push = Math.abs(stress) * PUSH_STRENGTH;
-        const dx = base[0] - gx;
-        const dy = base[1] - gy;
-        const dz = base[2] - gz;
+
+        const pull = stress * PULL_MAX;
         map[id] = [
-          base[0] + dx * push,
-          base[1] + dy * push,
-          base[2] + dz * push,
+          base[0] + (tx - base[0]) * pull,
+          base[1] + (ty - base[1]) * pull,
+          base[2] + (tz - base[2]) * pull,
+        ];
+      } else {
+        // LOW OMEGA: push away from domain centroid (expansion/relaxation)
+        const push = Math.abs(stress) * PUSH_MAX;
+        const refX = dc ? dc[0] : gx;
+        const refY = dc ? dc[1] : gy;
+        const refZ = dc ? dc[2] : gz;
+        const dx = base[0] - refX;
+        const dy = base[1] - refY;
+        const dz = base[2] - refZ;
+        // Ensure minimum displacement so nodes always move visibly
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+        const minDisp = 3;
+        const scale = Math.max(1, minDisp / dist);
+        map[id] = [
+          base[0] + dx * scale * push,
+          base[1] + dy * scale * push,
+          base[2] + dz * scale * push,
         ];
       }
     }

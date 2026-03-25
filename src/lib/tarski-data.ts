@@ -13,6 +13,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "∀e∈Edges, Lag(e) ≥ 0",
     description: "Effects cannot precede causes — causal edges must have non-negative temporal lag",
     plainText: "Causes must happen before their effects — no time travel allowed.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Financial Contagion", "Sovereign Risk", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
+    checksFor: "Reversed causality (negative-weight edges)",
+    diagramHint: "A ──[t<0]──> B  ✗",
   },
   {
     id: "A-02",
@@ -21,6 +24,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "Σw_in(v) ≥ Σw_out(v) · (1 − loss)",
     description: "Throughput entering a node must account for outbound flow — mass/energy balance must hold across processing hubs",
     plainText: "What goes into a node must account for what comes out — nothing appears from nowhere.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
+    checksFor: "Nodes outputting more than they receive",
+    diagramHint: "→[2]→ NODE →[5]→  ✗  (out > in)",
   },
   {
     id: "A-03",
@@ -29,6 +35,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "∄ path v→⋯→v",
     description: "No directed cycles in the causal structure — feedback loops must be broken by temporal lag",
     plainText: "The causal chain can't loop back on itself — A can't cause B if B already caused A.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion", "Sovereign Risk"],
+    checksFor: "Circular causal loops",
+    diagramHint: "A → B → C → A  ✗  (cycle)",
   },
   {
     id: "A-04",
@@ -37,6 +46,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "Flow(chokepoint) ≤ Capacity(chokepoint)",
     description: "Maritime chokepoints (Strait of Hormuz) impose hard throughput limits on all downstream flows",
     plainText: "Chokepoints like the Strait of Hormuz have a maximum capacity — you can't push more through than they can handle.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
+    checksFor: "Chokepoint nodes exceeding flow capacity",
+    diagramHint: "━━▶ [STRAIT] ▶━━  cap exceeded",
   },
   {
     id: "A-05",
@@ -45,6 +57,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "InDegree(v)=1 ∧ C(v)≥7 → FRAGILE",
     description: "A node with only one inbound supplier and high cascade load is structurally fragile — no redundancy path exists",
     plainText: "If a node depends on just one supplier and carries heavy load, it's dangerously fragile.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
+    checksFor: "Nodes with no supply redundancy",
+    diagramHint: "→ [SINGLE] → (no backup path)",
   },
 
   // Level 1 — Regulatory / Geopolitical (red alert, manual override)
@@ -55,6 +70,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "J(v) ≥ 8 ∧ w(e) ≥ 0.7 → FLAG",
     description: "High-weight edges connected to nodes with extreme jurisdictional hazard (sanctions, conflict zones, export controls) require manual verification",
     plainText: "High-impact connections to sanctioned or conflict-zone nodes need manual review.",
+    relevantDomains: ["Sovereign Risk", "Financial Contagion", "Saudi Aramco Energy", "QatarEnergy LNG"],
+    checksFor: "Heavy links to sanctioned / conflict-zone nodes",
+    diagramHint: "━━▶ [SANCTIONED ⚠] ▶━━",
   },
   {
     id: "R-02",
@@ -63,6 +81,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "FM_trigger → suspend(obligations)",
     description: "Nodes in conflict-adjacent jurisdictions with high restoration latency may face force majeure contract suspension",
     plainText: "Nodes in war-adjacent regions may have contracts suspended due to force majeure.",
+    relevantDomains: ["Sovereign Risk", "Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer"],
+    checksFor: "Contract suspension risk in conflict zones",
+    diagramHint: "[CONFLICT ZONE] → obligations suspended",
   },
   {
     id: "R-03",
@@ -71,6 +92,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "∀ export_path(v) ∋ chokepoint → RESTRICTED",
     description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk",
     plainText: "If every export route goes through one chokepoint, that's a concentration risk.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
+    checksFor: "All exports routing through single chokepoint",
+    diagramHint: "PROD ──▶ [CHOKE] ──▶ MARKET (no alt route)",
   },
   {
     id: "R-04",
@@ -79,6 +103,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "domain(source) ≠ domain(target) ∧ conf < 0.7 → UNVERIFIED",
     description: "Cross-domain edges with low confidence may represent assumed rather than verified causal relationships",
     plainText: "Cross-domain links with low confidence might be assumed rather than proven.",
+    relevantDomains: ["Financial Contagion", "Sovereign Risk", "Supply Chain Food Security"],
+    checksFor: "Weak cross-domain causal assumptions",
+    diagramHint: "[DOMAIN A] ··?··> [DOMAIN B]  (conf < 70%)",
   },
 
   // Level 2 — Heuristic (flagged as anomaly)
@@ -89,6 +116,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "ΩF(v) > 9.0 → ANOMALY",
     description: "Nodes with composite fragility exceeding 9.0 are at saturation — any additional shock may trigger cascade failure",
     plainText: "A node's fragility score is maxed out — any additional shock could break it.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate"],
+    checksFor: "Maxed-out fragility nodes",
+    diagramHint: "[NODE] Ω=9.4  ▓▓▓▓▓▓▓▓▓░ saturated",
   },
   {
     id: "H-02",
@@ -97,8 +127,111 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "C(v) ≥ 9 ∧ OutDegree(v) ≥ 3 → AMPLIFIER",
     description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly",
     plainText: "A highly loaded node with many outbound connections amplifies disruption exponentially.",
+    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion"],
+    checksFor: "Hub nodes that amplify cascading failures",
+    diagramHint: "→ [HUB C=9] →→→  (amplifier)",
   },
 ];
+
+// ─── Axiom Relevance Scoring ──────────────────────────────────────
+// Ranks axioms by relevance to the currently active graph domains
+
+export interface ScoredAxiom {
+  axiom: TarskiAxiom;
+  relevanceScore: number;    // 0-1, how relevant to current selection
+  matchedDomains: string[];  // which active domains triggered relevance
+  reason: string;            // human-readable why it's relevant
+}
+
+/**
+ * Score and rank axioms by relevance to the provided graph.
+ * Considers: which domains are present, graph structure (chokepoints, hubs, cross-domain edges).
+ */
+export function scoreAxiomRelevance(graph: CausalGraph): ScoredAxiom[] {
+  // Gather active domains from graph nodes
+  const activeDomains = new Set(graph.nodes.map((n) => n.domain));
+
+  // Structural facts about the current graph
+  const hasChokepoints = graph.nodes.some(
+    (n) => n.label.toLowerCase().includes("strait") || n.label.toLowerCase().includes("chokepoint")
+  );
+  const hasCrossDomainEdges = graph.edges.some((e) => {
+    const src = graph.nodes.find((n) => n.id === e.source);
+    const tgt = graph.nodes.find((n) => n.id === e.target);
+    return src && tgt && src.domain !== tgt.domain;
+  });
+  const hasHighOmegaNodes = graph.nodes.some((n) => n.omegaFragility.composite > 7);
+  const hasHighCascadeHubs = graph.nodes.some((n) => {
+    const outDegree = graph.edges.filter((e) => e.source === n.id).length;
+    return n.omegaFragility.cascadeLoad >= 7 && outDegree >= 3;
+  });
+
+  return AXIOM_LIBRARY.map((axiom) => {
+    let score = 0;
+    const matchedDomains: string[] = [];
+    let reason = "";
+
+    // Domain overlap scoring
+    const axiomDomains = axiom.relevantDomains ?? [];
+    for (const ad of axiomDomains) {
+      if (activeDomains.has(ad)) {
+        matchedDomains.push(ad);
+      }
+    }
+    const domainOverlap = axiomDomains.length > 0
+      ? matchedDomains.length / axiomDomains.length
+      : 0;
+    score += domainOverlap * 0.5; // up to 0.5 from domain match
+
+    // Structural relevance bonus
+    switch (axiom.id) {
+      case "A-04": // Chokepoint
+      case "R-03": // Export Route Monopoly
+        if (hasChokepoints) { score += 0.3; reason = "Chokepoint nodes detected in graph"; }
+        break;
+      case "R-04": // Cross-Domain
+        if (hasCrossDomainEdges) { score += 0.3; reason = "Cross-domain links present"; }
+        break;
+      case "H-01": // Capacity Saturation
+        if (hasHighOmegaNodes) { score += 0.3; reason = "High-fragility nodes detected (Ω > 7)"; }
+        break;
+      case "H-02": // Cascade Amplification
+        if (hasHighCascadeHubs) { score += 0.3; reason = "Hub nodes with high cascade load found"; }
+        break;
+      case "A-05": // Single-Source
+        if (graph.nodes.some((n) => {
+          const inDeg = graph.edges.filter((e) => e.target === n.id).length;
+          return inDeg === 1 && n.omegaFragility.cascadeLoad >= 5;
+        })) {
+          score += 0.3;
+          reason = "Single-supplier nodes detected";
+        }
+        break;
+      case "R-01": // Jurisdictional
+      case "R-02": // Force Majeure
+        if (graph.nodes.some((n) => n.omegaFragility.jurisdictionalHazard >= 6)) {
+          score += 0.3;
+          reason = "High jurisdictional hazard nodes present";
+        }
+        break;
+    }
+
+    // L0 axioms always get a base boost — they're physical laws
+    if (axiom.level === 0) score += 0.15;
+
+    // Clamp
+    score = Math.min(1, score);
+
+    if (!reason && matchedDomains.length > 0) {
+      reason = `Applies to ${matchedDomains.length} active domain${matchedDomains.length > 1 ? "s" : ""}`;
+    }
+    if (!reason) {
+      reason = "Low relevance to current selection";
+    }
+
+    return { axiom, relevanceScore: score, matchedDomains, reason };
+  }).sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
 
 // ─── Dynamic Tarski Validation Engine ─────────────────────────────
 // Runs axiom checks against real graph data and returns flagged edges/nodes
@@ -110,7 +243,9 @@ export interface TarskiValidationReport {
   totalViolations: number;
 }
 
-export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport {
+export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<string>): TarskiValidationReport {
+  // If a subset is provided, only run those axioms
+  const isEnabled = (id: string) => !enabledAxiomIds || enabledAxiomIds.has(id);
   const inconsistentEdgeIds = new Set<string>();
   const restrictedNodeIds = new Set<string>();
   const proofTraces: ProofTrace[] = [];
@@ -134,7 +269,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── A-01: Temporal Priority ──
   // Flag edges with negative weight (reversed causality)
-  for (const edge of graph.edges) {
+  if (isEnabled("A-01")) for (const edge of graph.edges) {
     if (edge.weight < 0) {
       inconsistentEdgeIds.add(edge.id);
       proofTraces.push({
@@ -149,7 +284,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── A-02: Flow Conservation ──
   // Flag nodes where total outbound weight significantly exceeds total inbound
-  for (const node of graph.nodes) {
+  if (isEnabled("A-02")) for (const node of graph.nodes) {
     const inEdges = inboundEdges.get(node.id) || [];
     const outEdges = outboundEdges.get(node.id) || [];
     if (inEdges.length > 0 && outEdges.length > 0) {
@@ -181,7 +316,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
     n.label.toLowerCase().includes("strait of hormuz") ||
     n.label.toLowerCase().includes("chokepoint")
   );
-  for (const cp of chokepoints) {
+  if (isEnabled("A-04")) for (const cp of chokepoints) {
     const inEdges = inboundEdges.get(cp.id) || [];
     const outEdges = outboundEdges.get(cp.id) || [];
     const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
@@ -206,7 +341,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── A-05: Single-Source Fragility ──
   // Nodes with exactly 1 inbound edge and cascade load ≥ 7
-  for (const node of graph.nodes) {
+  if (isEnabled("A-05")) for (const node of graph.nodes) {
     const inEdges = inboundEdges.get(node.id) || [];
     if (inEdges.length === 1 && node.omegaFragility.cascadeLoad >= 7) {
       restrictedNodeIds.add(node.id);
@@ -223,7 +358,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── R-01: Jurisdictional Concentration ──
   // High-weight edges connected to nodes with jurisdictional hazard ≥ 8
-  for (const edge of graph.edges) {
+  if (isEnabled("R-01")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
     if (sourceNode && targetNode) {
@@ -247,7 +382,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
   // ── R-03: Export Route Monopoly ──
   // Production nodes where all outbound edges eventually reach a chokepoint
   const chokepointIds = new Set(chokepoints.map((n) => n.id));
-  for (const node of graph.nodes) {
+  if (isEnabled("R-03")) for (const node of graph.nodes) {
     if (node.category === "manufacturing" || node.category === "energy") {
       const outEdges = outboundEdges.get(node.id) || [];
       const reachesChokepoint = outEdges.some((e) => chokepointIds.has(e.target));
@@ -259,7 +394,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── R-04: Cross-Domain Low-Confidence ──
   // Edges connecting nodes from different domains with confidence < 0.7
-  for (const edge of graph.edges) {
+  if (isEnabled("R-04")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
     if (sourceNode && targetNode) {
@@ -278,7 +413,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── H-01: Capacity Saturation ──
   // Nodes with ΩF > 9.0
-  for (const node of graph.nodes) {
+  if (isEnabled("H-01")) for (const node of graph.nodes) {
     if (node.omegaFragility.composite > 9.0) {
       restrictedNodeIds.add(node.id);
     }
@@ -286,7 +421,7 @@ export function runTarskiValidation(graph: CausalGraph): TarskiValidationReport 
 
   // ── H-02: Cascade Amplification ──
   // Nodes with cascade load ≥ 9 and outDegree ≥ 3
-  for (const node of graph.nodes) {
+  if (isEnabled("H-02")) for (const node of graph.nodes) {
     const outEdges = outboundEdges.get(node.id) || [];
     if (node.omegaFragility.cascadeLoad >= 9 && outEdges.length >= 3) {
       restrictedNodeIds.add(node.id);

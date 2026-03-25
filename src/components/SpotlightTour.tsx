@@ -66,9 +66,9 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "tarski-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "TARSKI ENGINE \u2014 TRUTH VERIFICATION",
+    title: "TARSKI ENGINE \u2014 CONSTRAINT VERIFICATION",
     description:
-      "The Tarski Engine verifies every edge against a library of physical and regulatory axioms. Toggle between RAW (all edges) and VERIFIED (only edges that pass). Axioms are tiered: L0 = physics (immutable laws like thermodynamics), L1 = regulatory (sanctions, export controls), L2 = heuristic (statistical anomaly flags). Expand any edge to see its proof trace \u2014 which axioms were checked, which failed, and the solver used (SMT, interval arithmetic, or constraint propagation).",
+      "The Tarski Engine verifies your causal graph against domain-aware physical and regulatory constraints. Constraints are automatically ranked by relevance to your selected domains \u2014 energy chokepoints surface for energy domains, jurisdictional checks for sovereign risk, etc. Toggle individual constraints on/off, then hit VERIFY to run. Three tiers: PHYSICAL (immutable laws), REGULATORY (sanctions, export controls), and HEURISTIC (anomaly flags). Results show exactly which edges violated which constraints, with clickable proof traces.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("tarski"),
   },

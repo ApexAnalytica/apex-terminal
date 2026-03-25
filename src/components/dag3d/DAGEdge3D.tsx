@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Billboard, Text, Line } from "@react-three/drei";
 import * as THREE from "three";
@@ -29,8 +29,8 @@ interface DAGEdge3DProps {
 /**
  * Edge color — matches 2D ReactFlow edge styling:
  *   directed  → cyan (#00e5ff)  — solid line
- *   temporal  → amber (#ffab00) — animated dashed line
- *   confounded → orange (#ff6d00) — static dashed line
+ *   temporal  → amber (#ffab00) — solid line + animated particle
+ *   confounded → orange (#ff6d00) — dashed line
  *   inconsistent → red (#ff1744) — overrides type color
  */
 function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string {
@@ -63,7 +63,8 @@ function DAGEdge3DInner({
   epochState,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
-  const dashOffsetRef = useRef(0);
+  const particleRef = useRef<THREE.Mesh>(null);
+  const particleT = useRef(Math.random()); // stagger start positions
 
   // Color: match 2D exactly
   const baseColor = getEdgeColor(edge, isVerifiedInconsistent);
@@ -86,27 +87,27 @@ function DAGEdge3DInner({
 
   const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
 
-  const { curvePoints, midpoint } = useMemo(() => {
+  const { curvePoints, midpoint, curve } = useMemo(() => {
     const src = new THREE.Vector3(...sourcePos);
     const tgt = new THREE.Vector3(...targetPos);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
     mid.add(curveOffset);
 
-    const curve = new THREE.QuadraticBezierCurve3(src, mid, tgt);
-    const pts = curve.getPoints(32);
-    const midPt = curve.getPoint(0.5);
-    return { curvePoints: pts.map(p => [p.x, p.y, p.z] as [number, number, number]), midpoint: midPt };
+    const c = new THREE.QuadraticBezierCurve3(src, mid, tgt);
+    const pts = c.getPoints(32);
+    const midPt = c.getPoint(0.5);
+    return {
+      curvePoints: pts.map(p => [p.x, p.y, p.z] as [number, number, number]),
+      midpoint: midPt,
+      curve: c,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posKey, curveOffset]);
 
-  // Dash configuration — matching 2D behavior
+  // Edge type determines rendering style
   const isTemporalFlow = edge.type === "temporal";
-  const useDashed =
-    isAblated || isSevered || edge.type === "confounded" ||
-    isVerifiedInconsistent || isTemporalFlow;
-
-  const dashSize = isTemporalFlow ? 0.6 : (isAblated || isSevered) ? 0.6 : 0.5;
-  const gapSize = isTemporalFlow ? 0.4 : (isAblated || isSevered) ? 0.4 : 0.3;
+  const isDashed = edge.type === "confounded" || isVerifiedInconsistent ||
+    isAblated || isSevered;
 
   // Selection-aware opacity
   const selectionDim = anyNodeSelected && !isConnectedToSelected;
@@ -123,15 +124,17 @@ function DAGEdge3DInner({
     : isConnectedToSelected ? 1.0
     : Math.min(1, baseOpacity);
 
-  // Animate dash offset for temporal edges
+  // Should the particle flow animate?
   const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
     (isTemporalFlow || propSignal > 0.3);
-  const animSpeed = isTemporalFlow ? 1.5 : 1.0 + propSignal * 1.5;
+  const animSpeed = isTemporalFlow ? 0.4 : 0.3 + propSignal * 0.5;
 
-  // Use useFrame to update dashOffset on the Line's material
-  useFrame(() => {
-    if (!shouldAnimate || !useDashed) return;
-    dashOffsetRef.current -= 0.015 * animSpeed;
+  // Animate particle along curve for temporal/causal edges
+  useFrame((_, delta) => {
+    if (!particleRef.current || !shouldAnimate) return;
+    particleT.current = (particleT.current + delta * animSpeed) % 1;
+    const pos = curve.getPoint(particleT.current);
+    particleRef.current.position.set(pos.x, pos.y, pos.z);
   });
 
   return (
@@ -153,26 +156,33 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
-      {/* Edge line using drei's Line component for reliable rendering */}
-      {useDashed ? (
-        <DashedEdgeLine
-          points={curvePoints}
-          color={color}
-          lineWidth={Math.max(1, lineWidth)}
-          opacity={lineOpacity}
-          dashSize={dashSize}
-          gapSize={gapSize}
-          shouldAnimate={shouldAnimate}
-          animSpeed={animSpeed}
-        />
-      ) : (
-        <Line
-          points={curvePoints}
-          color={color}
-          lineWidth={Math.max(1, lineWidth)}
-          transparent
-          opacity={lineOpacity}
-        />
+      {/* Edge line — using drei Line for reliable rendering:
+          directed = solid cyan
+          temporal = solid amber (+ animated particle)
+          confounded = dashed orange
+          inconsistent = dashed red */}
+      <Line
+        points={curvePoints}
+        color={color}
+        lineWidth={Math.max(1, lineWidth)}
+        transparent
+        opacity={lineOpacity}
+        dashed={isDashed}
+        dashSize={isDashed ? 0.5 : undefined}
+        gapSize={isDashed ? 0.3 : undefined}
+      />
+
+      {/* Animated flowing particle for temporal/causal edges —
+          small glowing sphere that travels source → target along the curve */}
+      {shouldAnimate && (
+        <mesh ref={particleRef}>
+          <sphereGeometry args={[0.25, 8, 8]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={lineOpacity * 0.9}
+          />
+        </mesh>
       )}
 
       {/* Hover: physical mechanism label */}
@@ -204,105 +214,6 @@ function DAGEdge3DInner({
       )}
     </group>
   );
-}
-
-/**
- * Dashed line with animated dashOffset — uses Three.js Line + LineDashedMaterial
- * imperatively so computeLineDistances() and dashOffset animation work correctly.
- */
-function DashedEdgeLine({
-  points,
-  color,
-  lineWidth,
-  opacity,
-  dashSize,
-  gapSize,
-  shouldAnimate,
-  animSpeed,
-}: {
-  points: [number, number, number][];
-  color: string;
-  lineWidth: number;
-  opacity: number;
-  dashSize: number;
-  gapSize: number;
-  shouldAnimate: boolean;
-  animSpeed: number;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const lineObjRef = useRef<THREE.Line | null>(null);
-  const matRef = useRef<THREE.LineDashedMaterial | null>(null);
-
-  const dashOffsetUniform = useRef({ value: 0 });
-
-  // Build line imperatively so computeLineDistances works
-  useEffect(() => {
-    if (!groupRef.current) return;
-
-    // Clean up previous
-    if (lineObjRef.current) {
-      groupRef.current.remove(lineObjRef.current);
-      lineObjRef.current.geometry.dispose();
-      (lineObjRef.current.material as THREE.Material).dispose();
-      lineObjRef.current = null;
-      matRef.current = null;
-    }
-
-    const vecs = points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
-    const geometry = new THREE.BufferGeometry().setFromPoints(vecs);
-    const material = new THREE.LineDashedMaterial({
-      color,
-      transparent: true,
-      opacity,
-      dashSize,
-      gapSize,
-    });
-
-    // Inject dashOffset uniform into the shader for animation
-    material.onBeforeCompile = (shader) => {
-      shader.uniforms.dashOffset = dashOffsetUniform.current;
-      // Add offset to the vLineDistance used for dash calculation
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <clipping_planes_fragment>',
-        '#include <clipping_planes_fragment>\nfloat dashOffsetVal = dashOffset;'
-      );
-      // Offset the line distance for animated flow
-      shader.fragmentShader = shader.fragmentShader.replace(
-        /vLineDistance/g,
-        '(vLineDistance + dashOffset)'
-      );
-    };
-
-    const line = new THREE.Line(geometry, material);
-    line.computeLineDistances(); // Required for dashes to render
-    lineObjRef.current = line;
-    matRef.current = material;
-    groupRef.current.add(line);
-
-    return () => {
-      if (lineObjRef.current && groupRef.current) {
-        groupRef.current.remove(lineObjRef.current);
-      }
-      geometry.dispose();
-      material.dispose();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points, dashSize, gapSize]);
-
-  // Update color/opacity reactively without recreating the line
-  useEffect(() => {
-    if (!matRef.current) return;
-    matRef.current.color.set(color);
-    matRef.current.opacity = opacity;
-  }, [color, opacity]);
-
-  // Animate dash offset via shader uniform
-  useFrame(() => {
-    if (!shouldAnimate) return;
-    dashOffsetUniform.current.value -= 0.015 * animSpeed;
-  });
-
-  return <group ref={groupRef} />;
 }
 
 const DAGEdge3D = React.memo(DAGEdge3DInner);

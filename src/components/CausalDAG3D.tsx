@@ -236,11 +236,11 @@ function CameraRig({
 
   // Hide <Html> labels during active orbit to prevent DOM overhead
   const onOrbitStart = useCallback(() => {
-    orbitActiveRef.current = true;
+    orbitActiveRef.set(true);
   }, []);
   const onOrbitEnd = useCallback(() => {
     // Small delay to let damping settle before re-showing labels
-    setTimeout(() => { orbitActiveRef.current = false; }, 150);
+    setTimeout(() => { orbitActiveRef.set(false); }, 150);
   }, []);
 
   return (

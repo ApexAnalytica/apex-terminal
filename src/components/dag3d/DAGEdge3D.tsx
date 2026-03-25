@@ -233,6 +233,8 @@ function DashedEdgeLine({
   const lineObjRef = useRef<THREE.Line | null>(null);
   const matRef = useRef<THREE.LineDashedMaterial | null>(null);
 
+  const dashOffsetUniform = useRef({ value: 0 });
+
   // Build line imperatively so computeLineDistances works
   useEffect(() => {
     if (!groupRef.current) return;
@@ -255,6 +257,21 @@ function DashedEdgeLine({
       dashSize,
       gapSize,
     });
+
+    // Inject dashOffset uniform into the shader for animation
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.dashOffset = dashOffsetUniform.current;
+      // Add offset to the vLineDistance used for dash calculation
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\nfloat dashOffsetVal = dashOffset;'
+      );
+      // Offset the line distance for animated flow
+      shader.fragmentShader = shader.fragmentShader.replace(
+        /vLineDistance/g,
+        '(vLineDistance + dashOffset)'
+      );
+    };
 
     const line = new THREE.Line(geometry, material);
     line.computeLineDistances(); // Required for dashes to render
@@ -279,11 +296,10 @@ function DashedEdgeLine({
     matRef.current.opacity = opacity;
   }, [color, opacity]);
 
-  // Animate dash offset
+  // Animate dash offset via shader uniform
   useFrame(() => {
-    if (!matRef.current || !shouldAnimate) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (matRef.current as any).dashOffset -= 0.015 * animSpeed;
+    if (!shouldAnimate) return;
+    dashOffsetUniform.current.value -= 0.015 * animSpeed;
   });
 
   return <group ref={groupRef} />;

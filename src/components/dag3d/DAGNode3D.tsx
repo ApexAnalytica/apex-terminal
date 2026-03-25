@@ -7,10 +7,25 @@ import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
 
-// Shared flag: set by CameraRig when orbit controls are actively dragging.
-// Nodes skip rendering <Html> labels during rotation to prevent DOM overhead
-// that causes GPU timeout and black screen with 100+ nodes.
-export const orbitActiveRef = { current: false };
+// Shared reactive flag: set by CameraRig when orbit controls are actively dragging.
+// Uses a subscription pattern so nodes re-render when orbiting starts/stops.
+const orbitListeners = new Set<(active: boolean) => void>();
+export const orbitActiveRef = {
+  current: false,
+  set(val: boolean) {
+    if (this.current === val) return;
+    this.current = val;
+    orbitListeners.forEach(fn => fn(val));
+  },
+};
+export function useOrbitActive(): boolean {
+  const [active, setActive] = React.useState(false);
+  React.useEffect(() => {
+    orbitListeners.add(setActive);
+    return () => { orbitListeners.delete(setActive); };
+  }, []);
+  return active;
+}
 
 interface DAGNode3DProps {
   node: CausalNode;
@@ -58,6 +73,7 @@ function DAGNode3DInner({
   onClick,
   onDoubleClick,
 }: DAGNode3DProps) {
+  const isOrbiting = useOrbitActive();
   const meshRef = useRef<THREE.Mesh>(null);
   const selectionRingRef = useRef<THREE.Mesh>(null);
   const birthProgress = useRef(isConsequence ? 0 : 1);
@@ -191,7 +207,7 @@ function DAGNode3DInner({
 
       {/* Label — hidden during active orbit rotation to prevent DOM overhead
            that causes GPU timeout with 100+ nodes */}
-      {!dimmed && !orbitActiveRef.current && (
+      {!dimmed && !isOrbiting && (
         <Html
           position={[0, size * 1.6 + 0.6, 0]}
           center

@@ -167,6 +167,9 @@ export default function CausalDAGMap() {
     features: edgeGeoJSON.features.filter(f => f.properties?.isDashed),
   }), [edgeGeoJSON]);
 
+  // Note: MapLibre doesn't support animated dash offsets natively.
+  // Dashed lines are static but use the same color scheme as 2D/3D.
+
   // Click handler
   const onNodeClick = useCallback(
     (e: MapLayerMouseEvent) => {

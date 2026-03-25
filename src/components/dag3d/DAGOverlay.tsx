@@ -292,9 +292,14 @@ export default function DAGOverlay() {
         </div>
       </div>
 
-      {/* Bottom Right: Control hints */}
+      {/* Bottom Right: Control hints + layout legend */}
       {viewMode === "3d" && (
-        <div className="absolute bottom-3 right-3">
+        <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1">
+          <div className="text-[8px] font-mono text-text-muted/40 flex gap-3">
+            <span>NODE SIZE = EIGENVECTOR CENTRALITY</span>
+            <span>|</span>
+            <span>DISTANCE = EDGE WEIGHT (CORRELATION)</span>
+          </div>
           <div className="text-[8px] font-mono text-text-muted/50">
             DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | SHIFT+DRAG: SELECT | DOUBLE-CLICK: FOCUS | ESC: DESELECT
           </div>

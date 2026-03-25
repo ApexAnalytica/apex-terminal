@@ -6,6 +6,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+import { NodeMetrics } from "@/lib/graph-layout";
 
 // Shared reactive flag: set by CameraRig when orbit controls are actively dragging.
 // Uses a subscription pattern so nodes re-render when orbiting starts/stops.
@@ -39,6 +40,7 @@ interface DAGNode3DProps {
   isGreyedOut?: boolean;
   isAblated?: boolean;
   ablationMode?: boolean;
+  metrics?: NodeMetrics;
   epochState?: NodeEpochState;
   onClick?: () => void;
   onDoubleClick?: () => void;
@@ -57,6 +59,13 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
+function getCentralityLabel(ec: number): string {
+  if (ec >= 0.8) return "CRITICAL HUB";
+  if (ec >= 0.5) return "HIGH INFLUENCE";
+  if (ec >= 0.2) return "MODERATE";
+  return "PERIPHERAL";
+}
+
 function DAGNode3DInner({
   node,
   position,
@@ -69,6 +78,7 @@ function DAGNode3DInner({
   isGreyedOut = false,
   isAblated = false,
   ablationMode = false,
+  metrics,
   epochState,
   onClick,
   onDoubleClick,
@@ -82,8 +92,12 @@ function DAGNode3DInner({
   const baseColor = node.datasetColor ?? getCategoryColor(node.category);
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
-  const t = composite / 10;
-  const size = 0.15 + Math.pow(t, 2.2) * 0.55; // range 0.15–0.7, compact to reduce overlap
+
+  // Node size driven by EIGENVECTOR CENTRALITY (network importance)
+  // Higher centrality = larger node (more influential in the network)
+  const ec = metrics?.eigenvectorCentrality ?? 0.5;
+  const size = 0.2 + ec * 0.55; // range 0.2–0.75
+
   const glowColor = isConsequence ? "#ff6d00" : getOmegaGlowColor(composite);
   const shockGlow = epochState ? epochState.shockIntensity : 0;
 
@@ -94,7 +108,7 @@ function DAGNode3DInner({
   useFrame((_, delta) => {
     // Birth animation for consequence nodes
     if (birthProgress.current < 1) {
-      birthProgress.current = Math.min(1, birthProgress.current + delta * 2); // ~500ms
+      birthProgress.current = Math.min(1, birthProgress.current + delta * 2);
     }
 
     // Smooth interpolation toward epoch target
@@ -246,7 +260,7 @@ function DAGNode3DInner({
         </Html>
       )}
 
-      {/* Hover Detail Card */}
+      {/* Hover Detail Card — shows ΩF profile + network metrics */}
       {hovered && !dimmed && (
         <Html
           position={[0, size + (isSelected ? 3.5 : 2.5), 0]}
@@ -262,7 +276,7 @@ function DAGNode3DInner({
               fontFamily: "monospace",
               fontSize: "11px",
               color: "#c8cad0",
-              width: "260px",
+              width: "280px",
               backdropFilter: "blur(8px)",
             }}
           >
@@ -324,6 +338,44 @@ function DAGNode3DInner({
                 </div>
               ))}
             </div>
+
+            {/* Network Position Metrics — explains SIZE and DISTANCE */}
+            {metrics && (
+              <div style={{
+                borderTop: "1px solid rgba(90, 94, 114, 0.2)",
+                paddingTop: "8px",
+                marginBottom: "8px",
+              }}>
+                <div style={{ fontSize: "8px", color: "#5a5e72", marginBottom: "6px", letterSpacing: "1px" }}>
+                  NETWORK POSITION
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
+                  <div style={{ fontSize: "9px" }}>
+                    <span style={{ color: "#5a5e72" }}>CENTRALITY: </span>
+                    <span style={{ color: ec >= 0.5 ? "#ffab00" : "#c8cad0", fontWeight: ec >= 0.5 ? "bold" : "normal" }}>
+                      {(ec * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "9px" }}>
+                    <span style={{ color: "#5a5e72" }}>DEGREE: </span>
+                    <span style={{ color: "#c8cad0" }}>{metrics.degree}</span>
+                  </div>
+                  <div style={{ fontSize: "9px" }}>
+                    <span style={{ color: "#5a5e72" }}>BETWEENNESS: </span>
+                    <span style={{ color: metrics.betweennessCentrality >= 0.3 ? "#00e5ff" : "#c8cad0" }}>
+                      {(metrics.betweennessCentrality * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "9px" }}>
+                    <span style={{ color: "#5a5e72" }}>CLUSTERING: </span>
+                    <span style={{ color: "#c8cad0" }}>{metrics.clusteringCoeff.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: "8px", color: "#5a5e72", marginTop: "5px", fontStyle: "italic" }}>
+                  {getCentralityLabel(ec)} — size ∝ eigenvector centrality
+                </div>
+              </div>
+            )}
 
             {/* Metadata */}
             <div style={{ borderTop: "1px solid rgba(90, 94, 114, 0.2)", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "3px" }}>

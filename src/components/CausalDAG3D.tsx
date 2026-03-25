@@ -6,7 +6,7 @@ import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { computeLayout3D, NodePosition } from "@/lib/graph-layout";
+import { computeLayout3D, computeNetworkMetrics, NodePosition, NodeMetrics } from "@/lib/graph-layout";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
@@ -504,6 +504,13 @@ export default function CausalDAG3D() {
     return map;
   }, [positions]);
 
+  // Compute network metrics (eigenvector centrality, degree, betweenness, clustering)
+  // These drive node sizing and hover tooltip information
+  const networkMetrics = useMemo(() => {
+    return computeNetworkMetrics(graphData.nodes, graphData.edges);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+
   // Build adjacency for neighbor lookup (shared by both replay & historical contraction)
   const neighbors = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -895,6 +902,7 @@ export default function CausalDAG3D() {
                 isGreyedOut={greyedOutNodes.has(node.id) || disconnectedNodes.has(node.id)}
                 isAblated={ablatedNodeIds.includes(node.id)}
                 ablationMode={ablationMode}
+                metrics={networkMetrics[node.id]}
                 epochState={currentSnapshot?.nodeStates[node.id] ?? (
                   !isLive ? {
                     omegaComposite: node.omegaFragility.composite,

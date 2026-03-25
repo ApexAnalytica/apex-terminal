@@ -21,6 +21,7 @@ interface LayoutNode {
 interface LayoutLink {
   source: string | LayoutNode;
   target: string | LayoutNode;
+  weight: number;
   index?: number;
 }
 
@@ -29,6 +30,15 @@ export interface NodePosition {
   x: number;
   y: number;
   z: number;
+}
+
+/** Per-node network metrics computed during layout */
+export interface NodeMetrics {
+  degree: number;              // number of connections
+  eigenvectorCentrality: number; // 0-1 normalized influence score
+  betweennessCentrality: number; // 0-1 normalized bridge score
+  clusteringCoeff: number;     // 0-1 local clustering coefficient
+  avgEdgeWeight: number;       // average weight of connected edges
 }
 
 // Domain z-layer targets (before normalization)
@@ -52,6 +62,146 @@ const DOMAIN_Z_OFFSETS: Record<string, number> = {
 
 // Target bounding box half-extents for the final layout
 const BOUNDS = { x: 55, y: 40, z: 35 };
+
+/**
+ * Compute per-node network metrics from the graph topology.
+ * These drive node sizing (eigenvector centrality) and are shown in hover tooltips.
+ */
+export function computeNetworkMetrics(
+  nodes: CausalNode[],
+  edges: CausalEdge[]
+): Record<string, NodeMetrics> {
+  const metrics: Record<string, NodeMetrics> = {};
+  const nodeIds = new Set(nodes.map(n => n.id));
+
+  // Build adjacency list with weights
+  const adj: Record<string, { neighbor: string; weight: number }[]> = {};
+  for (const id of nodeIds) adj[id] = [];
+
+  for (const e of edges) {
+    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
+    adj[e.source].push({ neighbor: e.target, weight: e.weight });
+    adj[e.target].push({ neighbor: e.source, weight: e.weight });
+  }
+
+  // --- Degree & average edge weight ---
+  for (const id of nodeIds) {
+    const neighbors = adj[id];
+    const degree = neighbors.length;
+    const avgWeight = degree > 0
+      ? neighbors.reduce((s, n) => s + n.weight, 0) / degree
+      : 0;
+    metrics[id] = {
+      degree,
+      eigenvectorCentrality: 0,
+      betweennessCentrality: 0,
+      clusteringCoeff: 0,
+      avgEdgeWeight: avgWeight,
+    };
+  }
+
+  const maxDegree = Math.max(1, ...Object.values(metrics).map(m => m.degree));
+
+  // --- Eigenvector centrality (power iteration, 30 iterations) ---
+  const ids = Array.from(nodeIds);
+  const n = ids.length;
+  if (n > 0) {
+    let scores = new Float64Array(n).fill(1 / n);
+    const idxMap: Record<string, number> = {};
+    ids.forEach((id, i) => { idxMap[id] = i; });
+
+    for (let iter = 0; iter < 30; iter++) {
+      const next = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const neighbors = adj[ids[i]];
+        for (const { neighbor, weight } of neighbors) {
+          const j = idxMap[neighbor];
+          if (j !== undefined) next[i] += scores[j] * weight;
+        }
+      }
+      // Normalize
+      let maxVal = 0;
+      for (let i = 0; i < n; i++) if (next[i] > maxVal) maxVal = next[i];
+      if (maxVal > 0) for (let i = 0; i < n; i++) next[i] /= maxVal;
+      scores = next;
+    }
+    for (let i = 0; i < n; i++) {
+      metrics[ids[i]].eigenvectorCentrality = scores[i];
+    }
+  }
+
+  // --- Betweenness centrality (Brandes algorithm, approximate for large graphs) ---
+  if (n > 1) {
+    const bc = new Float64Array(n);
+    const idxMap: Record<string, number> = {};
+    ids.forEach((id, i) => { idxMap[id] = i; });
+
+    // Sample up to 50 source nodes for approximation
+    const sampleSize = Math.min(n, 50);
+    const sampleIndices: number[] = [];
+    for (let i = 0; i < sampleSize; i++) {
+      sampleIndices.push(Math.floor(i * n / sampleSize));
+    }
+
+    for (const s of sampleIndices) {
+      const stack: number[] = [];
+      const pred: number[][] = Array.from({ length: n }, () => []);
+      const sigma = new Float64Array(n); sigma[s] = 1;
+      const dist = new Float64Array(n).fill(-1); dist[s] = 0;
+      const queue: number[] = [s];
+      let qi = 0;
+
+      while (qi < queue.length) {
+        const v = queue[qi++];
+        stack.push(v);
+        for (const { neighbor } of adj[ids[v]]) {
+          const w = idxMap[neighbor];
+          if (w === undefined) continue;
+          if (dist[w] < 0) {
+            dist[w] = dist[v] + 1;
+            queue.push(w);
+          }
+          if (dist[w] === dist[v] + 1) {
+            sigma[w] += sigma[v];
+            pred[w].push(v);
+          }
+        }
+      }
+
+      const delta = new Float64Array(n);
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        for (const v of pred[w]) {
+          delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w]);
+        }
+        if (w !== s) bc[w] += delta[w];
+      }
+    }
+
+    // Normalize
+    const maxBc = Math.max(1, ...bc);
+    for (let i = 0; i < n; i++) {
+      metrics[ids[i]].betweennessCentrality = bc[i] / maxBc;
+    }
+  }
+
+  // --- Clustering coefficient ---
+  for (const id of nodeIds) {
+    const neighbors = adj[id].map(n => n.neighbor);
+    const k = neighbors.length;
+    if (k < 2) { metrics[id].clusteringCoeff = 0; continue; }
+    const neighborSet = new Set(neighbors);
+    let triangles = 0;
+    for (let i = 0; i < neighbors.length; i++) {
+      for (const { neighbor: nn } of adj[neighbors[i]]) {
+        if (neighborSet.has(nn) && nn !== id) triangles++;
+      }
+    }
+    metrics[id].clusteringCoeff = triangles / (k * (k - 1));
+  }
+
+  return metrics;
+}
 
 export function computeLayout3D(
   nodes: CausalNode[],
@@ -79,9 +229,11 @@ export function computeLayout3D(
     };
   });
 
+  // Edge weight drives spring distance: higher weight (stronger correlation) → shorter distance
   const simLinks: LayoutLink[] = edges.map((e) => ({
     source: e.source,
     target: e.target,
+    weight: e.weight,
   }));
 
   // Build adjacency to identify connected vs disconnected nodes
@@ -99,8 +251,11 @@ export function computeLayout3D(
       "link",
       forceLink(simLinks)
         .id((d: any) => d.id)
-        .distance(20)
-        .strength(0.5)
+        // Distance inversely proportional to edge weight:
+        // weight 1.0 (strong correlation) → distance 10 (close together)
+        // weight 0.1 (weak correlation) → distance 35 (far apart)
+        .distance((d: any) => 10 + (1 - d.weight) * 25)
+        .strength((d: any) => 0.3 + d.weight * 0.4)
     )
     .force("charge", forceManyBody().strength((d: any) =>
       connected.has(d.id) ? -100 : -30

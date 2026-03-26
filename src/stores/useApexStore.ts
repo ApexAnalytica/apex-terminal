@@ -391,7 +391,7 @@ export const useApexStore = create<ApexState>((set) => ({
   claudeApiKey: "",
   geminiApiKey: "",
   claudeModel: "claude-sonnet-4-20250514",
-  geminiModel: "gemini-2.5-flash-preview-05-20",
+  geminiModel: "gemini-2.5-flash",
   ollamaUrl: "http://localhost:11434",
   ollamaModel: "deepseek-r1:8b",
   isLlmStreaming: false,

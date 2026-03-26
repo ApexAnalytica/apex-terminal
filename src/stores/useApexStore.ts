@@ -387,11 +387,11 @@ export const useApexStore = create<ApexState>((set) => ({
     set((s) => ({ copilotMessages: [...s.copilotMessages, msg] })),
 
   // LLM config
-  llmProvider: "ollama" as LLMProvider,
+  llmProvider: "gemini" as LLMProvider,
   claudeApiKey: "",
   geminiApiKey: "",
   claudeModel: "claude-sonnet-4-20250514",
-  geminiModel: "gemini-2.0-flash",
+  geminiModel: "gemini-2.5-flash-preview-05-20",
   ollamaUrl: "http://localhost:11434",
   ollamaModel: "deepseek-r1:8b",
   isLlmStreaming: false,

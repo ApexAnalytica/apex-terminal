@@ -53,6 +53,7 @@ const OMEGA_METHODOLOGY = "The ΩF (Omega Fragility) composite score is a weight
 export default function NodeInspector() {
   const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
   const [showMethodology, setShowMethodology] = useState(false);
+  const [showDataExplainer, setShowDataExplainer] = useState(false);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const graphData = useApexStore((s) => s.graphData);
@@ -128,6 +129,59 @@ export default function NodeInspector() {
               >
                 &times;
               </button>
+            </div>
+
+            {/* Data Explainer — collapsible panel explaining what this node represents */}
+            <div className="rounded border border-border/50 overflow-hidden">
+              <button
+                onClick={() => setShowDataExplainer(!showDataExplainer)}
+                className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 hover:bg-white/[0.03] transition-colors"
+              >
+                <span className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                  ABOUT THIS NODE
+                </span>
+                <span className="text-[8px] text-text-muted/60">{showDataExplainer ? "▲" : "▼"}</span>
+              </button>
+              {showDataExplainer && (
+                <div className="px-2.5 pb-2 space-y-2 text-[9px] font-mono border-t border-border/30">
+                  {node.physicalConstraint && (
+                    <div className="pt-2">
+                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DESCRIPTION</div>
+                      <div className="text-text-muted leading-relaxed">{node.physicalConstraint}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">GEOGRAPHIC CONCENTRATION</div>
+                    <div className="text-text-muted">{node.globalConcentration || "Not specified"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">REPLACEMENT TIME</div>
+                    <div className="text-text-muted">{node.replacementTime || "Not specified"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DISCOVERY METHOD</div>
+                    <div className="text-text-muted">
+                      {node.discoverySource === "merged" ? "Multiple algorithms (DCD + PCMCI+ + FCI)" : node.discoverySource?.toUpperCase() || "Unknown"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">NODE TYPE</div>
+                    <div className="text-text-muted">
+                      {node.category ? getCategoryLabel(node.category) : "Unknown"} node in {node.domain} domain
+                      {node.isConfounded && " — confounded (hidden common cause suspected)"}
+                      {node.isRestricted && " — restricted (Tarski axiom violation)"}
+                    </div>
+                  </div>
+                  {connectedEdges.length > 0 && (
+                    <div>
+                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">CONNECTIONS</div>
+                      <div className="text-text-muted">
+                        {connectedEdges.filter(e => e.source === node.id).length} outgoing, {connectedEdges.filter(e => e.target === node.id).length} incoming causal links
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Omega Composite */}

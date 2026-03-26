@@ -167,8 +167,134 @@ export default function CausalDAGMap() {
     features: edgeGeoJSON.features.filter(f => f.properties?.isDashed),
   }), [edgeGeoJSON]);
 
-  // Note: MapLibre doesn't support animated dash offsets natively.
-  // Dashed lines are static but use the same color scheme as 2D/3D.
+  // Temporal edge data for particle animation overlay
+  const temporalEdgePaths = useMemo(() => {
+    const nodeMap = new Map<string, [number, number]>();
+    activeGraph.nodes.forEach((node) => {
+      nodeMap.set(
+        node.id,
+        getNodeCoordinates(node.id, node.globalConcentration ?? "", node.domain),
+      );
+    });
+
+    return activeGraph.edges
+      .filter((edge) => edge.type === "temporal" && !edge.isSevered)
+      .map((edge) => {
+        const source = nodeMap.get(edge.source);
+        const target = nodeMap.get(edge.target);
+        if (!source || !target) return null;
+        // 3-point curved path (same curve as the edge GeoJSON)
+        const midLng = (source[0] + target[0]) / 2;
+        const midLat = (source[1] + target[1]) / 2;
+        const dx = target[0] - source[0];
+        const dy = target[1] - source[1];
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const curveAmount = Math.min(dist * 0.15, 3);
+        const perpLng = midLng + (-dy / dist) * curveAmount;
+        const perpLat = midLat + (dx / dist) * curveAmount;
+        return {
+          id: edge.id,
+          points: [source, [perpLng, perpLat] as [number, number], target],
+          color: "#ffab00",
+        };
+      })
+      .filter(Boolean) as { id: string; points: [number, number][]; color: string }[];
+  }, [activeGraph.nodes, activeGraph.edges]);
+
+  // Canvas overlay for animated particles on temporal edges
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particlePhases = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (temporalEdgePaths.length === 0) return;
+    // Initialize random phases so particles don't all sync
+    temporalEdgePaths.forEach(({ id }) => {
+      if (!particlePhases.current.has(id)) {
+        particlePhases.current.set(id, Math.random());
+      }
+    });
+
+    let animFrameId: number;
+    const animate = () => {
+      const canvas = canvasRef.current;
+      const map = mapRef.current;
+      if (!canvas || !map) {
+        animFrameId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Match canvas size to container
+      const container = canvas.parentElement;
+      if (container) {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (canvas.width !== w * 2 || canvas.height !== h * 2) {
+          canvas.width = w * 2;
+          canvas.height = h * 2;
+          canvas.style.width = `${w}px`;
+          canvas.style.height = `${h}px`;
+          ctx.scale(2, 2); // retina
+        }
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const edge of temporalEdgePaths) {
+        // Advance phase
+        let phase = particlePhases.current.get(edge.id) ?? 0;
+        phase = (phase + 0.003) % 1;
+        particlePhases.current.set(edge.id, phase);
+
+        // Project geo coords to screen pixels
+        const screenPts = edge.points.map((p) => {
+          const projected = map.project([p[0], p[1]]);
+          return [projected.x, projected.y] as [number, number];
+        });
+
+        // Quadratic bezier interpolation
+        // Draw 2 particles at staggered phases for a flow effect
+        for (let p = 0; p < 2; p++) {
+          const t = (phase + p * 0.5) % 1;
+          const oneMinusT = 1 - t;
+          const px =
+            oneMinusT * oneMinusT * screenPts[0][0] +
+            2 * oneMinusT * t * screenPts[1][0] +
+            t * t * screenPts[2][0];
+          const py =
+            oneMinusT * oneMinusT * screenPts[0][1] +
+            2 * oneMinusT * t * screenPts[1][1] +
+            t * t * screenPts[2][1];
+
+          ctx.beginPath();
+          ctx.arc(px, py, 3, 0, Math.PI * 2);
+          ctx.fillStyle = edge.color;
+          ctx.globalAlpha = 0.85;
+          ctx.fill();
+
+          // Glow effect
+          ctx.beginPath();
+          ctx.arc(px, py, 6, 0, Math.PI * 2);
+          ctx.fillStyle = edge.color;
+          ctx.globalAlpha = 0.2;
+          ctx.fill();
+        }
+      }
+
+      ctx.globalAlpha = 1;
+      animFrameId = requestAnimationFrame(animate);
+    };
+
+    animFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animFrameId);
+  }, [temporalEdgePaths]);
+
+  // Re-render canvas on map move (projection changes)
+  const onMapMove = useCallback(() => {
+    // The animation loop already re-projects every frame, so no extra work needed
+  }, []);
 
   // Click handler
   const onNodeClick = useCallback(
@@ -282,6 +408,7 @@ export default function CausalDAGMap() {
         onClick={onNodeClick}
         onMouseMove={onNodeHover}
         onMouseLeave={onNodeLeave}
+        onMove={onMapMove}
         cursor={hoveredNode ? "pointer" : "grab"}
         attributionControl={false}
       >
@@ -430,6 +557,15 @@ export default function CausalDAGMap() {
           </Popup>
         )}
       </MapGL>
+
+      {/* Animated particle canvas overlay for temporal edges */}
+      {temporalEdgePaths.length > 0 && (
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 pointer-events-none"
+          style={{ zIndex: 1 }}
+        />
+      )}
 
       {/* DAG Overlay (same controls as 2D/3D) */}
       <DAGOverlay />

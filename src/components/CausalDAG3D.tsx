@@ -12,10 +12,12 @@ import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
+import EdgeInspector from "./EdgeInspector";
 import CanvasWatermark from "./CanvasWatermark";
 // ReplayControls is now integrated into TimeDial
 import { useReplayTick } from "@/lib/useReplayTick";
-import { EpochSnapshot } from "@/lib/types";
+import { AnimatePresence } from "framer-motion";
+import { EpochSnapshot, CausalEdge } from "@/lib/types";
 
 // Error boundary to catch WebGL context loss and recover
 class DAGErrorBoundary extends React.Component<
@@ -452,6 +454,7 @@ export default function CausalDAG3D() {
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [shiftDragging, setShiftDragging] = useState(false);
+  const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
 
   const handleShiftSelect = useCallback(
     (ids: string[]) => {
@@ -835,16 +838,28 @@ export default function CausalDAG3D() {
     [selectedNode, setSelectedNode]
   );
 
-  // Escape key to deselect
+  // Escape key to deselect node or close edge inspector
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && selectedNode) {
-        setSelectedNode(null);
+      if (e.key === "Escape") {
+        if (selectedEdge) {
+          setSelectedEdge(null);
+        } else if (selectedNode) {
+          setSelectedNode(null);
+        }
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedNode, setSelectedNode]);
+  }, [selectedNode, setSelectedNode, selectedEdge]);
+
+  // Resolve labels for edge inspector
+  const selectedEdgeSourceLabel = selectedEdge
+    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    : "";
+  const selectedEdgeTargetLabel = selectedEdge
+    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    : "";
 
   return (
     <div style={{ position: "absolute", inset: 0 }} onContextMenu={(e) => e.preventDefault()}>
@@ -992,6 +1007,7 @@ export default function CausalDAG3D() {
                 isAblated={ablatedEdgeIds.includes(edge.id)}
                 ablationMode={ablationMode}
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
+                onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}
                 epochState={currentSnapshot?.edgeStates[edge.id]}
               />
             );
@@ -1010,6 +1026,17 @@ export default function CausalDAG3D() {
           />
       </Canvas>
       </DAGErrorBoundary>
+      <AnimatePresence>
+        {selectedEdge && (
+          <EdgeInspector
+            key={selectedEdge.id}
+            edge={selectedEdge}
+            sourceLabel={selectedEdgeSourceLabel}
+            targetLabel={selectedEdgeTargetLabel}
+            onClose={() => setSelectedEdge(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

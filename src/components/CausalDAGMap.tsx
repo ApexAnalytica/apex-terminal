@@ -5,11 +5,14 @@ import { Map as MapGL, Source, Layer, Popup, type MapRef } from "@vis.gl/react-m
 import type { MapLayerMouseEvent } from "@vis.gl/react-maplibre";
 import type { FeatureCollection, Point, LineString, Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
+import EdgeInspector from "@/components/EdgeInspector";
+import type { CausalEdge } from "@/lib/types";
 
 export default function CausalDAGMap() {
   const mapRef = useRef<MapRef>(null);
@@ -31,6 +34,7 @@ export default function CausalDAGMap() {
     lng: number;
     lat: number;
   } | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
 
   // Build GeoJSON for nodes
   const nodeGeoJSON = useMemo<FeatureCollection<Point>>(() => {
@@ -130,7 +134,7 @@ export default function CausalDAGMap() {
           type: edge.type,
           opacity: isDimmed ? 0.05 : 0.5,
           color: edgeColor,
-          width: edge.weight * 2 + 0.5,
+          width: edge.weight * 2 + 1.5,
         },
       });
     });
@@ -208,29 +212,51 @@ export default function CausalDAGMap() {
     return () => cancelAnimationFrame(animFrameId);
   }, [temporalEdgePaths]);
 
-  // Click handler
-  const onNodeClick = useCallback(
+  // Click handler — handles both node and edge clicks
+  const onMapClick = useCallback(
     (e: MapLayerMouseEvent) => {
       const feature = e.features?.[0];
       if (!feature) {
         setSelectedNode(null);
+        setSelectedEdge(null);
         return;
       }
-      const nodeId = feature.properties?.id;
-      if (nodeId) {
-        if (e.originalEvent.shiftKey) {
-          // Multi-select
-          setSelectedNodes(
-            selectedNodes.includes(nodeId)
-              ? selectedNodes.filter((id) => id !== nodeId)
-              : [...selectedNodes, nodeId],
-          );
-        } else {
-          setSelectedNode(selectedNode === nodeId ? null : nodeId);
+
+      const layerId = feature.layer?.id;
+
+      // Node click
+      if (layerId === "node-circles") {
+        e.preventDefault(); // prevent map zoom/fly
+        const nodeId = feature.properties?.id;
+        if (nodeId) {
+          setSelectedEdge(null);
+          if (e.originalEvent.shiftKey) {
+            setSelectedNodes(
+              selectedNodes.includes(nodeId)
+                ? selectedNodes.filter((id: string) => id !== nodeId)
+                : [...selectedNodes, nodeId],
+            );
+          } else {
+            setSelectedNode(selectedNode === nodeId ? null : nodeId);
+          }
         }
+        return;
+      }
+
+      // Edge click
+      if (layerId === "edge-lines") {
+        e.preventDefault();
+        const edgeId = feature.properties?.id;
+        if (edgeId) {
+          const edge = activeGraph.edges.find((ed) => ed.id === edgeId);
+          if (edge) {
+            setSelectedEdge(selectedEdge?.id === edge.id ? null : edge);
+          }
+        }
+        return;
       }
     },
-    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes],
+    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
   );
 
   // Hover handler
@@ -254,6 +280,25 @@ export default function CausalDAGMap() {
   const onNodeLeave = useCallback(() => {
     setHoveredNode(null);
   }, []);
+
+  // Escape key to close edge inspector
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (selectedEdge) setSelectedEdge(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [selectedEdge]);
+
+  // Resolve labels for edge inspector
+  const selectedEdgeSourceLabel = selectedEdge
+    ? activeGraph.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    : "";
+  const selectedEdgeTargetLabel = selectedEdge
+    ? activeGraph.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    : "";
 
   // Fit bounds to data on first load
   useEffect(() => {
@@ -316,11 +361,12 @@ export default function CausalDAGMap() {
           zoom: 3,
         }}
         mapStyle={mapStyle}
-        interactiveLayerIds={["node-circles"]}
-        onClick={onNodeClick}
+        interactiveLayerIds={["node-circles", "edge-lines"]}
+        onClick={onMapClick}
         onMouseMove={onNodeHover}
         onMouseLeave={onNodeLeave}
         cursor={hoveredNode ? "pointer" : "grab"}
+        doubleClickZoom={false}
         attributionControl={false}
       >
         {/* All edge lines — solid, color-coded by type:
@@ -477,6 +523,19 @@ export default function CausalDAGMap() {
 
       {/* DAG Overlay (same controls as 2D/3D) */}
       <DAGOverlay />
+
+      {/* Edge Inspector popup */}
+      <AnimatePresence>
+        {selectedEdge && (
+          <EdgeInspector
+            key={selectedEdge.id}
+            edge={selectedEdge}
+            sourceLabel={selectedEdgeSourceLabel}
+            targetLabel={selectedEdgeTargetLabel}
+            onClose={() => setSelectedEdge(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Map-specific attribution */}
       <div className="absolute bottom-1 left-1 text-[7px] font-mono text-text-muted/30 pointer-events-none">

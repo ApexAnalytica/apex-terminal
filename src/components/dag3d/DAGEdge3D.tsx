@@ -23,6 +23,7 @@ interface DAGEdge3DProps {
   isAblated?: boolean;
   ablationMode?: boolean;
   onAblationClick?: () => void;
+  onEdgeClick?: () => void;
   epochState?: EdgeEpochState;
 }
 
@@ -60,6 +61,7 @@ function DAGEdge3DInner({
   isAblated = false,
   ablationMode = false,
   onAblationClick,
+  onEdgeClick,
   epochState,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
@@ -144,13 +146,16 @@ function DAGEdge3DInner({
         position={[midpoint.x, midpoint.y, midpoint.z]}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
-        onClick={
-          ablationMode && onAblationClick
-            ? onAblationClick
-            : scissorsMode && onScissorsClick && !isSevered
-              ? onScissorsClick
-              : undefined
-        }
+        onClick={(e) => {
+          e.stopPropagation();
+          if (ablationMode && onAblationClick) {
+            onAblationClick();
+          } else if (scissorsMode && onScissorsClick && !isSevered) {
+            onScissorsClick();
+          } else if (onEdgeClick) {
+            onEdgeClick();
+          }
+        }}
       >
         <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} />

@@ -419,6 +419,7 @@ function CausalDAGMapInner() {
         onMouseLeave={onMapLeave}
         cursor={hoveredFeature ? "pointer" : "grab"}
         doubleClickZoom={false}
+        boxZoom={false}
         attributionControl={false}
       >
         {/* All edge lines — solid, color-coded by type:

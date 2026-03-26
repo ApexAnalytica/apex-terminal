@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
+import type { NodeTemporalState } from "@/lib/temporal-data";
 
 /** Dispatch content to the copilot for display + TTS readout */
 function dispatchSpeak(title: string, text: string) {
@@ -57,6 +58,7 @@ export default function NodeInspector() {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const graphData = useApexStore((s) => s.graphData);
+  const temporalData = useApexStore((s) => s.temporalData);
   const isLive = useApexStore((s) => s.isLive);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
@@ -72,6 +74,13 @@ export default function NodeInspector() {
       (e) => e.source === selectedNode || e.target === selectedNode
     );
   }, [selectedNode, graphData.edges]);
+
+  // Get temporal history for this node (for data context)
+  const nodeHistory = useMemo<NodeTemporalState[]>(() => {
+    if (!selectedNode || !temporalData) return [];
+    const data = temporalData.nodes.get(selectedNode);
+    return data?.history ?? [];
+  }, [selectedNode, temporalData]);
 
   const axes = node
     ? [
@@ -131,7 +140,7 @@ export default function NodeInspector() {
               </button>
             </div>
 
-            {/* Data Explainer — collapsible panel explaining what this node represents */}
+            {/* Data Explainer — collapsible panel explaining what data this node represents */}
             <div className="rounded border border-border/50 overflow-hidden">
               <button
                 onClick={() => setShowDataExplainer(!showDataExplainer)}
@@ -143,43 +152,87 @@ export default function NodeInspector() {
                 <span className="text-[8px] text-text-muted/60">{showDataExplainer ? "▲" : "▼"}</span>
               </button>
               {showDataExplainer && (
-                <div className="px-2.5 pb-2 space-y-2 text-[9px] font-mono border-t border-border/30">
-                  {node.physicalConstraint && (
-                    <div className="pt-2">
-                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DESCRIPTION</div>
-                      <div className="text-text-muted leading-relaxed">{node.physicalConstraint}</div>
+                <div className="px-2.5 pb-2 space-y-2.5 text-[9px] font-mono border-t border-border/30">
+                  {/* What is this node */}
+                  <div className="pt-2">
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">WHAT IS THIS</div>
+                    <div className="text-foreground/90 leading-relaxed">
+                      <span className="font-semibold">{node.label}</span> is a {getCategoryLabel(node.category).toLowerCase()} node
+                      in the <span style={{ color: getDomainColor(node.domain) }}>{node.domain}</span> domain.
+                      {node.physicalConstraint && ` ${node.physicalConstraint}`}
+                    </div>
+                  </div>
+
+                  {/* What data is being tracked */}
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DATA BEING TRACKED</div>
+                    <div className="text-foreground/90 leading-relaxed">
+                      The time series tracks this node&apos;s <span className="text-accent-cyan">ΩF (Omega Fragility) composite score</span> over
+                      {nodeHistory.length > 0 ? ` ${nodeHistory.length} days` : " time"}.
+                      The ΩF score aggregates 5 risk pillars (Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, Tail Depth)
+                      into a single 0–10 systemic fragility index. Higher values indicate greater vulnerability to disruption cascades.
+                    </div>
+                    {nodeHistory.length > 0 && (() => {
+                      const omegas = nodeHistory.map(h => h.omegaComposite);
+                      const min = Math.min(...omegas);
+                      const max = Math.max(...omegas);
+                      const avg = omegas.reduce((a, b) => a + b, 0) / omegas.length;
+                      const current = omegas[omegas.length - 1];
+                      return (
+                        <div className="flex gap-3 mt-1.5 text-[8px]">
+                          <div>
+                            <span className="text-text-muted">MIN </span>
+                            <span className="text-foreground font-semibold">{min.toFixed(1)}</span>
+                          </div>
+                          <div>
+                            <span className="text-text-muted">AVG </span>
+                            <span className="text-foreground font-semibold">{avg.toFixed(1)}</span>
+                          </div>
+                          <div>
+                            <span className="text-text-muted">MAX </span>
+                            <span className="text-foreground font-semibold">{max.toFixed(1)}</span>
+                          </div>
+                          <div>
+                            <span className="text-text-muted">NOW </span>
+                            <span style={{ color: getBarColor(current) }} className="font-semibold">{current.toFixed(1)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Geographic and supply chain context */}
+                  {node.globalConcentration && (
+                    <div>
+                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">GEOGRAPHIC CONCENTRATION</div>
+                      <div className="text-foreground/90">{node.globalConcentration}</div>
                     </div>
                   )}
-                  <div>
-                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">GEOGRAPHIC CONCENTRATION</div>
-                    <div className="text-text-muted">{node.globalConcentration || "Not specified"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">REPLACEMENT TIME</div>
-                    <div className="text-text-muted">{node.replacementTime || "Not specified"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DISCOVERY METHOD</div>
-                    <div className="text-text-muted">
-                      {node.discoverySource === "merged" ? "Multiple algorithms (DCD + PCMCI+ + FCI)" : node.discoverySource?.toUpperCase() || "Unknown"}
+                  {node.replacementTime && (
+                    <div>
+                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">REPLACEMENT TIME</div>
+                      <div className="text-foreground/90">{node.replacementTime}</div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">NODE TYPE</div>
-                    <div className="text-text-muted">
-                      {node.category ? getCategoryLabel(node.category) : "Unknown"} node in {node.domain} domain
-                      {node.isConfounded && " — confounded (hidden common cause suspected)"}
-                      {node.isRestricted && " — restricted (Tarski axiom violation)"}
-                    </div>
-                  </div>
+                  )}
+
+                  {/* Causal connections summary */}
                   {connectedEdges.length > 0 && (
                     <div>
-                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">CONNECTIONS</div>
-                      <div className="text-text-muted">
-                        {connectedEdges.filter(e => e.source === node.id).length} outgoing, {connectedEdges.filter(e => e.target === node.id).length} incoming causal links
+                      <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">CAUSAL CONNECTIONS</div>
+                      <div className="text-foreground/90">
+                        {connectedEdges.filter(e => e.target === node.id).length} upstream causes →
+                        this node → {connectedEdges.filter(e => e.source === node.id).length} downstream effects.
+                        {node.isConfounded && " Hidden common cause suspected (confounded)."}
                       </div>
                     </div>
                   )}
+
+                  <div>
+                    <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DISCOVERY METHOD</div>
+                    <div className="text-text-muted">
+                      {node.discoverySource === "merged" ? "Identified by multiple causal discovery algorithms (DCD + PCMCI+ + FCI)" : `Discovered via ${node.discoverySource?.toUpperCase() || "unknown"} algorithm`}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

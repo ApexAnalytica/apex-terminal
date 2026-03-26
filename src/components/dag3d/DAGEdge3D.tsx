@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Billboard, Text, Line } from "@react-three/drei";
+import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
 
@@ -198,32 +198,15 @@ function DAGEdge3DInner({
         </mesh>
       )}
 
-      {/* Hover: physical mechanism label */}
-      {hovered && edge.physicalMechanism && (
-        <Billboard position={[midpoint.x, midpoint.y + 1.5, midpoint.z]}>
-          <Text
-            fontSize={0.5}
-            color="#ffffff"
-            anchorX="center"
-            anchorY="middle"
-            font={undefined}
-            maxWidth={20}
-          >
-            {edge.physicalMechanism}
-          </Text>
-          {isCrossDomain && (
-            <Text
-              fontSize={0.35}
-              color="#e040fb"
-              anchorX="center"
-              anchorY="top"
-              position={[0, -0.5, 0]}
-              font={undefined}
-            >
-              CROSS-DOMAIN
-            </Text>
-          )}
-        </Billboard>
+      {/* Edge highlight glow on hover — no popup text, just visual feedback */}
+      {hovered && (
+        <Line
+          points={curvePoints}
+          color={color}
+          lineWidth={Math.max(2, lineWidth + 2)}
+          transparent
+          opacity={0.3}
+        />
       )}
     </group>
   );

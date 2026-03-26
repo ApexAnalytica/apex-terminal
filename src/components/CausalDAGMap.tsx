@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback, useRef, useEffect, useState } from "react";
+import React, { useMemo, useCallback, useRef, useEffect, useState } from "react";
 import { Map as MapGL, Source, Layer, Popup, type MapRef } from "@vis.gl/react-maplibre";
 import type { MapLayerMouseEvent } from "@vis.gl/react-maplibre";
 import type { FeatureCollection, Point, LineString, Feature } from "geojson";
@@ -14,7 +14,42 @@ import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
 import type { CausalEdge } from "@/lib/types";
 
-export default function CausalDAGMap() {
+// Error boundary to catch MapLibre crashes and recover gracefully
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    console.warn("[CausalDAGMap] Caught render error:", error.message);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-background gap-3">
+          <div className="text-[10px] font-mono text-accent-red">
+            MAP RENDERER ERROR
+          </div>
+          <button
+            className="text-[9px] font-mono px-3 py-1.5 rounded border border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/10 transition-colors"
+            onClick={() => this.setState({ hasError: false })}
+          >
+            REINITIALIZE MAP
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function CausalDAGMapInner() {
   const mapRef = useRef<MapRef>(null);
   const {
     selectedNode,
@@ -104,9 +139,15 @@ export default function CausalDAGMap() {
       const dx = target[0] - source[0];
       const dy = target[1] - source[1];
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const curveAmount = Math.min(dist * 0.15, 3);
-      const perpLng = midLng + (-dy / dist) * curveAmount;
-      const perpLat = midLat + (dx / dist) * curveAmount;
+
+      // Guard against zero distance (same coordinates) to avoid NaN
+      let perpLng = midLng;
+      let perpLat = midLat;
+      if (dist > 0.0001) {
+        const curveAmount = Math.min(dist * 0.15, 3);
+        perpLng = midLng + (-dy / dist) * curveAmount;
+        perpLat = midLat + (dx / dist) * curveAmount;
+      }
 
       // Edge color — matches 2D/3D exactly:
       //   directed  → cyan (#00e5ff) — solid line
@@ -259,10 +300,10 @@ export default function CausalDAGMap() {
     [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
   );
 
-  // Hover handler
+  // Hover handler — only show popup for node circles, not edge lines
   const onNodeHover = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
-    if (feature && feature.properties) {
+    if (feature && feature.properties && feature.layer?.id === "node-circles" && feature.geometry.type === "Point") {
       const coords = (feature.geometry as Point).coordinates;
       setHoveredNode({
         id: feature.properties.id,
@@ -542,5 +583,13 @@ export default function CausalDAGMap() {
         MAP VIEW — GEOGRAPHIC PROJECTION
       </div>
     </div>
+  );
+}
+
+export default function CausalDAGMap() {
+  return (
+    <MapErrorBoundary>
+      <CausalDAGMapInner />
+    </MapErrorBoundary>
   );
 }

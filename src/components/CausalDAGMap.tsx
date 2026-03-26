@@ -300,25 +300,36 @@ function CausalDAGMapInner() {
     [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
   );
 
-  // Hover handler — only show popup for node circles, not edge lines
-  const onNodeHover = useCallback((e: MapLayerMouseEvent) => {
+  const [hoveredFeature, setHoveredFeature] = useState(false);
+
+  // Hover handler — show popup for node circles, track any interactive hover for cursor
+  const onMapHover = useCallback((e: MapLayerMouseEvent) => {
     const feature = e.features?.[0];
-    if (feature && feature.properties && feature.layer?.id === "node-circles" && feature.geometry.type === "Point") {
-      const coords = (feature.geometry as Point).coordinates;
-      setHoveredNode({
-        id: feature.properties.id,
-        label: feature.properties.label,
-        domain: feature.properties.domain,
-        omega: feature.properties.omega,
-        lng: coords[0],
-        lat: coords[1],
-      });
+    if (feature && feature.properties) {
+      // Any interactive feature = pointer cursor
+      setHoveredFeature(true);
+      // Only show node popup for circles
+      if (feature.layer?.id === "node-circles" && feature.geometry.type === "Point") {
+        const coords = (feature.geometry as Point).coordinates;
+        setHoveredNode({
+          id: feature.properties.id,
+          label: feature.properties.label,
+          domain: feature.properties.domain,
+          omega: feature.properties.omega,
+          lng: coords[0],
+          lat: coords[1],
+        });
+      } else {
+        setHoveredNode(null);
+      }
     } else {
+      setHoveredFeature(false);
       setHoveredNode(null);
     }
   }, []);
 
-  const onNodeLeave = useCallback(() => {
+  const onMapLeave = useCallback(() => {
+    setHoveredFeature(false);
     setHoveredNode(null);
   }, []);
 
@@ -404,9 +415,9 @@ function CausalDAGMapInner() {
         mapStyle={mapStyle}
         interactiveLayerIds={["node-circles", "edge-lines"]}
         onClick={onMapClick}
-        onMouseMove={onNodeHover}
-        onMouseLeave={onNodeLeave}
-        cursor={hoveredNode ? "pointer" : "grab"}
+        onMouseMove={onMapHover}
+        onMouseLeave={onMapLeave}
+        cursor={hoveredFeature ? "pointer" : "grab"}
         doubleClickZoom={false}
         attributionControl={false}
       >

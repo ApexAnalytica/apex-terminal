@@ -190,8 +190,15 @@ function DAGNode3DInner({
       {/* Main sphere */}
       <mesh
         ref={meshRef}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+          document.body.style.cursor = "";
+        }}
       >
         <sphereGeometry args={[size, 24, 24]} />
         <meshStandardMaterial

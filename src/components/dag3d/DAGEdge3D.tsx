@@ -141,11 +141,19 @@ function DAGEdge3DInner({
 
   return (
     <group>
-      {/* Invisible wider hitbox for hover + scissors click */}
+      {/* Invisible wider hitbox for hover + edge click — fully transparent,
+          depthWrite off so it never shows as a black orb */}
       <mesh
         position={[midpoint.x, midpoint.y, midpoint.z]}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+          document.body.style.cursor = "";
+        }}
         onClick={(e) => {
           e.stopPropagation();
           if (ablationMode && onAblationClick) {
@@ -158,7 +166,7 @@ function DAGEdge3DInner({
         }}
       >
         <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 8, 8]} />
-        <meshBasicMaterial transparent opacity={0} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {/* Edge line — using drei Line for reliable rendering:

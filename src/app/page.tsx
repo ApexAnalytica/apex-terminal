@@ -69,7 +69,7 @@ export default function Home() {
 
   return (
     <div
-      className="flex flex-col h-screen w-screen overflow-hidden bg-background no-select"
+      className="flex flex-col h-screen w-screen overflow-hidden bg-background"
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* Overlays */}

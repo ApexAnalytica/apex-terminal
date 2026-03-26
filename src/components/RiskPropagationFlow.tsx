@@ -97,9 +97,15 @@ export default function RiskPropagationFlow() {
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const isLive = useApexStore((s) => s.isLive);
   const temporalData = useApexStore((s) => s.temporalData);
+  const initTemporalData = useApexStore((s) => s.initTemporalData);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const { graph: temporalGraph } = useTemporalGraph();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Ensure temporal data is initialized (may not be if TimeDial hasn't mounted yet)
+  useEffect(() => {
+    initTemporalData();
+  }, [initTemporalData]);
   const [hoveredDay, setHoveredDay] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 

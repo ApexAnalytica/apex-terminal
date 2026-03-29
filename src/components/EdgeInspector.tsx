@@ -46,10 +46,10 @@ export default function EdgeInspector({ edge, sourceLabel, targetLabel, onClose 
           <span className="text-text-muted">TYPE</span>
           <span className="text-foreground">{edge.type.toUpperCase()}</span>
         </div>
-        {edge.lagDays !== undefined && (
+        {edge.lag > 0 && (
           <div className="flex justify-between">
             <span className="text-text-muted">LAG</span>
-            <span className="text-foreground">{edge.lagDays}d</span>
+            <span className="text-foreground">{edge.lag} steps</span>
           </div>
         )}
         {edge.isSevered && (

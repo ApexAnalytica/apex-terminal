@@ -7,6 +7,7 @@ import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getDomainColor, buildRiskCards } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
+import { getNodeDataDescription } from "@/lib/real-timeseries";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -231,8 +232,8 @@ export default function RiskPropagationFlow() {
                       </div>
                     </div>
 
-                    {/* Domain badge */}
-                    <div className="flex items-center gap-1.5 mb-1.5">
+                    {/* Domain badge + real metric label */}
+                    <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                       <div
                         className="text-[7px] px-1 py-0.5 rounded"
                         style={{
@@ -243,11 +244,23 @@ export default function RiskPropagationFlow() {
                       >
                         {card.domain}
                       </div>
+                      {(() => {
+                        const desc = getNodeDataDescription(card.nodeId);
+                        if (desc) {
+                          return (
+                            <div className="text-[6px] font-mono text-accent-cyan/60 truncate max-w-[120px]" title={`${desc.label} (${desc.unit})`}>
+                              {desc.label}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       {hoveredDay !== null && history[hoveredDay] && (
                         <div className="text-[7px] font-mono text-text-muted">
                           {new Date(history[hoveredDay].timestamp).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",
+                            year: "numeric",
                           })}
                         </div>
                       )}
@@ -274,11 +287,15 @@ export default function RiskPropagationFlow() {
                       )}
                     </div>
 
-                    {/* Min/Max range */}
+                    {/* Date range labels */}
                     {history.length > 1 && (
                       <div className="flex justify-between mt-0.5 text-[7px] font-mono text-text-muted/50">
-                        <span>60d ago</span>
-                        <span>now</span>
+                        <span>
+                          {new Date(history[0].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                        </span>
+                        <span>
+                          {new Date(history[history.length - 1].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                        </span>
                       </div>
                     )}
                   </motion.div>

@@ -6,6 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
+import { getNodeDataDescription } from "@/lib/real-timeseries";
 
 /** Dispatch content to the copilot for display + TTS readout */
 function dispatchSpeak(title: string, text: string) {
@@ -166,12 +167,50 @@ export default function NodeInspector() {
                   {/* What data is being tracked */}
                   <div>
                     <div className="text-[7px] text-text-muted/60 mb-0.5 tracking-wider">DATA BEING TRACKED</div>
-                    <div className="text-foreground/90 leading-relaxed">
-                      The time series tracks this node&apos;s <span className="text-accent-cyan">ΩF (Omega Fragility) composite score</span> over
-                      {nodeHistory.length > 0 ? ` ${nodeHistory.length} days` : " time"}.
-                      The ΩF score aggregates 5 risk pillars (Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, Tail Depth)
-                      into a single 0–10 systemic fragility index. Higher values indicate greater vulnerability to disruption cascades.
-                    </div>
+                    {(() => {
+                      const dataDesc = selectedNode ? getNodeDataDescription(selectedNode) : null;
+                      if (dataDesc) {
+                        const sourceLabels: Record<string, string> = {
+                          saudi_aramco: "EIA (U.S. Energy Information Administration)",
+                          qatarenergy: "Vortexa / EIA Qatar Analysis",
+                          qafco_operations: "QAFCO ESG & Annual Reports",
+                          maaden_operations: "Ma'aden Annual Reports",
+                          pimco_sovereign: "PIMCO EM Sovereign Data",
+                          blackrock_sovereign: "BlackRock EM Sovereign Data",
+                          bunge_food_security: "Bunge MENA Food Security Index",
+                          almarai_food_security: "Almarai MENA Food Security Index",
+                          undersea_cables: "Submarine Cable Risk Assessment",
+                          orange_marine: "Orange Marine Latency Monitoring",
+                          telecom_egypt: "Telecom Egypt Market Data",
+                          pwt_sovereign: "Penn World Table (PWT 10.01)",
+                        };
+                        return (
+                          <>
+                            <div className="text-foreground/90 leading-relaxed">
+                              {dataDesc.description}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="text-[7px] px-1 py-0.5 rounded bg-accent-cyan/10 border border-accent-cyan/20 text-accent-cyan">
+                                {dataDesc.label}
+                              </span>
+                              <span className="text-[7px] text-text-muted/60">
+                                ({dataDesc.unit})
+                              </span>
+                            </div>
+                            <div className="text-[7px] text-text-muted/50 mt-1">
+                              Source: {sourceLabels[dataDesc.source] || dataDesc.source}
+                            </div>
+                          </>
+                        );
+                      }
+                      return (
+                        <div className="text-foreground/90 leading-relaxed">
+                          The time series tracks this node&apos;s <span className="text-accent-cyan">ΩF (Omega Fragility) composite score</span> over
+                          {nodeHistory.length > 0 ? ` ${nodeHistory.length} data points` : " time"}.
+                          The ΩF score aggregates 5 risk pillars into a single 0–10 systemic fragility index.
+                        </div>
+                      );
+                    })()}
                     {nodeHistory.length > 0 && (() => {
                       const omegas = nodeHistory.map(h => h.omegaComposite);
                       const min = Math.min(...omegas);

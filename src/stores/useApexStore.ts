@@ -45,6 +45,7 @@ import { simulateCascade } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
 import { generateTemporalData } from "@/lib/temporal-data";
+import { loadRealTemporalData } from "@/lib/real-timeseries";
 
 interface ApexState {
   // Module navigation
@@ -76,6 +77,10 @@ interface ApexState {
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
+
+  // Selected edge (for edge inspector popup)
+  selectedEdgeId: string | null;
+  setSelectedEdgeId: (edgeId: string | null) => void;
 
   // Multi-selection (lasso/area select)
   selectedNodes: string[];
@@ -219,7 +224,7 @@ interface ApexState {
   goLive: () => void;
 }
 
-export const useApexStore = create<ApexState>((set) => ({
+export const useApexStore = create<ApexState>((set, get) => ({
   // Module
   activeModule: "spirtes",
   setActiveModule: (id) => set({ activeModule: id }),
@@ -273,6 +278,10 @@ export const useApexStore = create<ApexState>((set) => ({
   // Selected node
   selectedNode: null,
   setSelectedNode: (nodeId) => set({ selectedNode: nodeId }),
+
+  // Selected edge
+  selectedEdgeId: null,
+  setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
 
   // Multi-selection
   selectedNodes: [],
@@ -690,19 +699,47 @@ export const useApexStore = create<ApexState>((set) => ({
   setTimelineSelection: (sel) =>
     set({ timelineSelection: sel }),
 
-  initTemporalData: () =>
-    set((s) => {
-      if (s.temporalData) return s;
-      const data = generateTemporalData(s.graphData.nodes, s.graphData.edges, 60);
-      return {
-        temporalData: data,
-        timelineRange: {
-          start: data.rangeStart.getTime(),
-          end: data.rangeEnd.getTime(),
-        },
-        timelinePosition: data.rangeEnd.getTime(),
-      };
-    }),
+  initTemporalData: () => {
+    const state = get();
+    if (state.temporalData) return;
+    // Set synthetic data immediately as fallback while real data loads
+    const syntheticData = generateTemporalData(state.graphData.nodes, state.graphData.edges, 60);
+    set({
+      temporalData: syntheticData,
+      timelineRange: {
+        start: syntheticData.rangeStart.getTime(),
+        end: syntheticData.rangeEnd.getTime(),
+      },
+      timelinePosition: syntheticData.rangeEnd.getTime(),
+    });
+    // Load real analyst-collected data asynchronously, then replace synthetic.
+    // Retry until graphData is populated (it may be empty on first mount).
+    const doLoad = () => {
+      const current = get();
+      const { nodes, edges } = current.graphData;
+      if (nodes.length === 0) {
+        setTimeout(doLoad, 500);
+        return;
+      }
+      loadRealTemporalData(nodes, edges)
+        .then((realData) => {
+          if (realData.nodes.size > 0) {
+            set({
+              temporalData: realData,
+              timelineRange: {
+                start: realData.rangeStart.getTime(),
+                end: realData.rangeEnd.getTime(),
+              },
+              timelinePosition: realData.rangeEnd.getTime(),
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn("[APEX] Failed to load real temporal data, using synthetic fallback:", err);
+        });
+    };
+    setTimeout(doLoad, 100);
+  },
 
   goLive: () =>
     set((s) => ({

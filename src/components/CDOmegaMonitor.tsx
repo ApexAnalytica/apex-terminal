@@ -1,8 +1,12 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { OmegaState, DoomsdayState, AlertLevel } from "@/lib/types";
+import { OmegaState, DoomsdayState, AlertLevel, CausalGraph } from "@/lib/types";
 import { getStatusColor } from "@/lib/omega-engine";
+import { useFilteredGraph } from "@/hooks/useFilteredGraph";
+import { useApexStore } from "@/stores/useApexStore";
+import type { TemporalDataset } from "@/lib/temporal-data";
 
 interface CDOmegaMonitorProps {
   state: OmegaState;
@@ -10,31 +14,170 @@ interface CDOmegaMonitorProps {
   alertLevel: AlertLevel;
 }
 
-export default function CDOmegaMonitor({ state, doomsday, alertLevel }: CDOmegaMonitorProps) {
-  const color = getStatusColor(state.status);
+/** Compute average ΩF composite across all nodes (0-10 scale) */
+function computeAvgOmega(graph: CausalGraph): number {
+  const nodes = graph.nodes;
+  if (nodes.length === 0) return 0;
+  const sum = nodes.reduce((acc, n) => acc + (n.omegaFragility?.composite ?? 0), 0);
+  return sum / nodes.length;
+}
+
+/** Compute max ΩF composite across all nodes (0-10 scale) */
+function computeMaxOmega(graph: CausalGraph): number {
+  if (graph.nodes.length === 0) return 0;
+  return Math.max(...graph.nodes.map((n) => n.omegaFragility?.composite ?? 0));
+}
+
+/**
+ * BFS-based average shortest path length across the directed graph.
+ * Only counts reachable pairs. Returns 0 for empty/disconnected graphs.
+ */
+function computeAvgPathLength(graph: CausalGraph): number {
+  const { nodes, edges } = graph;
+  if (nodes.length <= 1) return 0;
+
+  // Build adjacency list (directed)
+  const adj = new Map<string, string[]>();
+  for (const n of nodes) adj.set(n.id, []);
+  for (const e of edges) {
+    adj.get(e.source)?.push(e.target);
+  }
+
+  let totalDist = 0;
+  let pairCount = 0;
+
+  for (const src of nodes) {
+    // BFS from src
+    const dist = new Map<string, number>();
+    dist.set(src.id, 0);
+    const queue = [src.id];
+    let head = 0;
+    while (head < queue.length) {
+      const v = queue[head++];
+      const dv = dist.get(v)!;
+      for (const w of adj.get(v) ?? []) {
+        if (!dist.has(w)) {
+          dist.set(w, dv + 1);
+          queue.push(w);
+        }
+      }
+    }
+    // Sum distances to all reachable nodes (excluding self)
+    for (const [, d] of dist) {
+      if (d > 0) {
+        totalDist += d;
+        pairCount++;
+      }
+    }
+  }
+
+  return pairCount > 0 ? totalDist / pairCount : 0;
+}
+
+/** Derive status label from average omega fragility */
+function deriveStatusLabel(avgOmega: number): { status: string; color: string } {
+  if (avgOmega >= 7) return { status: "CRITICAL", color: "var(--accent-red)" };
+  if (avgOmega >= 5) return { status: "ELEVATED", color: "var(--accent-amber)" };
+  return { status: "NOMINAL", color: "var(--accent-green)" };
+}
+
+/** Derive alert color from average omega */
+function deriveAlertColor(avgOmega: number): { level: string; color: string } {
+  if (avgOmega >= 7) return { level: "RED", color: "#ff1744" };
+  if (avgOmega >= 5) return { level: "AMBER", color: "#ffab00" };
+  return { level: "GREEN", color: "#00e676" };
+}
+
+/** Format temporal range as human-readable duration */
+function formatTemporalRange(
+  temporalData: TemporalDataset | null,
+  timelineRange: { start: number; end: number }
+): string {
+  const start = temporalData ? temporalData.rangeStart.getTime() : timelineRange.start;
+  const end = temporalData ? temporalData.rangeEnd.getTime() : timelineRange.end;
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+  if (days >= 365) return `T-${Math.round(days / 365)}y`;
+  return `T-${days}d`;
+}
+
+export default function CDOmegaMonitor({
+  state,
+  doomsday,
+  alertLevel,
+}: CDOmegaMonitorProps) {
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const filteredGraph = useFilteredGraph();
+  const temporalData = useApexStore((s) => s.temporalData);
+  const timelineRange = useApexStore((s) => s.timelineRange);
+
+  const hasNodes = filteredGraph.nodes.length > 0;
+
+  const avgOmega = useMemo(() => computeAvgOmega(filteredGraph), [filteredGraph]);
+  const maxOmega = useMemo(() => computeMaxOmega(filteredGraph), [filteredGraph]);
+  const avgPathLen = useMemo(() => computeAvgPathLength(filteredGraph), [filteredGraph]);
+  const omegaPct = useMemo(() => (hasNodes ? (avgOmega / 10) * 100 : 100), [avgOmega, hasNodes]);
+  const derivedStatus = useMemo(() => (hasNodes ? deriveStatusLabel(avgOmega) : { status: "NOMINAL", color: "var(--accent-green)" }), [avgOmega, hasNodes]);
+  const derivedAlert = useMemo(() => (hasNodes ? deriveAlertColor(avgOmega) : { level: "GREEN", color: "#00e676" }), [avgOmega, hasNodes]);
+  const temporalLabel = useMemo(() => formatTemporalRange(temporalData, timelineRange), [temporalData, timelineRange]);
+  const regimeLabel = useMemo(() => {
+    if (!hasNodes) return "STABLE";
+    if (avgOmega >= 8) return "CRASH";
+    if (avgOmega >= 6) return "PHASE TRANSITION";
+    if (avgOmega >= 4) return "MELT UP";
+    if (avgOmega >= 2) return "STAGNATION";
+    return "STABLE";
+  }, [avgOmega, hasNodes]);
+
+  // Use graph-derived omega for the buffer bar when nodes are loaded,
+  // otherwise fall back to the shock-based state
+  const bufferValue = hasNodes ? Math.max(0, Math.min(100, 100 - omegaPct)) : state.buffer;
+  const displayColor = hasNodes ? derivedStatus.color : getStatusColor(state.status);
+
   const segments = 40;
-  const filledSegments = Math.round((state.buffer / 100) * segments);
+  const filledSegments = Math.round((bufferValue / 100) * segments);
+
+  const nodeCount = filteredGraph.nodes.length;
+  const edgeCount = filteredGraph.edges.length;
+
+  // Secondary metrics for overflow menu on small screens
+  const secondaryMetrics = [
+    { label: "AVG PATH", value: avgPathLen.toFixed(2) },
+    { label: "MAX ΩF", value: maxOmega.toFixed(1) },
+    { label: "DENSITY", value: (filteredGraph.metadata.density * 100).toFixed(1) + "%" },
+    { label: "RANGE", value: temporalLabel },
+    { label: "REGIME", value: regimeLabel },
+    { label: "NODES", value: String(nodeCount) },
+    { label: "EDGES", value: String(edgeCount) },
+  ];
 
   return (
-    <div className="flex items-center gap-6" data-tour="cd-omega">
-      {/* CDΩ Label */}
-      <div className="flex flex-col items-end">
+    <div className="flex items-center gap-3 lg:gap-6 relative" data-tour="cd-omega">
+      {/* Causal Distance — average path length */}
+      <div className="flex flex-col items-end shrink-0">
         <span
-          className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] uppercase"
+          className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] uppercase hidden xl:block"
           style={{ color: "var(--text-muted)" }}
         >
           Causal Distance
         </span>
-        <span
-          className="font-[family-name:var(--font-michroma)] text-lg font-bold tracking-wider"
-          style={{ color }}
-        >
-          CD&Omega;
-        </span>
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="font-[family-name:var(--font-michroma)] text-lg font-bold tracking-wider"
+            style={{ color: displayColor }}
+          >
+            CD&Omega;
+          </span>
+          <span
+            className="font-mono text-sm font-bold tabular-nums hidden md:inline"
+            style={{ color: displayColor }}
+          >
+            {hasNodes ? avgPathLen.toFixed(1) : "—"}
+          </span>
+        </div>
       </div>
 
       {/* Buffer Bar */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 shrink-0">
         <div className="flex gap-[2px]">
           {Array.from({ length: segments }).map((_, i) => {
             const filled = i < filledSegments;
@@ -47,18 +190,18 @@ export default function CDOmegaMonitor({ state, doomsday, alertLevel }: CDOmegaM
             return (
               <motion.div
                 key={i}
-                className="h-4 w-[6px] rounded-[1px]"
+                className="h-4 w-[6px] rounded-[1px] hidden sm:block"
                 style={{
                   backgroundColor: filled ? segColor : "var(--border)",
                   opacity: filled ? 1 : 0.3,
                 }}
                 animate={
-                  filled && state.status === "OMEGA_BREACH"
+                  filled && derivedStatus.status === "CRITICAL"
                     ? { opacity: [1, 0.3, 1] }
                     : {}
                 }
                 transition={
-                  state.status === "OMEGA_BREACH"
+                  derivedStatus.status === "CRITICAL"
                     ? { duration: 0.5, repeat: Infinity }
                     : {}
                 }
@@ -71,49 +214,49 @@ export default function CDOmegaMonitor({ state, doomsday, alertLevel }: CDOmegaM
             &Omega;
           </span>
           <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
-            {state.buffer.toFixed(1)}%
+            {hasNodes ? `${omegaPct.toFixed(1)}%` : `${state.buffer.toFixed(1)}%`}
           </span>
-          <span className="text-[9px] font-mono" style={{ color: "var(--accent-green)" }}>
-            SAFE
+          <span className="text-[9px] font-mono hidden sm:block" style={{ color: "var(--accent-green)" }}>
+            {derivedStatus.status === "NOMINAL" ? "SAFE" : derivedStatus.status}
           </span>
         </div>
       </div>
 
-      {/* Status Badge */}
+      {/* Status Badge — always visible */}
       <motion.div
-        className="flex items-center gap-2 rounded border px-3 py-1.5"
+        className="flex items-center gap-2 rounded border px-2 lg:px-3 py-1.5 shrink-0"
         style={{
-          borderColor: color,
-          backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
+          borderColor: displayColor,
+          backgroundColor: `color-mix(in srgb, ${displayColor} 8%, transparent)`,
         }}
         animate={
-          state.status === "CRITICAL" || state.status === "OMEGA_BREACH"
-            ? { borderColor: [color, "transparent", color] }
+          derivedStatus.status === "CRITICAL"
+            ? { borderColor: [displayColor, "transparent", displayColor] }
             : {}
         }
         transition={
-          state.status === "CRITICAL" || state.status === "OMEGA_BREACH"
+          derivedStatus.status === "CRITICAL"
             ? { duration: 1, repeat: Infinity }
             : {}
         }
       >
         <div
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: color }}
+          className="h-2 w-2 rounded-full shrink-0"
+          style={{ backgroundColor: displayColor }}
         />
         <span
           className="font-[family-name:var(--font-michroma)] text-[10px] tracking-widest"
-          style={{ color }}
+          style={{ color: displayColor }}
         >
-          {state.status.replace("_", " ")}
+          {derivedStatus.status}
         </span>
       </motion.div>
 
-      {/* Shock Count */}
-      <div className="flex flex-col items-center">
+      {/* Shock Count — always visible */}
+      <div className="flex flex-col items-center shrink-0">
         <span
           className="font-mono text-xl font-bold tabular-nums"
-          style={{ color }}
+          style={{ color: state.shocks.length > 0 ? "var(--accent-red)" : displayColor }}
         >
           {state.shocks.length}
         </span>
@@ -122,35 +265,95 @@ export default function CDOmegaMonitor({ state, doomsday, alertLevel }: CDOmegaM
         </span>
       </div>
 
-      {/* Alert Level + Mini Doomsday */}
-      <div className="flex flex-col items-center gap-0.5">
+      {/* Node / Edge Counts — hidden below lg */}
+      <div className="hidden lg:flex items-center gap-3 shrink-0">
+        <div className="flex flex-col items-center">
+          <span className="font-mono text-sm font-bold tabular-nums" style={{ color: "var(--text-muted)" }}>
+            {nodeCount}
+          </span>
+          <span className="text-[8px] text-text-muted tracking-wider">NODES</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="font-mono text-sm font-bold tabular-nums" style={{ color: "var(--text-muted)" }}>
+            {edgeCount}
+          </span>
+          <span className="text-[8px] text-text-muted tracking-wider">EDGES</span>
+        </div>
+      </div>
+
+      {/* Alert Level + Doomsday — hidden below xl */}
+      <div className="hidden xl:flex flex-col items-center gap-0.5 shrink-0">
         <div className="flex items-center gap-1.5">
           <div
             className="h-2.5 w-2.5 rounded-full"
             style={{
-              backgroundColor:
-                alertLevel === "RED" ? "#ff1744" : alertLevel === "AMBER" ? "#ffab00" : "#00e676",
-              boxShadow: alertLevel === "RED" ? "0 0 6px #ff1744" : "none",
+              backgroundColor: derivedAlert.color,
+              boxShadow: derivedAlert.level === "RED" ? "0 0 6px #ff1744" : "none",
             }}
           />
           <span
             className="text-[9px] font-mono font-bold tracking-wider"
-            style={{
-              color: alertLevel === "RED" ? "#ff1744" : alertLevel === "AMBER" ? "#ffab00" : "#00e676",
-            }}
+            style={{ color: derivedAlert.color }}
           >
-            {alertLevel}
+            {derivedAlert.level}
           </span>
         </div>
         <span
           className="text-[9px] font-mono tabular-nums"
           style={{ color: doomsday.timeToFailureDays < 30 ? "#ff1744" : "var(--text-muted)" }}
         >
-          T-{doomsday.timeToFailureDays}d
+          {temporalLabel}
         </span>
         <span className="text-[7px] font-mono text-text-muted">
-          {doomsday.regimeType.replace("_", " ")}
+          {regimeLabel}
         </span>
+      </div>
+
+      {/* Overflow menu for collapsed metrics on small screens */}
+      <div className="lg:hidden relative shrink-0">
+        <button
+          onClick={() => setOverflowOpen(!overflowOpen)}
+          className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-mono text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors"
+          title="More metrics"
+        >
+          &hellip;
+        </button>
+        {overflowOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setOverflowOpen(false)}
+            />
+            <div className="absolute right-0 top-full mt-1 z-50 bg-surface-elevated border border-border rounded shadow-lg p-3 min-w-[160px]">
+              {/* Alert level */}
+              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border">
+                <div
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{
+                    backgroundColor: derivedAlert.color,
+                    boxShadow: derivedAlert.level === "RED" ? "0 0 6px #ff1744" : "none",
+                  }}
+                />
+                <span
+                  className="text-[9px] font-mono font-bold tracking-wider"
+                  style={{ color: derivedAlert.color }}
+                >
+                  {derivedAlert.level}
+                </span>
+              </div>
+              {secondaryMetrics.map((m) => (
+                <div key={m.label} className="flex justify-between items-center py-1">
+                  <span className="text-[8px] font-mono text-text-muted tracking-wider">
+                    {m.label}
+                  </span>
+                  <span className="text-[9px] font-mono text-foreground tabular-nums">
+                    {m.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

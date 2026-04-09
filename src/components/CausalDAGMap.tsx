@@ -196,8 +196,13 @@ function CausalDAGMapInner() {
     return { type: "FeatureCollection", features };
   }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection]);
 
-  // Build GeoJSON for edges
-  const edgeGeoJSON = useMemo<FeatureCollection<LineString>>(() => {
+  // Build GeoJSON for edges — split into solid and dashed to match 3D conventions:
+  //   directed  → cyan (#00e5ff) — solid
+  //   temporal  → amber (#ffab00) — solid + animated particle
+  //   confounded → orange (#ff6d00) — dashed
+  //   inconsistent → red (#ff1744) — dashed
+  //   severed → red (#ff1744) — dashed, reduced opacity
+  const { solidEdgeGeoJSON, dashedEdgeGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
       nodeMap.set(
@@ -207,18 +212,20 @@ function CausalDAGMapInner() {
     });
 
     const selectedSet = new Set(selectedNodes);
-    const features: Feature<LineString>[] = [];
+    const solidFeatures: Feature<LineString>[] = [];
+    const dashedFeatures: Feature<LineString>[] = [];
 
     activeGraph.edges.forEach((edge) => {
-      if (edge.isSevered) return;
       const source = nodeMap.get(edge.source);
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
-      const isDimmed =
+      // Isolation: hide edges that don't connect two selected nodes (matches 3D behavior)
+      if (
         isolateSelection &&
         selectedSet.size > 0 &&
-        !(selectedSet.has(edge.source) && selectedSet.has(edge.target));
+        !(selectedSet.has(edge.source) && selectedSet.has(edge.target))
+      ) return;
 
       // Curved line via midpoint offset
       const midLng = (source[0] + target[0]) / 2;
@@ -236,21 +243,24 @@ function CausalDAGMapInner() {
         perpLat = midLat + (dx / dist) * curveAmount;
       }
 
-      // Edge color — matches 2D/3D exactly:
-      //   directed  → cyan (#00e5ff) — solid line
-      //   temporal  → amber (#ffab00) — solid line + animated particle
-      //   confounded → orange (#ff6d00) — solid line
-      //   inconsistent → red (#ff1744) — solid line
-      const edgeColor = edge.isInconsistent
+      // Edge color — matches 3D exactly
+      const isSevered = edge.isSevered ?? false;
+      const edgeColor = isSevered
         ? "#ff1744"
-        : edge.type === "temporal"
-          ? "#ffab00"
-          : edge.type === "confounded"
-            ? "#ff6d00"
-            : "#00e5ff";
+        : edge.isInconsistent
+          ? "#ff1744"
+          : edge.type === "temporal"
+            ? "#ffab00"
+            : edge.type === "confounded"
+              ? "#ff6d00"
+              : "#00e5ff";
 
-      // Create a 3-point line (source → curve midpoint → target)
-      features.push({
+      // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
+      const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
+
+      const opacity = isSevered ? 0.25 : 0.5;
+
+      const feature: Feature<LineString> = {
         type: "Feature",
         geometry: {
           type: "LineString",
@@ -260,26 +270,35 @@ function CausalDAGMapInner() {
           id: edge.id,
           weight: edge.weight,
           type: edge.type,
-          opacity: isDimmed ? 0.05 : 0.5,
+          opacity,
           color: edgeColor,
           width: edge.weight * 2 + 1.5,
         },
-      });
+      };
+
+      if (isDashed) {
+        dashedFeatures.push(feature);
+      } else {
+        solidFeatures.push(feature);
+      }
     });
 
-    return { type: "FeatureCollection", features };
+    return {
+      solidEdgeGeoJSON: { type: "FeatureCollection" as const, features: solidFeatures },
+      dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
+    };
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection]);
 
-  // Extract temporal edge paths directly from the edge GeoJSON features
+  // Extract temporal edge paths directly from the solid edge GeoJSON features
   // so particles follow the exact same curves as the rendered lines
   const temporalEdgePaths = useMemo(() => {
-    return edgeGeoJSON.features
+    return solidEdgeGeoJSON.features
       .filter((f) => f.properties?.type === "temporal" && (f.properties?.opacity ?? 1) > 0.1)
       .map((f) => ({
         id: f.properties!.id as string,
         points: f.geometry.coordinates as [number, number][],
       }));
-  }, [edgeGeoJSON]);
+  }, [solidEdgeGeoJSON]);
 
   // Animated particle GeoJSON — updated every frame via requestAnimationFrame
   const [particleGeoJSON, setParticleGeoJSON] = useState<FeatureCollection<Point>>({
@@ -372,7 +391,7 @@ function CausalDAGMapInner() {
       }
 
       // Edge click
-      if (layerId === "edge-lines") {
+      if (layerId === "edge-lines" || layerId === "edge-lines-dashed") {
         e.preventDefault();
         const edgeId = feature.properties?.id;
         if (edgeId) {
@@ -500,7 +519,7 @@ function CausalDAGMapInner() {
           zoom: 3,
         }}
         mapStyle={mapStyle}
-        interactiveLayerIds={["node-circles", "edge-lines"]}
+        interactiveLayerIds={["node-circles", "edge-lines", "edge-lines-dashed"]}
         onClick={onMapClick}
         onMouseMove={onMapHover}
         onMouseLeave={onMapLeave}
@@ -509,9 +528,8 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
-        {/* All edge lines — solid, color-coded by type:
-            directed = cyan, temporal = amber (+ particles), confounded = orange, inconsistent = red */}
-        <Source id="edges" type="geojson" data={edgeGeoJSON}>
+        {/* Solid edge lines: directed (cyan) + temporal (amber) */}
+        <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
             id="edge-lines"
             type="line"
@@ -519,6 +537,24 @@ function CausalDAGMapInner() {
               "line-color": ["get", "color"],
               "line-opacity": ["get", "opacity"],
               "line-width": ["get", "width"],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
+        {/* Dashed edge lines: confounded (orange), inconsistent (red), severed (red) */}
+        <Source id="edges-dashed" type="geojson" data={dashedEdgeGeoJSON}>
+          <Layer
+            id="edge-lines-dashed"
+            type="line"
+            paint={{
+              "line-color": ["get", "color"],
+              "line-opacity": ["get", "opacity"],
+              "line-width": ["get", "width"],
+              "line-dasharray": [4, 3],
             }}
             layout={{
               "line-cap": "round",

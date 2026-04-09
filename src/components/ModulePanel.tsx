@@ -847,11 +847,32 @@ function ParetoPanel({
     };
   }, [graphData.nodes, shocks, replayEpochs, baselineEpochs, csdEpochs]);
 
+  const paretoSectionExpanded = expandedChart === "pareto";
+  const toggleParetoSection = useCallback(() => {
+    if (paretoSectionExpanded) {
+      // Collapse: narrow panel + collapse all cards
+      setExpandedChart(null);
+      setExpandedCrit({});
+    } else {
+      // Expand: widen panel + expand all cards
+      setExpandedChart("pareto");
+      setExpandedCrit({ csd: true, ph: true, lppls: true });
+    }
+  }, [paretoSectionExpanded, setExpandedChart]);
+
   return (
     <>
       {/* Three Criticality Modules */}
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
-        CRITICALITY HORIZONS
+      <div className="flex items-center justify-between">
+        <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
+          CRITICALITY HORIZONS
+        </div>
+        <button
+          onClick={toggleParetoSection}
+          className="text-[7px] font-mono text-text-muted opacity-60 hover:opacity-100 transition-opacity flex items-center gap-1"
+        >
+          {paretoSectionExpanded ? "▶ collapse" : "◀ expand"}
+        </button>
       </div>
       <div className="space-y-2">
         {/* CSD — Critical Slowing Down */}
@@ -865,8 +886,7 @@ function ParetoPanel({
           onToggle={() => toggleCrit("csd")}
           timeSeries={csdData.timeSeries}
           modelSeries={csdData.observedSeries ? csdData.modelSeries : undefined}
-          chartExpanded={expandedChart === "csd"}
-          onChartExpand={() => setExpandedChart(expandedChart === "csd" ? null : "csd")}
+          chartExpanded={paretoSectionExpanded}
           confidence={csdData.confidence}
           shortDesc="Recovery rate decay — epochs until perturbation recovery time diverges to infinity"
           methodology={[
@@ -889,8 +909,7 @@ function ParetoPanel({
           onToggle={() => toggleCrit("ph")}
           timeSeries={phData.timeSeries}
           modelSeries={phData.modelSeries}
-          chartExpanded={expandedChart === "ph"}
-          onChartExpand={() => setExpandedChart(expandedChart === "ph" ? null : "ph")}
+          chartExpanded={paretoSectionExpanded}
           confidence={phData.confidence}
           shortDesc={`Topological fragility holes — epochs until high-Ω cluster boundaries collapse`}
           methodology={[
@@ -913,8 +932,7 @@ function ParetoPanel({
           onToggle={() => toggleCrit("lppls")}
           timeSeries={lpplsData.timeSeries}
           modelSeries={lpplsData.modelSeries}
-          chartExpanded={expandedChart === "lppls"}
-          onChartExpand={() => setExpandedChart(expandedChart === "lppls" ? null : "lppls")}
+          chartExpanded={paretoSectionExpanded}
           confidence={lpplsData.confidence}
           shortDesc="Super-exponential fragility growth — epochs until singularity (tc) is reached"
           methodology={[
@@ -1730,7 +1748,6 @@ function CriticalityCard({
   timeSeries,
   modelSeries,
   chartExpanded,
-  onChartExpand,
   confidence,
   shortDesc,
   methodology,
@@ -1747,7 +1764,6 @@ function CriticalityCard({
   timeSeries: number[];
   modelSeries?: number[];
   chartExpanded?: boolean;
-  onChartExpand?: () => void;
   confidence: number;
   shortDesc: string;
   methodology: string[];
@@ -1820,16 +1836,8 @@ function CriticalityCard({
         <div className="px-2.5 pb-2.5 space-y-2.5 border-t" style={{ borderColor: `${color}20` }}>
           {/* Time Series Chart */}
           <div className="mt-2">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                TEMPORAL SIGNAL
-              </div>
-              <button
-                onClick={onChartExpand}
-                className="text-[7px] font-mono text-text-muted opacity-60 hover:opacity-100 transition-opacity"
-              >
-                {chartExpanded ? "▶ collapse panel" : "◀ expand panel"}
-              </button>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              TEMPORAL SIGNAL
             </div>
             <div className="border rounded p-1 transition-all duration-300" style={{
               borderColor: `${color}15`,

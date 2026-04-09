@@ -199,20 +199,22 @@ export default function RiskPropagationFlow() {
 
   return (
     <div className="border-t border-border bg-surface-elevated" data-tour="risk-flow">
-      {/* Toggle bar */}
+      {/* Toggle bar — aligned with TimeDial layout */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-between w-full px-4 py-1 hover:bg-surface transition-colors"
+        className="flex items-center gap-3 w-full px-4 py-1 hover:bg-surface transition-colors"
       >
+        <div className="min-w-[72px] flex-shrink-0 flex items-center justify-center">
+          <span className="text-[9px] font-mono text-text-muted">
+            {collapsed ? "\u25B6" : "\u25BC"}
+          </span>
+        </div>
         <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
           {allSelectedIds.size > 1
             ? `ΩF TIME SERIES — ${allSelectedIds.size} SELECTED NODES`
             : allSelectedIds.size === 1
               ? "ΩF TIME SERIES — SELECTED NODE"
               : "ΩF TIME SERIES — TOP RISK NODES"}
-        </span>
-        <span className="text-[9px] font-mono text-text-muted">
-          {collapsed ? "\u25B6" : "\u25BC"}
         </span>
       </button>
 
@@ -226,7 +228,18 @@ export default function RiskPropagationFlow() {
             transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div ref={containerRef} className="flex items-stretch gap-2 px-4 pb-2 overflow-x-auto">
+            <div className="flex items-stretch gap-3 px-4 pb-2">
+              {/* Left label — matches TimeDial label column for alignment */}
+              <div className="min-w-[72px] flex-shrink-0 flex flex-col items-center justify-center gap-0.5">
+                <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-[0.15em] text-text-muted uppercase">
+                  ΩF Series
+                </span>
+                <span className="text-[9px] font-mono text-foreground">
+                  {displayNodes.length}
+                </span>
+              </div>
+              {/* Cards — aligns with TimeDial track */}
+              <div ref={containerRef} className="flex-1 flex items-stretch gap-2 overflow-x-auto min-w-0">
               {displayNodes.map((card, i) => {
                 const history = nodeHistories.get(card.nodeId) ?? [];
                 const domainColor = getDomainColor(card.domain);
@@ -337,6 +350,7 @@ export default function RiskPropagationFlow() {
                   </motion.div>
                 );
               })}
+              </div>
             </div>
           </motion.div>
         )}

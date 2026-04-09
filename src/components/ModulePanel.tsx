@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
@@ -17,6 +17,11 @@ export default function ModulePanel() {
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const isWide = expandedChart !== null;
 
+  // Collapse panel when switching modules
+  useEffect(() => {
+    setExpandedChart(null);
+  }, [activeModule]);
+
   return (
     <aside
       className="flex flex-col border-l border-border bg-surface h-full overflow-hidden"
@@ -29,8 +34,16 @@ export default function ModulePanel() {
     >
       {/* Module Header */}
       <div className="px-4 py-3 border-b border-border bg-surface-elevated">
-        <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted uppercase">
-          {activeModule} Engine
+        <div className="flex items-center justify-between">
+          <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted uppercase">
+            {activeModule} Engine
+          </div>
+          <button
+            onClick={() => setExpandedChart(isWide ? null : activeModule)}
+            className="text-[7px] font-mono text-text-muted opacity-60 hover:opacity-100 transition-opacity flex items-center gap-1"
+          >
+            {isWide ? "▶ collapse" : "◀ expand"}
+          </button>
         </div>
         <div className="text-[9px] text-text-muted font-mono mt-0.5">
           {activeModule === "spirtes" && "Structure Discovery \u2014 DCD / NOTEARS / PCMCI+ / FCI"}
@@ -848,31 +861,21 @@ function ParetoPanel({
   }, [graphData.nodes, shocks, replayEpochs, baselineEpochs, csdEpochs]);
 
   const paretoSectionExpanded = expandedChart === "pareto";
-  const toggleParetoSection = useCallback(() => {
+
+  // Sync criticality card expansion with panel-level expand/collapse
+  useEffect(() => {
     if (paretoSectionExpanded) {
-      // Collapse: narrow panel + collapse all cards
-      setExpandedChart(null);
-      setExpandedCrit({});
-    } else {
-      // Expand: widen panel + expand all cards
-      setExpandedChart("pareto");
       setExpandedCrit({ csd: true, ph: true, lppls: true });
+    } else {
+      setExpandedCrit({});
     }
-  }, [paretoSectionExpanded, setExpandedChart]);
+  }, [paretoSectionExpanded]);
 
   return (
     <>
       {/* Three Criticality Modules */}
-      <div className="flex items-center justify-between">
-        <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
-          CRITICALITY HORIZONS
-        </div>
-        <button
-          onClick={toggleParetoSection}
-          className="text-[7px] font-mono text-text-muted opacity-60 hover:opacity-100 transition-opacity flex items-center gap-1"
-        >
-          {paretoSectionExpanded ? "▶ collapse" : "◀ expand"}
-        </button>
+      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
+        CRITICALITY HORIZONS
       </div>
       <div className="space-y-2">
         {/* CSD — Critical Slowing Down */}

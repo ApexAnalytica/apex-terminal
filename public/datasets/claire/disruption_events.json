@@ -1,0 +1,144 @@
+[
+  {
+    "event_id": "evt_abqaiq_khurais_2019",
+    "date_start": "2019-09-14",
+    "date_end": "2019-10-11",
+    "name": "Abqaiq-Khurais attack",
+    "category": "infrastructure",
+    "affected_assets": [
+      "abqaiq_processing_plant",
+      "khurais_oil_field",
+      "saudi_crude_exports",
+      "east_west_pipeline_bypass_system",
+      "global_oil_supply"
+    ],
+    "peak_disruption_pct": 57.6,
+    "recovery_days": 27,
+    "estimated_loss_usd": 5500000000,
+    "source": [
+      "U.S. EIA, 'Saudi Arabia crude oil production outage affects global crude oil and gasoline prices,' Sept. 23, 2019.",
+      "Saudi Aramco public statements summarized by EIA on Sept. 17, 2019; full restoration expected by end-September."
+    ],
+    "impact_magnitude_notes": "Peak disruption calculated as 5.7 million b/d of lost production divided by EIA's estimate of 9.9 million b/d Saudi crude production in August 2019.",
+    "recovery_notes": "Aramco reported 2 million b/d restored at Abqaiq by Sept. 17 and expected full output capacity to be restored by end-September; date_end set to Oct. 11 as a conservative 90%+ restoration window.",
+    "confidence": "high"
+  },
+  {
+    "event_id": "evt_hormuz_tanker_incidents_2019",
+    "date_start": "2019-05-12",
+    "date_end": "2019-07-19",
+    "name": "Hormuz tanker incidents",
+    "category": "geopolitical",
+    "affected_assets": [
+      "strait_of_hormuz_shipping_route",
+      "gulf_crude_exports",
+      "gulf_lng_export_routes",
+      "marine_insurance_market"
+    ],
+    "peak_disruption_pct": 0.0,
+    "recovery_days": null,
+    "estimated_loss_usd": null,
+    "source": [
+      "Reuters, 'Ship insurance costs soar after Middle East tanker attacks,' June 14, 2019.",
+      "U.S. EIA chokepoint / risk-premium commentary for the Strait of Hormuz."
+    ],
+    "impact_magnitude_notes": "No robust public estimate of direct capacity lost. Event is better modeled as a transit-risk and cost shock: war-risk premiums rose into double digits and the largest ships faced up to $200,000 in extra seven-day voyage costs.",
+    "recovery_notes": "Public reporting supports a persistent risk-premium shock rather than a discrete production outage; no defensible single-day estimate for 90% restoration is available.",
+    "confidence": "medium"
+  },
+  {
+    "event_id": "evt_qatar_blockade_2017_2021",
+    "date_start": "2017-06-05",
+    "date_end": "2021-01-05",
+    "name": "Qatar diplomatic blockade",
+    "category": "geopolitical",
+    "affected_assets": [
+      "qatar_land_border_logistics",
+      "qatar_airspace_routes",
+      "regional_shipping_routes",
+      "food_import_supply_chain",
+      "qatar_banking_liquidity"
+    ],
+    "peak_disruption_pct": 100.0,
+    "recovery_days": 60,
+    "estimated_loss_usd": null,
+    "source": [
+      "Reuters, 'Economic, financial impact on Qatar from boycott is fading - IMF,' March 6, 2018.",
+      "Reuters, 'Saudi Arabia and allies to restore full ties with Qatar, says foreign minister,' Jan. 5, 2021."
+    ],
+    "impact_magnitude_notes": "100% refers to the immediate loss of the direct Saudi land-border corridor and associated transport links on June 5, 2017, not a full loss of LNG export capacity.",
+    "recovery_notes": "IMF/Reuters reporting indicates imports were rerouted and financial stress was fading within months; recovery_days=60 is an operational estimate for 90% supply-chain restoration via rerouting, while formal diplomatic normalization did not occur until Jan. 5, 2021.",
+    "confidence": "medium"
+  },
+  {
+    "event_id": "evt_maaden_waad_al_shamal_ramp_delay",
+    "date_start": "2017-07-01",
+    "date_end": "2019-12-31",
+    "name": "Ma'aden Wa'ad Al Shamal ramp-up delays",
+    "category": "supply",
+    "affected_assets": [
+      "waad_al_shamal_phosphate_complex",
+      "saudi_phosphate_exports",
+      "dap_supply_chain",
+      "india_and_east_africa_import_markets"
+    ],
+    "peak_disruption_pct": null,
+    "recovery_days": 914,
+    "estimated_loss_usd": null,
+    "source": [
+      "Reuters, 'Saudi Ma'aden seen ramping up phosphate output from Waad al-Shamal in 2017,' Nov. 24, 2016.",
+      "U.S. Geological Survey, Mineral Yearbook 2019: Saudi Arabia."
+    ],
+    "impact_magnitude_notes": "Public sources clearly document slippage from the original mid-2017 ramp-up plan to full phosphate capacity only by end-2019, but they do not provide a defensible peak % capacity-loss figure relative to the original commissioning curve. Value left null to avoid false precision.",
+    "recovery_notes": "Recovery_days measures the delay from the original target ramp period (mid-2017) to end-2019 when the complex had ramped to full 3 Mt/yr ammonium-phosphate capacity according to USGS.",
+    "confidence": "low"
+  },
+  {
+    "event_id": "evt_ras_laffan_lng_outage_2026",
+    "date_start": "2026-03-04",
+    "date_end": "2026-04-01",
+    "name": "Ras Laffan LNG shutdown",
+    "category": "energy",
+    "affected_assets": [
+      "ras_laffan_lng_trains",
+      "qatar_lng_exports",
+      "north_field_gas_to_lng_chain",
+      "asia_europe_lng_buyers"
+    ],
+    "peak_disruption_pct": 100.0,
+    "recovery_days": 28,
+    "estimated_loss_usd": null,
+    "source": [
+      "Reuters, 'Exclusive: Qatar shuts gas liquefaction, will take weeks to restart, sources say,' March 4, 2026."
+    ],
+    "impact_magnitude_notes": "Reuters reported Qatar would fully shut down gas liquefaction, with at least two weeks before restart and at least another two weeks to return to full capacity. Modeled as a 100% loss of Ras Laffan liquefaction capacity at peak.",
+    "recovery_notes": "Using Reuters' two-weeks-to-restart plus two-weeks-to-full-capacity estimate, 90% restoration is approximated at 28 days.",
+    "confidence": "medium"
+  },
+  {
+    "event_id": "evt_fertilizer_export_restrictions_2022",
+    "date_start": "2022-02-24",
+    "date_end": "2022-12-31",
+    "name": "2022 fertilizer export restrictions wave",
+    "category": "supply",
+    "affected_assets": [
+      "global_urea_exports",
+      "global_dap_exports",
+      "black_sea_fertilizer_trade",
+      "china_urea_exports",
+      "import_dependent_food_systems"
+    ],
+    "peak_disruption_pct": null,
+    "recovery_days": null,
+    "estimated_loss_usd": null,
+    "source": [
+      "World Bank Food Security Update LXXI, Oct. 13, 2022.",
+      "World Bank Food Security Update LXXIII, Nov. 10, 2022.",
+      "IFPRI Food and Fertilizer Export Restrictions Tracker / related IFPRI analysis.",
+      "Reuters Plus, 'Fertilizer supply shocks continue to define market.'"
+    ],
+    "impact_magnitude_notes": "A multi-country policy shock rather than a single-facility outage. Public sources show export restrictions surged after the start of the war in Ukraine and that China's export controls reduced urea exports to negligible levels, but they do not support one unified global % capacity-loss figure. Value left null.",
+    "recovery_notes": "Restrictions were staggered across countries and products, so there is no single defensible day count to 90% restoration. Value left null.",
+    "confidence": "medium"
+  }
+]

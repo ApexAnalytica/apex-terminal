@@ -51,6 +51,7 @@ class MapErrorBoundary extends React.Component<
 
 function CausalDAGMapInner() {
   const mapRef = useRef<MapRef>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const {
     selectedNode,
     setSelectedNode,
@@ -70,6 +71,92 @@ function CausalDAGMapInner() {
     lat: number;
   } | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
+
+  // --- Shift+Drag box selection ---
+  const [selectionRect, setSelectionRect] = useState<{
+    x1: number; y1: number; x2: number; y2: number;
+  } | null>(null);
+  const shiftDragRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  // Pre-compute node screen coordinates for hit testing
+  const nodeCoords = useMemo(() => {
+    return activeGraph.nodes.map((node) => ({
+      id: node.id,
+      lngLat: getNodeCoordinates(node.id, node.globalConcentration ?? "", node.domain),
+    }));
+  }, [activeGraph.nodes]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!e.shiftKey) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      shiftDragRef.current = true;
+      dragStartRef.current = { x, y };
+      setSelectionRect({ x1: x, y1: y, x2: x, y2: y });
+      // Disable map panning during box select
+      mapRef.current?.getMap().dragPan.disable();
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!shiftDragRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setSelectionRect((prev) =>
+        prev ? { ...prev, x2: x, y2: y } : null,
+      );
+    };
+
+    const onPointerUp = () => {
+      if (!shiftDragRef.current) return;
+      shiftDragRef.current = false;
+      mapRef.current?.getMap().dragPan.enable();
+
+      setSelectionRect((rect) => {
+        if (!rect) return null;
+        const minX = Math.min(rect.x1, rect.x2);
+        const maxX = Math.max(rect.x1, rect.x2);
+        const minY = Math.min(rect.y1, rect.y2);
+        const maxY = Math.max(rect.y1, rect.y2);
+
+        // Ignore tiny drags (< 5px)
+        if (maxX - minX < 5 && maxY - minY < 5) return null;
+
+        const map = mapRef.current?.getMap();
+        if (!map) return null;
+
+        const ids: string[] = [];
+        for (const node of nodeCoords) {
+          const projected = map.project(node.lngLat as [number, number]);
+          if (
+            projected.x >= minX && projected.x <= maxX &&
+            projected.y >= minY && projected.y <= maxY
+          ) {
+            ids.push(node.id);
+          }
+        }
+        if (ids.length > 0) {
+          setSelectedNodes(ids);
+        }
+        return null;
+      });
+    };
+
+    container.addEventListener("pointerdown", onPointerDown);
+    container.addEventListener("pointermove", onPointerMove);
+    container.addEventListener("pointerup", onPointerUp);
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown);
+      container.removeEventListener("pointermove", onPointerMove);
+      container.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [nodeCoords, setSelectedNodes]);
 
   // Build GeoJSON for nodes
   const nodeGeoJSON = useMemo<FeatureCollection<Point>>(() => {
@@ -404,7 +491,7 @@ function CausalDAGMapInner() {
   );
 
   return (
-    <div className="w-full h-full relative">
+    <div ref={containerRef} className="w-full h-full relative">
       <MapGL
         ref={mapRef}
         initialViewState={{
@@ -573,6 +660,23 @@ function CausalDAGMapInner() {
           </Popup>
         )}
       </MapGL>
+
+      {/* Shift+Drag selection rectangle */}
+      {selectionRect && (
+        <div
+          style={{
+            position: "absolute",
+            left: Math.min(selectionRect.x1, selectionRect.x2),
+            top: Math.min(selectionRect.y1, selectionRect.y2),
+            width: Math.abs(selectionRect.x2 - selectionRect.x1),
+            height: Math.abs(selectionRect.y2 - selectionRect.y1),
+            border: "1px solid rgba(0, 229, 255, 0.6)",
+            backgroundColor: "rgba(0, 229, 255, 0.08)",
+            pointerEvents: "none",
+            zIndex: 40,
+          }}
+        />
+      )}
 
       {/* DAG Overlay (same controls as 2D/3D) */}
       <DAGOverlay />

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "APEX CAUSAL INTELLIGENCE TERMINAL",
-  description: "Ω-Critical AI Systems™ — Synthetic Scientist Platform",
+  title: "MANIFOLD — Causal Intelligence Platform",
+  description: "by Apex Analytica — Ω-Critical AI Systems™",
 };
 
 export default function RootLayout({

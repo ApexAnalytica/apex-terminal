@@ -8,6 +8,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
 import TrinityPanel from "./TrinityPanel";
 import InterventionControls from "./InterventionControls";
+import MonteCarloForecast from "./MonteCarloForecast";
 import AblationPanel from "./AblationPanel";
 import InterdictionPanel from "./InterdictionPanel";
 import NodeInspector from "./NodeInspector";
@@ -65,6 +66,7 @@ export default function ModulePanel() {
               sever causal links, and observe counterfactual downstream effects.
             </div>
             <InterventionControls />
+            <MonteCarloForecast />
             <AblationPanel />
           </div>
         )}

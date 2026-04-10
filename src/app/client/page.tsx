@@ -13,6 +13,7 @@ import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import CausalDAG2D from "@/components/CausalDAG2D";
 import ImportModal from "@/components/import/ImportModal";
+import FeedbackWidget from "@/components/FeedbackWidget";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -157,6 +158,7 @@ export default function ClientPage() {
 
       {/* Import Modal */}
       <ImportModal />
+      <FeedbackWidget />
     </div>
   );
 }

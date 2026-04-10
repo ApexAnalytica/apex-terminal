@@ -3,58 +3,127 @@
 import { motion } from "framer-motion";
 import type { CausalEdge } from "@/lib/types";
 
-interface EdgeInspectorProps {
+/**
+ * Shared edge inspector popup — used by 2D, 3D, and Map views.
+ * Shows causal link details when an edge is clicked.
+ */
+export default function EdgeInspector({
+  edge,
+  sourceLabel,
+  targetLabel,
+  onClose,
+}: {
   edge: CausalEdge;
   sourceLabel: string;
   targetLabel: string;
   onClose: () => void;
-}
+}) {
+  const typeColor =
+    edge.type === "temporal"
+      ? "#ffab00"
+      : edge.type === "confounded"
+        ? "#ff6d00"
+        : "#00e5ff";
 
-export default function EdgeInspector({ edge, sourceLabel, targetLabel, onClose }: EdgeInspectorProps) {
+  const typeLabel =
+    edge.type === "temporal"
+      ? "TEMPORAL"
+      : edge.type === "confounded"
+        ? "CONFOUNDED"
+        : "DIRECTED";
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-surface-elevated border border-border rounded-lg shadow-lg p-4 min-w-[280px] max-w-[400px]"
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.15 }}
+      className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-[420px] rounded border border-border bg-background/95 backdrop-blur-sm shadow-2xl"
+      style={{ boxShadow: `0 0 20px ${typeColor}15` }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
-          EDGE INSPECTOR
-        </span>
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-[0.15em] text-text-muted">
+          CAUSAL LINK INSPECTOR
+        </div>
         <button
           onClick={onClose}
-          className="text-[10px] text-text-muted hover:text-foreground transition-colors"
+          className="text-[10px] font-mono text-text-muted hover:text-foreground transition-colors"
         >
-          &times;
+          ESC
         </button>
       </div>
-      <div className="space-y-2 text-[9px] font-mono">
-        <div className="flex justify-between">
-          <span className="text-text-muted">SOURCE</span>
-          <span className="text-foreground">{sourceLabel}</span>
+      <div className="px-4 py-3 space-y-3">
+        {/* Source → Target */}
+        <div className="flex items-center gap-2 text-[10px] font-mono">
+          <span className="text-accent-cyan">{sourceLabel}</span>
+          <span className="text-text-muted">{"\u2192"}</span>
+          <span className="text-accent-cyan">{targetLabel}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-text-muted">TARGET</span>
-          <span className="text-foreground">{targetLabel}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-text-muted">WEIGHT</span>
-          <span className="text-foreground">{edge.weight.toFixed(3)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-text-muted">TYPE</span>
-          <span className="text-foreground">{edge.type.toUpperCase()}</span>
-        </div>
-        {edge.lag > 0 && (
-          <div className="flex justify-between">
-            <span className="text-text-muted">LAG</span>
-            <span className="text-foreground">{edge.lag} steps</span>
+
+        {/* Physical Mechanism */}
+        {edge.physicalMechanism && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              PHYSICAL MECHANISM
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              {edge.physicalMechanism}
+            </div>
           </div>
         )}
-        {edge.isSevered && (
-          <div className="text-accent-red text-center mt-2 tracking-wider">SEVERED</div>
-        )}
+
+        {/* Stats row */}
+        <div className="flex gap-4">
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">TYPE</div>
+            <div
+              className="text-[10px] font-mono mt-0.5"
+              style={{ color: typeColor }}
+            >
+              {typeLabel}
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">WEIGHT</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {edge.weight.toFixed(2)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">CONFIDENCE</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {(edge.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">LAG</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {edge.lag === 0 ? "sync" : `t+${edge.lag}`}
+            </div>
+          </div>
+          {edge.isInconsistent && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">STATUS</div>
+              <div className="text-[10px] font-mono text-accent-red mt-0.5">
+                INCONSISTENT
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Confidence bar */}
+        <div>
+          <div className="h-1 rounded-full bg-surface overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${edge.confidence * 100}%`,
+                backgroundColor: typeColor,
+                opacity: 0.7,
+              }}
+            />
+          </div>
+        </div>
       </div>
     </motion.div>
   );

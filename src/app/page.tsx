@@ -16,6 +16,7 @@ import ImportModal from "@/components/import/ImportModal";
 import SpotlightTour from "@/components/SpotlightTour";
 import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
+import FeedbackWidget from "@/components/FeedbackWidget";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -76,6 +77,7 @@ export default function Home() {
       <ImportModal />
       <DomainSelector />
       <SpotlightTour />
+      <FeedbackWidget />
 
       {/* Header with module tabs */}
       <HeaderBar />

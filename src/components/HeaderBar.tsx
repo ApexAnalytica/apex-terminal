@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useApexStore } from "@/stores/useApexStore";
 import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
+import { createClient } from "@/lib/supabase/client";
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import { ModuleId } from "@/lib/types";
@@ -37,6 +39,13 @@ export default function HeaderBar() {
 
   const doomsday = useMemo(() => computeDoomsdayState(shocks, state.buffer), [shocks, state.buffer]);
   const alertLevel = useMemo(() => computeAlertLevel(state.status, doomsday), [state.status, doomsday]);
+  const router = useRouter();
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }, [router]);
 
   return (
     <header className="flex items-center justify-between px-3 md:px-6 h-14 border-b border-border bg-surface-elevated relative scanlines overflow-hidden">
@@ -129,15 +138,19 @@ export default function HeaderBar() {
             CAUSAL DERIVATION
           </span>
         </div>
-        <div className="h-8 w-px bg-border hidden xl:block" />
-        <div className="hidden xl:flex flex-col items-end">
-          <span className="text-[9px] text-text-muted font-mono tracking-wider">
+        <div className="h-8 w-px bg-border hidden md:block" />
+        <button
+          onClick={handleSignOut}
+          className="flex flex-col items-end group cursor-pointer shrink-0"
+          title="Sign out"
+        >
+          <span className="text-[9px] text-text-muted font-mono tracking-wider group-hover:text-accent-red transition-colors">
             SESSION
           </span>
-          <span className="text-[9px] text-accent-green font-mono">
-            ACTIVE
+          <span className="text-[9px] text-accent-green font-mono group-hover:text-accent-red transition-colors">
+            SIGN OUT
           </span>
-        </div>
+        </button>
       </div>
     </header>
   );

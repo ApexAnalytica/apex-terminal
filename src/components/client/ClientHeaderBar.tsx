@@ -122,7 +122,7 @@ export default function ClientHeaderBar() {
           </button>
 
           {switcherOpen && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-surface-elevated border border-border rounded shadow-lg z-50">
+            <div className="absolute right-0 top-full mt-1 w-48 bg-surface-elevated border border-border rounded shadow-lg z-20">
               {sandboxGraphs.map((g) => (
                 <div
                   key={g.id}

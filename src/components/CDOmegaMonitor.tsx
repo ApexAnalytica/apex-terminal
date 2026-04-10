@@ -321,10 +321,10 @@ export default function CDOmegaMonitor({
         {overflowOpen && (
           <>
             <div
-              className="fixed inset-0 z-40"
+              className="fixed inset-0 z-10"
               onClick={() => setOverflowOpen(false)}
             />
-            <div className="absolute right-0 top-full mt-1 z-50 bg-surface-elevated border border-border rounded shadow-lg p-3 min-w-[160px]">
+            <div className="absolute right-0 top-full mt-1 z-20 bg-surface-elevated border border-border rounded shadow-lg p-3 min-w-[160px]">
               {/* Alert level */}
               <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border">
                 <div

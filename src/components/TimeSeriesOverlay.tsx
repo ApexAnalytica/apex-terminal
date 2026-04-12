@@ -108,13 +108,30 @@ export default function TimeSeriesOverlay() {
     return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
   }, [curves]);
 
+  // Compute x-axis range from the actual pinned curves' data (not the global timeline)
+  const { xStart, xEnd } = useMemo(() => {
+    if (curves.length === 0) return { xStart: timelineRange.start, xEnd: timelineRange.end };
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const curve of curves) {
+      for (const h of curve.history) {
+        if (h.timestamp < lo) lo = h.timestamp;
+        if (h.timestamp > hi) hi = h.timestamp;
+      }
+    }
+    // Add a small 2% padding on each side so curves don't touch edges
+    const span = hi - lo || 1;
+    const pad = span * 0.02;
+    return { xStart: lo - pad, xEnd: hi + pad };
+  }, [curves, timelineRange]);
+
   // Convert data coordinates to SVG coordinates
   const toSvg = useCallback(
     (timestamp: number, omega: number, width: number) => {
-      const xRange = timelineRange.end - timelineRange.start || 1;
+      const xRange = xEnd - xStart || 1;
       const x =
         PAD.left +
-        ((timestamp - timelineRange.start) / xRange) *
+        ((timestamp - xStart) / xRange) *
           (width - PAD.left - PAD.right);
       const y =
         PAD.top +
@@ -122,16 +139,16 @@ export default function TimeSeriesOverlay() {
           (CHART_HEIGHT - PAD.top - PAD.bottom);
       return { x, y };
     },
-    [timelineRange, yMin, yMax],
+    [xStart, xEnd, yMin, yMax],
   );
 
   // Get hovered values
   const hoverValues = useMemo(() => {
     if (hoverX === null || !containerRef.current) return null;
     const width = containerRef.current.getBoundingClientRect().width - 72; // minus label column
-    const xRange = timelineRange.end - timelineRange.start || 1;
+    const xRange = xEnd - xStart || 1;
     const ts =
-      timelineRange.start +
+      xStart +
       ((hoverX - PAD.left) / (width - PAD.left - PAD.right)) * xRange;
     const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
     for (const curve of curves) {
@@ -253,15 +270,15 @@ export default function TimeSeriesOverlay() {
                     })
                     .join(" ");
 
-                  // Fill polygon
+                  // Fill polygon — baseline at yMin (bottom of visible range)
                   const first = toSvg(
                     curve.history[0].timestamp,
-                    0,
+                    yMin,
                     w,
                   );
                   const last = toSvg(
                     curve.history[curve.history.length - 1].timestamp,
-                    0,
+                    yMin,
                     w,
                   );
                   const fillPoints = `${first.x},${first.y} ${points} ${last.x},${last.y}`;
@@ -317,6 +334,19 @@ export default function TimeSeriesOverlay() {
                   />
                 )}
               </svg>
+
+              {/* X-axis date labels */}
+              <div className="flex justify-between mt-0.5 px-1">
+                <span className="text-[7px] font-mono text-text-muted/50">
+                  {new Date(xStart).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                </span>
+                <span className="text-[7px] font-mono text-text-muted/50">
+                  {new Date((xStart + xEnd) / 2).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                </span>
+                <span className="text-[7px] font-mono text-text-muted/50">
+                  {new Date(xEnd).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                </span>
+              </div>
 
               {/* Hover tooltip */}
               {hoverValues && hoverX !== null && (

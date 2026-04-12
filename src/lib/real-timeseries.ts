@@ -265,7 +265,9 @@ export async function loadRealTemporalData(
   const data = await loadTimeseriesJSON();
   const nodeMap = new Map<string, TemporalNodeData>();
 
-  // Resolve real time-series for each node
+  // ── Pass 1: Resolve nodes that have real data ──────────────────
+  const unmappedNodes: CausalNode[] = [];
+
   for (const node of nodes) {
     const mapping = NODE_TIMESERIES_MAP[node.id];
 
@@ -283,23 +285,11 @@ export async function loadRealTemporalData(
       }
     }
 
-    // Fallback: node has no mapping or no data — create a single-point history
-    // using the node's static omega score
-    const now = new Date();
-    nodeMap.set(node.id, {
-      nodeId: node.id,
-      appearedAt: now,
-      history: [
-        {
-          timestamp: now.getTime(),
-          omegaComposite: node.omegaFragility.composite,
-          omegaProfile: { ...node.omegaFragility },
-        },
-      ],
-    });
+    // No real data — defer to Pass 2
+    unmappedNodes.push(node);
   }
 
-  // Determine overall time range from all node histories
+  // Determine time range from real-data nodes only
   let rangeStart = new Date();
   let rangeEnd = new Date(0);
   for (const [, nodeData] of nodeMap) {
@@ -308,6 +298,61 @@ export async function loadRealTemporalData(
       if (d < rangeStart) rangeStart = d;
       if (d > rangeEnd) rangeEnd = d;
     }
+  }
+
+  // ── Pass 2: Generate synthetic series for unmapped nodes ───────
+  // These use a seeded random walk (mean-reverting to base omega)
+  // spanning the SAME date range as the real data so sparklines and
+  // the TimeSeriesOverlay chart align with the TimeDial.
+  const syntheticSeed = 77;
+  let seedState = syntheticSeed;
+  const sRand = () => {
+    seedState = (seedState * 16807 + 0) % 2147483647;
+    return seedState / 2147483647;
+  };
+
+  // Use monthly steps to keep the series compact for long ranges
+  const rangeMs = rangeEnd.getTime() - rangeStart.getTime();
+  const ONE_DAY = 86_400_000;
+  const stepMs = rangeMs > 365 * ONE_DAY ? 30 * ONE_DAY : ONE_DAY; // monthly if >1yr, else daily
+
+  for (const node of unmappedNodes) {
+    // Seed per-node so curves are deterministic but different
+    seedState = syntheticSeed + node.id.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+
+    let omega = node.omegaFragility.composite;
+    const baseProfile = { ...node.omegaFragility };
+    const history: NodeTemporalState[] = [];
+    let ts = rangeStart.getTime();
+
+    while (ts <= rangeEnd.getTime()) {
+      // Mean-reverting random walk
+      const drift = (node.omegaFragility.composite - omega) * 0.04;
+      const noise = (sRand() - 0.5) * 0.25;
+      omega = Math.max(0, Math.min(10, omega + drift + noise));
+
+      const profileScale = omega / Math.max(0.1, node.omegaFragility.composite);
+      history.push({
+        timestamp: ts,
+        omegaComposite: Math.round(omega * 100) / 100,
+        omegaProfile: {
+          composite: Math.round(omega * 100) / 100,
+          irreplaceability: Math.round(baseProfile.irreplaceability * profileScale * 100) / 100,
+          restorationLatency: Math.round(baseProfile.restorationLatency * profileScale * 100) / 100,
+          jurisdictionalHazard: Math.round(baseProfile.jurisdictionalHazard * profileScale * 100) / 100,
+          cascadeLoad: Math.round(baseProfile.cascadeLoad * profileScale * 100) / 100,
+          tailDepth: Math.round(baseProfile.tailDepth * profileScale * 100) / 100,
+        },
+      });
+
+      ts += stepMs;
+    }
+
+    nodeMap.set(node.id, {
+      nodeId: node.id,
+      appearedAt: rangeStart,
+      history,
+    });
   }
 
   // Generate edge temporal states

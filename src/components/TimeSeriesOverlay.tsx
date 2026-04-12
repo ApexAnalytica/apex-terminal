@@ -23,8 +23,10 @@ export default function TimeSeriesOverlay() {
   const temporalData = useApexStore((s) => s.temporalData);
   const graphData = useApexStore((s) => s.graphData);
   const timelineRange = useApexStore((s) => s.timelineRange);
+  const timelineFullRange = useApexStore((s) => s.timelineFullRange);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
+  const isZoomed = timelineFullRange !== null;
 
   const [hoverX, setHoverX] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -108,8 +110,13 @@ export default function TimeSeriesOverlay() {
     return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
   }, [curves]);
 
-  // Compute x-axis range from the actual pinned curves' data (not the global timeline)
+  // Compute x-axis range: when zoomed, match the TimeDial's zoomed range;
+  // otherwise fit to the actual pinned curves' data range
   const { xStart, xEnd } = useMemo(() => {
+    if (isZoomed) {
+      // Linked to TimeDial zoom — use the same window
+      return { xStart: timelineRange.start, xEnd: timelineRange.end };
+    }
     if (curves.length === 0) return { xStart: timelineRange.start, xEnd: timelineRange.end };
     let lo = Infinity;
     let hi = -Infinity;
@@ -123,7 +130,7 @@ export default function TimeSeriesOverlay() {
     const span = hi - lo || 1;
     const pad = span * 0.02;
     return { xStart: lo - pad, xEnd: hi + pad };
-  }, [curves, timelineRange]);
+  }, [curves, timelineRange, isZoomed]);
 
   // Convert data coordinates to SVG coordinates
   const toSvg = useCallback(
@@ -169,7 +176,7 @@ export default function TimeSeriesOverlay() {
       });
     }
     return { ts, values };
-  }, [hoverX, curves, timelineRange]);
+  }, [hoverX, curves, xStart, xEnd]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -321,17 +328,31 @@ export default function TimeSeriesOverlay() {
                   );
                 })()}
 
-                {/* Hover crosshair */}
+                {/* Hover crosshair + intersection dots */}
                 {hoverX !== null && (
-                  <line
-                    x1={hoverX}
-                    y1={PAD.top}
-                    x2={hoverX}
-                    y2={CHART_HEIGHT - PAD.bottom}
-                    stroke="rgba(255,255,255,0.2)"
-                    strokeWidth={1}
-                    strokeDasharray="2 2"
-                  />
+                  <g>
+                    <line
+                      x1={hoverX}
+                      y1={PAD.top}
+                      x2={hoverX}
+                      y2={CHART_HEIGHT - PAD.bottom}
+                      stroke="rgba(255,255,255,0.3)"
+                      strokeWidth={1}
+                      strokeDasharray="3 3"
+                    />
+                    {hoverValues?.values.map((v) => {
+                      const w = containerRef.current
+                        ? containerRef.current.getBoundingClientRect().width - 72
+                        : 800;
+                      const { y } = toSvg(hoverValues.ts, v.omega, w);
+                      return (
+                        <g key={v.nodeId}>
+                          <circle cx={hoverX} cy={y} r={4} fill={v.color} opacity={0.25} />
+                          <circle cx={hoverX} cy={y} r={2} fill={v.color} />
+                        </g>
+                      );
+                    })}
+                  </g>
                 )}
               </svg>
 
@@ -348,12 +369,18 @@ export default function TimeSeriesOverlay() {
                 </span>
               </div>
 
-              {/* Hover tooltip */}
-              {hoverValues && hoverX !== null && (
+              {/* Hover tooltip — flips to left side when near right edge */}
+              {hoverValues && hoverX !== null && (() => {
+                const chartW = containerRef.current
+                  ? containerRef.current.getBoundingClientRect().width - 72
+                  : 800;
+                const flipLeft = hoverX > chartW * 0.7;
+                return (
                 <div
                   className="absolute z-20 pointer-events-none"
                   style={{
-                    left: `${hoverX + 84}px`, // offset for label column + padding
+                    left: flipLeft ? undefined : `${hoverX + 84}px`,
+                    right: flipLeft ? `${chartW - hoverX + 4}px` : undefined,
                     top: "-4px",
                   }}
                 >
@@ -384,7 +411,8 @@ export default function TimeSeriesOverlay() {
                     ))}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
 

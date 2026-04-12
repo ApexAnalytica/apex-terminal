@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
-import { ATHENA_GRAPH } from "@/lib/athena-graph-data";
+import { ATHENA_GRAPH, BRIDGE_EDGES } from "@/lib/athena-graph-data";
 import { mergeGraphs } from "@/lib/import/merge";
 import type { NodeCategory, CausalGraph } from "@/lib/types";
 
@@ -174,6 +174,14 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
   }
   if (needsAthena) {
     const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
+    graph = merged;
+  }
+
+  // When both MAIN and ATHENA are loaded, splice in the bridge edges that
+  // wire civilian/energy/financial domains into the defense substrate.
+  // mergeGraphs will silently skip any bridge whose endpoints aren't present.
+  if (needsMain && needsAthena) {
+    const { graph: merged } = mergeGraphs(graph, { nodes: [], edges: BRIDGE_EDGES });
     graph = merged;
   }
 

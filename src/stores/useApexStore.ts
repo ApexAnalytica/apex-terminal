@@ -222,6 +222,11 @@ interface ApexState {
   setTimelineSelection: (sel: { start: number; end: number } | null) => void;
   initTemporalData: () => void;
   goLive: () => void;
+
+  // Pinned time series overlay
+  pinnedTimeSeriesNodes: string[];
+  togglePinnedTimeSeries: (nodeId: string) => void;
+  clearPinnedTimeSeries: () => void;
 }
 
 export const useApexStore = create<ApexState>((set, get) => ({
@@ -746,4 +751,14 @@ export const useApexStore = create<ApexState>((set, get) => ({
       isLive: true,
       timelinePosition: s.timelineRange.end,
     })),
+
+  // Pinned time series overlay
+  pinnedTimeSeriesNodes: [],
+  togglePinnedTimeSeries: (nodeId) =>
+    set((s) => ({
+      pinnedTimeSeriesNodes: s.pinnedTimeSeriesNodes.includes(nodeId)
+        ? s.pinnedTimeSeriesNodes.filter((id) => id !== nodeId)
+        : [...s.pinnedTimeSeriesNodes, nodeId],
+    })),
+  clearPinnedTimeSeries: () => set({ pinnedTimeSeriesNodes: [] }),
 }));

@@ -936,6 +936,162 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     unit: "ratio",
     label: "K/L Ratio",
   },
+
+  // ─── Defense & ISR (ATHENA) (18 nodes) ────────────────────────────
+
+  // AI / Compute nodes
+  edge_ai_inference: {
+    source: "semiconductor",
+    description: "Edge AI inference throughput — tactical neural-network inferences per second at forward-deployed nodes",
+    metricFilter: { metric_name: "edge_inference_throughput" },
+    valueKey: "metric_value",
+    unit: "TOPS",
+    label: "Edge Inference Throughput",
+  },
+  swarm_mesh: {
+    source: "semiconductor",
+    description: "Swarm mesh network bandwidth — aggregate data rate across autonomous drone swarm mesh links",
+    metricFilter: { metric_name: "swarm_mesh_bandwidth" },
+    valueKey: "metric_value",
+    unit: "Gbps",
+    label: "Swarm Mesh Bandwidth",
+  },
+  drone_gpu_alloc: {
+    source: "semiconductor",
+    description: "Drone GPU allocation — percentage of available GPU compute allocated to UAV mission payloads",
+    metricFilter: { metric_name: "drone_gpu_utilization" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Drone GPU Allocation",
+  },
+  gpu_supply_itar: {
+    source: "semiconductor",
+    description: "ITAR-controlled GPU supply index — availability of export-restricted accelerator chips for defense programs",
+    metricFilter: { metric_name: "gpu_supply_index" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "GPU Supply Index (ITAR)",
+  },
+  radhard_fpga: {
+    source: "semiconductor",
+    description: "Radiation-hardened FPGA production volume — space-qualified programmable logic devices manufactured per quarter",
+    metricFilter: { metric_name: "radhard_fpga_output" },
+    valueKey: "metric_value",
+    unit: "units",
+    label: "Rad-Hard FPGA Output",
+  },
+
+  // Satellite / Communications nodes
+  leo_constellation: {
+    source: "infrastructure_cable",
+    description: "LEO constellation link capacity — total downlink bandwidth across low-earth-orbit satellite constellation",
+    metricFilter: { metric_name: "leo_downlink_capacity" },
+    valueKey: "metric_value",
+    unit: "Gbps",
+    label: "LEO Downlink Capacity",
+  },
+  ground_terminals: {
+    source: "infrastructure_cable",
+    description: "Ground terminal uptime — percentage of SATCOM ground station terminals operational and mission-ready",
+    metricFilter: { metric_name: "ground_terminal_uptime" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Ground Terminal Uptime",
+  },
+  milsatcom_bw: {
+    source: "infrastructure_cable",
+    description: "MILSATCOM bandwidth utilization — fraction of allocated military satellite communication bandwidth in use",
+    metricFilter: { metric_name: "milsatcom_utilization" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "MILSATCOM Bandwidth Util.",
+  },
+
+  // Intelligence / Fusion nodes
+  eoir_sensors: {
+    source: "defense_isr",
+    description: "EO/IR sensor revisit rate — average time between electro-optical / infrared passes over a target area",
+    metricFilter: { metric_name: "eoir_revisit_rate" },
+    valueKey: "metric_value",
+    unit: "min",
+    label: "EO/IR Revisit Rate",
+  },
+  sigint_collection: {
+    source: "defense_isr",
+    description: "SIGINT collection volume — signals intelligence intercepts processed per hour across theater assets",
+    metricFilter: { metric_name: "sigint_intercepts" },
+    valueKey: "metric_value",
+    unit: "intercepts/hr",
+    label: "SIGINT Collection Rate",
+  },
+  multiint_fusion: {
+    source: "defense_isr",
+    description: "Multi-INT fusion latency — time from raw multi-source intelligence ingestion to correlated fused product",
+    metricFilter: { metric_name: "fusion_latency" },
+    valueKey: "metric_value",
+    unit: "ms",
+    label: "Multi-INT Fusion Latency",
+  },
+
+  // Regulatory / Security nodes
+  itar_ear_gate: {
+    source: "defense_isr",
+    description: "ITAR/EAR compliance gate throughput — export-control license applications processed per review cycle",
+    metricFilter: { metric_name: "itar_gate_throughput" },
+    valueKey: "metric_value",
+    unit: "applications/mo",
+    label: "ITAR/EAR Gate Throughput",
+  },
+  classified_enclave: {
+    source: "defense_isr",
+    description: "Classified enclave compute utilization — percentage of provisioned compute within accredited enclaves in use",
+    metricFilter: { metric_name: "enclave_utilization" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Enclave Compute Util.",
+  },
+  scif_infra: {
+    source: "defense_isr",
+    description: "SCIF infrastructure availability — fraction of Sensitive Compartmented Information Facilities at operational status",
+    metricFilter: { metric_name: "scif_availability" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "SCIF Availability",
+  },
+  onprem_cloud_decision: {
+    source: "defense_isr",
+    description: "On-prem vs cloud workload split — percentage of defense workloads running on sovereign on-premise infrastructure",
+    metricFilter: { metric_name: "onprem_workload_pct" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "On-Prem Workload Share",
+  },
+
+  // Kill Chain nodes
+  ooda_latency: {
+    source: "defense_isr",
+    description: "OODA loop latency — end-to-end observe-orient-decide-act cycle time for time-critical targeting",
+    metricFilter: { metric_name: "ooda_loop_latency" },
+    valueKey: "metric_value",
+    unit: "ms",
+    label: "OODA Loop Latency",
+  },
+  hitl_gate: {
+    source: "defense_isr",
+    description: "Human-in-the-loop gate delay — additional latency introduced by mandatory human authorization in engagement chain",
+    metricFilter: { metric_name: "hitl_gate_delay" },
+    valueKey: "metric_value",
+    unit: "ms",
+    label: "HITL Gate Delay",
+  },
+  killchain_latency: {
+    source: "defense_isr",
+    description: "Kill chain end-to-end latency — total time from sensor detection to effector engagement across the full kill chain",
+    metricFilter: { metric_name: "killchain_e2e_latency" },
+    valueKey: "metric_value",
+    unit: "ms",
+    label: "Kill Chain E2E Latency",
+  },
 };
 
 /**

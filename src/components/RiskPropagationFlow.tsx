@@ -102,6 +102,8 @@ export default function RiskPropagationFlow() {
   const initTemporalData = useApexStore((s) => s.initTemporalData);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const { graph: temporalGraph } = useTemporalGraph();
+  const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
+  const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
   const [collapsed, setCollapsed] = useState(false);
 
   // Ensure temporal data is initialized (may not be if TimeDial hasn't mounted yet)
@@ -268,11 +270,30 @@ export default function RiskPropagationFlow() {
                     }}
                     onClick={() => setSelectedNode(isActive ? null : card.nodeId)}
                   >
-                    {/* Header: name + current omega */}
+                    {/* Header: name + pin + current omega */}
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="text-[10px] font-mono text-foreground truncate flex-1">
                         {card.label}
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePinned(card.nodeId);
+                        }}
+                        className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-accent-cyan/10 transition-colors"
+                        title={pinnedNodes.includes(card.nodeId) ? "Unpin from comparison" : "Pin to comparison chart"}
+                      >
+                        <span
+                          className="text-[9px]"
+                          style={{
+                            color: pinnedNodes.includes(card.nodeId)
+                              ? "var(--accent-cyan)"
+                              : "var(--text-muted)",
+                          }}
+                        >
+                          {pinnedNodes.includes(card.nodeId) ? "\u25C9" : "\u25CB"}
+                        </span>
+                      </button>
                       <div
                         className="text-[11px] font-mono font-bold flex-shrink-0"
                         style={{ color: getBarColor(hoveredOmega ?? currentOmega) }}

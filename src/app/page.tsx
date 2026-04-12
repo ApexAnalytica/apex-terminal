@@ -17,6 +17,7 @@ import SpotlightTour from "@/components/SpotlightTour";
 import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -144,6 +145,9 @@ export default function Home() {
 
           {/* Risk Propagation Flow */}
           <RiskPropagationFlow />
+
+          {/* Pinned time series comparison overlay */}
+          <TimeSeriesOverlay />
 
           {/* Time Dial — persistent timeline scrubber */}
           <TimeDial />

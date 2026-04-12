@@ -311,10 +311,17 @@ export async function loadRealTemporalData(
     return seedState / 2147483647;
   };
 
-  // Use monthly steps to keep the series compact for long ranges
+  // Use monthly steps to keep the series compact for long ranges.
+  // Guarantee at least MIN_POINTS so every node renders a visible curve.
   const rangeMs = rangeEnd.getTime() - rangeStart.getTime();
   const ONE_DAY = 86_400_000;
-  const stepMs = rangeMs > 365 * ONE_DAY ? 30 * ONE_DAY : ONE_DAY; // monthly if >1yr, else daily
+  const MIN_POINTS = 24; // at least 24 data points per synthetic curve
+  const stepMs = rangeMs > 0
+    ? Math.min(
+        rangeMs > 365 * ONE_DAY ? 30 * ONE_DAY : ONE_DAY,
+        Math.floor(rangeMs / MIN_POINTS) || ONE_DAY,
+      )
+    : ONE_DAY;
 
   for (const node of unmappedNodes) {
     // Seed per-node so curves are deterministic but different
@@ -323,9 +330,13 @@ export async function loadRealTemporalData(
     let omega = node.omegaFragility.composite;
     const baseProfile = { ...node.omegaFragility };
     const history: NodeTemporalState[] = [];
-    let ts = rangeStart.getTime();
 
-    while (ts <= rangeEnd.getTime()) {
+    // If the real-data range is too narrow (or empty), fall back to 60 days
+    const effectiveStart = rangeMs > ONE_DAY ? rangeStart.getTime() : Date.now() - 60 * ONE_DAY;
+    const effectiveEnd = rangeMs > ONE_DAY ? rangeEnd.getTime() : Date.now();
+    let ts = effectiveStart;
+
+    while (ts <= effectiveEnd) {
       // Mean-reverting random walk
       const drift = (node.omegaFragility.composite - omega) * 0.04;
       const noise = (sRand() - 0.5) * 0.25;
@@ -350,7 +361,7 @@ export async function loadRealTemporalData(
 
     nodeMap.set(node.id, {
       nodeId: node.id,
-      appearedAt: rangeStart,
+      appearedAt: new Date(effectiveStart),
       history,
     });
   }

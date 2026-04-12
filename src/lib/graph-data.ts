@@ -2476,6 +2476,13 @@ export function getDomainColor(domain: string): string {
     case "Supply Chain Food Security": return "#00e5ff";
     case "Undersea Cable Infrastructure": return "#7c4dff";
     case "Macro Impact: Labor, Growth & Housing": return "#40c4ff";
+    // Defense & ISR (ATHENA) domains
+    case "Drone Swarms": return "#ff4081";       // pink
+    case "SATCOM": return "#448aff";             // blue
+    case "ISR Fusion": return "#ea80fc";         // purple-pink
+    case "Chip Embargo": return "#ff9100";       // deep orange
+    case "Secure Compute": return "#69f0ae";     // mint green
+    case "Kill Chain": return "#ff1744";         // red
     default: return "#5a5e72";
   }
 }

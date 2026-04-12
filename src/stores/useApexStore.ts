@@ -215,11 +215,14 @@ interface ApexState {
   timelineGranularity: TimeGranularity;
   temporalData: TemporalDataset | null;
   timelineSelection: { start: number; end: number } | null; // user-selected date range window
+  timelineFullRange: { start: number; end: number } | null; // saved full range before zoom
   setTimelinePosition: (ts: number) => void;
   setTimelineRange: (range: { start: number; end: number }) => void;
   setIsLive: (live: boolean) => void;
   setTimelineGranularity: (g: TimeGranularity) => void;
   setTimelineSelection: (sel: { start: number; end: number } | null) => void;
+  zoomToSelection: () => void;
+  zoomOut: () => void;
   initTemporalData: () => void;
   goLive: () => void;
 
@@ -684,6 +687,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
   isLive: true,
   timelineGranularity: "day",
   timelineSelection: null,
+  timelineFullRange: null,
   temporalData: null,
 
   setTimelinePosition: (ts) =>
@@ -703,6 +707,28 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setTimelineSelection: (sel) =>
     set({ timelineSelection: sel }),
+
+  zoomToSelection: () => {
+    const s = get();
+    if (!s.timelineSelection) return;
+    // Save current range so we can zoom back out
+    set({
+      timelineFullRange: s.timelineFullRange ?? { ...s.timelineRange },
+      timelineRange: { start: s.timelineSelection.start, end: s.timelineSelection.end },
+      timelineSelection: null,
+      isLive: false,
+    });
+  },
+
+  zoomOut: () => {
+    const s = get();
+    if (!s.timelineFullRange) return;
+    set({
+      timelineRange: { ...s.timelineFullRange },
+      timelineFullRange: null,
+      timelineSelection: null,
+    });
+  },
 
   initTemporalData: () => {
     const state = get();

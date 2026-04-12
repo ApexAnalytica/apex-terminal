@@ -110,6 +110,7 @@ export default function TimeDial() {
     timelinePosition,
     timelineRange,
     timelineSelection,
+    timelineFullRange,
     isLive,
     timelineGranularity,
     temporalData,
@@ -117,6 +118,8 @@ export default function TimeDial() {
     setIsLive,
     setTimelineGranularity,
     setTimelineSelection,
+    zoomToSelection,
+    zoomOut,
     initTemporalData,
     goLive,
     // Replay state
@@ -289,8 +292,8 @@ export default function TimeDial() {
       e.preventDefault();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
-      // Alt+drag = range selection (historical mode only)
-      if (e.altKey && !replayActive) {
+      // Shift+drag = range selection (historical mode only)
+      if (e.shiftKey && !replayActive) {
         setIsRangeSelecting(true);
         const ts = pixelToTimestamp(e.clientX);
         setRangeAnchor(ts);
@@ -651,7 +654,7 @@ export default function TimeDial() {
                 {formatShortDate(timelineSelection.start)}
               </span>
               <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider" style={{ color: "var(--accent-cyan)" }}>
-                {selectionEventCount > 0 ? `${selectionEventCount} event${selectionEventCount > 1 ? "s" : ""} in window` : "Alt+drag to adjust"}
+                {selectionEventCount > 0 ? `${selectionEventCount} event${selectionEventCount > 1 ? "s" : ""} in window` : "Shift+drag to adjust"}
               </span>
               <span className="text-[8px] font-mono" style={{ color: "var(--accent-cyan)" }}>
                 {formatShortDate(timelineSelection.end)}
@@ -831,22 +834,57 @@ export default function TimeDial() {
         <div className="h-2" />
       </div>
 
-      {/* Time window clear button — shown when selection is active */}
+      {/* Time window actions — shown when selection is active */}
       <AnimatePresence>
         {!replayActive && timelineSelection && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="flex items-center gap-1"
+          >
+            <button
+              onClick={zoomToSelection}
+              className="px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors hover:bg-cyan-500/10 whitespace-nowrap"
+              style={{
+                color: "var(--accent-cyan)",
+                border: "1px solid rgba(0, 229, 255, 0.3)",
+              }}
+              title="Zoom into selected range"
+            >
+              ZOOM IN
+            </button>
+            <button
+              onClick={() => setTimelineSelection(null)}
+              className="px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors hover:bg-red-500/10 whitespace-nowrap"
+              style={{
+                color: "var(--accent-red)",
+                border: "1px solid rgba(255, 23, 68, 0.3)",
+              }}
+              title="Clear time window (Escape)"
+            >
+              CLEAR
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Zoom out button — shown when zoomed in */}
+      <AnimatePresence>
+        {!replayActive && !timelineSelection && timelineFullRange && (
           <motion.button
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            onClick={() => setTimelineSelection(null)}
-            className="px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors hover:bg-red-500/10 whitespace-nowrap"
+            onClick={zoomOut}
+            className="px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors hover:bg-cyan-500/10 whitespace-nowrap"
             style={{
-              color: "var(--accent-red)",
-              border: "1px solid rgba(255, 23, 68, 0.3)",
+              color: "var(--accent-cyan)",
+              border: "1px solid rgba(0, 229, 255, 0.3)",
             }}
-            title="Clear time window (Escape)"
+            title="Zoom out to full range"
           >
-            CLEAR
+            ZOOM OUT
           </motion.button>
         )}
       </AnimatePresence>

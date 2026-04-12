@@ -351,8 +351,9 @@ export default function RiskPropagationFlow() {
                           highlightIdx={hoveredDay ?? currentHistoryIdx}
                         />
                       ) : (
-                        <div className="h-9 flex items-center justify-center text-[7px] font-mono text-text-muted/40">
-                          NO TEMPORAL DATA
+                        <div className="h-9 flex items-center justify-center gap-1.5">
+                          <span className="text-[7px] font-mono text-text-muted/40 tracking-wider">NO DATA</span>
+                          <span className="text-[6px] font-mono text-text-muted/25">— static Ω only</span>
                         </div>
                       )}
                     </div>

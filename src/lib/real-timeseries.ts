@@ -300,69 +300,22 @@ export async function loadRealTemporalData(
     }
   }
 
-  // ── Pass 2: Generate synthetic series for unmapped nodes ───────
-  // These use a seeded random walk (mean-reverting to base omega)
-  // spanning the SAME date range as the real data so sparklines and
-  // the TimeSeriesOverlay chart align with the TimeDial.
-  const syntheticSeed = 77;
-  let seedState = syntheticSeed;
-  const sRand = () => {
-    seedState = (seedState * 16807 + 0) % 2147483647;
-    return seedState / 2147483647;
-  };
-
-  // Use monthly steps to keep the series compact for long ranges.
-  // Guarantee at least MIN_POINTS so every node renders a visible curve.
-  const rangeMs = rangeEnd.getTime() - rangeStart.getTime();
-  const ONE_DAY = 86_400_000;
-  const MIN_POINTS = 24; // at least 24 data points per synthetic curve
-  const stepMs = rangeMs > 0
-    ? Math.min(
-        rangeMs > 365 * ONE_DAY ? 30 * ONE_DAY : ONE_DAY,
-        Math.floor(rangeMs / MIN_POINTS) || ONE_DAY,
-      )
-    : ONE_DAY;
-
+  // ── Pass 2: Unmapped nodes — no real data available ─────────────
+  // Store a single-point entry so the node exists in the temporal map
+  // (needed for edge history generation), but with history.length < 2
+  // the UI will show "NO DATA" instead of a fake curve.
   for (const node of unmappedNodes) {
-    // Seed per-node so curves are deterministic but different
-    seedState = syntheticSeed + node.id.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-
-    let omega = node.omegaFragility.composite;
-    const baseProfile = { ...node.omegaFragility };
-    const history: NodeTemporalState[] = [];
-
-    // If the real-data range is too narrow (or empty), fall back to 60 days
-    const effectiveStart = rangeMs > ONE_DAY ? rangeStart.getTime() : Date.now() - 60 * ONE_DAY;
-    const effectiveEnd = rangeMs > ONE_DAY ? rangeEnd.getTime() : Date.now();
-    let ts = effectiveStart;
-
-    while (ts <= effectiveEnd) {
-      // Mean-reverting random walk
-      const drift = (node.omegaFragility.composite - omega) * 0.04;
-      const noise = (sRand() - 0.5) * 0.25;
-      omega = Math.max(0, Math.min(10, omega + drift + noise));
-
-      const profileScale = omega / Math.max(0.1, node.omegaFragility.composite);
-      history.push({
-        timestamp: ts,
-        omegaComposite: Math.round(omega * 100) / 100,
-        omegaProfile: {
-          composite: Math.round(omega * 100) / 100,
-          irreplaceability: Math.round(baseProfile.irreplaceability * profileScale * 100) / 100,
-          restorationLatency: Math.round(baseProfile.restorationLatency * profileScale * 100) / 100,
-          jurisdictionalHazard: Math.round(baseProfile.jurisdictionalHazard * profileScale * 100) / 100,
-          cascadeLoad: Math.round(baseProfile.cascadeLoad * profileScale * 100) / 100,
-          tailDepth: Math.round(baseProfile.tailDepth * profileScale * 100) / 100,
-        },
-      });
-
-      ts += stepMs;
-    }
-
+    const now = rangeEnd.getTime() > 0 ? rangeEnd : new Date();
     nodeMap.set(node.id, {
       nodeId: node.id,
-      appearedAt: new Date(effectiveStart),
-      history,
+      appearedAt: now,
+      history: [
+        {
+          timestamp: now.getTime(),
+          omegaComposite: node.omegaFragility.composite,
+          omegaProfile: { ...node.omegaFragility },
+        },
+      ],
     });
   }
 

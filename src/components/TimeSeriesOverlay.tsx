@@ -57,6 +57,19 @@ export default function TimeSeriesOverlay() {
     }[];
   }, [pinnedNodes, temporalData, graphData]);
 
+  // Pinned nodes that have no time series data (for legend display)
+  const noDataNodes = useMemo(() => {
+    if (!temporalData) return [];
+    const curveIds = new Set(curves.map((c) => c.nodeId));
+    return pinnedNodes
+      .filter((id) => !curveIds.has(id))
+      .map((id) => {
+        const node = graphData.nodes.find((n) => n.id === id);
+        return node ? { nodeId: id, label: node.label, domain: node.domain } : null;
+      })
+      .filter(Boolean) as { nodeId: string; label: string; domain: string }[];
+  }, [pinnedNodes, curves, temporalData, graphData]);
+
   // Compute dynamic y-axis range from actual data with padding
   const { yMin, yMax, gridLines } = useMemo(() => {
     if (curves.length === 0) return { yMin: 0, yMax: 10, gridLines: [2.5, 5.0, 7.5] };
@@ -362,6 +375,26 @@ export default function TimeSeriesOverlay() {
                 <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
                   {curve.label}
                 </span>
+                <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
+                  {"\u2715"}
+                </span>
+              </button>
+            ))}
+            {noDataNodes.map((nd) => (
+              <button
+                key={nd.nodeId}
+                onClick={() => togglePinned(nd.nodeId)}
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border/50 hover:border-accent-red/40 transition-colors group opacity-50"
+                title={`${nd.label} — no time series data available`}
+              >
+                <span
+                  className="w-2 h-0.5 rounded-full flex-shrink-0 border border-text-muted/30"
+                  style={{ backgroundColor: "transparent" }}
+                />
+                <span className="text-[8px] font-mono text-text-muted group-hover:text-accent-red transition-colors truncate max-w-[100px]">
+                  {nd.label}
+                </span>
+                <span className="text-[6px] font-mono text-text-muted/40 ml-0.5">NO DATA</span>
                 <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
                   {"\u2715"}
                 </span>

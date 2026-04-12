@@ -7,10 +7,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 
 const CHART_HEIGHT = 120;
-const Y_MIN = 0;
-const Y_MAX = 10;
 const PAD = { top: 12, bottom: 20, left: 32, right: 12 };
-const GRID_LINES = [2.5, 5.0, 7.5];
 
 function getLineColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -60,6 +57,44 @@ export default function TimeSeriesOverlay() {
     }[];
   }, [pinnedNodes, temporalData, graphData]);
 
+  // Compute dynamic y-axis range from actual data with padding
+  const { yMin, yMax, gridLines } = useMemo(() => {
+    if (curves.length === 0) return { yMin: 0, yMax: 10, gridLines: [2.5, 5.0, 7.5] };
+
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const curve of curves) {
+      for (const h of curve.history) {
+        if (h.omegaComposite < lo) lo = h.omegaComposite;
+        if (h.omegaComposite > hi) hi = h.omegaComposite;
+      }
+    }
+
+    // Add 10% padding on each side, clamped to [0, 10]
+    const span = hi - lo || 1;
+    const pad = span * 0.1;
+    const yMinRaw = Math.max(0, Math.floor((lo - pad) * 2) / 2); // snap to 0.5
+    const yMaxRaw = Math.min(10, Math.ceil((hi + pad) * 2) / 2);
+
+    // Generate ~3-5 evenly spaced grid lines
+    const range = yMaxRaw - yMinRaw;
+    // Pick a nice step: 0.5, 1, 2, or 2.5
+    let step = 1;
+    if (range <= 2) step = 0.5;
+    else if (range <= 5) step = 1;
+    else if (range <= 8) step = 2;
+    else step = 2.5;
+
+    const lines: number[] = [];
+    let v = Math.ceil(yMinRaw / step) * step;
+    while (v < yMaxRaw) {
+      if (v > yMinRaw) lines.push(Math.round(v * 10) / 10);
+      v += step;
+    }
+
+    return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
+  }, [curves]);
+
   // Convert data coordinates to SVG coordinates
   const toSvg = useCallback(
     (timestamp: number, omega: number, width: number) => {
@@ -70,11 +105,11 @@ export default function TimeSeriesOverlay() {
           (width - PAD.left - PAD.right);
       const y =
         PAD.top +
-        (1 - (omega - Y_MIN) / (Y_MAX - Y_MIN)) *
+        (1 - (omega - yMin) / (yMax - yMin || 1)) *
           (CHART_HEIGHT - PAD.top - PAD.bottom);
       return { x, y };
     },
-    [timelineRange],
+    [timelineRange, yMin, yMax],
   );
 
   // Get hovered values
@@ -152,13 +187,15 @@ export default function TimeSeriesOverlay() {
           className="overflow-hidden"
         >
           <div className="flex items-stretch px-4 pb-2">
-            {/* Y-axis label column — aligned with TimeDial */}
+            {/* Y-axis label column — aligned with TimeDial, auto-scaled */}
             <div className="min-w-[72px] flex-shrink-0 flex flex-col justify-between py-1">
-              <span className="text-[7px] font-mono text-text-muted/60">10</span>
-              <span className="text-[7px] font-mono text-text-muted/60">7.5</span>
-              <span className="text-[7px] font-mono text-text-muted/60">5.0</span>
-              <span className="text-[7px] font-mono text-text-muted/60">2.5</span>
-              <span className="text-[7px] font-mono text-text-muted/60">0</span>
+              <span className="text-[7px] font-mono text-text-muted/60">{yMax % 1 === 0 ? yMax : yMax.toFixed(1)}</span>
+              {gridLines.map((v) => (
+                <span key={v} className="text-[7px] font-mono text-text-muted/60">
+                  {v % 1 === 0 ? v : v.toFixed(1)}
+                </span>
+              ))}
+              <span className="text-[7px] font-mono text-text-muted/60">{yMin % 1 === 0 ? yMin : yMin.toFixed(1)}</span>
             </div>
 
             {/* SVG Chart */}
@@ -174,8 +211,8 @@ export default function TimeSeriesOverlay() {
                 viewBox={`0 0 ${containerRef.current?.getBoundingClientRect().width ? containerRef.current.getBoundingClientRect().width - 72 : 800} ${CHART_HEIGHT}`}
               >
                 {/* Grid lines */}
-                {GRID_LINES.map((v) => {
-                  const yFrac = 1 - (v - Y_MIN) / (Y_MAX - Y_MIN);
+                {gridLines.map((v) => {
+                  const yFrac = 1 - (v - yMin) / (yMax - yMin || 1);
                   const y = PAD.top + yFrac * (CHART_HEIGHT - PAD.top - PAD.bottom);
                   return (
                     <line

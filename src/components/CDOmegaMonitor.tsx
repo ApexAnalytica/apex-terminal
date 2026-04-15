@@ -151,7 +151,7 @@ export default function CDOmegaMonitor({
   ];
 
   return (
-    <div className="flex items-center gap-3 lg:gap-6 relative" data-tour="cd-omega">
+    <div className="flex items-center gap-3 lg:gap-6 relative min-w-0" data-tour="cd-omega">
       {/* Causal Distance — average path length */}
       <div className="flex flex-col items-end shrink-0">
         <span

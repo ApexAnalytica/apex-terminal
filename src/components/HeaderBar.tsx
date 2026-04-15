@@ -48,7 +48,7 @@ export default function HeaderBar() {
   }, [router]);
 
   return (
-    <header className="flex items-center justify-between px-3 md:px-6 h-14 border-b border-border bg-surface-elevated relative scanlines overflow-hidden">
+    <header className="flex items-center justify-between px-3 md:px-6 h-14 border-b border-border bg-surface-elevated relative scanlines overflow-visible">
       {/* Left: Logo + Tabs */}
       <div className="flex items-center gap-2 md:gap-4 shrink-0 min-w-0">
         <div className="flex flex-col shrink-0">
@@ -120,7 +120,7 @@ export default function HeaderBar() {
       <CDOmegaMonitor state={state} doomsday={doomsday} alertLevel={alertLevel} />
 
       {/* Right: Meta */}
-      <div className="flex items-center gap-2 md:gap-4 shrink-0">
+      <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
         <ImportButton />
         <button
           onClick={() => setTourActive(true)}
@@ -129,8 +129,8 @@ export default function HeaderBar() {
         >
           ?
         </button>
-        <div className="h-8 w-px bg-border hidden lg:block" />
-        <div className="hidden lg:flex flex-col items-end">
+        <div className="h-8 w-px bg-border hidden xl:block" />
+        <div className="hidden xl:flex flex-col items-end">
           <span className="text-[9px] text-text-muted font-mono tracking-wider">
             TECH 2.0
           </span>
@@ -141,7 +141,7 @@ export default function HeaderBar() {
         <div className="h-8 w-px bg-border hidden md:block" />
         <button
           onClick={handleSignOut}
-          className="flex flex-col items-end group cursor-pointer shrink-0"
+          className="hidden md:flex flex-col items-end group cursor-pointer shrink-0"
           title="Sign out"
         >
           <span className="text-[9px] text-text-muted font-mono tracking-wider group-hover:text-accent-red transition-colors">

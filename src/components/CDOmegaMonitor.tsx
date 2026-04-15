@@ -176,8 +176,8 @@ export default function CDOmegaMonitor({
         </div>
       </div>
 
-      {/* Buffer Bar */}
-      <div className="flex flex-col gap-1 shrink-0">
+      {/* Buffer Bar — hidden below md */}
+      <div className="hidden md:flex flex-col gap-1 shrink-0">
         <div className="flex gap-[2px]">
           {Array.from({ length: segments }).map((_, i) => {
             const filled = i < filledSegments;
@@ -252,8 +252,8 @@ export default function CDOmegaMonitor({
         </span>
       </motion.div>
 
-      {/* Shock Count — always visible */}
-      <div className="flex flex-col items-center shrink-0">
+      {/* Shock Count — hidden below sm */}
+      <div className="hidden sm:flex flex-col items-center shrink-0">
         <span
           className="font-mono text-xl font-bold tabular-nums"
           style={{ color: state.shocks.length > 0 ? "var(--accent-red)" : displayColor }}

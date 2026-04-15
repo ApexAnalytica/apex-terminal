@@ -50,7 +50,7 @@ export default function HeaderBar() {
   return (
     <header className="flex items-center justify-between px-3 md:px-6 h-14 border-b border-border bg-surface-elevated relative scanlines overflow-visible">
       {/* Left: Logo + Tabs */}
-      <div className="flex items-center gap-2 md:gap-4 shrink-0 min-w-0">
+      <div className="flex items-center gap-2 md:gap-4 shrink-0 min-w-0 z-10 bg-surface-elevated">
         <div className="flex flex-col shrink-0">
           <span className="font-[family-name:var(--font-michroma)] text-[13px] md:text-[15px] tracking-[0.3em] text-accent-cyan font-medium">
             MANIFOLD
@@ -116,11 +116,13 @@ export default function HeaderBar() {
         </div>
       </div>
 
-      {/* Center: CDΩ Monitor */}
-      <CDOmegaMonitor state={state} doomsday={doomsday} alertLevel={alertLevel} />
+      {/* Center: CDΩ Monitor — allowed to shrink and clip when viewport is narrow */}
+      <div className="min-w-0 overflow-hidden">
+        <CDOmegaMonitor state={state} doomsday={doomsday} alertLevel={alertLevel} />
+      </div>
 
-      {/* Right: Meta */}
-      <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
+      {/* Right: Meta — z-10 so it always sits above the center section */}
+      <div className="flex items-center gap-1.5 md:gap-3 shrink-0 z-10 bg-surface-elevated">
         <ImportButton />
         <button
           onClick={() => setTourActive(true)}

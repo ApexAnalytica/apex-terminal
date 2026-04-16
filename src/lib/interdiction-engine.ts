@@ -22,6 +22,13 @@ export interface InterdictionResult {
   bestDamage: number;
   /** Damage reduction as percentage */
   reductionPct: number;
+  /**
+   * Set when `interventions` come from the structural-vulnerability fallback
+   * (highest-weight edges / highest-Ω nodes) rather than the cascade solver.
+   * Populated by copilot-actions.ts when the solver returns no cuts because
+   * baseline cascade damage was too low to discriminate targets.
+   */
+  fallbackReason?: string;
 }
 
 export interface InterdictionCandidate {

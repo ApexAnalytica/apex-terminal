@@ -105,18 +105,25 @@ export default function ModulePanel() {
 function CopilotInterdictionResults() {
   const lastResult = useApexStore((s) => s.lastInterdictionResult);
   const severEdge = useApexStore((s) => s.severEdge);
-  const graphData = useApexStore((s) => s.graphData);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
   if (!lastResult) return null;
 
   const hasInterventions = lastResult.interventions.length > 0;
+  const isFallback = Boolean(lastResult.fallbackReason);
+  // When the cuts came from the structural-vulnerability fallback, the
+  // marginalReduction field holds a proxy score (edge weight × 10 or ΩF),
+  // not a true damage delta — label it accordingly so the UI doesn't
+  // claim "saves X pts" when the solver didn't actually measure that.
+  const rankLabel = isFallback ? "score" : "saves";
+  const rankUnit = isFallback ? "" : "pts";
 
   return (
     <div className="border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-          INTERDICTION RESULTS
+          {isFallback ? "STRUCTURAL VULNERABILITY CUTS" : "INTERDICTION RESULTS"}
         </span>
         <button
           onClick={() => useApexStore.getState().setLastInterdictionResult(null)}
@@ -141,10 +148,18 @@ function CopilotInterdictionResults() {
         </div>
       </div>
 
+      {isFallback && lastResult.fallbackReason && (
+        <div className="text-[7px] font-mono text-text-muted italic leading-relaxed border-l-2 border-accent-amber/30 pl-2">
+          {lastResult.fallbackReason}
+        </div>
+      )}
+
       {hasInterventions ? (
         <div className="space-y-1.5">
           {lastResult.interventions.map((iv, i) => {
             const isApplied = appliedIds.has(iv.target.id);
+            const actionLabel = iv.target.type === "edge" ? "SEVER" : "ABLATE";
+            const appliedLabel = iv.target.type === "edge" ? "SEVERED" : "ABLATED";
             return (
               <div
                 key={iv.target.id}
@@ -154,7 +169,7 @@ function CopilotInterdictionResults() {
                 <div className="flex-1 min-w-0">
                   <div className="text-[8px] font-mono text-foreground truncate">{iv.target.label}</div>
                   <div className="text-[7px] font-mono text-text-muted">
-                    {iv.target.type} — saves {iv.marginalReduction.toFixed(1)}pts
+                    {iv.target.type} — {rankLabel} {iv.marginalReduction.toFixed(1)}{rankUnit}
                   </div>
                 </div>
                 <button
@@ -162,6 +177,8 @@ function CopilotInterdictionResults() {
                     if (isApplied) return;
                     if (iv.target.type === "edge") {
                       severEdge(iv.target.id);
+                    } else {
+                      toggleAblatedNode(iv.target.id);
                     }
                     setAppliedIds((prev) => new Set([...prev, iv.target.id]));
                   }}
@@ -172,7 +189,7 @@ function CopilotInterdictionResults() {
                       : "text-accent-red border border-accent-red/30 hover:bg-accent-red/10"
                   }`}
                 >
-                  {isApplied ? "APPLIED" : "SEVER"}
+                  {isApplied ? appliedLabel : actionLabel}
                 </button>
               </div>
             );
@@ -180,7 +197,7 @@ function CopilotInterdictionResults() {
         </div>
       ) : (
         <div className="text-[8px] font-mono text-text-muted">
-          Cascade damage too low for meaningful cuts. Try injecting a higher-severity shock first.
+          No candidate cuts available. Inject a shock and/or widen the domain scope, then re-run the solver.
         </div>
       )}
     </div>

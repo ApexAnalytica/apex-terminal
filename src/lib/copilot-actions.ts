@@ -6,6 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "./omega-engine";
 import { DOMAIN_CARDS, buildGraphFromDomains } from "@/components/DomainSelector";
 import { solveInterdiction } from "./interdiction-engine";
+import type { InterdictionCandidate } from "./interdiction-engine";
 
 export interface ParsedAction {
   type: string;
@@ -176,11 +177,6 @@ export function executeAction(action: ParsedAction): string | null {
         mode,
       );
 
-      store.setLastInterdictionResult(result);
-
-      // Auto-switch to Pearl module to show intervention UI
-      store.setActiveModule("pearl");
-
       // Format results as readable text for the copilot to reference
       const lines = [
         `Interdiction solved (budget=${budget}, mode=${mode}):`,
@@ -188,37 +184,88 @@ export function executeAction(action: ParsedAction): string | null {
         `  Optimal damage: ${result.bestDamage.toFixed(1)}/100`,
         `  Reduction: ${result.reductionPct.toFixed(1)}%`,
       ];
+
       if (result.interventions.length > 0) {
         lines.push(`  Recommended cuts:`);
         result.interventions.forEach((iv, i) => {
           lines.push(`    ${i + 1}. [${iv.target.type}] ${iv.target.label} (${iv.target.id}) — saves ${iv.marginalReduction.toFixed(1)}pts`);
         });
         lines.push(`  → Switched to PEARL module. Review cuts in the intervention panel.`);
+        store.setLastInterdictionResult(result);
       } else {
-        // When cascade damage is too low, provide omega-based recommendations instead
-        const highOmegaNodes = [...store.graphData.nodes]
-          .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
-          .slice(0, budget);
-        const criticalEdges = store.graphData.edges
-          .filter((e) => e.weight >= 0.7)
-          .sort((a, b) => b.weight - a.weight)
-          .slice(0, budget);
+        // Solver returned no cuts (cascade damage too low to discriminate
+        // targets). Fall back to structural vulnerability: highest-weight
+        // edges and/or highest-Ω nodes. Pack those into the result so the
+        // Pearl panel renders them as actionable SEVER/ABLATE buttons, not
+        // just text in the chat transcript.
+        const fallbackCandidates: InterdictionCandidate[] = [];
 
-        lines.push(`  No high-damage cascade detected — recommending structural vulnerability cuts:`);
         if (mode !== "node") {
-          criticalEdges.forEach((e, i) => {
+          const criticalEdges = store.graphData.edges
+            .filter((e) => e.weight >= 0.7 && !e.isSevered)
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, budget);
+          for (const e of criticalEdges) {
             const src = store.graphData.nodes.find((n) => n.id === e.source);
             const tgt = store.graphData.nodes.find((n) => n.id === e.target);
-            lines.push(`    ${i + 1}. [edge] ${src?.shortLabel ?? e.source} → ${tgt?.shortLabel ?? e.target} (w:${e.weight.toFixed(2)}, id:${e.id})`);
-          });
+            fallbackCandidates.push({
+              target: {
+                type: "edge",
+                id: e.id,
+                label: `${src?.shortLabel ?? e.source} → ${tgt?.shortLabel ?? e.target}`,
+              },
+              damage: result.baselineDamage,
+              // Use edge weight as a proxy for structural importance so the
+              // panel can rank cuts even when the cascade delta is ~0.
+              marginalReduction: e.weight * 10,
+            });
+          }
         }
+
         if (mode !== "edge") {
-          highOmegaNodes.forEach((n, i) => {
-            lines.push(`    ${i + 1}. [node] ${n.shortLabel} — ΩF ${n.omegaFragility.composite.toFixed(1)} (id:${n.id})`);
-          });
+          const highOmegaNodes = [...store.graphData.nodes]
+            .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+            .slice(0, budget);
+          for (const n of highOmegaNodes) {
+            fallbackCandidates.push({
+              target: {
+                type: "node",
+                id: n.id,
+                label: n.shortLabel,
+              },
+              damage: result.baselineDamage,
+              marginalReduction: n.omegaFragility.composite,
+            });
+          }
         }
-        lines.push(`  → Switched to PEARL module.`);
+
+        // Keep the top `budget` overall, ranked by our proxy score.
+        fallbackCandidates.sort((a, b) => b.marginalReduction - a.marginalReduction);
+        const trimmed = fallbackCandidates.slice(0, budget);
+
+        const reason =
+          "Cascade damage too low to rank cuts — showing highest structural vulnerability (edge weight / ΩF) instead.";
+
+        store.setLastInterdictionResult({
+          ...result,
+          interventions: trimmed,
+          fallbackReason: reason,
+        });
+
+        lines.push(`  No high-damage cascade detected — recommending structural vulnerability cuts:`);
+        trimmed.forEach((iv, i) => {
+          const suffix =
+            iv.target.type === "edge"
+              ? `(w-score ${iv.marginalReduction.toFixed(1)}, id:${iv.target.id})`
+              : `(ΩF ${iv.marginalReduction.toFixed(1)}, id:${iv.target.id})`;
+          lines.push(`    ${i + 1}. [${iv.target.type}] ${iv.target.label} ${suffix}`);
+        });
+        lines.push(`  → Switched to PEARL module. Cuts rendered in the intervention panel.`);
       }
+
+      // Auto-switch to Pearl module to show intervention UI
+      store.setActiveModule("pearl");
+
       return lines.join("\n");
     }
 

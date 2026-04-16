@@ -10,7 +10,7 @@ import {
   streamLlmQuery,
   CopilotAction,
 } from "@/lib/copilot-engine";
-import { processLlmActions } from "@/lib/copilot-actions";
+import { processLlmActions, stripActions } from "@/lib/copilot-actions";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
 import { serializeGraphContext, serializeSnapshotContext, serializeTimeWindowContext } from "@/lib/copilot-context";
@@ -423,12 +423,13 @@ export default function SystemCopilot() {
           const { done, value } = await reader.read();
           if (done) break;
           accumulated += decoder.decode(value, { stream: true });
-          // Strip action tags from displayed text
-          const { displayText } = processLlmActions(accumulated);
-          // Update the streaming message in store
+          // During streaming, only strip action tags for display — do NOT execute.
+          // Executing here would fire every action multiple times as it appears in
+          // successive chunks.
+          const displayTextStreaming = stripActions(accumulated);
           useApexStore.setState((s) => ({
             copilotMessages: s.copilotMessages.map((m) =>
-              m.id === assistantId ? { ...m, content: displayText } : m
+              m.id === assistantId ? { ...m, content: displayTextStreaming } : m
             ),
           }));
         }

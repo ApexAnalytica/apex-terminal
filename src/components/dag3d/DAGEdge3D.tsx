@@ -69,8 +69,12 @@ function DAGEdge3DInner({
   const particleT = useRef(Math.random()); // stagger start positions
 
   // Color: match 2D exactly
+  //   ablated   → magenta (#e040fb)   — Pearl do(X) node isolation
+  //   severed   → slate  (#78909c)   — Pearl link-break (distinct from Tarski red)
+  //   consequence → orange (#ff6d00) — downstream of intervention
+  //   else → type-based color or Tarski red if inconsistent
   const baseColor = getEdgeColor(edge, isVerifiedInconsistent);
-  const color = isAblated ? "#e040fb" : isSevered ? "#ff1744" : isConsequenceEdge ? "#ff6d00" : baseColor;
+  const color = isAblated ? "#e040fb" : isSevered ? "#78909c" : isConsequenceEdge ? "#ff6d00" : baseColor;
   const lineWidth = 0.5 + edge.weight * 1.5;
 
   // Deterministic curve offset based on edge ID
@@ -116,7 +120,7 @@ function DAGEdge3DInner({
   const propSignal = epochState ? epochState.propagationSignal : 0;
   const propBoost = propSignal * 0.5;
   const baseOpacity = isAblated ? 0.15
-    : isSevered ? 0.25
+    : isSevered ? 0.45
     : isDimmed ? 0.15
     : isHighlighted ? 0.9
     : hovered ? 0.8
@@ -207,6 +211,23 @@ function DAGEdge3DInner({
           transparent
           opacity={0.3}
         />
+      )}
+
+      {/* Sever marker — two crossed bars at the curve midpoint in Pearl-red.
+          Makes severed edges visually unmistakable even in dense scenes and
+          differentiates them from Tarski-inconsistent edges (which are red
+          dashed lines with NO marker). */}
+      {isSevered && (
+        <group position={[midpoint.x, midpoint.y, midpoint.z]}>
+          <mesh rotation={[0, 0, Math.PI / 4]}>
+            <boxGeometry args={[2.2, 0.35, 0.35]} />
+            <meshBasicMaterial color="#ff1744" transparent opacity={0.95} />
+          </mesh>
+          <mesh rotation={[0, 0, -Math.PI / 4]}>
+            <boxGeometry args={[2.2, 0.35, 0.35]} />
+            <meshBasicMaterial color="#ff1744" transparent opacity={0.95} />
+          </mesh>
+        </group>
       )}
     </group>
   );

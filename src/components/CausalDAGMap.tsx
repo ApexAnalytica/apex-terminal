@@ -200,8 +200,8 @@ function CausalDAGMapInner() {
   //   directed  → cyan (#00e5ff) — solid
   //   temporal  → amber (#ffab00) — solid + animated particle
   //   confounded → orange (#ff6d00) — dashed
-  //   inconsistent → red (#ff1744) — dashed
-  //   severed → red (#ff1744) — dashed, reduced opacity
+  //   inconsistent → red (#ff1744) — dashed  (Tarski)
+  //   severed → slate (#78909c) — dashed     (Pearl link-break)
   const { solidEdgeGeoJSON, dashedEdgeGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
@@ -243,10 +243,11 @@ function CausalDAGMapInner() {
         perpLat = midLat + (dx / dist) * curveAmount;
       }
 
-      // Edge color — matches 3D exactly
+      // Edge color — matches 3D exactly. Severed gets a distinct slate color
+      // so Pearl link-breaks don't look like Tarski-inconsistent edges.
       const isSevered = edge.isSevered ?? false;
       const edgeColor = isSevered
-        ? "#ff1744"
+        ? "#78909c"
         : edge.isInconsistent
           ? "#ff1744"
           : edge.type === "temporal"
@@ -258,7 +259,7 @@ function CausalDAGMapInner() {
       // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
       const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
 
-      const opacity = isSevered ? 0.25 : 0.5;
+      const opacity = isSevered ? 0.45 : 0.5;
 
       const feature: Feature<LineString> = {
         type: "Feature",

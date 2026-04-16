@@ -178,17 +178,47 @@ export function executeAction(action: ParsedAction): string | null {
 
       store.setLastInterdictionResult(result);
 
+      // Auto-switch to Pearl module to show intervention UI
+      store.setActiveModule("pearl");
+
       // Format results as readable text for the copilot to reference
       const lines = [
         `Interdiction solved (budget=${budget}, mode=${mode}):`,
         `  Baseline damage: ${result.baselineDamage.toFixed(1)}/100`,
         `  Optimal damage: ${result.bestDamage.toFixed(1)}/100`,
         `  Reduction: ${result.reductionPct.toFixed(1)}%`,
-        `  Recommended cuts:`,
       ];
-      result.interventions.forEach((iv, i) => {
-        lines.push(`    ${i + 1}. [${iv.target.type}] ${iv.target.label} (${iv.target.id}) — saves ${iv.marginalReduction.toFixed(1)}pts`);
-      });
+      if (result.interventions.length > 0) {
+        lines.push(`  Recommended cuts:`);
+        result.interventions.forEach((iv, i) => {
+          lines.push(`    ${i + 1}. [${iv.target.type}] ${iv.target.label} (${iv.target.id}) — saves ${iv.marginalReduction.toFixed(1)}pts`);
+        });
+        lines.push(`  → Switched to PEARL module. Review cuts in the intervention panel.`);
+      } else {
+        // When cascade damage is too low, provide omega-based recommendations instead
+        const highOmegaNodes = [...store.graphData.nodes]
+          .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+          .slice(0, budget);
+        const criticalEdges = store.graphData.edges
+          .filter((e) => e.weight >= 0.7)
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, budget);
+
+        lines.push(`  No high-damage cascade detected — recommending structural vulnerability cuts:`);
+        if (mode !== "node") {
+          criticalEdges.forEach((e, i) => {
+            const src = store.graphData.nodes.find((n) => n.id === e.source);
+            const tgt = store.graphData.nodes.find((n) => n.id === e.target);
+            lines.push(`    ${i + 1}. [edge] ${src?.shortLabel ?? e.source} → ${tgt?.shortLabel ?? e.target} (w:${e.weight.toFixed(2)}, id:${e.id})`);
+          });
+        }
+        if (mode !== "edge") {
+          highOmegaNodes.forEach((n, i) => {
+            lines.push(`    ${i + 1}. [node] ${n.shortLabel} — ΩF ${n.omegaFragility.composite.toFixed(1)} (id:${n.id})`);
+          });
+        }
+        lines.push(`  → Switched to PEARL module.`);
+      }
       return lines.join("\n");
     }
 

@@ -78,6 +78,7 @@ export default function ModulePanel() {
               Structural what-if analysis. Apply do(X) to isolate a node from its upstream causes,
               sever causal links, and observe counterfactual downstream effects.
             </div>
+            <CopilotInterdictionResults />
             <InterventionControls />
             <MonteCarloForecast />
             <AblationPanel />
@@ -97,6 +98,92 @@ export default function ModulePanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+// ─── Copilot Interdiction Results (shown in Pearl when solver has results) ───
+function CopilotInterdictionResults() {
+  const lastResult = useApexStore((s) => s.lastInterdictionResult);
+  const severEdge = useApexStore((s) => s.severEdge);
+  const graphData = useApexStore((s) => s.graphData);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+
+  if (!lastResult) return null;
+
+  const hasInterventions = lastResult.interventions.length > 0;
+
+  return (
+    <div className="border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
+          INTERDICTION RESULTS
+        </span>
+        <button
+          onClick={() => useApexStore.getState().setLastInterdictionResult(null)}
+          className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
+        >
+          DISMISS
+        </button>
+      </div>
+
+      <div className="flex gap-3 text-[8px] font-mono">
+        <div>
+          <span className="text-text-muted">BASELINE </span>
+          <span className="text-accent-red">{lastResult.baselineDamage.toFixed(1)}</span>
+        </div>
+        <div>
+          <span className="text-text-muted">OPTIMAL </span>
+          <span className="text-accent-green">{lastResult.bestDamage.toFixed(1)}</span>
+        </div>
+        <div>
+          <span className="text-text-muted">REDUCTION </span>
+          <span className="text-accent-amber">{lastResult.reductionPct.toFixed(0)}%</span>
+        </div>
+      </div>
+
+      {hasInterventions ? (
+        <div className="space-y-1.5">
+          {lastResult.interventions.map((iv, i) => {
+            const isApplied = appliedIds.has(iv.target.id);
+            return (
+              <div
+                key={iv.target.id}
+                className="flex items-center gap-2 p-1.5 rounded border border-border bg-surface-elevated"
+              >
+                <span className="text-[8px] font-mono text-accent-cyan w-4 shrink-0">{i + 1}.</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[8px] font-mono text-foreground truncate">{iv.target.label}</div>
+                  <div className="text-[7px] font-mono text-text-muted">
+                    {iv.target.type} — saves {iv.marginalReduction.toFixed(1)}pts
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (isApplied) return;
+                    if (iv.target.type === "edge") {
+                      severEdge(iv.target.id);
+                    }
+                    setAppliedIds((prev) => new Set([...prev, iv.target.id]));
+                  }}
+                  disabled={isApplied}
+                  className={`px-2 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors shrink-0 ${
+                    isApplied
+                      ? "text-accent-green border border-accent-green/30 bg-accent-green/5"
+                      : "text-accent-red border border-accent-red/30 hover:bg-accent-red/10"
+                  }`}
+                >
+                  {isApplied ? "APPLIED" : "SEVER"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-[8px] font-mono text-text-muted">
+          Cascade damage too low for meaningful cuts. Try injecting a higher-severity shock first.
+        </div>
+      )}
+    </div>
   );
 }
 

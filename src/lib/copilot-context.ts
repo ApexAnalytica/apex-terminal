@@ -67,6 +67,16 @@ export function serializeGraphContext(
   lines.push("  set_module:<spirtes|tarski|pearl|pareto> — Switch analysis module");
   lines.push("  set_view:<2d|3d> — Switch visualization mode");
   lines.push("  start_replay / stop_replay — Control cascade animation");
+  lines.push("  solve_interdiction:budget=N,mode=edge|node|both — Run greedy minimax solver to find optimal defensive cuts (budget=1-10)");
+  lines.push("  apply_interdiction:all — Apply all recommended interdictions from the last solve");
+  lines.push("  apply_interdiction:1,2 — Apply specific recommendations by index (1-based)");
+  lines.push("");
+  lines.push("INTERDICTION WORKFLOW: When a user asks 'what if we interdict X' or 'find optimal cuts' or 'defend against this shock':");
+  lines.push("  1. First ensure shocks are active (inject if needed via add_shock)");
+  lines.push("  2. Run <<<ACTION:solve_interdiction:budget=3,mode=edge>>> to find optimal cuts");
+  lines.push("  3. Explain the results: which edges/nodes to cut and why, the damage reduction");
+  lines.push("  4. Ask the user which they want to apply, or apply all via <<<ACTION:apply_interdiction:all>>>");
+  lines.push("  5. After applying, optionally start replay to visualize: <<<ACTION:start_replay>>>");
   lines.push("");
   lines.push("=== AVAILABLE DOMAINS ===");
   const available = DOMAIN_CARDS.filter((d) => d.hasData);

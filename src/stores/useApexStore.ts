@@ -11,6 +11,7 @@ import {
   EpochSnapshot,
   TimelineId,
 } from "@/lib/types";
+import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
 import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
 import {
@@ -112,6 +113,10 @@ interface ApexState {
   toggleAblatedEdge: (edgeId: string) => void;
   resetAblation: () => void;
   startAblationReplay: () => void;
+
+  // Interdiction (chat-based)
+  lastInterdictionResult: InterdictionResult | null;
+  setLastInterdictionResult: (result: InterdictionResult | null) => void;
 
   // Tarski axiom filter
   axiomLevelFilter: "all" | 0 | 1 | 2;
@@ -387,6 +392,10 @@ export const useApexStore = create<ApexState>((set, get) => ({
     }),
 
   // Tarski axiom filter
+  // Interdiction (chat-based)
+  lastInterdictionResult: null,
+  setLastInterdictionResult: (result) => set({ lastInterdictionResult: result }),
+
   axiomLevelFilter: "all",
   setAxiomLevelFilter: (f) => set({ axiomLevelFilter: f }),
 

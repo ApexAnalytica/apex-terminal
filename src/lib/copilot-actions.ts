@@ -5,6 +5,7 @@
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "./omega-engine";
 import { DOMAIN_CARDS, buildGraphFromDomains } from "@/components/DomainSelector";
+import { solveInterdiction } from "./interdiction-engine";
 
 export interface ParsedAction {
   type: string;
@@ -154,6 +155,81 @@ export function executeAction(action: ParsedAction): string | null {
         return `Filtered network to: ${labels.join(", ")} (${graph.metadata.totalNodes} nodes, ${graph.metadata.totalEdges} edges)`;
       }
       return `No valid domains found. Available: ${DOMAIN_CARDS.filter((d) => d.hasData).map((d) => d.id).join(", ")}`;
+    }
+
+    case "solve_interdiction": {
+      // Parse params: budget=3,mode=edge
+      const params = Object.fromEntries(
+        action.param.split(",").map((p) => {
+          const [k, v] = p.split("=");
+          return [k?.trim(), v?.trim()];
+        })
+      );
+      const budget = Math.min(10, Math.max(1, parseInt(params.budget ?? "3", 10) || 3));
+      const mode = (["edge", "node", "both"].includes(params.mode ?? "") ? params.mode : "edge") as "edge" | "node" | "both";
+
+      const result = solveInterdiction(
+        store.graphData,
+        store.shocks,
+        store.severedEdges,
+        budget,
+        mode,
+      );
+
+      store.setLastInterdictionResult(result);
+
+      // Format results as readable text for the copilot to reference
+      const lines = [
+        `Interdiction solved (budget=${budget}, mode=${mode}):`,
+        `  Baseline damage: ${result.baselineDamage.toFixed(1)}/100`,
+        `  Optimal damage: ${result.bestDamage.toFixed(1)}/100`,
+        `  Reduction: ${result.reductionPct.toFixed(1)}%`,
+        `  Recommended cuts:`,
+      ];
+      result.interventions.forEach((iv, i) => {
+        lines.push(`    ${i + 1}. [${iv.target.type}] ${iv.target.label} (${iv.target.id}) — saves ${iv.marginalReduction.toFixed(1)}pts`);
+      });
+      return lines.join("\n");
+    }
+
+    case "apply_interdiction": {
+      // Apply specific intervention by index (1-based) or "all"
+      const lastResult = store.lastInterdictionResult;
+      if (!lastResult || lastResult.interventions.length === 0) {
+        return "No interdiction results to apply. Run solve_interdiction first.";
+      }
+
+      if (action.param === "all") {
+        const applied: string[] = [];
+        for (const iv of lastResult.interventions) {
+          if (iv.target.type === "edge") {
+            store.severEdge(iv.target.id);
+            applied.push(iv.target.label);
+          } else {
+            store.toggleAblatedNode(iv.target.id);
+            applied.push(iv.target.label);
+          }
+        }
+        return `Applied all ${applied.length} interdictions: ${applied.join(", ")}`;
+      }
+
+      // Apply specific indices: "1,3" or "1"
+      const indices = action.param.split(",").map((s) => parseInt(s.trim(), 10) - 1);
+      const applied: string[] = [];
+      for (const idx of indices) {
+        const iv = lastResult.interventions[idx];
+        if (!iv) continue;
+        if (iv.target.type === "edge") {
+          store.severEdge(iv.target.id);
+          applied.push(iv.target.label);
+        } else {
+          store.toggleAblatedNode(iv.target.id);
+          applied.push(iv.target.label);
+        }
+      }
+      return applied.length > 0
+        ? `Applied interdictions: ${applied.join(", ")}`
+        : `No valid intervention indices: ${action.param}`;
     }
 
     default:

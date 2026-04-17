@@ -1,129 +1,268 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import {
   runMonteCarloForecast,
   type MCForecastResult,
+  type MCPath,
   type EpochStats,
 } from "@/lib/monte-carlo-engine";
 
-// ─── Mini Sparkline SVG ────────────────────────────────────────
+// ─── Fan + Spaghetti Chart ─────────────────────────────────────
 function ForecastChart({
   baselineStats,
   interventionStats,
+  baselinePaths,
+  interventionPaths,
   horizonEpochs,
   metric,
+  expanded,
 }: {
   baselineStats: EpochStats[];
   interventionStats: EpochStats[];
+  baselinePaths: MCPath[];
+  interventionPaths: MCPath[];
   horizonEpochs: number;
   metric: string;
+  expanded: boolean;
 }) {
-  const W = 280;
-  const H = 120;
-  const PAD = { top: 8, right: 8, bottom: 20, left: 32 };
+  const W = 560;
+  const H = expanded ? 280 : 140;
+  const PAD = { top: 18, right: 12, bottom: 24, left: 38 };
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
-  // Scale helpers
-  const xScale = (epoch: number) => PAD.left + (epoch / horizonEpochs) * plotW;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [hoverEpoch, setHoverEpoch] = useState<number | null>(null);
+
+  const xScale = useCallback(
+    (epoch: number) => PAD.left + (epoch / horizonEpochs) * plotW,
+    [plotW, horizonEpochs, PAD.left]
+  );
   const yMin = 0;
   const yMax = 100;
-  const yScale = (v: number) => PAD.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  const yScale = useCallback(
+    (v: number) => PAD.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH,
+    [plotH, PAD.top]
+  );
 
-  // Path generators
-  const linePath = (stats: EpochStats[], accessor: (s: EpochStats) => number) =>
-    stats.map((s, i) => `${i === 0 ? "M" : "L"} ${xScale(s.epoch).toFixed(1)} ${yScale(accessor(s)).toFixed(1)}`).join(" ");
+  const linePath = useCallback(
+    (stats: EpochStats[], accessor: (s: EpochStats) => number) =>
+      stats.map((s, i) => `${i === 0 ? "M" : "L"} ${xScale(s.epoch).toFixed(1)} ${yScale(accessor(s)).toFixed(1)}`).join(" "),
+    [xScale, yScale]
+  );
 
-  const bandPath = (stats: EpochStats[], lo: (s: EpochStats) => number, hi: (s: EpochStats) => number) => {
-    const upper = stats.map((s) => `${xScale(s.epoch).toFixed(1)},${yScale(hi(s)).toFixed(1)}`);
-    const lower = [...stats].reverse().map((s) => `${xScale(s.epoch).toFixed(1)},${yScale(lo(s)).toFixed(1)}`);
-    return `M ${upper.join(" L ")} L ${lower.join(" L ")} Z`;
-  };
+  const bandPath = useCallback(
+    (stats: EpochStats[], lo: (s: EpochStats) => number, hi: (s: EpochStats) => number) => {
+      const upper = stats.map((s) => `${xScale(s.epoch).toFixed(1)},${yScale(hi(s)).toFixed(1)}`);
+      const lower = [...stats].reverse().map((s) => `${xScale(s.epoch).toFixed(1)},${yScale(lo(s)).toFixed(1)}`);
+      return `M ${upper.join(" L ")} L ${lower.join(" L ")} Z`;
+    },
+    [xScale, yScale]
+  );
 
-  // Grid lines
+  const pathLine = useCallback(
+    (series: number[]) =>
+      series.map((v, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(v).toFixed(1)}`).join(" "),
+    [xScale, yScale]
+  );
+
   const gridYValues = [0, 25, 50, 75, 100];
+  const xTickEpochs = [0, Math.round(horizonEpochs / 4), Math.round(horizonEpochs / 2), Math.round((3 * horizonEpochs) / 4), horizonEpochs];
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (!svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const xInView = (relX / rect.width) * W;
+      if (xInView < PAD.left || xInView > W - PAD.right) {
+        setHoverEpoch(null);
+        return;
+      }
+      const epochF = ((xInView - PAD.left) / plotW) * horizonEpochs;
+      const epoch = Math.max(0, Math.min(horizonEpochs, Math.round(epochF)));
+      setHoverEpoch(epoch);
+    },
+    [plotW, horizonEpochs]
+  );
+
+  const hoverData = useMemo(() => {
+    if (hoverEpoch === null) return null;
+    const b = baselineStats[hoverEpoch];
+    const i = interventionStats[hoverEpoch];
+    if (!b || !i) return null;
+    return { epoch: hoverEpoch, baseline: b, intervention: i };
+  }, [hoverEpoch, baselineStats, interventionStats]);
+
+  const hoverXFrac = hoverEpoch !== null ? xScale(hoverEpoch) / W : 0;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 140 }}>
-      {/* Grid */}
-      {gridYValues.map((v) => (
-        <g key={v}>
-          <line
-            x1={PAD.left} y1={yScale(v)} x2={W - PAD.right} y2={yScale(v)}
-            stroke="var(--border)" strokeWidth={0.5} strokeDasharray="2,3"
-          />
-          <text x={PAD.left - 4} y={yScale(v) + 3} textAnchor="end"
-            fill="var(--text-muted)" fontSize={6} fontFamily="monospace">
-            {v}
+    <div ref={wrapperRef} className="relative">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full block"
+        style={{ maxHeight: expanded ? 340 : 180 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverEpoch(null)}
+        preserveAspectRatio="none"
+      >
+        {/* Grid */}
+        {gridYValues.map((v) => (
+          <g key={v}>
+            <line
+              x1={PAD.left} y1={yScale(v)} x2={W - PAD.right} y2={yScale(v)}
+              stroke="var(--border)" strokeWidth={0.5} strokeDasharray="2,3"
+            />
+            <text x={PAD.left - 4} y={yScale(v) + 3} textAnchor="end"
+              fill="var(--text-muted)" fontSize={expanded ? 9 : 7} fontFamily="monospace">
+              {v}
+            </text>
+          </g>
+        ))}
+
+        {/* X-axis labels */}
+        {xTickEpochs.map((e) => (
+          <text key={e} x={xScale(e)} y={H - 8} textAnchor="middle"
+            fill="var(--text-muted)" fontSize={expanded ? 9 : 7} fontFamily="monospace">
+            t{e}
+          </text>
+        ))}
+
+        {/* Spaghetti — individual MC paths */}
+        <g>
+          {baselinePaths.map((p, idx) => (
+            <path
+              key={`b${idx}`}
+              d={pathLine(p.omegaBufferSeries)}
+              fill="none"
+              stroke="rgba(200,200,220,1)"
+              strokeWidth={0.4}
+              strokeLinejoin="round"
+              opacity={0.05}
+            />
+          ))}
+          {interventionPaths.map((p, idx) => (
+            <path
+              key={`i${idx}`}
+              d={pathLine(p.omegaBufferSeries)}
+              fill="none"
+              stroke="rgba(0,229,255,1)"
+              strokeWidth={0.4}
+              strokeLinejoin="round"
+              opacity={0.06}
+            />
+          ))}
+        </g>
+
+        {/* Fan bands (p10-p90 outer, p25-p75 inner) */}
+        <path d={bandPath(baselineStats, (s) => s.p10, (s) => s.p90)} fill="rgba(100,100,130,0.14)" stroke="none" />
+        <path d={bandPath(baselineStats, (s) => s.p25, (s) => s.p75)} fill="rgba(100,100,130,0.22)" stroke="none" />
+        <path d={bandPath(interventionStats, (s) => s.p10, (s) => s.p90)} fill="rgba(0,229,255,0.08)" stroke="none" />
+        <path d={bandPath(interventionStats, (s) => s.p25, (s) => s.p75)} fill="rgba(0,229,255,0.16)" stroke="none" />
+
+        {/* Medians */}
+        <path d={linePath(baselineStats, (s) => s.p50)} fill="none" stroke="rgba(200,200,220,0.75)" strokeWidth={1.2} strokeDasharray="3,2" />
+        <path d={linePath(interventionStats, (s) => s.p50)} fill="none" stroke="var(--accent-cyan)" strokeWidth={1.6} />
+
+        {/* Hover crosshair + markers */}
+        {hoverData && (
+          <g>
+            <line
+              x1={xScale(hoverData.epoch)} y1={PAD.top}
+              x2={xScale(hoverData.epoch)} y2={H - PAD.bottom}
+              stroke="rgba(255,255,255,0.3)" strokeWidth={0.8} strokeDasharray="3,3"
+            />
+            <circle
+              cx={xScale(hoverData.epoch)} cy={yScale(hoverData.baseline.p50)}
+              r={3} fill="rgba(220,220,235,0.95)"
+            />
+            <circle
+              cx={xScale(hoverData.epoch)} cy={yScale(hoverData.intervention.p50)}
+              r={3.5} fill="var(--accent-cyan)"
+            />
+          </g>
+        )}
+
+        {/* Legend */}
+        <g>
+          <line x1={PAD.left + 2} y1={PAD.top - 10} x2={PAD.left + 18} y2={PAD.top - 10}
+            stroke="rgba(200,200,220,0.75)" strokeWidth={1.2} strokeDasharray="3,2" />
+          <text x={PAD.left + 22} y={PAD.top - 7} fill="var(--text-muted)" fontSize={expanded ? 8 : 6.5} fontFamily="monospace">
+            BASELINE p50 (fan: p10{"\u2013"}p90)
+          </text>
+          <line x1={PAD.left + 180} y1={PAD.top - 10} x2={PAD.left + 196} y2={PAD.top - 10}
+            stroke="var(--accent-cyan)" strokeWidth={1.6} />
+          <text x={PAD.left + 200} y={PAD.top - 7} fill="var(--accent-cyan)" fontSize={expanded ? 8 : 6.5} fontFamily="monospace">
+            do(X) INTERVENTION
           </text>
         </g>
-      ))}
 
-      {/* X axis labels */}
-      {[0, Math.round(horizonEpochs / 2), horizonEpochs].map((e) => (
-        <text key={e} x={xScale(e)} y={H - 4} textAnchor="middle"
-          fill="var(--text-muted)" fontSize={6} fontFamily="monospace">
-          t{e}
+        {/* Axis label */}
+        <text x={W / 2} y={H - 1} textAnchor="middle"
+          fill="var(--text-muted)" fontSize={expanded ? 7 : 5.5} fontFamily="monospace">
+          {metric}
         </text>
-      ))}
+      </svg>
 
-      {/* Baseline band (p10-p90) */}
-      <path
-        d={bandPath(baselineStats, (s) => s.p10, (s) => s.p90)}
-        fill="rgba(100,100,130,0.12)" stroke="none"
-      />
-      {/* Baseline IQR band (p25-p75) */}
-      <path
-        d={bandPath(baselineStats, (s) => s.p25, (s) => s.p75)}
-        fill="rgba(100,100,130,0.18)" stroke="none"
-      />
-      {/* Baseline median */}
-      <path
-        d={linePath(baselineStats, (s) => s.p50)}
-        fill="none" stroke="rgba(160,160,180,0.6)" strokeWidth={1} strokeDasharray="3,2"
-      />
-
-      {/* Intervention band (p10-p90) */}
-      <path
-        d={bandPath(interventionStats, (s) => s.p10, (s) => s.p90)}
-        fill="rgba(0,229,255,0.08)" stroke="none"
-      />
-      {/* Intervention IQR band (p25-p75) */}
-      <path
-        d={bandPath(interventionStats, (s) => s.p25, (s) => s.p75)}
-        fill="rgba(0,229,255,0.15)" stroke="none"
-      />
-      {/* Intervention median */}
-      <path
-        d={linePath(interventionStats, (s) => s.p50)}
-        fill="none" stroke="var(--accent-cyan)" strokeWidth={1.2}
-      />
-      {/* Intervention mean */}
-      <path
-        d={linePath(interventionStats, (s) => s.mean)}
-        fill="none" stroke="var(--accent-amber)" strokeWidth={0.8} strokeDasharray="1,2"
-      />
-
-      {/* Legend */}
-      <line x1={PAD.left + 4} y1={PAD.top + 2} x2={PAD.left + 16} y2={PAD.top + 2}
-        stroke="rgba(160,160,180,0.6)" strokeWidth={1} strokeDasharray="3,2" />
-      <text x={PAD.left + 19} y={PAD.top + 5} fill="var(--text-muted)" fontSize={5.5} fontFamily="monospace">
-        BASELINE
-      </text>
-      <line x1={PAD.left + 4} y1={PAD.top + 10} x2={PAD.left + 16} y2={PAD.top + 10}
-        stroke="var(--accent-cyan)" strokeWidth={1.2} />
-      <text x={PAD.left + 19} y={PAD.top + 13} fill="var(--accent-cyan)" fontSize={5.5} fontFamily="monospace">
-        do(X) INTERVENTION
-      </text>
-
-      {/* Axis label */}
-      <text x={W / 2} y={H - 12} textAnchor="middle"
-        fill="var(--text-muted)" fontSize={5} fontFamily="monospace">
-        {metric}
-      </text>
-    </svg>
+      {/* Hover tooltip — HTML overlay */}
+      {hoverData && wrapperRef.current && (() => {
+        const containerW = wrapperRef.current.getBoundingClientRect().width;
+        const xPx = hoverXFrac * containerW;
+        const flipLeft = xPx > containerW * 0.6;
+        const delta = hoverData.intervention.p50 - hoverData.baseline.p50;
+        return (
+          <div
+            className="absolute z-20 pointer-events-none"
+            style={{
+              left: flipLeft ? undefined : `${xPx + 10}px`,
+              right: flipLeft ? `${containerW - xPx + 10}px` : undefined,
+              top: 4,
+            }}
+          >
+            <div className="bg-surface-elevated border border-border rounded px-2 py-1.5 shadow-lg min-w-[150px]">
+              <div className="text-[7px] font-mono text-text-muted mb-1">
+                EPOCH t{hoverData.epoch}
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 text-[8px] font-mono">
+                  <span className="w-2 h-0.5 flex-shrink-0" style={{ background: "rgba(200,200,220,0.75)" }} />
+                  <span className="text-text-muted">BASE</span>
+                  <span className="ml-auto font-bold text-foreground">
+                    {hoverData.baseline.p50.toFixed(1)}
+                  </span>
+                  <span className="text-text-muted/60 text-[7px]">
+                    [{hoverData.baseline.p10.toFixed(0)}{"\u2013"}{hoverData.baseline.p90.toFixed(0)}]
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[8px] font-mono">
+                  <span className="w-2 h-0.5 bg-accent-cyan flex-shrink-0" />
+                  <span className="text-accent-cyan">do(X)</span>
+                  <span className="ml-auto font-bold text-accent-cyan">
+                    {hoverData.intervention.p50.toFixed(1)}
+                  </span>
+                  <span className="text-text-muted/60 text-[7px]">
+                    [{hoverData.intervention.p10.toFixed(0)}{"\u2013"}{hoverData.intervention.p90.toFixed(0)}]
+                  </span>
+                </div>
+                <div className="border-t border-border/40 pt-0.5 mt-0.5 flex items-center text-[8px] font-mono">
+                  <span className="text-text-muted">{"\u0394"} p50</span>
+                  <span
+                    className="ml-auto font-bold"
+                    style={{ color: delta > 1 ? "#00e676" : delta < -1 ? "#ff1744" : "var(--text-muted)" }}
+                  >
+                    {delta > 0 ? "+" : ""}{delta.toFixed(1)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
   );
 }
 
@@ -175,7 +314,11 @@ function NodeSparkline({
 }
 
 // ─── Main Component ────────────────────────────────────────────
-export default function MonteCarloForecast() {
+export default function MonteCarloForecast({
+  expanded = false,
+}: {
+  expanded?: boolean;
+} = {}) {
   const {
     interventionTarget,
     graphData,
@@ -375,18 +518,21 @@ export default function MonteCarloForecast() {
           <div className="border border-accent-cyan/30 rounded bg-surface-elevated">
             <div className="flex items-center justify-between px-2 py-1 border-b border-accent-cyan/20 bg-accent-cyan/5">
               <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
-                FAN CHART
+                FAN CHART {expanded && <span className="text-text-muted ml-1">{"\u00B7"} EXPANDED</span>}
               </span>
               <span className="text-[7px] font-mono text-text-muted">
-                {lastRunSource === "interdiction" ? "INTERDICTION POSTURE" : "MANUAL do(X)"} {"\u00B7"} {numPaths} paths {"\u00B7"} p10{"\u2013"}p90 / p25{"\u2013"}p75 / p50
+                {lastRunSource === "interdiction" ? "INTERDICTION POSTURE" : "MANUAL do(X)"} {"\u00B7"} {numPaths} paths {"\u00B7"} hover for epoch detail
               </span>
             </div>
             <div className="p-1">
               <ForecastChart
                 baselineStats={result.baselineStats}
                 interventionStats={result.interventionStats}
+                baselinePaths={result.baselinePaths}
+                interventionPaths={result.interventionPaths}
                 horizonEpochs={result.horizonEpochs}
                 metric={`\u03A9-BUFFER TRAJECTORY \u2014 ${horizon} EPOCHS`}
+                expanded={expanded}
               />
             </div>
           </div>

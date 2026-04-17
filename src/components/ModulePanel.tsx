@@ -87,7 +87,7 @@ export default function ModulePanel() {
             </div>
             <CopilotInterdictionResults />
             <InterventionControls />
-            <MonteCarloForecast />
+            <MonteCarloForecast expanded={expandedChart === "pearl"} />
             <AblationPanel />
           </div>
         )}

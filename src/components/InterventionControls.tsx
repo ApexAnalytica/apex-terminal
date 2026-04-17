@@ -6,9 +6,7 @@ import type { CounterfactualResult } from "@/lib/types";
 
 export default function InterventionControls() {
   const {
-    interventionMode,
     interventionTarget,
-    setInterventionMode,
     setInterventionTarget,
     selectedNode,
     graphData,
@@ -68,20 +66,7 @@ export default function InterventionControls() {
         Pearl&apos;s do-calculus: isolate a node from upstream causes to observe counterfactual downstream effects. Unlike scenario shocks (Pareto), this is a structural graph operation.
       </div>
 
-      <button
-        onClick={() => setInterventionMode(!interventionMode)}
-        className="w-full text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-3 py-2 rounded border transition-colors"
-        style={{
-          borderColor: interventionMode ? "var(--accent-amber)" : "var(--border)",
-          color: interventionMode ? "var(--accent-amber)" : "var(--text-muted)",
-          backgroundColor: interventionMode ? "rgba(255,171,0,0.08)" : "transparent",
-        }}
-      >
-        {interventionMode ? "\u25C9 INTERVENTION ACTIVE" : "\u25CB ENABLE INTERVENTION"}
-      </button>
-
-      {interventionMode && (
-        <div className="space-y-2">
+      <div className="space-y-2">
           {targetNode ? (
             <div className="space-y-2">
               <div className="p-2 rounded border border-accent-amber/30 bg-accent-amber/5">
@@ -203,7 +188,6 @@ export default function InterventionControls() {
             )}
           </div>
         </div>
-      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import NodeInspector from "./NodeInspector";
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
+  const setInterventionMode = useApexStore((s) => s.setInterventionMode);
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const isWide = expandedChart !== null;
 
@@ -22,6 +23,12 @@ export default function ModulePanel() {
   useEffect(() => {
     setExpandedChart(null);
   }, [activeModule]);
+
+  // Pearl module is itself the intervention workspace — keep the store flag in
+  // sync so DAG highlighting and copilot context reflect the active view.
+  useEffect(() => {
+    setInterventionMode(activeModule === "pearl");
+  }, [activeModule, setInterventionMode]);
 
   return (
     <aside

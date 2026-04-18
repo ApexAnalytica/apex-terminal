@@ -11,6 +11,7 @@ import InterventionControls from "./InterventionControls";
 import MonteCarloForecast from "./MonteCarloForecast";
 import AblationPanel from "./AblationPanel";
 import InterdictionPanel from "./InterdictionPanel";
+import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
 
 export default function ModulePanel() {
@@ -101,6 +102,7 @@ export default function ModulePanel() {
             <SnapshotIndicator />
             <ParetoPanel expandedChart={expandedChart} setExpandedChart={setExpandedChart} />
             <InterdictionPanel />
+            <NewsInterpreterPanel />
           </div>
         )}
       </div>

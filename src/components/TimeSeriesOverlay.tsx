@@ -236,7 +236,7 @@ export default function TimeSeriesOverlay() {
             </div>
 
             {/* SVG Chart */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 relative">
               <svg
                 ref={svgRef}
                 width="100%"
@@ -308,23 +308,36 @@ export default function TimeSeriesOverlay() {
                   );
                 })}
 
-                {/* Timeline position indicator */}
-                {!isLive && (() => {
+                {/* Timeline position indicator — mirrors the TimeDial scrub
+                    on the chart. In live mode, follows the right edge (current
+                    time) as timelineRange.end advances. */}
+                {(() => {
                   const w = containerRef.current
                     ? containerRef.current.getBoundingClientRect().width - 72
                     : 800;
-                  const { x } = toSvg(timelinePosition, 0, w);
+                  const pos = isLive ? xEnd : timelinePosition;
+                  const { x } = toSvg(pos, 0, w);
                   return (
-                    <line
-                      x1={x}
-                      y1={PAD.top}
-                      x2={x}
-                      y2={CHART_HEIGHT - PAD.bottom}
-                      stroke="var(--accent-cyan)"
-                      strokeWidth={1}
-                      opacity={0.4}
-                      strokeDasharray="2 2"
-                    />
+                    <g>
+                      <line
+                        x1={x}
+                        y1={PAD.top}
+                        x2={x}
+                        y2={CHART_HEIGHT - PAD.bottom}
+                        stroke="var(--accent-cyan)"
+                        strokeWidth={1}
+                        opacity={isLive ? 0.7 : 0.5}
+                        strokeDasharray={isLive ? undefined : "2 2"}
+                      />
+                      {/* Cap on the indicator to make "now" read as a dial */}
+                      <circle
+                        cx={x}
+                        cy={PAD.top}
+                        r={2.5}
+                        fill="var(--accent-cyan)"
+                        opacity={isLive ? 0.9 : 0.6}
+                      />
+                    </g>
                   );
                 })()}
 

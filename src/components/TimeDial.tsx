@@ -684,6 +684,7 @@ export default function TimeDial() {
         {/* Track */}
         <div
           ref={trackRef}
+          data-timedial-track="true"
           className="relative h-6 cursor-crosshair rounded"
           style={{ backgroundColor: "rgba(26,28,46,0.8)" }}
           onPointerDown={handlePointerDown}

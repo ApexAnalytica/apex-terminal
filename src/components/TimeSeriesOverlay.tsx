@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 
 const CHART_HEIGHT = 120;
+// left/right are overridden at runtime to match the TimeDial track's actual
+// horizontal span so the chart's plot region and the scrubber line up.
 const PAD = { top: 12, bottom: 20, left: 32, right: 12 };
 
 function getLineColor(value: number): string {
@@ -23,14 +25,58 @@ export default function TimeSeriesOverlay() {
   const temporalData = useApexStore((s) => s.temporalData);
   const graphData = useApexStore((s) => s.graphData);
   const timelineRange = useApexStore((s) => s.timelineRange);
-  const timelineFullRange = useApexStore((s) => s.timelineFullRange);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
-  const isZoomed = timelineFullRange !== null;
 
   const [hoverX, setHoverX] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // The SVG uses preserveAspectRatio="none", so viewBox width is set to the
+  // rendered pixel width for a 1:1 mapping. Left/right inset inside the SVG
+  // is measured against the TimeDial track below so the chart's plot region
+  // aligns with the scrubber. Falls back to PAD defaults pre-measurement.
+  const [geom, setGeom] = useState<{ width: number; left: number; right: number }>({
+    width: 800,
+    left: PAD.left,
+    right: PAD.right,
+  });
+
+  useLayoutEffect(() => {
+    if (pinnedNodes.length === 0) return;
+    const update = () => {
+      if (!svgRef.current) return;
+      const track = document.querySelector<HTMLElement>("[data-timedial-track]");
+      const svgRect = svgRef.current.getBoundingClientRect();
+      if (svgRect.width === 0) return;
+      const width = svgRect.width;
+      const left = track
+        ? Math.max(0, track.getBoundingClientRect().left - svgRect.left)
+        : PAD.left;
+      const right = track
+        ? Math.max(0, svgRect.right - track.getBoundingClientRect().right)
+        : PAD.right;
+      setGeom((prev) =>
+        Math.abs(prev.width - width) < 0.5 &&
+        Math.abs(prev.left - left) < 0.5 &&
+        Math.abs(prev.right - right) < 0.5
+          ? prev
+          : { width, left, right },
+      );
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (svgRef.current) ro.observe(svgRef.current);
+    const track = document.querySelector<HTMLElement>("[data-timedial-track]");
+    if (track) ro.observe(track);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [pinnedNodes.length]);
+
+  const plotInset = geom;
+  const chartW = geom.width;
 
   // Gather histories for pinned nodes
   const curves = useMemo(() => {
@@ -110,53 +156,40 @@ export default function TimeSeriesOverlay() {
     return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
   }, [curves]);
 
-  // Compute x-axis range: when zoomed, match the TimeDial's zoomed range;
-  // otherwise fit to the actual pinned curves' data range
-  const { xStart, xEnd } = useMemo(() => {
-    if (isZoomed) {
-      // Linked to TimeDial zoom — use the same window
-      return { xStart: timelineRange.start, xEnd: timelineRange.end };
-    }
-    if (curves.length === 0) return { xStart: timelineRange.start, xEnd: timelineRange.end };
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const curve of curves) {
-      for (const h of curve.history) {
-        if (h.timestamp < lo) lo = h.timestamp;
-        if (h.timestamp > hi) hi = h.timestamp;
-      }
-    }
-    // Add a small 2% padding on each side so curves don't touch edges
-    const span = hi - lo || 1;
-    const pad = span * 0.02;
-    return { xStart: lo - pad, xEnd: hi + pad };
-  }, [curves, timelineRange, isZoomed]);
+  // Always mirror the TimeDial's visible window so a timestamp renders at
+  // the same fractional x on both. Previously this fell back to the curves'
+  // own min/max when not zoomed, which made the vertical cursor drift off
+  // the TimeDial scrub below.
+  const { xStart, xEnd } = useMemo(
+    () => ({ xStart: timelineRange.start, xEnd: timelineRange.end }),
+    [timelineRange],
+  );
 
   // Convert data coordinates to SVG coordinates
   const toSvg = useCallback(
     (timestamp: number, omega: number, width: number) => {
       const xRange = xEnd - xStart || 1;
       const x =
-        PAD.left +
+        plotInset.left +
         ((timestamp - xStart) / xRange) *
-          (width - PAD.left - PAD.right);
+          (width - plotInset.left - plotInset.right);
       const y =
         PAD.top +
         (1 - (omega - yMin) / (yMax - yMin || 1)) *
           (CHART_HEIGHT - PAD.top - PAD.bottom);
       return { x, y };
     },
-    [xStart, xEnd, yMin, yMax],
+    [xStart, xEnd, yMin, yMax, plotInset],
   );
 
   // Get hovered values
   const hoverValues = useMemo(() => {
-    if (hoverX === null || !containerRef.current) return null;
-    const width = containerRef.current.getBoundingClientRect().width - 72; // minus label column
+    if (hoverX === null) return null;
     const xRange = xEnd - xStart || 1;
     const ts =
       xStart +
-      ((hoverX - PAD.left) / (width - PAD.left - PAD.right)) * xRange;
+      ((hoverX - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
+        xRange;
     const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
     for (const curve of curves) {
       // Find closest timestamp in history
@@ -176,20 +209,20 @@ export default function TimeSeriesOverlay() {
       });
     }
     return { ts, values };
-  }, [hoverX, curves, xStart, xEnd]);
+  }, [hoverX, curves, xStart, xEnd, plotInset, chartW]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (!svgRef.current) return;
       const rect = svgRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      if (x >= PAD.left && x <= rect.width - PAD.right) {
+      if (x >= plotInset.left && x <= rect.width - plotInset.right) {
         setHoverX(x);
       } else {
         setHoverX(null);
       }
     },
-    [],
+    [plotInset],
   );
 
   if (pinnedNodes.length === 0) return null;
@@ -245,7 +278,7 @@ export default function TimeSeriesOverlay() {
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setHoverX(null)}
                 preserveAspectRatio="none"
-                viewBox={`0 0 ${containerRef.current?.getBoundingClientRect().width ? containerRef.current.getBoundingClientRect().width - 72 : 800} ${CHART_HEIGHT}`}
+                viewBox={`0 0 ${chartW} ${CHART_HEIGHT}`}
               >
                 {/* Grid lines */}
                 {gridLines.map((v) => {
@@ -254,7 +287,7 @@ export default function TimeSeriesOverlay() {
                   return (
                     <line
                       key={v}
-                      x1={PAD.left}
+                      x1={plotInset.left}
                       y1={y}
                       x2="100%"
                       y2={y}
@@ -267,9 +300,7 @@ export default function TimeSeriesOverlay() {
 
                 {/* Curves */}
                 {curves.map((curve) => {
-                  const w = containerRef.current
-                    ? containerRef.current.getBoundingClientRect().width - 72
-                    : 800;
+                  const w = chartW;
                   const points = curve.history
                     .map((h) => {
                       const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
@@ -312,11 +343,8 @@ export default function TimeSeriesOverlay() {
                     on the chart. In live mode, follows the right edge (current
                     time) as timelineRange.end advances. */}
                 {(() => {
-                  const w = containerRef.current
-                    ? containerRef.current.getBoundingClientRect().width - 72
-                    : 800;
                   const pos = isLive ? xEnd : timelinePosition;
-                  const { x } = toSvg(pos, 0, w);
+                  const { x } = toSvg(pos, 0, chartW);
                   return (
                     <g>
                       <line
@@ -354,10 +382,7 @@ export default function TimeSeriesOverlay() {
                       strokeDasharray="3 3"
                     />
                     {hoverValues?.values.map((v) => {
-                      const w = containerRef.current
-                        ? containerRef.current.getBoundingClientRect().width - 72
-                        : 800;
-                      const { y } = toSvg(hoverValues.ts, v.omega, w);
+                      const { y } = toSvg(hoverValues.ts, v.omega, chartW);
                       return (
                         <g key={v.nodeId}>
                           <circle cx={hoverX} cy={y} r={4} fill={v.color} opacity={0.25} />
@@ -369,8 +394,12 @@ export default function TimeSeriesOverlay() {
                 )}
               </svg>
 
-              {/* X-axis date labels */}
-              <div className="flex justify-between mt-0.5 px-1">
+              {/* X-axis date labels — aligned to the plot region so the
+                  start/mid/end markers sit directly above the TimeDial. */}
+              <div
+                className="flex justify-between mt-0.5"
+                style={{ paddingLeft: plotInset.left, paddingRight: plotInset.right }}
+              >
                 <span className="text-[7px] font-mono text-text-muted/50">
                   {new Date(xStart).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
                 </span>
@@ -382,18 +411,17 @@ export default function TimeSeriesOverlay() {
                 </span>
               </div>
 
-              {/* Hover tooltip — flips to left side when near right edge */}
+              {/* Hover tooltip — anchors next to the crosshair inside the
+                  chart wrapper (which is position: relative). Flips to the
+                  left of the cursor when near the right edge. */}
               {hoverValues && hoverX !== null && (() => {
-                const chartW = containerRef.current
-                  ? containerRef.current.getBoundingClientRect().width - 72
-                  : 800;
                 const flipLeft = hoverX > chartW * 0.7;
                 return (
                 <div
                   className="absolute z-20 pointer-events-none"
                   style={{
-                    left: flipLeft ? undefined : `${hoverX + 84}px`,
-                    right: flipLeft ? `${chartW - hoverX + 4}px` : undefined,
+                    left: flipLeft ? undefined : `${hoverX + 12}px`,
+                    right: flipLeft ? `${chartW - hoverX + 12}px` : undefined,
                     top: "-4px",
                   }}
                 >

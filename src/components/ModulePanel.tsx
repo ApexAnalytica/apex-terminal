@@ -65,8 +65,9 @@ export default function ModulePanel() {
       {/* Node Inspector (persistent across modules) */}
       <NodeInspector />
 
-      {/* Module Content */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Module Content — pb-16 reserves space for the fixed FEEDBACK button
+          so the bottom of the last panel never sits under it at full scroll. */}
+      <div className="flex-1 overflow-y-auto pb-16">
         {activeModule === "spirtes" && (
           <>
             <CascadeHeader />

@@ -137,6 +137,32 @@ const DOMAIN_GROUPS: DomainGroup[] = [
     ],
   },
   {
+    label: "MACRO IMPACT",
+    color: "#40c4ff",
+    domains: [
+      {
+        id: "macro-labor",
+        label: "Labor, Growth & Housing",
+        icon: "\u{1F4CA}",
+        color: "#40c4ff",
+        colorVar: "var(--accent-cyan)",
+        description: "Nonfarm payrolls, unemployment, wages, JOLTS, GDP, retail sales, industrial production, ISM PMI, housing",
+        hasData: true,
+        dataset: "main",
+      },
+      {
+        id: "macro-inflation",
+        label: "Inflation & Policy",
+        icon: "\u{1F4B9}",
+        color: "#ff80ab",
+        colorVar: "var(--accent-pink)",
+        description: "CPI/PPI/PCE inflation, breakeven expectations, Fed funds rate, SOFR, Fed policy transmission",
+        hasData: true,
+        dataset: "main",
+      },
+    ],
+  },
+  {
     label: "FRONTIER",
     color: "#e040fb",
     domains: [
@@ -231,6 +257,24 @@ const CASCADE_EXAMPLES: Record<string, string> = {
     "Chip embargo \u2192 secure compute shortage \u2192 ISR processing bottleneck \u2192 intelligence gap",
   "defense-isr+infrastructure":
     "Anti-satellite strike \u2192 GPS degradation \u2192 navigation system failure \u2192 logistics breakdown",
+  "macro-labor+macro-inflation":
+    "Wage growth acceleration \u2192 services inflation persistence \u2192 Core PCE above target \u2192 Fed holds rates higher \u2192 housing and growth slowdown",
+  "macro-inflation+financial-contagion":
+    "Hot CPI print \u2192 Fed rate hike \u2192 USD strengthening \u2192 EM currency contagion \u2192 sovereign debt rollover crisis",
+  "macro-inflation+sovereign-risk":
+    "Persistent US inflation \u2192 extended Fed tightening \u2192 global borrowing cost surge \u2192 EM fiscal stress \u2192 growth contraction",
+  "macro-inflation+energy-systems":
+    "Saudi supply disruption \u2192 PPI energy spike \u2192 CPI energy pass-through \u2192 headline inflation surge \u2192 Fed reaction",
+  "macro-labor+financial-contagion":
+    "US employment collapse \u2192 recession signal \u2192 risk-off \u2192 EM capital flight \u2192 FX reserve depletion",
+  "macro-labor+sovereign-risk":
+    "US GDP contraction \u2192 reduced import demand \u2192 China/Brazil export revenue decline \u2192 growth slowdown",
+  "macro-inflation+manufacturing":
+    "Fertilizer price spike \u2192 CPI food surge \u2192 inflation expectations de-anchor \u2192 Fed overtightens \u2192 demand destruction",
+  "macro-inflation+supply-chain":
+    "Red Sea disruption \u2192 shipping cost spike \u2192 PPI pass-through \u2192 CPI goods inflation \u2192 consumer confidence collapse",
+  "macro-inflation+infrastructure":
+    "Cable cut latency spike \u2192 financial settlement delays \u2192 SOFR volatility \u2192 repo market stress \u2192 cross-border credit freeze",
 };
 
 function getCascadeExamples(domainIds: string[]): string[] {

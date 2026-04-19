@@ -14,6 +14,9 @@ const DOMAIN_MAP: Record<string, string[]> = {
   "sovereign-risk": ["Sovereign Risk"],
   "supply-chain": ["Supply Chain Food Security"],
   "infrastructure": ["Undersea Cable Infrastructure"],
+  // Macro Impact domains
+  "macro-labor": ["Macro Impact: Labor, Growth & Housing"],
+  "macro-inflation": ["Macro Impact: Inflation & Policy"],
   // Athena ISR domains
   "defense-isr": ["Drone Swarms", "SATCOM", "ISR Fusion", "Chip Embargo", "Secure Compute", "Kill Chain"],
 };

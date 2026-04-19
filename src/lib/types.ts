@@ -1,5 +1,15 @@
 // ─── Causal Shocks ───────────────────────────────────────────────
-export type ShockCategory = "compute" | "energy" | "cooling" | "supply" | "geopolitical";
+export type ShockCategory =
+  | "compute"
+  | "energy"
+  | "cooling"
+  | "supply"
+  | "geopolitical"
+  | "financial"
+  | "cyber"
+  | "regulatory"
+  | "environmental"
+  | "health";
 
 export interface CausalShock {
   id: string;

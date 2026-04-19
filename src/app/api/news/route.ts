@@ -8,7 +8,7 @@ const SYSTEM_PROMPT = `You are APEX's causal news interpreter. Given a news arti
 The graph is a DAG of real-world systems (energy, manufacturing, finance, geopolitics, etc.). Each node is an entity or capability. Each edge is a causal dependency (source → target). An intervention is a perturbation the article describes or implies.
 
 Three intervention techniques are available:
-- "shock": inject an exogenous disruption on a node (use when article describes an ongoing/imminent disruption — strike, sanction, outage, disaster). Requires severity 0-1 and category from {compute, energy, cooling, supply, geopolitical}.
+- "shock": inject an exogenous disruption on a node (use when article describes an ongoing/imminent disruption — strike, sanction, outage, disaster, cyberattack, bank run, pandemic, recall, etc.). Requires severity 0-1 and category from {compute, energy, cooling, supply, geopolitical, financial, cyber, regulatory, environmental, health}. Pick the category that best fits the article's causal mechanism — e.g. banking/credit crises → financial, ransomware/data breach → cyber, antitrust ruling or SEC action → regulatory, hurricane/earthquake/climate event → environmental, pandemic/public-health emergency → health.
 - "sever": break a causal edge (use when article describes a dependency being cut — pipeline closure, export ban, route blocked).
 - "ablate": remove a node entirely (use when article describes a total capacity loss — factory destruction, company shutdown).
 

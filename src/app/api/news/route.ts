@@ -48,15 +48,24 @@ export async function POST(req: NextRequest) {
       provider?: LLMProvider;
     };
 
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API key required" }), {
+    if (!articleText || articleText.trim().length < 20) {
+      return new Response(JSON.stringify({ error: "Article text too short" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    if (!articleText || articleText.trim().length < 20) {
-      return new Response(JSON.stringify({ error: "Article text too short" }), {
+    const resolvedProvider: LLMProvider =
+      provider ?? (model?.startsWith("gemini") ? "gemini" : "anthropic");
+
+    const resolvedApiKey =
+      apiKey
+      || (resolvedProvider === "gemini" ? process.env.GEMINI_API_KEY : undefined)
+      || (resolvedProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined)
+      || "";
+
+    if (!resolvedApiKey) {
+      return new Response(JSON.stringify({ error: "API key required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -84,13 +93,10 @@ ${articleText}
 
 Extract the graph-mappable interventions.`;
 
-    const resolvedProvider: LLMProvider =
-      provider ?? (model?.startsWith("gemini") ? "gemini" : "anthropic");
-
     let responseText: string;
 
     if (resolvedProvider === "gemini") {
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const genAI = new GoogleGenerativeAI(resolvedApiKey);
       const genModel = genAI.getGenerativeModel({
         model: model || "gemini-2.5-flash",
         systemInstruction: SYSTEM_PROMPT,
@@ -100,7 +106,7 @@ Extract the graph-mappable interventions.`;
       });
       responseText = result.response.text();
     } else {
-      const client = new Anthropic({ apiKey });
+      const client = new Anthropic({ apiKey: resolvedApiKey });
       const response = await client.messages.create({
         model: model || "claude-sonnet-4-20250514",
         max_tokens: 4096,

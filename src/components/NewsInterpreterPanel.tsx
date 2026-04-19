@@ -30,10 +30,7 @@ export default function NewsInterpreterPanel() {
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
   const addShock = useApexStore((s) => s.addShock);
 
-  const llmProvider = useApexStore((s) => s.llmProvider);
-  const claudeApiKey = useApexStore((s) => s.claudeApiKey);
   const geminiApiKey = useApexStore((s) => s.geminiApiKey);
-  const claudeModel = useApexStore((s) => s.claudeModel);
   const geminiModel = useApexStore((s) => s.geminiModel);
 
   const [articleText, setArticleText] = useState("");
@@ -55,15 +52,9 @@ export default function NewsInterpreterPanel() {
     return m;
   }, [graphData.edges]);
 
-  const { apiKey, model, provider } = useMemo(() => {
-    if (llmProvider === "gemini") {
-      return { apiKey: geminiApiKey, model: geminiModel, provider: "gemini" as const };
-    }
-    return { apiKey: claudeApiKey, model: claudeModel, provider: "anthropic" as const };
-  }, [llmProvider, claudeApiKey, geminiApiKey, claudeModel, geminiModel]);
-
-  const canRun =
-    graphData.nodes.length > 0 && articleText.trim().length >= 20 && apiKey.length > 0;
+  // Always use Gemini (same as SystemCopilot). Server falls back to
+  // process.env.GEMINI_API_KEY when the client key is empty.
+  const canRun = graphData.nodes.length > 0 && articleText.trim().length >= 20;
 
   const runInterpret = useCallback(async () => {
     setLoading(true);
@@ -88,9 +79,9 @@ export default function NewsInterpreterPanel() {
             target: e.target,
             physicalMechanism: e.physicalMechanism,
           })),
-          apiKey,
-          model,
-          provider,
+          apiKey: geminiApiKey,
+          model: geminiModel,
+          provider: "gemini",
         }),
       });
       const json = await res.json();
@@ -104,7 +95,7 @@ export default function NewsInterpreterPanel() {
     } finally {
       setLoading(false);
     }
-  }, [articleText, graphData, apiKey, model, provider]);
+  }, [articleText, graphData, geminiApiKey, geminiModel]);
 
   const applyIntervention = useCallback(
     (iv: NewsIntervention, idx: number) => {
@@ -205,11 +196,6 @@ export default function NewsInterpreterPanel() {
             {loading ? "INTERPRETING..." : "INTERPRET ARTICLE"}
           </button>
 
-          {!apiKey && (
-            <div className="text-[8px] font-mono text-text-muted italic">
-              Set an API key in the Copilot settings to enable interpretation.
-            </div>
-          )}
           {graphData.nodes.length === 0 && (
             <div className="text-[8px] font-mono text-text-muted italic">
               Load a domain graph first — the interpreter needs nodes to map onto.

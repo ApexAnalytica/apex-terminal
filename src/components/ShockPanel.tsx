@@ -124,6 +124,11 @@ function getCategoryColor(cat: string): string {
     case "cooling": return "#448aff";
     case "supply": return "var(--accent-amber)";
     case "geopolitical": return "var(--accent-red)";
+    case "financial": return "#ffc400";
+    case "cyber": return "#ff4081";
+    case "regulatory": return "#90a4ae";
+    case "environmental": return "#26a69a";
+    case "health": return "#ab47bc";
     default: return "var(--text-muted)";
   }
 }
@@ -135,6 +140,11 @@ function getCategoryIcon(cat: string): string {
     case "cooling": return "◈";
     case "supply": return "◆";
     case "geopolitical": return "⚠";
+    case "financial": return "$";
+    case "cyber": return "⟁";
+    case "regulatory": return "§";
+    case "environmental": return "❂";
+    case "health": return "✚";
     default: return "●";
   }
 }

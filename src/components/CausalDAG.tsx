@@ -47,6 +47,11 @@ function getNodeColor(category: string): string {
     case "energy": return "#00e676";
     case "cooling": return "#448aff";
     case "geopolitical": return "#ff1744";
+    case "financial": return "#ffc400";
+    case "cyber": return "#ff4081";
+    case "regulatory": return "#90a4ae";
+    case "environmental": return "#26a69a";
+    case "health": return "#ab47bc";
     default: return "#5a5e72";
   }
 }

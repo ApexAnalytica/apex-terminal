@@ -38,6 +38,11 @@ const SHOCK_TO_NODE_CATEGORIES: Record<ShockCategory, NodeCategory[]> = {
   cooling: ["infrastructure"],
   supply: ["manufacturing", "communications", "agriculture"],
   geopolitical: ["geopolitical", "finance"],
+  financial: ["finance", "economic"],
+  cyber: ["infrastructure", "communications"],
+  regulatory: ["finance", "economic", "geopolitical"],
+  environmental: ["energy", "infrastructure", "agriculture"],
+  health: ["economic", "agriculture"],
 };
 
 export function mapShocksToNodes(

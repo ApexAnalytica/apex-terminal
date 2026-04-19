@@ -978,15 +978,6 @@ function ParetoPanel({
 
   const paretoSectionExpanded = expandedChart === "pareto";
 
-  // Sync criticality card expansion with panel-level expand/collapse
-  useEffect(() => {
-    if (paretoSectionExpanded) {
-      setExpandedCrit({ csd: true, ph: true, lppls: true });
-    } else {
-      setExpandedCrit({});
-    }
-  }, [paretoSectionExpanded]);
-
   return (
     <>
       {/* Three Criticality Modules */}
@@ -1062,16 +1053,6 @@ function ParetoPanel({
           formula={`ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${replayEpochs.length >= 10 ? `R² = ${(lpplsData.residualFit * 100).toFixed(1)}%` : "R² = pending simulation"}`}
           assessment={`Mean Ω-fragility: ${(graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length)).toFixed(2)}/10. Acceleration factor: ${((graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length) / 10) * (1 + shocks.reduce((s, sh) => s + sh.severity, 0))).toFixed(3)}. ${shocks.length > 0 ? `${shocks.length} active shock(s) increasing ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`}
         />
-      </div>
-
-      {/* Ω-Fragility Assessment */}
-      <div className="font-[family-name:var(--font-michroma)] text-[11px] tracking-wider text-text-muted mt-3">
-        {"\u03A9"}-FRAGILITY ASSESSMENT
-      </div>
-      <div className="text-[10px] font-mono text-text-muted space-y-1">
-        <div>Buffer: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.buffer.toFixed(1)}%</span></div>
-        <div>Status: <span style={{ color: omegaState.status === "NOMINAL" ? "var(--accent-green)" : "var(--accent-red)" }}>{omegaState.status}</span></div>
-        <div>Active Scenarios: {shocks.length}</div>
       </div>
 
       {/* Ω-Fragility Ranking */}

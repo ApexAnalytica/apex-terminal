@@ -34,6 +34,9 @@ export default function NewsInterpreterPanel() {
   const geminiModel = useApexStore((s) => s.geminiModel);
 
   const [articleText, setArticleText] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
+  const [fetchInfo, setFetchInfo] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +58,32 @@ export default function NewsInterpreterPanel() {
   // Always use Gemini (same as SystemCopilot). Server falls back to
   // process.env.GEMINI_API_KEY when the client key is empty.
   const canRun = graphData.nodes.length > 0 && articleText.trim().length >= 20;
+  const canFetch = articleUrl.trim().length > 0 && !fetching;
+
+  const runFetchUrl = useCallback(async () => {
+    setFetching(true);
+    setError(null);
+    setFetchInfo(null);
+    try {
+      const res = await fetch("/api/news/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: articleUrl.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || `HTTP ${res.status}`);
+        return;
+      }
+      setArticleText(json.text);
+      const title = json.title || json.siteName || "article";
+      setFetchInfo(`Fetched: ${title} (${json.text.length} chars)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fetch failed");
+    } finally {
+      setFetching(false);
+    }
+  }, [articleUrl]);
 
   const runInterpret = useCallback(async () => {
     setLoading(true);
@@ -170,15 +199,49 @@ export default function NewsInterpreterPanel() {
         </button>
       </div>
       <div className="text-[8px] font-mono text-text-muted">
-        Paste a news article — Claude maps implied disruptions onto graph nodes/edges as shock, sever, or ablate interventions.
+        Paste a URL or article text. Gemini maps implied disruptions onto graph nodes/edges as shock, sever, or ablate interventions.
       </div>
 
       {expanded && (
         <>
+          <div className="flex gap-1">
+            <input
+              type="url"
+              value={articleUrl}
+              onChange={(e) => setArticleUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canFetch) {
+                  e.preventDefault();
+                  runFetchUrl();
+                }
+              }}
+              placeholder="https://... (article URL)"
+              className="flex-1 min-w-0 px-2 py-1 bg-surface-elevated border border-border rounded text-[9px] font-mono text-foreground placeholder:text-text-muted/40 focus:outline-none focus:border-accent-cyan/60 transition-colors"
+            />
+            <button
+              onClick={runFetchUrl}
+              disabled={!canFetch}
+              className="px-2 py-1 rounded border text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-all disabled:opacity-30 shrink-0"
+              style={{
+                borderColor: "rgba(0, 229, 255, 0.4)",
+                color: "var(--accent-cyan)",
+                background: fetching ? "rgba(0, 229, 255, 0.15)" : "rgba(0, 229, 255, 0.05)",
+              }}
+            >
+              {fetching ? "FETCHING..." : "FETCH"}
+            </button>
+          </div>
+
+          {fetchInfo && (
+            <div className="text-[8px] font-mono text-accent-green/80 italic">
+              {fetchInfo}
+            </div>
+          )}
+
           <textarea
             value={articleText}
             onChange={(e) => setArticleText(e.target.value)}
-            placeholder="Paste article text here (at least 20 characters)..."
+            placeholder="...or paste article text here (at least 20 characters)"
             rows={6}
             className="w-full px-2 py-1.5 bg-surface-elevated border border-border rounded text-[9px] font-mono text-foreground placeholder:text-text-muted/40 focus:outline-none focus:border-accent-cyan/60 transition-colors resize-y"
           />

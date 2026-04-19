@@ -802,11 +802,10 @@ function ParetoPanel({
   const getCritColor = (epochs: number) =>
     epochs < 20 ? "#ff1744" : epochs < 80 ? "#ffab00" : "#00e676";
 
-  // Collapsible state for each criticality card
-  const [expandedCrit, setExpandedCrit] = useState<Record<string, boolean>>({});
-  const toggleCrit = useCallback((key: string) => {
-    setExpandedCrit((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
+  // Which criticality model is selected in the tab-strip picker (one at a time)
+  const [selectedCrit, setSelectedCrit] = useState<"csd" | "ph" | "lppls">("csd");
+  // Collapsible TOP Ω-CRITICAL NODES list — default collapsed to keep panel tight
+  const [topNodesOpen, setTopNodesOpen] = useState(false);
 
   // ── CSD time series: real spectral radius & cascade propagation from epoch snapshots ──
   const csdData = useMemo(() => {
@@ -980,86 +979,154 @@ function ParetoPanel({
 
   return (
     <>
-      {/* Three Criticality Modules */}
+      {/* Criticality model selector — one at a time */}
       <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
-        CRITICALITY HORIZONS
+        CRITICALITY HORIZON
       </div>
-      <div className="space-y-2">
-        {/* CSD — Critical Slowing Down */}
-        <CriticalityCard
-          abbrev="CSD"
-          fullName="CRITICAL SLOWING DOWN"
-          epochs={csdEpochs}
-          maxEpochs={200}
-          color={getCritColor(csdEpochs)}
-          expanded={!!expandedCrit.csd}
-          onToggle={() => toggleCrit("csd")}
-          timeSeries={csdData.timeSeries}
-          modelSeries={csdData.observedSeries ? csdData.modelSeries : undefined}
-          chartExpanded={paretoSectionExpanded}
-          confidence={csdData.confidence}
-          shortDesc="Recovery rate decay — epochs until perturbation recovery time diverges to infinity"
-          methodology={[
-            `Critical Slowing Down (CSD) measures how quickly the network recovers from perturbations. As λmax → 1.0, recovery time diverges — the system loses its ability to absorb shocks. Computed from ${graphData.edges.length} edges weighted by cascade-load (Ω-C pillar).`,
-            `Current λmax = ${csdData.lambdaMax.toFixed(3)}. Recovery rate = ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)}. Near-critical systems exhibit rising autocorrelation and variance — hallmarks of an approaching tipping point (Scheffer et al. 2009).`,
-            `${replayEpochs.length > 0 ? `Solid line: observed Ω-buffer depletion across ${replayEpochs.length} epochs. Dashed line: spectral model prediction. Divergence indicates non-linear cascade dynamics.` : `Model projection from graph spectral structure — run cascade simulation for observed data overlay.`}`,
-          ]}
-          formula={`λmax = ${csdData.lambdaMax.toFixed(4)} | recovery rate: ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)} | critical threshold: λmax ≥ 1.0`}
-          assessment={`Spectral radius over ${graphData.nodes.length} nodes × ${graphData.edges.length} edges. ${csdData.lambdaMax >= 1.0 ? "SUPERCRITICAL — recovery rate = 0. Perturbations amplify indefinitely. System has crossed the tipping point." : csdData.lambdaMax > 0.8 ? `Near-critical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} is decaying. Autocorrelation rising. Early warning signals active.` : `Subcritical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} provides adequate shock absorption capacity.`}`}
-        />
+      {(() => {
+        const models = [
+          {
+            key: "csd" as const,
+            abbrev: "CSD",
+            fullName: "CRITICAL SLOWING DOWN",
+            epochs: csdEpochs,
+            maxEpochs: 200,
+            color: getCritColor(csdEpochs),
+            confidence: csdData.confidence,
+            timeSeries: csdData.timeSeries,
+            modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
+            shortDesc: "Recovery rate decay — epochs until perturbation recovery time diverges to infinity",
+            methodology: [
+              `Critical Slowing Down (CSD) measures how quickly the network recovers from perturbations. As λmax → 1.0, recovery time diverges — the system loses its ability to absorb shocks. Computed from ${graphData.edges.length} edges weighted by cascade-load (Ω-C pillar).`,
+              `Current λmax = ${csdData.lambdaMax.toFixed(3)}. Recovery rate = ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)}. Near-critical systems exhibit rising autocorrelation and variance — hallmarks of an approaching tipping point (Scheffer et al. 2009).`,
+              `${replayEpochs.length > 0 ? `Solid line: observed Ω-buffer depletion across ${replayEpochs.length} epochs. Dashed line: spectral model prediction. Divergence indicates non-linear cascade dynamics.` : `Model projection from graph spectral structure — run cascade simulation for observed data overlay.`}`,
+            ],
+            formula: `λmax = ${csdData.lambdaMax.toFixed(4)} | recovery rate: ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)} | critical threshold: λmax ≥ 1.0`,
+            assessment: `Spectral radius over ${graphData.nodes.length} nodes × ${graphData.edges.length} edges. ${csdData.lambdaMax >= 1.0 ? "SUPERCRITICAL — recovery rate = 0. Perturbations amplify indefinitely. System has crossed the tipping point." : csdData.lambdaMax > 0.8 ? `Near-critical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} is decaying. Autocorrelation rising. Early warning signals active.` : `Subcritical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} provides adequate shock absorption capacity.`}`,
+          },
+          {
+            key: "ph" as const,
+            abbrev: "PH",
+            fullName: "PERSISTENT HOMOLOGY",
+            epochs: phEpochs,
+            maxEpochs: 300,
+            color: getCritColor(phEpochs),
+            confidence: phData.confidence,
+            timeSeries: phData.timeSeries,
+            modelSeries: phData.modelSeries,
+            shortDesc: `Topological fragility holes — epochs until high-Ω cluster boundaries collapse`,
+            methodology: [
+              `Sweeps a filtration threshold ε from 0→10 across all ${graphData.nodes.length} nodes. At each ε, nodes with Ω ≤ ε and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical β₁ collapse model.`,
+              `Computes β₀ (connected components via union-find) and β₁ (1-cycles via Euler characteristic: β₁ ≈ E − V + β₀) at each filtration step — showing how topological holes appear and collapse.`,
+              `When persistent holes vanish (β₁ → 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above Ω > 7.0 form critical cluster boundaries.`,
+            ],
+            formula: `β₁ = |E| − |V| + β₀ | filtration: ε ∈ [0, 10] | critical when β₁ → 0`,
+            assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. Ω range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak β₁ at filtration midpoint indicates topological complexity.`,
+          },
+          {
+            key: "lppls" as const,
+            abbrev: "LPPLS",
+            fullName: "LOG-PERIODIC POWER LAW SINGULARITY",
+            epochs: lpplsEpochs,
+            maxEpochs: 250,
+            color: getCritColor(lpplsEpochs),
+            confidence: lpplsData.confidence,
+            timeSeries: lpplsData.timeSeries,
+            modelSeries: lpplsData.modelSeries,
+            shortDesc: "Super-exponential fragility growth — epochs until singularity (tc) is reached",
+            methodology: [
+              `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] to ${replayEpochs.length > 0 ? `real mean-Ω trajectory across ${replayEpochs.length} epoch snapshots` : `network fragility state derived from ${graphData.nodes.length} node Ω-composites`}.`,
+              `${lpplsData.observedSeries ? `Solid line: observed Ω-trajectory. Dashed line: LPPLS model fit. R² = ${(lpplsData.residualFit * 100).toFixed(1)}% — ${lpplsData.residualFit > 0.6 ? "strong LPPLS signature detected." : lpplsData.residualFit > 0.3 ? "moderate LPPLS pattern emerging." : "weak fit — system may not follow LPPLS dynamics."}` : `Dashed line shows LPPLS model projection — run cascade simulation for observed-data overlay and R² fit.`}`,
+              `Sornette (2003) crash prediction framework: log-periodic oscillations with increasing frequency signal an approaching critical time (tc) where the system transitions to a new regime.`,
+            ],
+            formula: `ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${replayEpochs.length >= 10 ? `R² = ${(lpplsData.residualFit * 100).toFixed(1)}%` : "R² = pending simulation"}`,
+            assessment: `Mean Ω-fragility: ${(graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length)).toFixed(2)}/10. Acceleration factor: ${((graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length) / 10) * (1 + shocks.reduce((s, sh) => s + sh.severity, 0))).toFixed(3)}. ${shocks.length > 0 ? `${shocks.length} active shock(s) increasing ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`,
+          },
+        ];
+        const selected = models.find((m) => m.key === selectedCrit) ?? models[0];
+        return (
+          <>
+            <div className="flex gap-1">
+              {models.map((m) => {
+                const active = m.key === selectedCrit;
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setSelectedCrit(m.key)}
+                    className="flex-1 min-w-0 p-1.5 rounded border text-left transition-all"
+                    style={{
+                      borderColor: active ? m.color : `${m.color}25`,
+                      backgroundColor: active ? `${m.color}12` : `${m.color}04`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span
+                        className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider truncate"
+                        style={{ color: m.color }}
+                      >
+                        {m.abbrev}
+                      </span>
+                      <span
+                        className="text-[10px] font-[family-name:var(--font-michroma)] tabular-nums font-bold leading-none shrink-0"
+                        style={{ color: m.color }}
+                      >
+                        T-{m.epochs}
+                      </span>
+                    </div>
+                    <div className="h-0.5 mt-1 w-full bg-border rounded overflow-hidden">
+                      <div
+                        className="h-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, (m.epochs / m.maxEpochs) * 100)}%`,
+                          backgroundColor: m.color,
+                          opacity: 0.8,
+                        }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <CriticalityCard
+              key={selected.key}
+              abbrev={selected.abbrev}
+              fullName={selected.fullName}
+              epochs={selected.epochs}
+              maxEpochs={selected.maxEpochs}
+              color={selected.color}
+              expanded={true}
+              onToggle={() => {}}
+              timeSeries={selected.timeSeries}
+              modelSeries={selected.modelSeries}
+              chartExpanded={paretoSectionExpanded}
+              confidence={selected.confidence}
+              shortDesc={selected.shortDesc}
+              methodology={selected.methodology}
+              formula={selected.formula}
+              assessment={selected.assessment}
+            />
+          </>
+        );
+      })()}
 
-        {/* PH — Persistent Homology */}
-        <CriticalityCard
-          abbrev="PH"
-          fullName="PERSISTENT HOMOLOGY"
-          epochs={phEpochs}
-          maxEpochs={300}
-          color={getCritColor(phEpochs)}
-          expanded={!!expandedCrit.ph}
-          onToggle={() => toggleCrit("ph")}
-          timeSeries={phData.timeSeries}
-          modelSeries={phData.modelSeries}
-          chartExpanded={paretoSectionExpanded}
-          confidence={phData.confidence}
-          shortDesc={`Topological fragility holes — epochs until high-Ω cluster boundaries collapse`}
-          methodology={[
-            `Sweeps a filtration threshold ε from 0→10 across all ${graphData.nodes.length} nodes. At each ε, nodes with Ω ≤ ε and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical β₁ collapse model.`,
-            `Computes β₀ (connected components via union-find) and β₁ (1-cycles via Euler characteristic: β₁ ≈ E − V + β₀) at each filtration step — showing how topological holes appear and collapse.`,
-            `When persistent holes vanish (β₁ → 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above Ω > 7.0 form critical cluster boundaries.`,
-          ]}
-          formula={`β₁ = |E| − |V| + β₀ | filtration: ε ∈ [0, 10] | critical when β₁ → 0`}
-          assessment={`Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. Ω range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak β₁ at filtration midpoint indicates topological complexity.`}
-        />
-
-        {/* LPPLS — Log-Periodic Power Law Singularity */}
-        <CriticalityCard
-          abbrev="LPPLS"
-          fullName="LOG-PERIODIC POWER LAW SINGULARITY"
-          epochs={lpplsEpochs}
-          maxEpochs={250}
-          color={getCritColor(lpplsEpochs)}
-          expanded={!!expandedCrit.lppls}
-          onToggle={() => toggleCrit("lppls")}
-          timeSeries={lpplsData.timeSeries}
-          modelSeries={lpplsData.modelSeries}
-          chartExpanded={paretoSectionExpanded}
-          confidence={lpplsData.confidence}
-          shortDesc="Super-exponential fragility growth — epochs until singularity (tc) is reached"
-          methodology={[
-            `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] to ${replayEpochs.length > 0 ? `real mean-Ω trajectory across ${replayEpochs.length} epoch snapshots` : `network fragility state derived from ${graphData.nodes.length} node Ω-composites`}.`,
-            `${lpplsData.observedSeries ? `Solid line: observed Ω-trajectory. Dashed line: LPPLS model fit. R² = ${(lpplsData.residualFit * 100).toFixed(1)}% — ${lpplsData.residualFit > 0.6 ? "strong LPPLS signature detected." : lpplsData.residualFit > 0.3 ? "moderate LPPLS pattern emerging." : "weak fit — system may not follow LPPLS dynamics."}` : `Dashed line shows LPPLS model projection — run cascade simulation for observed-data overlay and R² fit.`}`,
-            `Sornette (2003) crash prediction framework: log-periodic oscillations with increasing frequency signal an approaching critical time (tc) where the system transitions to a new regime.`,
-          ]}
-          formula={`ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${replayEpochs.length >= 10 ? `R² = ${(lpplsData.residualFit * 100).toFixed(1)}%` : "R² = pending simulation"}`}
-          assessment={`Mean Ω-fragility: ${(graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length)).toFixed(2)}/10. Acceleration factor: ${((graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length) / 10) * (1 + shocks.reduce((s, sh) => s + sh.severity, 0))).toFixed(3)}. ${shocks.length > 0 ? `${shocks.length} active shock(s) increasing ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`}
-        />
-      </div>
-
-      {/* Ω-Fragility Ranking */}
+      {/* Ω-Fragility Ranking — collapsible, default closed */}
       <div className="mt-3">
-        <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted mb-2">
-          TOP {"\u03A9"}-CRITICAL NODES
-        </div>
+        <button
+          onClick={() => setTopNodesOpen((v) => !v)}
+          className="w-full flex items-center justify-between mb-2 hover:brightness-125 transition-all"
+        >
+          <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted">
+            TOP {"\u03A9"}-CRITICAL NODES{" "}
+            <span className="text-text-muted/60">({topNodes.length})</span>
+          </span>
+          <span
+            className="text-[10px] text-text-muted transition-transform duration-200"
+            style={{ transform: topNodesOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          >
+            {"\u25BC"}
+          </span>
+        </button>
+        {topNodesOpen && (
         <div className="space-y-1.5">
           {topNodes.map((node, i) => {
             const score = node.omegaFragility.composite;
@@ -1091,6 +1158,7 @@ function ParetoPanel({
             );
           })}
         </div>
+        )}
       </div>
 
       {shocks.length > 0 && (

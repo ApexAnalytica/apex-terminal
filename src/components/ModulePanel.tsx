@@ -742,6 +742,8 @@ function ParetoPanel({
   const graphData = useApexStore((s) => s.graphData);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+  const temporalData = useApexStore((s) => s.temporalData);
   const replayActive = useApexStore((s) => s.replayActive);
   const currentEpoch = useApexStore((s) => s.currentEpoch);
   const baselineEpochs = useApexStore((s) => s.baselineEpochs);
@@ -798,6 +800,35 @@ function ParetoPanel({
       .slice(0, 8);
   }, [graphData.nodes]);
 
+  // ── Scope: which nodes the criticality models compute on ──
+  // Mirrors RiskPropagationFlow: user's selection if any, else top-N by Ω.
+  const scopedNodeIds = useMemo<string[]>(() => {
+    if (selectedNodes && selectedNodes.length > 0) return selectedNodes;
+    return topNodes.map((n) => n.id);
+  }, [selectedNodes, topNodes]);
+
+  // Mean omegaComposite trajectory across the scoped nodes, normalized 0–1.
+  // Single source of truth shared with the bottom ΩF TIME SERIES cards.
+  const scopedOmegaSeries = useMemo<number[]>(() => {
+    if (!temporalData || scopedNodeIds.length === 0) return [];
+    const histories = scopedNodeIds
+      .map((id) => temporalData.nodes.get(id)?.history ?? [])
+      .filter((h) => h.length > 0);
+    if (histories.length === 0) return [];
+    const T = Math.min(...histories.map((h) => h.length));
+    const series: number[] = [];
+    for (let t = 0; t < T; t++) {
+      let s = 0;
+      for (const h of histories) s += h[t].omegaComposite;
+      series.push(s / histories.length / 10); // /10 → normalize to 0–1
+    }
+    return series;
+  }, [temporalData, scopedNodeIds]);
+
+  const scopeLabel = selectedNodes && selectedNodes.length > 0
+    ? `${selectedNodes.length} selected node${selectedNodes.length === 1 ? "" : "s"}`
+    : `top ${scopedNodeIds.length} risk nodes`;
+
   // Criticality card helper
   const getCritColor = (epochs: number) =>
     epochs < 20 ? "#ff1744" : epochs < 80 ? "#ffab00" : "#00e676";
@@ -807,52 +838,82 @@ function ParetoPanel({
   // Collapsible TOP Ω-CRITICAL NODES list — default collapsed to keep panel tight
   const [topNodesOpen, setTopNodesOpen] = useState(false);
 
-  // ── CSD time series: real spectral radius & cascade propagation from epoch snapshots ──
+  // ── CSD: lag-1 autocorrelation (α) of the scoped Ω trajectory ──
+  // Theory: as a system approaches a tipping point, perturbations decay more
+  // slowly → α → 1 (Scheffer 2009). Fit AR(1):  x_{t+1} = α·x_t + (1-α)·μ + ε.
+  // Model = AR(1) one-step-ahead forecast. Confidence = R²(observed, model).
   const csdData = useMemo(() => {
-    const epochs = replayEpochs.length > 0 ? replayEpochs : baselineEpochs;
-    // Compute real λmax from adjacency matrix (weighted row sums)
+    const observed = scopedOmegaSeries;
+    const n = observed.length;
+
+    // λmax from current graph structure (kept for assessment text)
+    let lambdaMax = 0;
     const rowSums = new Map<string, number>();
-    for (const n of graphData.nodes) rowSums.set(n.id, 0);
+    for (const node of graphData.nodes) rowSums.set(node.id, 0);
     for (const e of graphData.edges) {
       if (!e.isSevered) {
         const srcNode = graphData.nodes.find((n) => n.id === e.source);
-        const weight = e.weight * (srcNode?.omegaFragility.cascadeLoad ?? 1) / 10;
+        const weight = (e.weight * (srcNode?.omegaFragility.cascadeLoad ?? 1)) / 10;
         rowSums.set(e.source, (rowSums.get(e.source) ?? 0) + weight);
       }
     }
-    const lambdaMax = Math.max(...Array.from(rowSums.values()), 0);
+    lambdaMax = Math.max(...Array.from(rowSums.values()), 0);
 
-    // Model curve: always computed from graph spectral structure
-    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-    const modelPoints: number[] = [];
-    for (let i = 0; i < 60; i++) {
-      const t = i / 59;
-      const growth = lambdaMax * Math.exp(t * (0.5 + shockPressure * 1.2));
-      const propSignal = growth / (1 + growth); // logistic saturation
-      modelPoints.push(Math.max(0, Math.min(1, propSignal)));
+    if (n < 5) {
+      // Not enough observations to fit anything; return empty fit.
+      return {
+        timeSeries: observed,
+        modelSeries: undefined,
+        observedSeries: observed.length > 0 ? observed : undefined,
+        confidence: 0,
+        sampleSize: n,
+        alpha: NaN,
+        rSquared: 0,
+        lambdaMax,
+      };
     }
 
-    let observedPoints: number[] | undefined;
-    let points: number[];
-    if (epochs.length >= 3) {
-      // Use real epoch data: normalize omegaBuffer (100=safe → 0, 0=critical → 1)
-      const sampled = epochs.length > 60
-        ? Array.from({ length: 60 }, (_, i) => epochs[Math.round(i * (epochs.length - 1) / 59)])
-        : epochs;
-      observedPoints = sampled.map((snap) => Math.max(0, Math.min(1, 1 - snap.omegaBuffer / 100)));
-      points = observedPoints;
-    } else {
-      points = modelPoints;
+    // Estimate AR(1): α = cov(x_t, x_{t-1}) / var(x_{t-1}); μ = mean.
+    const mean = observed.reduce((s, v) => s + v, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (let t = 1; t < n; t++) {
+      num += (observed[t] - mean) * (observed[t - 1] - mean);
+      den += (observed[t - 1] - mean) ** 2;
+    }
+    const alpha = den > 0 ? Math.max(0, Math.min(1.05, num / den)) : 0;
+
+    // One-step-ahead AR(1) forecast aligned to observed indices 1..n-1.
+    // Index 0 is the seed observation (no model prediction).
+    const modelSeries: number[] = [observed[0]];
+    for (let t = 1; t < n; t++) {
+      modelSeries.push(alpha * observed[t - 1] + (1 - alpha) * mean);
     }
 
-    // Confidence: based on data richness + how well λmax predicts instability
-    const dataQuality = epochs.length >= 10 ? 0.4 : epochs.length >= 3 ? 0.2 : 0;
-    const spectralSignal = Math.min(0.35, lambdaMax * 0.35); // stronger λmax → higher confidence
-    const edgeDensity = Math.min(0.25, (graphData.edges.length / Math.max(1, graphData.nodes.length * (graphData.nodes.length - 1))) * 2.5);
-    const confidence = Math.min(0.99, dataQuality + spectralSignal + edgeDensity);
+    // R² over the predicted span (skip seed).
+    let ssRes = 0;
+    let ssTot = 0;
+    for (let t = 1; t < n; t++) {
+      ssRes += (observed[t] - modelSeries[t]) ** 2;
+      ssTot += (observed[t] - mean) ** 2;
+    }
+    const rSquared = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
 
-    return { timeSeries: points, modelSeries: modelPoints, observedSeries: observedPoints, confidence, lambdaMax };
-  }, [replayEpochs, baselineEpochs, graphData, shocks]);
+    // Sample-size penalty: caps confidence linearly until n=30.
+    const samplePenalty = Math.min(1, n / 30);
+    const confidence = Math.max(0, Math.min(0.99, rSquared * samplePenalty));
+
+    return {
+      timeSeries: observed,
+      modelSeries,
+      observedSeries: observed,
+      confidence,
+      sampleSize: n,
+      alpha,
+      rSquared,
+      lambdaMax,
+    };
+  }, [scopedOmegaSeries, graphData]);
 
   // ── PH time series: real topological filtration across fragility thresholds ──
   const phData = useMemo(() => {
@@ -910,35 +971,27 @@ function ParetoPanel({
     return { timeSeries: points, modelSeries: phModelPoints, confidence };
   }, [graphData]);
 
-  // ── LPPLS time series: real fragility acceleration with Sornette model fit ──
+  // ── LPPLS: Sornette super-exponential fit to the same scoped Ω trajectory ──
+  // Confidence = R²(observed, fitted LPPLS) × samplePenalty.
   const lpplsData = useMemo(() => {
+    const observed = scopedOmegaSeries;
+    const n = observed.length;
     const N = graphData.nodes.length;
-    const avgOmega = N > 0 ? graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / N : 0;
+    const avgOmega = N > 0 ? graphData.nodes.reduce((s, nd) => s + nd.omegaFragility.composite, 0) / N : 0;
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-    const epochs = replayEpochs.length > 0 ? replayEpochs : baselineEpochs;
 
-    // Extract real fragility trend from epochs if available
-    let observedTrend: number[] = [];
-    if (epochs.length >= 3) {
-      const sampled = epochs.length > 60
-        ? Array.from({ length: 60 }, (_, i) => epochs[Math.round(i * (epochs.length - 1) / 59)])
-        : epochs;
-      // Mean omega composite across all nodes per epoch
-      observedTrend = sampled.map((snap) => {
-        const states = Object.values(snap.nodeStates);
-        const mean = states.reduce((s, ns) => s + ns.omegaComposite, 0) / Math.max(1, states.length);
-        return mean / 10; // normalize to 0-1
-      });
-    }
-
-    // Fit LPPLS model to real data or derive from current graph state
-    const tc = 1 + csdEpochs / Math.max(1, csdEpochs + 50); // critical time from real epoch countdown
+    // tc = critical time as a fraction of the observed window length, derived
+    // from the CSD epoch countdown so the three models stay coherent.
+    const tc = 1 + csdEpochs / Math.max(1, csdEpochs + 50);
     const omega = 6.36 + shockPressure * 2.1;
     const m = 0.33 + shockPressure * 0.1;
 
+    // Fit on the observed window length when present, else fall back to a
+    // 60-point preview curve for the chart.
+    const renderLen = n >= 5 ? n : 60;
     const modelPoints: number[] = [];
-    for (let i = 0; i < 60; i++) {
-      const t = i / 59;
+    for (let i = 0; i < renderLen; i++) {
+      const t = i / Math.max(1, renderLen - 1);
       const dt = Math.max(0.01, tc - t);
       const powerLaw = Math.pow(dt, m);
       const logPeriodic = 0.2 * Math.cos(omega * Math.log(dt) + avgOmega * 0.3);
@@ -946,42 +999,56 @@ function ParetoPanel({
       modelPoints.push(Math.max(0, Math.min(1, signal)));
     }
 
-    // Show observed and model as separate lines instead of blending
-    let observedSeries: number[] | undefined;
-    let residualFit = 0;
-    if (observedTrend.length >= 10) {
-      // Pad/resample observed to 60 points
-      observedSeries = observedTrend.length === 60 ? observedTrend
-        : Array.from({ length: 60 }, (_, i) => observedTrend[Math.round(i * (observedTrend.length - 1) / 59)]);
-
-      // Compute R² between model and observed
-      const obsMean = observedSeries.reduce((s, v) => s + v, 0) / observedSeries.length;
-      const ssTot = observedSeries.reduce((s, v) => s + (v - obsMean) ** 2, 0);
-      const ssRes = observedSeries.reduce((s, v, i) => s + (v - modelPoints[i]) ** 2, 0);
-      residualFit = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+    if (n < 5) {
+      return {
+        timeSeries: observed,
+        modelSeries: modelPoints,
+        observedSeries: undefined,
+        confidence: 0,
+        sampleSize: n,
+        rSquared: 0,
+        residualFit: 0,
+        omega, m, tc,
+      };
     }
 
-    // Confidence: how well LPPLS fits + data availability + fragility acceleration
-    const dataQuality = observedTrend.length >= 10 ? 0.35 : observedTrend.length >= 3 ? 0.15 : 0;
-    const modelFit = residualFit * 0.35;
-    const accelerationSignal = Math.min(0.3, (avgOmega / 10) * (1 + shockPressure) * 0.3);
-    const confidence = Math.min(0.99, dataQuality + modelFit + accelerationSignal);
+    // R² between observed (the canonical scoped Ω trajectory) and the LPPLS
+    // model evaluated at matching indices.
+    const obsMean = observed.reduce((s, v) => s + v, 0) / n;
+    let ssRes = 0;
+    let ssTot = 0;
+    for (let t = 0; t < n; t++) {
+      ssRes += (observed[t] - modelPoints[t]) ** 2;
+      ssTot += (observed[t] - obsMean) ** 2;
+    }
+    const rSquared = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+    const samplePenalty = Math.min(1, n / 30);
+    const confidence = Math.max(0, Math.min(0.99, rSquared * samplePenalty));
 
     return {
-      timeSeries: observedSeries ?? modelPoints,
+      timeSeries: observed.length > 0 ? observed : modelPoints,
       modelSeries: modelPoints,
-      observedSeries,
-      confidence, omega, tc, m, residualFit,
+      observedSeries: observed,
+      confidence,
+      sampleSize: n,
+      rSquared,
+      residualFit: rSquared,
+      omega, m, tc,
     };
-  }, [graphData.nodes, shocks, replayEpochs, baselineEpochs, csdEpochs]);
+  }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
 
   const paretoSectionExpanded = expandedChart === "pareto";
 
   return (
     <>
       {/* Criticality model selector — one at a time */}
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
-        CRITICALITY HORIZON
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-text-muted">
+          CRITICALITY HORIZON
+        </div>
+        <div className="font-mono text-[8px] text-text-muted/70 truncate">
+          scope: {scopeLabel} · n={scopedOmegaSeries.length}
+        </div>
       </div>
       {(() => {
         const models = [
@@ -997,12 +1064,14 @@ function ParetoPanel({
             modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
             shortDesc: "Recovery rate decay — epochs until perturbation recovery time diverges to infinity",
             methodology: [
-              `Critical Slowing Down (CSD) measures how quickly the network recovers from perturbations. As λmax → 1.0, recovery time diverges — the system loses its ability to absorb shocks. Computed from ${graphData.edges.length} edges weighted by cascade-load (Ω-C pillar).`,
-              `Current λmax = ${csdData.lambdaMax.toFixed(3)}. Recovery rate = ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)}. Near-critical systems exhibit rising autocorrelation and variance — hallmarks of an approaching tipping point (Scheffer et al. 2009).`,
-              `${replayEpochs.length > 0 ? `Solid line: observed Ω-buffer depletion across ${replayEpochs.length} epochs. Dashed line: spectral model prediction. Divergence indicates non-linear cascade dynamics.` : `Model projection from graph spectral structure — run cascade simulation for observed data overlay.`}`,
+              `Fits an AR(1) autoregression x_{t+1} = α·x_t + (1−α)·μ to the mean Ω-composite trajectory across the ${scopeLabel} (the same series shown in the bottom ΩF TIME SERIES cards). As a system approaches a tipping point, perturbations decay more slowly → α → 1 (Scheffer et al. 2009).`,
+              `Sample size n = ${csdData.sampleSize}. ${csdData.sampleSize >= 5 ? `Estimated lag-1 autocorrelation α = ${csdData.alpha.toFixed(3)}; AR(1) one-step-ahead R² = ${(csdData.rSquared * 100).toFixed(1)}%. Confidence = R² × min(1, n/30) penalises under-sampled fits.` : `Need ≥5 observations to estimate α — run the temporal replay to populate the trajectory.`}`,
+              `Spectral context: λmax = ${csdData.lambdaMax.toFixed(3)} from the live weighted adjacency (${graphData.edges.length} edges). Solid line: observed Ω trajectory. Dashed line: AR(1) one-step-ahead forecast.`,
             ],
-            formula: `λmax = ${csdData.lambdaMax.toFixed(4)} | recovery rate: ${Math.max(0, 1 - csdData.lambdaMax).toFixed(3)} | critical threshold: λmax ≥ 1.0`,
-            assessment: `Spectral radius over ${graphData.nodes.length} nodes × ${graphData.edges.length} edges. ${csdData.lambdaMax >= 1.0 ? "SUPERCRITICAL — recovery rate = 0. Perturbations amplify indefinitely. System has crossed the tipping point." : csdData.lambdaMax > 0.8 ? `Near-critical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} is decaying. Autocorrelation rising. Early warning signals active.` : `Subcritical — recovery rate ${(1 - csdData.lambdaMax).toFixed(3)} provides adequate shock absorption capacity.`}`,
+            formula: `α = ${Number.isFinite(csdData.alpha) ? csdData.alpha.toFixed(3) : "—"} | R² = ${(csdData.rSquared * 100).toFixed(1)}% | n = ${csdData.sampleSize} | λmax = ${csdData.lambdaMax.toFixed(3)}`,
+            assessment: csdData.sampleSize < 5
+              ? `INSUFFICIENT DATA — only ${csdData.sampleSize} observation(s) in the scoped Ω trajectory. Trigger a temporal replay or widen the selection to populate the AR(1) fit window.`
+              : `${csdData.alpha >= 0.95 ? "CRITICAL" : csdData.alpha >= 0.8 ? "Near-critical" : "Subcritical"} — AR(1) α = ${csdData.alpha.toFixed(3)} on n=${csdData.sampleSize}. ${csdData.alpha >= 0.95 ? "Perturbations barely decay; recovery time diverges." : csdData.alpha >= 0.8 ? "Autocorrelation rising — early-warning signature active." : "Adequate recovery rate; no slowing-down signature."} Spectral λmax = ${csdData.lambdaMax.toFixed(3)} corroborates from graph structure.`,
           },
           {
             key: "ph" as const,
@@ -1035,12 +1104,14 @@ function ParetoPanel({
             modelSeries: lpplsData.modelSeries,
             shortDesc: "Super-exponential fragility growth — epochs until singularity (tc) is reached",
             methodology: [
-              `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] to ${replayEpochs.length > 0 ? `real mean-Ω trajectory across ${replayEpochs.length} epoch snapshots` : `network fragility state derived from ${graphData.nodes.length} node Ω-composites`}.`,
-              `${lpplsData.observedSeries ? `Solid line: observed Ω-trajectory. Dashed line: LPPLS model fit. R² = ${(lpplsData.residualFit * 100).toFixed(1)}% — ${lpplsData.residualFit > 0.6 ? "strong LPPLS signature detected." : lpplsData.residualFit > 0.3 ? "moderate LPPLS pattern emerging." : "weak fit — system may not follow LPPLS dynamics."}` : `Dashed line shows LPPLS model projection — run cascade simulation for observed-data overlay and R² fit.`}`,
-              `Sornette (2003) crash prediction framework: log-periodic oscillations with increasing frequency signal an approaching critical time (tc) where the system transitions to a new regime.`,
+              `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] (Sornette 2003) to the same scoped mean-Ω trajectory as CSD — ${scopeLabel}, n=${lpplsData.sampleSize}.`,
+              `${lpplsData.sampleSize >= 5 ? `R² = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and LPPLS fit. Confidence = R² × min(1, n/30). ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit — trajectory may not follow LPPLS dynamics."}` : `Need ≥5 observations to score the fit — dashed line is the projected curve only.`}`,
+              `Critical time tc is derived from the CSD epoch countdown so all three models share a coherent horizon. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
             ],
-            formula: `ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${replayEpochs.length >= 10 ? `R² = ${(lpplsData.residualFit * 100).toFixed(1)}%` : "R² = pending simulation"}`,
-            assessment: `Mean Ω-fragility: ${(graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length)).toFixed(2)}/10. Acceleration factor: ${((graphData.nodes.reduce((s, n) => s + n.omegaFragility.composite, 0) / Math.max(1, graphData.nodes.length) / 10) * (1 + shocks.reduce((s, sh) => s + sh.severity, 0))).toFixed(3)}. ${shocks.length > 0 ? `${shocks.length} active shock(s) increasing ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`,
+            formula: `ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${lpplsData.sampleSize >= 5 ? `R² = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R² = — (n=${lpplsData.sampleSize}, need ≥5)`}`,
+            assessment: lpplsData.sampleSize < 5
+              ? `INSUFFICIENT DATA — only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
+              : `LPPLS fit R² = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped Ω trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure — bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature — trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`,
           },
         ];
         const selected = models.find((m) => m.key === selectedCrit) ?? models[0];

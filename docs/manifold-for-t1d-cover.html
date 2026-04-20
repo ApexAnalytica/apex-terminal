@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for Type 1 Diabetes (Cover)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+  <style>
+    /* Cover-page density tuning — fit masthead + lead + callout + table + ask
+       on a single Letter page without crowding. */
+    .cover-lead {
+      font-size: 11pt;
+      line-height: 1.5;
+      color: var(--apex-ink);
+      margin: 0 0 10pt 0;
+    }
+    .cover-lead strong { color: var(--apex-cyan); }
+
+    main h2 { margin-top: 14pt; }
+    main table { margin: 4pt 0 10pt 0; }
+    main tbody td { padding: 4pt 8pt 4pt 0; font-size: 9.5pt; }
+    main thead th { padding: 4pt 8pt 4pt 0; }
+
+    .cover-ask {
+      margin: 0;
+      padding-left: 18pt;
+    }
+    .cover-ask li { margin-bottom: 2pt; font-size: 10pt; }
+
+    .apex-title { font-size: 18pt; }
+    .apex-subtitle { font-size: 10.5pt; margin-bottom: 14pt; }
+
+    .apex-callout { margin: 10pt 0; padding: 8pt 12pt; font-size: 10pt; }
+  </style>
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-01 · Cover</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title">Manifold for Type 1 Diabetes</h1>
+  <p class="apex-subtitle">Pre-clinical risk stratification and intervention-window detection</p>
+
+  <main>
+
+    <p class="cover-lead">
+      T1D has a years-long pre-clinical prodrome. Current risk tools (TrialNet DPTRS, Index60, M120) give strong
+      population survival curves but miss <strong>individual-trajectory inflection points</strong> — the window where
+      a Stage-2-appropriate intervention has maximal benefit. <strong>Manifold</strong> is a causal-intelligence
+      platform configured for T1D to detect those inflections: causal discovery on multi-omic cohorts, criticality
+      estimators (DNB, Bayesian change-point, deep survival) feeding a composite fragility score (<span class="apex-omega">Ω</span>F),
+      and Pearl do-calculus / interdiction for principled therapy-selection framing.
+    </p>
+
+    <div class="apex-callout">
+      Teplizumab's 2022 approval made the pre-clinical window <em>actionable</em>, not academic. Every month of better per-patient stratification is intervention-window bought.
+    </div>
+
+    <h2><span class="apex-omega">Ω</span>F pillar mapping — T1D physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>T1D reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Autoantibody-to-autoantibody coupling (IAA, GADA, IA-2A, ZnT8); HLA × viral-trigger epistasis</td></tr>
+        <tr><td>R — Reserve</td><td>β-cell functional mass proxied by C-peptide AUC on MMTT; glucose-response amplitude</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic subsystem coupling (transfer entropy between immune-cell subsets and glycemic variability)</td></tr>
+        <tr><td>C — Cascade</td><td>Autoreactive T-cell clonal expansion; epitope spreading rate</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of next stage transition given current trajectory</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The ask</h2>
+    <p style="margin: 0 0 4pt 0;">Partnership with a TEDDY-affiliated PI (or equivalent cohort steward — TrialNet, DiPiS, BabyDiab) for:</p>
+    <ol class="cover-ask">
+      <li>Retrospective data access under their existing Data Use Agreement.</li>
+      <li>Clinical co-authorship on the benchmark paper (<span class="apex-omega">Ω</span>F vs. DPTRS, 10–12 weeks from data access).</li>
+      <li>Co-application to JDRF / Helmsley / NIH NIDDK for the v2 prospective arm.</li>
+    </ol>
+    <p style="font-size: 10pt; margin-top: 8pt;">
+      Apex Analytica brings the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the software team. Full brief: <code>M-T1D-01</code>.
+    </p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

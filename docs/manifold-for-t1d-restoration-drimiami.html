@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · DRI Miami)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-DRIMIAMI</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">Diabetes Research Institute, University of Miami — long-horizon islet-transplant registry analytics and BioHub translation</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>The Diabetes Research Institute holds an asset that no other institution can replicate: the longest continuous programmatic record of clinical islet transplantation in the world, underpinned by the Ricordi Chamber isolation methodology that made the field's clinical arm reproducible. The DRI record spans:</p>
+    <ul>
+      <li><strong>Multi-decade allogeneic islet-transplant registry.</strong> Donor quality, isolation yield and viability, recipient HLA and autoantibody profile, immunosuppression regimen exposure, C-peptide AUC trajectory, insulin-dependence status, and long-horizon graft-survival outcomes across a patient population no other center matches.</li>
+      <li><strong>Edmonton Protocol and post-Edmonton regimen variants.</strong> Longitudinal evidence base on immunosuppression-regimen modifications and their causal effect on graft durability — a natural domain for heterogeneous-treatment-effect inference and Pearl-do-calculus framing.</li>
+      <li><strong>BioHub and encapsulation programs.</strong> Next-generation islet-delivery architecture — the omental biological scaffold, encapsulation strategies, and their interaction with continuing autoimmune and alloimmune pressure — moving from preclinical to clinical with dense preclinical signal.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice across islet-transplantation registries, including analyses applied to the DRI record to date:</p>
+    <ul>
+      <li>Unified causal modeling of donor quality, recipient state, immunosuppression exposure, and long-horizon graft outcome — recovering the directed structure rather than pursuing marginal regression across each covariate independently.</li>
+      <li>Long-horizon graft-survival hazard decomposition with calibrated uncertainty — parsing the subject-level features driving decade-plus durability from the features driving early attrition.</li>
+      <li>Principled immunosuppression-regimen and BioHub-variant prioritization on a unified causal graph — rather than regimen-by-regimen empirical iteration.</li>
+    </ul>
+    <div class="apex-callout">
+      The DRI record is a unique substrate: the longest continuous clinical-islet-transplant archive in the world, paired with an active BioHub translational program. The question is no longer whether islet replacement can produce insulin-independence — the DRI record demonstrates it — but which donor, recipient, regimen, and delivery-architecture combinations sustain the outcome over a decade and beyond. That is a problem of causal inference on a uniquely long-horizon dataset.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the DRI-configured deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on the DRI transplant registry.</strong> Recovers the directed structure among donor quality, isolation yield, recipient HLA and autoantibody profile, immunosuppression exposure, and long-horizon graft outcome — the substrate for principled heterogeneous-recipient and heterogeneous-regimen inference.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Individual estimators are configured to registry-scale longitudinal data — long-horizon survival models, nonlinear mixed-effects C-peptide decay, heterogeneous-treatment-effect learners on regimen variants, Bayesian change-point on graft-compromise timing — with the composite score providing a stable integration layer.</li>
+      <li><strong>Pearl do-calculus and interdiction.</strong> Regimen and delivery-architecture prioritization — including BioHub-variant design — is framed as a maximum-attenuation intervention on the inferred causal graph, producing principled ranking of modifications rather than empirical sequential iteration.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — DRI islet-transplant physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>DRI registry reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Donor quality × recipient HLA × immunosuppression × autoantibody profile interactions; BioHub substrate × host-tissue interaction</td></tr>
+        <tr><td>R — Reserve</td><td>Post-transplant functional graft mass (C-peptide AUC on MMTT); residual graft mass at long horizons; isolation-yield-normalized engraftment reserve</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic coupling across allo- and auto-immunity; cytokine-panel ↔ C-peptide transfer entropy; BioHub scaffold × host-immune coupling</td></tr>
+        <tr><td>C — Cascade</td><td>Graft-attrition cascades: allorejection, autoimmunity recurrence, chronic-immunosuppression toxicity; BioHub-specific fibrotic-response cascades</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of graft attrition at 1, 5, 10, and 15-year horizons; time-to-insulin-dependence return given trajectory</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>DRI registry data is registry-scale and long-horizon, with heterogeneous regimen exposure and dense donor–recipient covariate structure. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Long-horizon survival models (Cox, DeepSurv, time-varying covariate survival)</td><td>Graft-attrition hazard at 1, 5, 10, and 15-year horizons given donor, recipient, and regimen covariates</td><td>R, T</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, BART, S / T / X-learners) on regimen variants</td><td>Immunosuppression-regimen response differentiation across recipient subpopulations</td><td>I, C</td></tr>
+        <tr><td>Nonlinear mixed-effects C-peptide decay models</td><td>Per-subject post-transplant function trajectory; early-attrition signature detection</td><td>R, T</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on post-transplant metabolic and inflammatory signals</td><td>Graft-compromise onset detection with calibrated uncertainty; BioHub-specific fibrotic-response onset</td><td>J, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> between autoantibody titers, inflammatory cytokine panels, and C-peptide trajectories — quantifies immune–metabolic coupling (J) driving long-horizon graft attrition.</li>
+      <li><strong>Persistent homology</strong> on donor-recipient covariate manifolds — topological regime detection across graft-outcome strata, valuable for identifying durable-response phenotypes.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to the DRI within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> DRI allogeneic islet-transplant registry: donor and recipient covariates, isolation yield and viability, immunosuppression regimen, longitudinal C-peptide AUC, insulin-dependence status, and graft-outcome at multi-year follow-up. Where available, retrospective BioHub preclinical and early clinical signal as complementary input.</li>
+      <li><strong>Access path.</strong> DRI-internal Data Use Agreement and IRB, under the sponsorship of a DRI-affiliated principal investigator.</li>
+      <li><strong>Deliverable.</strong> Per-subject <span class="apex-omega">Ω</span>F trajectory integrating long-horizon survival, heterogeneous-treatment-effect, and change-point estimators. Graft-attrition hazard decomposition at 1, 5, and 10-year horizons. Pearl-do-calculus ranking of immunosuppression and delivery-architecture modifications predicted to most attenuate long-horizon attrition.</li>
+      <li><strong>Success criteria.</strong> Long-horizon hazard model with calibration and discrimination matching or exceeding the DRI's pre-specified biostatistical analyses; identification of at least one durable-response subgroup decomposable along <span class="apex-omega">Ω</span>F pillars; interdiction-engine regimen and BioHub-variant rankings interpretable and actionable by the DRI clinical team.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 prospective arm): prospective BioHub or encapsulated-variant trial design, live CGM ingestion, bespoke immunologic assays.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Long-horizon data has no substitute.</strong> The DRI registry is the only islet-transplant archive of its duration and continuity. The analytic tools appropriate to long-horizon multi-covariate data — causal discovery, deep survival, heterogeneous-treatment-effect inference — have only recently matured to production grade against it.</li>
+      <li><strong>BioHub is at the translational inflection point.</strong> The omental-scaffold, encapsulated, and next-generation delivery programs moving through the DRI translational pipeline have preclinical and early clinical signal; their prioritization is directly a causal-inference problem.</li>
+      <li><strong>Replacement paradigm broadly has crossed proof-of-principle.</strong> Insulin-independence in early-phase Vertex VX-880 cohorts reinforces the field's focus on generalization — which donor, recipient, regimen, and architecture combinations sustain the outcome — which is the question the DRI registry is uniquely positioned to answer.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, and NIH NIDDK all have active Requests for Proposals spanning islet-transplantation analytics.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the DRI registry and BioHub domains represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a Diabetes Research Institute principal investigator at the University of Miami Miller School of Medicine is sought for:</p>
+    <ol>
+      <li>Retrospective DRI islet-transplant registry and BioHub data access under the DRI's existing Data Use Agreement and IRB.</li>
+      <li>Clinical co-authorship on the long-horizon graft-survival and regimen-interdiction benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D Cures, Helmsley Restoring Insulin Production, or NIH NIDDK for the Phase 2 prospective arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

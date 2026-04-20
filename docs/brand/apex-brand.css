@@ -73,13 +73,13 @@ html, body {
 }
 
 .apex-masthead img {
-  height: 30pt;
+  height: 42pt;
   width: auto;
 }
 
 .apex-masthead .apex-wordmark {
   font-family: var(--apex-font-display);
-  font-size: 9.5pt;
+  font-size: 10.5pt;
   letter-spacing: 0.18em;
   color: var(--apex-ink);
   line-height: 1.2;
@@ -131,6 +131,16 @@ html, body {
   letter-spacing: 0.04em;
   line-height: 1.15;
   color: var(--apex-ink);
+}
+
+/* Modifier: long-title variant. Use when the h1 would otherwise wrap at the
+ * default 20pt (e.g. "Manifold for Type 1 Diabetes — Restoration"). Shrinks
+ * the display size and forces a single line so the masthead remains one
+ * coherent band. */
+.apex-title.apex-title--long {
+  font-size: 15pt;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .apex-subtitle {

@@ -8,29 +8,31 @@
   <style>
     /* Cover-page density tuning — fit masthead + lead + callout + table + ask
        on a single Letter page without crowding. */
+    @page { margin: 0.7in 0.8in 0.7in 0.8in; }
+
     .cover-lead {
-      font-size: 11pt;
-      line-height: 1.5;
+      font-size: 10.5pt;
+      line-height: 1.45;
       color: var(--apex-ink);
-      margin: 0 0 10pt 0;
+      margin: 0 0 8pt 0;
     }
     .cover-lead strong { color: var(--apex-cyan); }
 
-    main h2 { margin-top: 14pt; }
-    main table { margin: 4pt 0 10pt 0; }
-    main tbody td { padding: 4pt 8pt 4pt 0; font-size: 9.5pt; }
-    main thead th { padding: 4pt 8pt 4pt 0; }
+    main h2 { margin-top: 10pt; margin-bottom: 4pt; padding-bottom: 2pt; font-size: 9.5pt; }
+    main table { margin: 2pt 0 8pt 0; }
+    main tbody td { padding: 3pt 8pt 3pt 0; font-size: 9pt; }
+    main thead th { padding: 3pt 8pt 3pt 0; font-size: 8pt; }
 
-    .cover-ask {
-      margin: 0;
-      padding-left: 18pt;
-    }
-    .cover-ask li { margin-bottom: 2pt; font-size: 10pt; }
+    .cover-ask { margin: 0; padding-left: 18pt; }
+    .cover-ask li { margin-bottom: 1pt; font-size: 9.5pt; }
 
-    .apex-title { font-size: 18pt; }
-    .apex-subtitle { font-size: 10.5pt; margin-bottom: 14pt; }
+    .apex-masthead { padding-bottom: 10pt; margin-bottom: 14pt; }
+    .apex-title { font-size: 17pt; margin-bottom: 2pt; }
+    .apex-subtitle { font-size: 10pt; margin-bottom: 10pt; }
 
-    .apex-callout { margin: 10pt 0; padding: 8pt 12pt; font-size: 10pt; }
+    .apex-callout { margin: 8pt 0; padding: 7pt 12pt; font-size: 9.5pt; }
+
+    .apex-footer { margin-top: 14pt; padding-top: 8pt; }
   </style>
 </head>
 <body>

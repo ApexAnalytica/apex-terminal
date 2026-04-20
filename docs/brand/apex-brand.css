@@ -10,6 +10,11 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* NOTE: A dedicated single-glyph Inter file for Ω (U+03A9) must be loaded
+ * via <link rel="stylesheet"> directly in the HTML head — see
+ * docs/brand/template.html. Nesting it as @import here does not reliably
+ * subset into the PDF during headless Chrome print-to-pdf. */
+
 :root {
   /* Apex brand */
   --apex-ink:        #0a0b10;   /* primary text; product --surface-elevated */
@@ -87,17 +92,22 @@ html, body {
 }
 
 /* ── Ω glyph normalization ──
- * Michroma is Latin-only; the Ω character falls back to the body face and
- * visually mismatches surrounding display letters. Wrap every Ω in a
- * <span class="apex-omega"> so it renders in Inter at a slightly heavier
- * weight + adjusted size, producing an intentional, consistent look. */
+ * Michroma is Latin-only and Google Fonts' Inter Greek subset does not
+ * reliably load in headless-Chrome PDF generation. Wrap every Ω in
+ * <span class="apex-omega"> and render it in the OS system sans-serif,
+ * which has Ω locally — producing an intentional, consistent look with no
+ * network dependency. */
 .apex-omega {
-  font-family: var(--apex-font-body);
+  /* Helvetica Neue first: it ships with Greek on all Macs and its Ω visually
+   * matches Michroma's mass / Inter's weight better than Arial's narrower
+   * Ω. Putting Inter *after* would not help — Chrome resolves font fallback
+   * per-font, not per-glyph, so if Inter exists but lacks Ω in the loaded
+   * subset, Chrome renders tofu rather than falling through. */
+  font-family: 'Helvetica Neue', 'Arial Unicode MS', 'Lucida Grande', sans-serif;
   font-weight: 700;
-  font-size: 1.08em;
+  font-size: 1.05em;
   letter-spacing: 0;
-  display: inline-block;
-  transform: translateY(0.02em);
+  text-transform: none;
 }
 
 .apex-masthead .apex-meta {

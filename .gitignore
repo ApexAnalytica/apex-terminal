@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# research
+/research/.venv/
+/research/output/
+/research/datasets/_cache/
+__pycache__/
+*.pyc

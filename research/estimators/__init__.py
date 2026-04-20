@@ -8,10 +8,12 @@ from .persistent_homology import (  # noqa: F401
     sliding_betti1,
     takens_embedding,
 )
+from .transfer_entropy import TeResult, transfer_entropy  # noqa: F401
 
 __all__ = [
     "bocpd", "BocpdResult", "detect_changepoints_from_map",
     "gp_fit", "GpFit",
     "s_learner", "t_learner", "x_learner", "CateFit",
     "BettiTrajectory", "betti1_at_epsilon", "sliding_betti1", "takens_embedding",
+    "transfer_entropy", "TeResult",
 ]

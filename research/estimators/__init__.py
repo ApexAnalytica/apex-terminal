@@ -4,6 +4,12 @@ from .cox import CoxFit, cox_fit  # noqa: F401
 from .gp_regression import GpFit, gp_fit  # noqa: F401
 from .hte_meta import s_learner, t_learner, x_learner, CateFit  # noqa: F401
 from .nlme import NlmeFit, NlmeSubject, nlme_fit  # noqa: F401
+from .spatial_coupling import (  # noqa: F401
+    MoranResult,
+    bivariate_morans_i,
+    knn_weights,
+    morans_i,
+)
 from .persistent_homology import (  # noqa: F401
     BettiTrajectory,
     betti1_at_epsilon,
@@ -19,5 +25,6 @@ __all__ = [
     "s_learner", "t_learner", "x_learner", "CateFit",
     "nlme_fit", "NlmeFit", "NlmeSubject",
     "BettiTrajectory", "betti1_at_epsilon", "sliding_betti1", "takens_embedding",
+    "morans_i", "bivariate_morans_i", "knn_weights", "MoranResult",
     "transfer_entropy", "TeResult",
 ]

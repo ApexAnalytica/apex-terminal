@@ -2483,6 +2483,12 @@ export function getDomainColor(domain: string): string {
     case "Chip Embargo": return "#ff9100";       // deep orange
     case "Secure Compute": return "#69f0ae";     // mint green
     case "Kill Chain": return "#ff1744";         // red
+    // Life sciences (T1D β-cell) domains
+    case "T1D Autoimmune": return "#ff80ab";     // soft pink
+    case "T1D \u03B2-cell Biology": return "#40c4ff"; // T1D brand cyan
+    case "T1D Metabolic": return "#69f0ae";      // mint green
+    case "T1D Intervention": return "#ffab00";   // amber
+    case "T1D Complications": return "#ff6d00";  // deep orange
     default: return "#5a5e72";
   }
 }

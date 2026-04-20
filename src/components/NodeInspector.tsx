@@ -7,6 +7,7 @@ import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
+import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
 /** Dispatch content to the copilot for display + TTS readout */
 function dispatchSpeak(title: string, text: string) {
@@ -22,35 +23,8 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
-const OMEGA_DESCRIPTIONS: Record<string, { short: string; detail: string; formula: string }> = {
-  IRREPLACEABILITY: {
-    short: "How difficult is it to substitute this node if it fails?",
-    detail: "Measures the global concentration of capability. A node scoring 10 means a single facility or entity controls the entire supply — no alternative exists. Derived from market share data, patent exclusivity, and geographic monopoly indicators.",
-    formula: "I = f(HHI, market_share_top1, patent_exclusivity, geographic_monopoly)",
-  },
-  "RESTORATION LATENCY": {
-    short: "How long would it take to restore function after disruption?",
-    detail: "Captures the time horizon to rebuild or reroute. A semiconductor fab takes 3–5 years to build; a shipping route reroute may take weeks. Scored from replacement time estimates, capital intensity, and regulatory approval cycles.",
-    formula: "R = g(replacement_time_months, capex_intensity, regulatory_gates)",
-  },
-  "JURISDICTIONAL HAZARD": {
-    short: "How exposed is this node to sovereign or regulatory risk?",
-    detail: "Reflects the political and legal environment governing this asset. Nodes in contested jurisdictions, under sanctions exposure, or subject to export controls score higher. Incorporates governance indices, sanctions lists, and geopolitical tension scores.",
-    formula: "J = h(governance_index, sanctions_proximity, export_control_tier, conflict_zone)",
-  },
-  "CASCADE LOAD": {
-    short: "How many downstream nodes depend on this one?",
-    detail: "Measures the systemic importance through graph topology. A node with high cascade load sits at a critical junction — its failure propagates to many dependent systems. Computed from edge degree, betweenness centrality, and the omega scores of downstream neighbors.",
-    formula: "C = Σ(edge_degree × downstream_ΩF) / normalization_factor",
-  },
-  "TAIL DEPTH": {
-    short: "How severe is the worst-case disruption scenario?",
-    detail: "Quantifies fat-tail risk — the potential for extreme, non-linear damage. Nodes where disruption triggers cascading failures across domains (e.g., Strait of Hormuz blocking both energy and fertilizer supply chains) score highest. Derived from historical crisis data and concentration × criticality interaction.",
-    formula: "T = concentration_score × system_criticality × historical_tail_events",
-  },
-};
-
-const OMEGA_METHODOLOGY = "The ΩF (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0–10. The composite weights are: I(0.25) + R(0.20) + J(0.20) + C(0.20) + T(0.15). Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.";
+// Descriptions + methodology now live on the DomainProfile so T1D / geopolitical
+// / future verticals each carry their own vocabulary without branching here.
 
 export default function NodeInspector() {
   const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
@@ -61,6 +35,10 @@ export default function NodeInspector() {
   const graphData = useApexStore((s) => s.graphData);
   const temporalData = useApexStore((s) => s.temporalData);
   const isLive = useApexStore((s) => s.isLive);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const profile = resolveDomainProfile(selectedDomains);
+  const pillarDetails = profile.pillarDetails;
+  const methodology = profile.compositeMethodology;
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
 
@@ -83,13 +61,13 @@ export default function NodeInspector() {
     return data?.history ?? [];
   }, [selectedNode, temporalData]);
 
-  const axes = node
+  const axes: { key: PillarKey; label: string; value: number }[] = node
     ? [
-        { label: "IRREPLACEABILITY", value: node.omegaFragility.irreplaceability },
-        { label: "RESTORATION LATENCY", value: node.omegaFragility.restorationLatency },
-        { label: "JURISDICTIONAL HAZARD", value: node.omegaFragility.jurisdictionalHazard },
-        { label: "CASCADE LOAD", value: node.omegaFragility.cascadeLoad },
-        { label: "TAIL DEPTH", value: node.omegaFragility.tailDepth },
+        { key: "irreplaceability", label: pillarDetails.irreplaceability.label, value: node.omegaFragility.irreplaceability },
+        { key: "restorationLatency", label: pillarDetails.restorationLatency.label, value: node.omegaFragility.restorationLatency },
+        { key: "jurisdictionalHazard", label: pillarDetails.jurisdictionalHazard.label, value: node.omegaFragility.jurisdictionalHazard },
+        { key: "cascadeLoad", label: pillarDetails.cascadeLoad.label, value: node.omegaFragility.cascadeLoad },
+        { key: "tailDepth", label: pillarDetails.tailDepth.label, value: node.omegaFragility.tailDepth },
       ]
     : [];
 
@@ -291,7 +269,7 @@ export default function NodeInspector() {
                 onClick={() => setShowMethodology((v) => !v)}
                 className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors mt-0.5 tracking-wider"
               >
-                {showMethodology ? "▾ HIDE METHODOLOGY" : "▸ HOW IS ΩF COMPUTED?"}
+                {showMethodology ? "▾ HIDE METHODOLOGY" : `▸ HOW IS ${profile.pillarLabels.composite} COMPUTED?`}
               </button>
               <AnimatePresence>
                 {showMethodology && (
@@ -305,12 +283,12 @@ export default function NodeInspector() {
                     <div
                       className="mt-1.5 p-2 rounded border border-accent-cyan/20 bg-accent-cyan/5 text-[8px] font-mono text-foreground/80 leading-relaxed cursor-pointer hover:border-accent-cyan/40 transition-colors group"
                       onClick={() => dispatchSpeak(
-                        `${node.shortLabel} — \u03A9F Methodology`,
-                        OMEGA_METHODOLOGY
+                        `${node.shortLabel} — ${profile.pillarLabels.composite} Methodology`,
+                        methodology
                       )}
                       title="Click to read aloud"
                     >
-                      {OMEGA_METHODOLOGY}
+                      {methodology}
                       <div className="text-[6px] text-text-muted opacity-0 group-hover:opacity-60 transition-opacity mt-1">
                         {"\uD83D\uDD0A"} click to read aloud
                       </div>
@@ -323,13 +301,13 @@ export default function NodeInspector() {
             {/* 5-axis bars with expandable descriptions */}
             <div className="space-y-2">
               {axes.map((axis) => {
-                const desc = OMEGA_DESCRIPTIONS[axis.label];
-                const isExpanded = expandedPillar === axis.label;
+                const desc = pillarDetails[axis.key];
+                const isExpanded = expandedPillar === axis.key;
                 return (
-                  <div key={axis.label}>
+                  <div key={axis.key}>
                     <div className="flex items-center justify-between mb-0.5">
                       <button
-                        onClick={() => setExpandedPillar(isExpanded ? null : axis.label)}
+                        onClick={() => setExpandedPillar(isExpanded ? null : axis.key)}
                         className="text-[8px] text-text-muted font-mono hover:text-accent-cyan transition-colors text-left flex items-center gap-1"
                       >
                         <span className="text-[7px] opacity-50">{isExpanded ? "▾" : "▸"}</span>

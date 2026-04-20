@@ -3,6 +3,7 @@ from .bocpd import bocpd, BocpdResult, detect_changepoints_from_map  # noqa: F40
 from .cox import CoxFit, cox_fit  # noqa: F401
 from .gp_regression import GpFit, gp_fit  # noqa: F401
 from .hte_meta import s_learner, t_learner, x_learner, CateFit  # noqa: F401
+from .nlme import NlmeFit, NlmeSubject, nlme_fit  # noqa: F401
 from .persistent_homology import (  # noqa: F401
     BettiTrajectory,
     betti1_at_epsilon,
@@ -16,6 +17,7 @@ __all__ = [
     "cox_fit", "CoxFit",
     "gp_fit", "GpFit",
     "s_learner", "t_learner", "x_learner", "CateFit",
+    "nlme_fit", "NlmeFit", "NlmeSubject",
     "BettiTrajectory", "betti1_at_epsilon", "sliding_betti1", "takens_embedding",
     "transfer_entropy", "TeResult",
 ]

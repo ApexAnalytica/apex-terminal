@@ -8,31 +8,31 @@
   <style>
     /* Cover-page density tuning — fit masthead + lead + callout + table + ask
        on a single Letter page without crowding. */
-    @page { margin: 0.7in 0.8in 0.7in 0.8in; }
+    @page { margin: 0.6in 0.75in 0.55in 0.75in; }
 
     .cover-lead {
-      font-size: 10.5pt;
-      line-height: 1.45;
+      font-size: 10pt;
+      line-height: 1.4;
       color: var(--apex-ink);
-      margin: 0 0 8pt 0;
+      margin: 0 0 6pt 0;
     }
     .cover-lead strong { color: var(--apex-cyan); }
 
-    main h2 { margin-top: 10pt; margin-bottom: 4pt; padding-bottom: 2pt; font-size: 9.5pt; }
-    main table { margin: 2pt 0 8pt 0; }
-    main tbody td { padding: 3pt 8pt 3pt 0; font-size: 9pt; }
-    main thead th { padding: 3pt 8pt 3pt 0; font-size: 8pt; }
+    main h2 { margin-top: 8pt; margin-bottom: 3pt; padding-bottom: 2pt; font-size: 9pt; }
+    main table { margin: 2pt 0 6pt 0; }
+    main tbody td { padding: 2.5pt 8pt 2.5pt 0; font-size: 8.5pt; line-height: 1.35; }
+    main thead th { padding: 2.5pt 8pt 2.5pt 0; font-size: 7.5pt; }
 
     .cover-ask { margin: 0; padding-left: 18pt; }
-    .cover-ask li { margin-bottom: 1pt; font-size: 9.5pt; }
+    .cover-ask li { margin-bottom: 1pt; font-size: 9pt; }
 
-    .apex-masthead { padding-bottom: 10pt; margin-bottom: 14pt; }
-    .apex-title { font-size: 17pt; margin-bottom: 2pt; }
-    .apex-subtitle { font-size: 10pt; margin-bottom: 10pt; }
+    .apex-masthead { padding-bottom: 8pt; margin-bottom: 12pt; }
+    .apex-title { font-size: 16pt; margin-bottom: 2pt; }
+    .apex-subtitle { font-size: 9.5pt; margin-bottom: 8pt; }
 
-    .apex-callout { margin: 8pt 0; padding: 7pt 12pt; font-size: 9.5pt; }
+    .apex-callout { margin: 6pt 0; padding: 6pt 12pt; font-size: 9pt; }
 
-    .apex-footer { margin-top: 14pt; padding-top: 8pt; }
+    .apex-footer { margin-top: 10pt; padding-top: 6pt; font-size: 7pt; }
   </style>
 </head>
 <body>
@@ -58,16 +58,16 @@
   <main>
 
     <p class="cover-lead">
-      T1D has a years-long pre-clinical prodrome. Current risk tools (TrialNet DPTRS, Index60, M120) give strong
-      population survival curves but miss <strong>individual-trajectory inflection points</strong> — the window where
-      a Stage-2-appropriate intervention has maximal benefit. <strong>Manifold</strong> is a causal-intelligence
-      platform configured for T1D to detect those inflections: causal discovery on multi-omic cohorts, criticality
-      estimators (DNB, Bayesian change-point, deep survival) feeding a composite fragility score (<span class="apex-omega">Ω</span>F),
-      and Pearl do-calculus / interdiction for principled therapy-selection framing.
+      Type 1 Diabetes has a years-long pre-clinical prodrome. Current risk-stratification tools (TrialNet DPTRS, Index60, M120)
+      produce strong population-level survival curves but fail to identify <strong>individual-trajectory inflection points</strong>
+      — the window within which a Stage-2-appropriate intervention delivers maximal benefit. <strong>Manifold</strong> is a
+      causal-intelligence platform, configured for the T1D domain to detect these inflections: causal discovery on multi-omic
+      cohorts, criticality estimators (DNB, Bayesian change-point, deep survival) feeding a composite fragility score
+      (<span class="apex-omega">Ω</span>F), and Pearl do-calculus with interdiction for principled therapy-selection framing.
     </p>
 
     <div class="apex-callout">
-      Teplizumab's 2022 approval made the pre-clinical window <em>actionable</em>, not academic. Every month of better per-patient stratification is intervention-window bought.
+      Teplizumab's 2022 approval transformed the pre-clinical window from academic interest to actionable intervention. Each additional month of accurate per-patient stratification extends the period within which a Stage-2-appropriate intervention remains beneficial.
     </div>
 
     <h2><span class="apex-omega">Ω</span>F pillar mapping — T1D physiology</h2>
@@ -84,15 +84,15 @@
       </tbody>
     </table>
 
-    <h2>The ask</h2>
-    <p style="margin: 0 0 4pt 0;">Partnership with a TEDDY-affiliated PI (or equivalent cohort steward — TrialNet, DiPiS, BabyDiab) for:</p>
+    <h2>Proposed partnership</h2>
+    <p style="margin: 0 0 4pt 0;">Partnership with a TEDDY-affiliated principal investigator (or equivalent cohort steward — TrialNet, DiPiS, BabyDiab) is sought for:</p>
     <ol class="cover-ask">
-      <li>Retrospective data access under their existing Data Use Agreement.</li>
-      <li>Clinical co-authorship on the benchmark paper (<span class="apex-omega">Ω</span>F vs. DPTRS, 10–12 weeks from data access).</li>
-      <li>Co-application to JDRF / Helmsley / NIH NIDDK for the v2 prospective arm.</li>
+      <li>Retrospective data access under the partnering institution's existing Data Use Agreement.</li>
+      <li>Clinical co-authorship on the benchmark manuscript (<span class="apex-omega">Ω</span>F versus DPTRS; ten to twelve weeks from data access).</li>
+      <li>Co-application to Breakthrough T1D, the Helmsley Charitable Trust, or NIH NIDDK for the Phase 2 prospective arm.</li>
     </ol>
     <p style="font-size: 10pt; margin-top: 8pt;">
-      Apex Analytica brings the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the software team. Full brief: <code>M-T1D-01</code>.
+      Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Full brief: <code>M-T1D-01</code>.
     </p>
 
   </main>

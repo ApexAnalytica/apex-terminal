@@ -24,17 +24,17 @@ pip install -r research/requirements.txt
 
 ## Estimator status
 
-| Estimator | Briefs citing | Status |
-|-----------|---------------|--------|
-| BOCPD (Adams & MacKay 2007) | Joslin, MtSinai, UBC, HIRN, nPOD, VX-880 | in progress |
-| HTE learners (Causal Forest, BART) | MtSinai, UBC, DRIMiami, HIRN, nPOD | pending |
-| Persistent homology (β₁ per-tick) | HIRN, nPOD | pending |
-| GP regression (dose/protocol surfaces) | MtSinai, UBC, VX-880 | pending |
-| Transfer entropy | HIRN, nPOD | pending |
-| Survival (Cox / DeepSurv) | DRIMiami | pending |
-| NLME C-peptide decay | Joslin, DRIMiami | pending |
-| Spatial-transcriptomic coupling | nPOD | pending |
-| Cross-species hierarchical | UBC | pending |
+| Estimator | Briefs citing | Validation | Status |
+|-----------|---------------|------------|--------|
+| BOCPD (Adams & MacKay 2007) | Joslin, MtSinai, UBC, HIRN, nPOD, VX-880 | synthetic 3/3 + 2/2 CPs, Hall 2018 CGM 11–22 CPs/subject | done |
+| HTE meta-learners (S / T / X, Künzel 2019) | MtSinai, UBC, DRIMiami, HIRN, nPOD | IHDP median test PEHE 0.81 / 0.81 / 0.94 (Künzel range 0.8–1.0) | done |
+| Persistent homology (β₁ per-tick) | HIRN, nPOD | periodic β₁≈1.0, noise 0.23, AM outer 0.72 / middle 0.00; Hall CGM β₁ ∈ [0.03, 0.73] | done |
+| GP regression (dose/protocol surfaces) | MtSinai, UBC, VX-880 | Friedman #1 test RMSE 1.12 vs Ridge 2.59; 95% band coverage 0.95 | done |
+| Transfer entropy (Schreiber 2000, binning) | HIRN, nPOD | coupled-AR asymmetry 150×; bidirectional strong > weak direction | done |
+| Cox PH (Breslow ties, from scratch) | DRIMiami | Rossi: coefs match lifelines-Efron to <0.009; c-index to <0.004 | done |
+| NLME C-peptide decay (Laplace) | Joslin, DRIMiami | synthetic recovery at n=40×7: μ within 0.03, τ within 7%, σ within 3% | done |
+| Spatial coupling (Moran's I, bivariate) | nPOD | univariate noise ≈ 0, bump 0.96, checker −0.90; bivariate coupled 0.88, anti −0.87 | done |
+| Cross-species HLM (random slopes) | UBC | 20-seed MSE on n=5 human species: HLM 0.40 vs no-pooling 0.77 (−48%) | done |
 
 ## Public data sources
 

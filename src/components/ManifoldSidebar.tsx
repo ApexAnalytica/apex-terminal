@@ -2,45 +2,8 @@
 
 import { motion } from "framer-motion";
 import { ManifoldModule, ModuleId } from "@/lib/types";
-
-const MODULES: ManifoldModule[] = [
-  {
-    id: "spirtes",
-    name: "SPIRTES",
-    subtitle: "Structure Discovery",
-    description: "Causal DAG learning from observational data",
-    icon: "◇",
-    color: "var(--accent-cyan)",
-    status: "ACTIVE",
-  },
-  {
-    id: "tarski",
-    name: "TARSKI",
-    subtitle: "Truth Verification",
-    description: "Physical constraint validation — reject hallucinations",
-    icon: "⊢",
-    color: "var(--accent-green)",
-    status: "ACTIVE",
-  },
-  {
-    id: "pearl",
-    name: "PEARL",
-    subtitle: "Counterfactual Engine",
-    description: "do-calculus reasoning — interventional queries",
-    icon: "⟐",
-    color: "var(--accent-amber)",
-    status: "STANDBY",
-  },
-  {
-    id: "pareto",
-    name: "PARETO",
-    subtitle: "Criticality Warning",
-    description: "Strategic risk & Ω-fragility assessment",
-    icon: "⚠",
-    color: "var(--accent-red)",
-    status: "ALERT",
-  },
-];
+import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { useApexStore } from "@/stores/useApexStore";
 
 interface ManifoldSidebarProps {
   activeModule: ModuleId;
@@ -51,6 +14,9 @@ export default function ManifoldSidebar({
   activeModule,
   onModuleSelect,
 }: ManifoldSidebarProps) {
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const profile = resolveDomainProfile(selectedDomains);
+  const MODULES = profile.modules;
   return (
     <aside className="flex flex-col w-64 border-r border-border bg-surface h-full">
       {/* Header */}

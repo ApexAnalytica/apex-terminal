@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · nPOD · Cover)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+  <style>
+    @page { margin: 0.6in 0.75in 0.55in 0.75in; }
+
+    .cover-lead {
+      font-size: 10pt;
+      line-height: 1.4;
+      color: var(--apex-ink);
+      margin: 0 0 6pt 0;
+    }
+    .cover-lead strong { color: var(--apex-cyan); }
+
+    main h2 { margin-top: 8pt; margin-bottom: 3pt; padding-bottom: 2pt; font-size: 9pt; }
+    main table { margin: 2pt 0 6pt 0; }
+    main tbody td { padding: 2.5pt 8pt 2.5pt 0; font-size: 8.5pt; line-height: 1.35; }
+    main thead th { padding: 2.5pt 8pt 2.5pt 0; font-size: 7.5pt; }
+
+    .cover-ask { margin: 0; padding-left: 18pt; }
+    .cover-ask li { margin-bottom: 1pt; font-size: 9pt; }
+
+    .apex-masthead { padding-bottom: 8pt; margin-bottom: 12pt; }
+    .apex-title { font-size: 16pt; margin-bottom: 2pt; }
+    .apex-subtitle { font-size: 9.5pt; margin-bottom: 8pt; }
+
+    .apex-callout { margin: 6pt 0; padding: 6pt 12pt; font-size: 9pt; }
+
+    .apex-footer { margin-top: 10pt; padding-top: 6pt; font-size: 7pt; }
+  </style>
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-NPOD · Cover</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title">Manifold for T1D — nPOD Tissue-Biology Integration</h1>
+  <p class="apex-subtitle">Pancreatic-tissue multi-omic causal inference across T1D disease stages</p>
+
+  <main>
+
+    <p class="cover-lead">
+      nPOD is the only resource producing <strong>pancreatic tissue across the full T1D disease spectrum</strong> —
+      at-risk, new-onset, established, long-duration — paired with donor clinical history and cross-modality
+      multi-omic characterization (histology, single-cell and spatial transcriptomics, proteomics). The analytic
+      frontier is structural: tissue-level causal inference across disease-stage strata, cross-modality integration
+      onto a single directed graph, and a standardized fragility layer for cross-investigator comparison.
+      <strong>Manifold</strong> configures causal discovery on the nPOD multi-modal substrate, criticality estimators
+      (persistent homology on tissue manifolds, HTE learners, change-point across strata, spatial-transcriptomic
+      coupling) feeding a composite fragility score (<span class="apex-omega">Ω</span>F), and Pearl do-calculus with
+      interdiction for tissue-level target prioritization.
+    </p>
+
+    <div class="apex-callout">
+      What drives progression at the tissue level — from autoantibody positivity to clinical T1D to established hypoinsulinemia — is no longer a descriptive problem but a causal-inference problem on the integrated nPOD substrate.
+    </div>
+
+    <h2><span class="apex-omega">Ω</span>F pillar mapping — pancreatic tissue physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>nPOD tissue reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Autoantibody × HLA × tissue-feature interactions; immune infiltrate × residual β-cell phenotype coupling</td></tr>
+        <tr><td>R — Reserve</td><td>Residual islet mass by histology; β-cell functional-marker density; residual insulin / C-peptide immunoreactivity across strata</td></tr>
+        <tr><td>J — Junction</td><td>Insulitis intensity and immune-cell infiltrate at islet boundary; endocrine-exocrine interface signatures</td></tr>
+        <tr><td>C — Cascade</td><td>β-cell senescence and dedifferentiation cascades in situ; ER-stress and apoptosis markers; epitope-spreading signatures</td></tr>
+        <tr><td>T — Temporal</td><td>Disease-stage progression hazard; time-to-established-T1D from autoantibody-positive state given tissue-level covariates</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Proposed partnership</h2>
+    <p style="margin: 0 0 4pt 0;">Partnership with a University of Florida Diabetes Institute principal investigator affiliated with nPOD is sought for:</p>
+    <ol class="cover-ask">
+      <li>Retrospective nPOD cross-modality tissue data access under the nPOD Data Access Committee framework.</li>
+      <li>Co-authorship on the tissue-level causal-integration methodological manuscript, positioned as an nPOD-affiliated consortium deliverable (fourteen to sixteen weeks from data access).</li>
+      <li>Co-application to NIH NIDDK, Breakthrough T1D, or the Helmsley Charitable Trust for the Phase 2 arm extending integration across additional modalities and disease-stage strata.</li>
+    </ol>
+    <p style="font-size: 10pt; margin-top: 8pt;">
+      Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Full brief: <code>M-T1D-02-NPOD</code>.
+    </p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

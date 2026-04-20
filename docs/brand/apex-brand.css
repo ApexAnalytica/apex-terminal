@@ -1,0 +1,300 @@
+/*
+ * Apex Analytica — print/PDF brand stylesheet
+ * Usage: link this file from any `docs/*.html` one-pager and follow the
+ * structural conventions in `docs/brand/template.html`.
+ *
+ * Tokens mirror the product (src/app/globals.css) but invert for light-mode
+ * print: near-black text on white, Apex cyan as accent, Michroma reserved for
+ * wordmark + section headers, Inter for body prose.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* NOTE: A dedicated single-glyph Inter file for Ω (U+03A9) must be loaded
+ * via <link rel="stylesheet"> directly in the HTML head — see
+ * docs/brand/template.html. Nesting it as @import here does not reliably
+ * subset into the PDF during headless Chrome print-to-pdf. */
+
+:root {
+  /* Apex brand */
+  --apex-ink:        #0a0b10;   /* primary text; product --surface-elevated */
+  --apex-ink-soft:   #3a3d4e;   /* secondary text */
+  --apex-ink-muted:  #6c7080;   /* tertiary / captions */
+  --apex-rule:       #e3e6ec;   /* hairline rules */
+  --apex-paper:      #ffffff;
+  --apex-paper-tint: #f7f9fb;   /* pull-quote / callout background */
+
+  --apex-cyan:       #00a3b8;   /* primary accent — slightly darkened from UI
+                                    #00e5ff for legibility on white paper */
+  --apex-cyan-soft:  #e6fafc;   /* cyan tint for subtle fills */
+  --apex-red:        #c81d3f;   /* alert — print-darkened */
+  --apex-amber:      #a36c00;   /* caution — print-darkened */
+
+  --apex-font-display: 'Michroma', 'Arial Black', sans-serif;
+  --apex-font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --apex-font-mono:    'JetBrains Mono', 'Menlo', 'Courier New', monospace;
+}
+
+@page {
+  size: Letter;
+  margin: 0.85in 0.85in 0.95in 0.85in;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--apex-paper);
+  color: var(--apex-ink);
+  font-family: var(--apex-font-body);
+  font-size: 10.5pt;
+  line-height: 1.55;
+  margin: 0;
+  padding: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ── Page header (runs at the top of every page via static position on first
+ *    page; subsequent pages rely on Chrome's print header being disabled and
+ *    Section titles providing orientation.) ── */
+.apex-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 14pt 0;
+  border-bottom: 1.2pt solid var(--apex-cyan);
+  margin-bottom: 22pt;
+}
+
+.apex-masthead .apex-mark {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+}
+
+.apex-masthead img {
+  height: 42pt;
+  width: auto;
+}
+
+.apex-masthead .apex-wordmark {
+  font-family: var(--apex-font-display);
+  font-size: 10.5pt;
+  letter-spacing: 0.18em;
+  color: var(--apex-ink);
+  line-height: 1.2;
+}
+
+.apex-masthead .apex-wordmark .product {
+  color: var(--apex-cyan);
+  display: block;
+  margin-top: 2pt;
+}
+
+/* ── Ω glyph normalization ──
+ * Michroma is Latin-only and Google Fonts' Inter Greek subset does not
+ * reliably load in headless-Chrome PDF generation. Wrap every Ω in
+ * <span class="apex-omega"> and render it in the OS system sans-serif,
+ * which has Ω locally — producing an intentional, consistent look with no
+ * network dependency. */
+.apex-omega {
+  /* Helvetica Neue first: it ships with Greek on all Macs and its Ω visually
+   * matches Michroma's mass / Inter's weight better than Arial's narrower
+   * Ω. Putting Inter *after* would not help — Chrome resolves font fallback
+   * per-font, not per-glyph, so if Inter exists but lacks Ω in the loaded
+   * subset, Chrome renders tofu rather than falling through. */
+  font-family: 'Helvetica Neue', 'Arial Unicode MS', 'Lucida Grande', sans-serif;
+  font-weight: 700;
+  font-size: 1.05em;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.apex-masthead .apex-meta {
+  font-family: var(--apex-font-mono);
+  font-size: 8pt;
+  text-align: right;
+  color: var(--apex-ink-muted);
+  line-height: 1.5;
+}
+
+.apex-masthead .apex-meta .conf-tag {
+  color: var(--apex-cyan);
+  letter-spacing: 0.15em;
+}
+
+/* ── Title block ── */
+.apex-title {
+  margin: 0 0 4pt 0;
+  font-family: var(--apex-font-display);
+  font-size: 20pt;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  color: var(--apex-ink);
+}
+
+/* Modifier: long-title variant. Use when the h1 would otherwise wrap at the
+ * default 20pt (e.g. "Manifold for Type 1 Diabetes — Restoration"). Shrinks
+ * the display size and forces a single line so the masthead remains one
+ * coherent band. */
+.apex-title.apex-title--long {
+  font-size: 15pt;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.apex-subtitle {
+  font-family: var(--apex-font-body);
+  font-size: 11pt;
+  font-weight: 500;
+  color: var(--apex-ink-soft);
+  margin: 0 0 18pt 0;
+  letter-spacing: 0.01em;
+}
+
+/* ── Section headers ── */
+main h2 {
+  font-family: var(--apex-font-display);
+  font-size: 10pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--apex-cyan);
+  margin: 22pt 0 8pt 0;
+  padding-bottom: 4pt;
+  border-bottom: 0.6pt solid var(--apex-rule);
+  page-break-after: avoid;
+}
+
+main h3 {
+  font-family: var(--apex-font-body);
+  font-size: 11pt;
+  font-weight: 600;
+  color: var(--apex-ink);
+  margin: 14pt 0 4pt 0;
+  page-break-after: avoid;
+}
+
+/* ── Body prose ── */
+main p {
+  margin: 0 0 8pt 0;
+}
+
+main strong {
+  color: var(--apex-ink);
+  font-weight: 600;
+}
+
+main em {
+  color: var(--apex-ink-soft);
+}
+
+main ul, main ol {
+  margin: 0 0 10pt 0;
+  padding-left: 18pt;
+}
+
+main li {
+  margin-bottom: 3pt;
+}
+
+main li::marker {
+  color: var(--apex-cyan);
+}
+
+main code {
+  font-family: var(--apex-font-mono);
+  font-size: 9.5pt;
+  background: var(--apex-paper-tint);
+  padding: 1pt 3pt;
+  border-radius: 2pt;
+  color: var(--apex-ink);
+}
+
+/* ── Tables ── */
+main table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8pt 0 14pt 0;
+  font-size: 10pt;
+  page-break-inside: avoid;
+}
+
+main thead th {
+  font-family: var(--apex-font-display);
+  font-size: 8.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--apex-cyan);
+  text-align: left;
+  padding: 6pt 8pt 6pt 0;
+  border-bottom: 1pt solid var(--apex-cyan);
+}
+
+main tbody td {
+  padding: 6pt 8pt 6pt 0;
+  vertical-align: top;
+  border-bottom: 0.4pt solid var(--apex-rule);
+  color: var(--apex-ink-soft);
+}
+
+main tbody tr:last-child td {
+  border-bottom: none;
+}
+
+main tbody td:first-child {
+  color: var(--apex-ink);
+  font-weight: 600;
+  width: 25%;
+}
+
+/* ── Callout / pull-quote ── */
+.apex-callout {
+  background: var(--apex-paper-tint);
+  border-left: 2.5pt solid var(--apex-cyan);
+  padding: 10pt 14pt;
+  margin: 12pt 0;
+  font-size: 10pt;
+  color: var(--apex-ink-soft);
+  page-break-inside: avoid;
+}
+
+/* ── Page footer (simulated — Chrome print dialog should hide its own) ── */
+.apex-footer {
+  margin-top: 22pt;
+  padding-top: 10pt;
+  border-top: 0.6pt solid var(--apex-rule);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--apex-font-mono);
+  font-size: 7.5pt;
+  color: var(--apex-ink-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.apex-footer .apex-footer-mark {
+  color: var(--apex-cyan);
+}
+
+/* ── Print-specific ── */
+@media print {
+  .apex-screen-only { display: none !important; }
+  main h2, main h3 { page-break-after: avoid; }
+  main table, .apex-callout, main ul, main ol { page-break-inside: avoid; }
+}
+
+/* ── Screen-only print-hint banner ── */
+.apex-screen-only {
+  position: fixed;
+  bottom: 12pt;
+  right: 12pt;
+  background: var(--apex-ink);
+  color: var(--apex-paper);
+  font-family: var(--apex-font-mono);
+  font-size: 8pt;
+  padding: 6pt 10pt;
+  border-radius: 3pt;
+  letter-spacing: 0.08em;
+  box-shadow: 0 4pt 12pt rgba(0,0,0,0.15);
+  z-index: 1000;
+}

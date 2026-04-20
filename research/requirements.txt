@@ -1,0 +1,9 @@
+numpy>=1.26
+scipy>=1.13
+matplotlib>=3.8
+pandas>=2.2
+requests>=2.32
+scikit-learn>=1.4
+pyreadr>=0.5
+ripser>=0.6
+lifelines>=0.30

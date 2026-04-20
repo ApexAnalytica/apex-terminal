@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · Mount Sinai)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-MTSINAI</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">Mount Sinai · Stewart Lab — DYRK1A-inhibitor, GLP-1 combination, and β-cell regeneration analytics</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>For twenty years, pharmacologic expansion of the adult human β-cell was considered biologically inaccessible. The Stewart Lab's identification of DYRK1A inhibition — harmine and its analogues — as a reproducible inducer of human β-cell proliferation, and the subsequent demonstration of super-additive proliferation under DYRK1A inhibitor + GLP-1 receptor agonist combination, redefined the field's tractability. The analytic problem now running ahead of the biology is combinatorial:</p>
+    <ul>
+      <li><strong>Combination-therapy space.</strong> DYRK1A inhibitor × GLP-1 receptor agonist × TGF-β superfamily inhibitor × glucokinase activator × senolytic constitutes a high-dimensional design surface. Empirical stacking scales poorly; rational ordering requires the causal structure of the signaling network and the dose–response surface as a unified graph.</li>
+      <li><strong>Human primary islet heterogeneity.</strong> Proliferation response to DYRK1A inhibition varies across donor islets. The features driving donor-level response (age, BMI, culture conditions, autoantibody status, genetic background) are typically reported marginally rather than as a joint causal structure.</li>
+      <li><strong>Preclinical to first-in-human translation.</strong> The translational question — which combinations to advance into human studies, in which patient subpopulations, with which readouts — is a causal-inference problem at a sample size where conventional biostatistics underdelivers.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice across β-cell regeneration studies:</p>
+    <ul>
+      <li>Separation of heterogeneous donor-level or patient-level response from noise at realistic preclinical and early-clinical sample sizes.</li>
+      <li>Unified modeling of the DYRK1A → cell-cycle-progression cascade across its signaling network, enabling <em>in silico</em> interdiction at the graph level rather than compound-by-compound experiment.</li>
+      <li>Principled combination-therapy design on a causal graph — rational ordering of proliferative, tolerogenic, and metabolic adjuncts — rather than empirical combinatorial expansion.</li>
+    </ul>
+    <div class="apex-callout">
+      The DYRK1A inhibitor program has answered biology's question — human β-cells can be induced to proliferate pharmacologically. The question is no longer whether regeneration is possible, but which combination, in which patient, with what adjuncts sustains the expanded mass against continuing autoimmune pressure — a problem of causal inference on the signaling graph and on heterogeneous patient response.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the Stewart-Lab-configured regeneration deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on the Stewart-Lab compound × human-islet response matrix.</strong> Recovers the directed structure among donor covariates, compound exposure, DYRK1A pathway state, and proliferation response, providing the substrate for donor-response prediction and preclinical-to-clinical translation.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Individual estimators are configured to the regeneration domain — heterogeneous-treatment-effect learners for combination response, Gaussian process regression on sparse dose-response surfaces, Bayesian online change-point on proliferation and apoptosis markers — and the composite fragility score provides a stable integration layer across them.</li>
+      <li><strong>Pearl do-calculus and interdiction on the DYRK1A signaling graph.</strong> Combination-therapy design is framed as a maximum-attenuation intervention on the inferred cascade structure, producing a principled ordering of DYRK1A inhibitor, GLP-1 agonist, TGF-β superfamily inhibitor, and senolytic adjuncts — preclinically and in translational design — rather than empirical stacking.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — β-cell regeneration physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>Regeneration reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Compound × compound synergy across DYRK1A inhibitor + GLP-1 + TGF-β inhibitor combinations; donor genotype × compound response interactions</td></tr>
+        <tr><td>R — Reserve</td><td>Baseline β-cell mass proxied by donor C-peptide AUC or islet equivalents; post-treatment expanded mass by Ki67 / BrdU / EdU labeling index</td></tr>
+        <tr><td>J — Junction</td><td>Proliferation × apoptosis balance; immune-metabolic coupling — how continuing autoimmunity is expected to interact with pharmacologically expanded β-cells in future clinical trials</td></tr>
+        <tr><td>C — Cascade</td><td>DYRK1A → NFAT → cell-cycle-progression cascade; p16 / senescence-induction pathway; FOXO1 dephosphorylation as upstream driver</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of proliferation-response loss across continued exposure; durability of expanded mass; time-to-response classification</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>β-cell regeneration data is small-<em>n</em> per compound arm, high-dimensional across compound × donor × readout, and signal-rich in longitudinal proliferation kinetics. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, BART, S / T / X-learners)</td><td>Which donors or patient subgroups respond to which single-agent or combination regimen, at realistic sample sizes</td><td>I, C</td></tr>
+        <tr><td>Gaussian process regression on compound × dose × donor response surfaces</td><td>Sparse dose-response surface estimation with calibrated uncertainty; prediction of untested combinations</td><td>I, R</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on proliferation and apoptosis markers</td><td>Inflection detection in Ki67 / EdU trajectories; onset of senescence cascade</td><td>C, T</td></tr>
+        <tr><td>Nonlinear mixed-effects models on post-treatment functional-mass readouts</td><td>Per-donor response classification; subject-level deviation from cohort response curve</td><td>R, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> across pathway-level readouts (DYRK1A activity, NFAT nuclear translocation, cyclin expression, cell-cycle markers) — quantifies the Cascade-pillar directional coupling.</li>
+      <li><strong>Persistent homology</strong> on longitudinal multi-omic islet point clouds — topological regime-detection across compound treatment arms, particularly for identifying structural shifts preceding senescence onset.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to the Stewart Lab within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> Stewart-Lab human primary-islet compound-screen data: harmine and harmine-analogue DYRK1A inhibitors, GLP-1 receptor agonist combinations, TGF-β superfamily inhibitor combinations, with per-donor covariates (age, BMI, cause of death, culture conditions, autoantibody status where available) and proliferation / apoptosis / functional readouts.</li>
+      <li><strong>Access path.</strong> Icahn School of Medicine at Mount Sinai internal Data Use Agreement, under the sponsorship of Stewart-Lab principal investigators.</li>
+      <li><strong>Deliverable.</strong> Per-donor <span class="apex-omega">Ω</span>F trajectory integrating heterogeneous-treatment-effect, Gaussian-process, and change-point estimators. Pairwise combination response prediction on held-out donors. Pearl-do-calculus derivation of proposed next-generation combination candidates on the inferred signaling graph, ranked by attenuation of the senescence / apoptosis counter-cascade.</li>
+      <li><strong>Success criteria.</strong> Heterogeneous-treatment-effect recovery on a held-out donor subset matching or exceeding the Lab's pre-specified analysis; identification of at least one interpretable responder / non-responder donor subgroup decomposable along <span class="apex-omega">Ω</span>F pillars; <em>in silico</em> combination-candidate rankings whose top quartile shows measurable lift on subsequent experimental validation.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 translational arm): prospective human-study endpoint design, CGM or metabolic-panel ingestion from early-phase trial subjects, bespoke immunologic assays.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Pharmacologic regeneration has crossed the biological plausibility threshold.</strong> Harmine-class DYRK1A inhibitors produce reproducible human β-cell proliferation; GLP-1 combination produces super-additive response. The next five years will be defined by combination-therapy design and first-in-human translation — both of which are analytic problems before they are biological ones.</li>
+      <li><strong>Combination-space design resists empirical stacking.</strong> DYRK1A inhibitor × GLP-1 × TGF-β inhibitor × senolytic is a combinatorial surface that cannot be exhaustively screened; the design problem requires causal structure on the signaling network, which is what Manifold's do-calculus and interdiction engines produce.</li>
+      <li><strong>Replacement paradigm as adjunct, not replacement.</strong> Insulin-independence in early-phase Vertex VX-880 cohorts reframes the regeneration question — pharmacologic regeneration becomes the patient-applicable complement to stem-cell-derived replacement, not its competitor, and ordering the two on a unified causal graph is directly in Manifold's scope.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, and the NIH NIDDK Human Islet Research Network (HIRN) consortium all have active Requests for Proposals explicitly including β-cell regeneration analytics.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the Stewart-Lab regeneration domain represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a Stewart-Lab principal investigator at the Mount Sinai Diabetes, Obesity, and Metabolism Institute is sought for:</p>
+    <ol>
+      <li>Retrospective compound × human-islet screen data access under Mount Sinai's existing Data Use Agreement.</li>
+      <li>Co-authorship on the heterogeneous-donor-response and combination-design benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D Cures, Helmsley Restoring Insulin Production, or NIH NIDDK for the Phase 2 translational arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

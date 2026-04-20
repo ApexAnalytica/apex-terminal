@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for Type 1 Diabetes (Restoration)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">Research-partnership brief — β-cell function preservation, regeneration, and replacement-therapy analytics</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>T1D does not end at diagnosis — it begins a decades-long contest for residual and restored β-cell function. Three clinical paradigms are now converging:</p>
+    <ul>
+      <li><strong>Preservation.</strong> Residual β-cell mass at diagnosis predicts long-term complications, glycemic stability, and insulin requirement. Current practice treats the honeymoon phase as luck; a handful of agents (teplizumab extension, low-dose ATG, verapamil, GLP-1 combinations) measurably slow C-peptide decay but response is heterogeneous.</li>
+      <li><strong>Regeneration.</strong> Pharmacologic β-cell proliferation is no longer hypothetical — DYRK1A inhibitors (harmine-class), GLP-1 / DYRK1Ai combinations, and senolytics have moved into human studies. The readout is slow and multi-signal; classical trial statistics under-exploit the data.</li>
+      <li><strong>Replacement.</strong> Stem-cell-derived islet therapies (Vertex VX-880, Sernova Cell Pouch, ViaCyte/CRISPR) have produced insulin-independence in early-phase patients. Each trial has small <em>n</em> and immense per-patient signal; graft-survival and immune-escape dynamics are the bottleneck.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice:</p>
+    <ul>
+      <li>Separation of heterogeneous treatment effect (response to teplizumab versus verapamil versus combination regimens) from noise at realistic trial sample sizes.</li>
+      <li>Treatment of post-infusion metabolic trajectories (C-peptide, CGM variability, inflammatory panels) as a <em>joint dynamical system</em> rather than as parallel endpoints.</li>
+      <li>Principled combination-therapy design (β-cell proliferation, immune tolerance, metabolic support) on an inferred causal graph, rather than by empirical stacking of agents.</li>
+    </ul>
+    <div class="apex-callout">
+      Vertex VX-880's initial cohort achieving insulin-independence constitutes a proof-of-principle rather than a finished therapy. The outstanding question is no longer whether β-cell function can be restored, but for which patients, with which adjuncts, and over what duration — a problem of causal inference.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the restoration configuration:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on multi-omic and clinical-trial data.</strong> Recovers the directed structure among genotype, autoantibody profile, drug exposure, and C-peptide / CGM response, providing the substrate for principled heterogeneous-treatment-effect inference.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Individual estimators are configured to post-intervention dynamics — honeymoon-phase hazard, graft-compromise early-warning signals, and combination-therapy response separation; the composite fragility score provides a stable integration layer across them.</li>
+      <li><strong>Pearl do-calculus and interdiction.</strong> Combination-therapy design is framed as a maximum-attenuation intervention on the inferred causal graph, producing a principled ordering of β-cell-proliferative, immune-tolerogenic, and metabolic adjuncts rather than empirical stacking.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — restoration physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>Restoration reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Drug × genotype × autoantibody-profile interactions for combo response; graft × host-immune compatibility</td></tr>
+        <tr><td>R — Reserve</td><td>Residual β-cell mass (C-peptide AUC on MMTT); post-infusion graft functional mass; stress-test response under mixed-meal or glucagon challenge</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic coupling: cytokine-panel ↔ C-peptide transfer entropy; how continuing autoimmunity interacts with regenerated or transplanted β-cells</td></tr>
+        <tr><td>C — Cascade</td><td>β-cell senescence and ER-stress cascades; DYRK1A → cell-cycle-progression cascade; inflammatory escalation after graft exposure</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of honeymoon-end, graft-failure, or response-loss given current trajectory; time-to-restored-independence</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>Restoration-phase data is characterized by small sample sizes, rich longitudinal structure, and heterogeneous treatment response. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nonlinear mixed-effects C-peptide decay models</td><td>Per-subject honeymoon-phase prognosis; subject-level deviation from cohort decay curve</td><td>R, T</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, S / T / X-learners, BART)</td><td>Who responds to which drug or combination, under realistic trial sample sizes</td><td>I, C</td></tr>
+        <tr><td>Gaussian process regression on sparse post-infusion trajectories</td><td>Graft-function estimation and uncertainty with n &lt; 20 and irregular follow-up</td><td>R, T</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on CGM + inflammatory panels</td><td>Graft-compromise and honeymoon-end detection with calibrated uncertainty</td><td>J, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> between inflammatory cytokine panels and C-peptide / CGM signals — quantifies the immune-metabolic coupling (J) that drives graft rejection and regenerative failure.</li>
+      <li><strong>Variance-based early-warning signals</strong> on high-frequency CGM windows in the first 30 days post-infusion, providing a leading indicator of graft compromise before mean function declines.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to the partnering investigator within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Dataset option A — preservation.</strong> Retrospective teplizumab, ATG, or verapamil trial data with serial C-peptide AUC, MMTT, and autoantibody titers. The Joslin T1D Medalist honeymoon cohort serves as long-horizon validation.</li>
+      <li><strong>Dataset option B — replacement.</strong> Published or collaborator-provided Phase 1/2 islet-cell-therapy post-infusion trajectories (Vertex VX-880 cohort-level summaries or partner-site raw data; Sernova Cell Pouch clinical data).</li>
+      <li><strong>Access path.</strong> Breakthrough T1D or NIDDK HIRN-sponsored Data Use Agreement with a trial-adjacent principal investigator or consortium.</li>
+      <li><strong>Deliverable.</strong> Per-subject <span class="apex-omega">Ω</span>F trajectory integrating mixed-effects, heterogeneous-treatment-effect, and Gaussian process estimators, benchmarked against the trial's published biostatistical analysis. For preservation: 6, 12, and 24-month C-peptide hazard. For replacement: graft-function hazard and combination-response classification.</li>
+      <li><strong>Success criteria.</strong> Heterogeneous-treatment-effect recovery on a held-out trial arm matching or exceeding the pre-specified biostatistical analysis; identification of at least one interpretable responder / non-responder subgroup decomposable along <span class="apex-omega">Ω</span>F pillars.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 prospective arm): live CGM ingestion from open-loop pumps, bespoke immunologic assays, and multi-site prospective design.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Replacement has crossed the proof-of-principle threshold.</strong> Insulin-independence in early-phase Vertex VX-880 patients represents a stage-change for the field. The next five years will be defined by generalization — identifying responders and appropriate adjuncts — which is an analytic problem before it is a clinical one.</li>
+      <li><strong>Pharmacologic regeneration is clinically tractable.</strong> DYRK1A inhibitor programs and GLP-1 / DYRK1A-inhibitor combinations have entered human studies. Their readout is multi-signal and gradual, precisely the regime in which composite-fragility framing outperforms endpoint-by-endpoint analysis.</li>
+      <li><strong>Preservation has approved agents.</strong> Teplizumab post-diagnosis, verapamil, low-dose ATG, and GLP-1 adjuncts are all clinically actionable today; the analytic gap lies in matching patient to therapy rather than in drug discovery.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, and the NIH NIDDK Human Islet Research Network (HIRN) consortium all have active Requests for Proposals in this space.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the restoration domain represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a β-cell-regeneration, islet-transplant, or preservation-trial principal investigator (or equivalent cohort steward — Joslin, Mount Sinai Stewart Lab, a Vertex trial collaborator, or a HIRN consortium member) is sought for:</p>
+    <ol>
+      <li>Retrospective trial or registry data access under the partnering institution's existing Data Use Agreement.</li>
+      <li>Clinical co-authorship on the heterogeneous-treatment-effect / graft-survival benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D Cures, Helmsley Restoring Insulin Production, or NIH NIDDK HIRN for the Phase 2 prospective arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

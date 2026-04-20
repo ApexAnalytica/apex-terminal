@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · UBC Kieffer)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-UBC</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">University of British Columbia — stem-cell-derived β-cell differentiation, maturation, and graft-performance analytics</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>The translation of stem-cell-derived β-cells from in-vitro protocol to insulin-independent clinical outcome is now empirically established — VX-880's initial cohort being the proof-of-principle. What is not yet established, at the analytic level required for efficient next-generation program design, is the directed causal structure connecting differentiation-protocol variables, maturation-state biomarkers, and post-graft functional outcome. The UBC Life Sciences Institute — with direct lineage through the ViaCyte program and continuing leadership in SC-β biology — holds a substrate unmatched elsewhere:</p>
+    <ul>
+      <li><strong>Differentiation-protocol variability.</strong> Stage-specific signaling modulator concentrations, timing, and sequence produce SC-β populations with divergent maturation states, insulin-secretory dynamics, and post-transplant performance. The mapping from protocol parameters to functional outcome is currently characterized empirically; recovering the directed structure is the analytic tractability frontier.</li>
+      <li><strong>Preclinical-to-clinical translation signal.</strong> UBC's historical and continuing work bridging rodent and non-human primate preclinical outcomes with human clinical performance — including ViaCyte legacy data — provides the substrate for translation-prediction inference that newer labs cannot replicate.</li>
+      <li><strong>Encapsulation, immune-evasion, and genetic engineering.</strong> Gene-edited (including CRISPR-modified) and encapsulated SC-β architectures introduce new axes on the design space. Their ordering relative to conventional immunosuppression-based approaches requires causal structure on the joint outcome graph.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice across SC-β research:</p>
+    <ul>
+      <li>Unified causal modeling of differentiation-protocol parameters, maturation-state biomarkers, and post-graft functional outcome — recovering the directed structure from the joint data rather than pursuing marginal parameter-sweeps.</li>
+      <li>Translation-prediction inference bridging rodent, non-human primate, and human performance — heterogeneous-species-effect learners calibrated on the legacy translation record.</li>
+      <li>Principled prioritization of encapsulation, gene-editing, and immune-evasion variant programs on a unified causal graph, ranking modifications by attenuation of the dominant failure-mode cascade at each translation stage.</li>
+    </ul>
+    <div class="apex-callout">
+      Stem-cell-derived β-cells have crossed from biological possibility to clinical insulin-independence. The field's next five years will be defined by protocol-to-performance generalization and by next-generation architecture design — encapsulation, gene-editing, immune-evasion — which is fundamentally a causal-inference problem on the legacy translation record and the high-dimensional design space.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the UBC-configured deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on the differentiation-to-outcome record.</strong> Recovers the directed structure among protocol parameters, maturation biomarkers, preclinical graft performance, and — where available — clinical outcome, providing the substrate for protocol-to-performance inference and next-generation design.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Configured for preclinical-to-clinical translation — Gaussian process regression on dose-protocol response surfaces, heterogeneous-treatment-effect learners on genetic-edit variants, Bayesian change-point on maturation trajectories, species-effect models for translation prediction — with the composite score as a stable integration layer.</li>
+      <li><strong>Pearl do-calculus and interdiction on the design graph.</strong> Encapsulation, gene-editing, and immune-evasion variant prioritization is framed as maximum-attenuation intervention on the inferred failure-mode cascade, producing principled rankings of candidate modifications rather than empirical program-by-program iteration.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — SC-β design and graft-performance physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>SC-β reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Differentiation-protocol parameter × maturation-state × genetic-modification × graft-architecture interactions; SC-β × host-immune compatibility</td></tr>
+        <tr><td>R — Reserve</td><td>Maturation-state functional mass proxied by GSIS, insulin content, and expression-panel markers; post-graft functional mass across species</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic coupling across preclinical and clinical translation; encapsulation-barrier × host-immune coupling</td></tr>
+        <tr><td>C — Cascade</td><td>β-cell differentiation-to-maturation cascade (NKX6.1, MAFA, PDX1); dedifferentiation cascades under post-graft stress; encapsulation-fibrosis cascades</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of maturation-state regression, graft failure, or response loss given trajectory; time-to-functional-maturity; time-to-insulin-independence across species</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>SC-β research data is high-dimensional across differentiation protocol and genetic-modification space, longitudinally rich per preparation, and cross-species in translation signal. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Gaussian process regression on protocol-parameter × outcome surfaces</td><td>Sparse dose-protocol surface estimation with calibrated uncertainty; prediction of untested protocol variants</td><td>I, R</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, BART) on genetic-modification variants</td><td>Gene-edit and encapsulation variant response differentiation at realistic preclinical sample sizes</td><td>I, C</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on maturation-marker trajectories</td><td>Differentiation-state transition and dedifferentiation-onset detection with calibrated uncertainty</td><td>C, T</td></tr>
+        <tr><td>Cross-species translation models (hierarchical with species-effect)</td><td>Preclinical-to-clinical prediction bridging rodent, non-human primate, and human data</td><td>R, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> across the differentiation-marker cascade — quantifies the Cascade-pillar directional coupling during SC-β maturation and dedifferentiation.</li>
+      <li><strong>Persistent homology</strong> on longitudinal single-cell maturation trajectories — topological regime detection across differentiation-state space, valuable for identifying maturation-arrested populations before functional readouts confirm.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to the UBC Life Sciences Institute within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> UBC-resident differentiation-protocol and preclinical SC-β performance data, with per-protocol maturation-state biomarkers, graft-functional readouts (GSIS, C-peptide, insulin content), and post-transplant outcome across available species. Where accessible under existing collaboration frameworks, ViaCyte-legacy preclinical-to-clinical translation record as complementary input.</li>
+      <li><strong>Access path.</strong> UBC-internal Data Use Agreement, under the sponsorship of a Life Sciences Institute principal investigator; collaboration-framework access to legacy translation data where appropriate.</li>
+      <li><strong>Deliverable.</strong> Causal-graph characterization of the differentiation-to-post-graft-outcome pathway. Per-preparation <span class="apex-omega">Ω</span>F trajectory integrating Gaussian-process, heterogeneous-treatment-effect, and change-point estimators. Pearl-do-calculus ranking of next-generation encapsulation and gene-editing modifications by attenuation of the dominant failure-mode cascade.</li>
+      <li><strong>Success criteria.</strong> Protocol-to-outcome causal graph consistent with pre-specified biological priors; preclinical-to-clinical translation prediction with calibration exceeding the Lab's current empirical baseline; interdiction-engine next-generation-variant rankings interpretable and actionable by UBC investigators.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 translational arm): prospective human-study design, live clinical-trial data ingestion, bespoke assay development.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Replacement has crossed the proof-of-principle threshold.</strong> Insulin-independence in early-phase Vertex VX-880 patients is a stage-change for the field. The next five years will be defined by protocol-to-performance generalization and by next-generation architecture design — both analytic problems before they are biological ones.</li>
+      <li><strong>UBC's translation lineage is an unusual substrate.</strong> The combination of current SC-β biology leadership with the ViaCyte-era preclinical-to-clinical translation record is a dataset no newer lab can reproduce. The analytic tools appropriate to cross-species translation inference have matured to production grade against this substrate.</li>
+      <li><strong>Encapsulation and gene-edited architectures are the next design axes.</strong> The acquisition-consolidated program landscape produces many parallel encapsulation, immune-evasion, and gene-edit variants; principled ordering of them requires causal structure on the joint outcome graph, which is Manifold's scope.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, Canadian Institutes of Health Research, and NIH NIDDK all have active Requests for Proposals spanning SC-β analytics.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the SC-β differentiation and graft-performance domains represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a principal investigator at the UBC Life Sciences Institute is sought for:</p>
+    <ol>
+      <li>Retrospective differentiation-protocol and preclinical SC-β performance data access under UBC's existing Data Use Agreement.</li>
+      <li>Co-authorship on the protocol-to-performance causal-integration and next-generation-variant interdiction benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D Cures, Helmsley Restoring Insulin Production, CIHR, or NIH NIDDK for the Phase 2 translational arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

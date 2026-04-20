@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · nPOD / UF Atkinson)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-NPOD</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">Network for Pancreatic Organ Donors with Diabetes (nPOD) — tissue-level causal integration across T1D disease stages</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>nPOD occupies a position in T1D research that no other resource can match: the collection and characterization of pancreatic tissue from organ donors across the full disease spectrum — at-risk autoantibody-positive, new-onset, established, and long-duration T1D — paired with recipient clinical history, multi-omic tissue characterization (histology, single-cell transcriptomics, spatial transcriptomics, proteomics), and a distributed investigator network. The resource has substantially redefined T1D pathology in the last fifteen years. The analytic frontier ahead of the current methodology is structural:</p>
+    <ul>
+      <li><strong>Tissue-level causal inference across the disease spectrum.</strong> Features of pancreatic tissue (islet mass, insulitis intensity, β-cell senescence markers, endocrine-exocrine coupling, residual β-cell phenotype) vary systematically across nPOD disease-stage strata. Recovering the directed structure — which tissue-level features are consequence, which are cause, which are upstream drivers of progression — is a causal-inference problem that parallel-correlation analyses do not address.</li>
+      <li><strong>Multi-omic integration across modalities.</strong> Single-cell transcriptomics, spatial transcriptomics, proteomics, and clinical-history covariates cohere biologically but are typically analyzed within-modality. Cross-modality directed-graph inference is the tool the integrated data volume warrants.</li>
+      <li><strong>Distributed-investigator analytic coherence.</strong> nPOD-affiliated investigator groups produce analyses on overlapping tissue panels. A shared <span class="apex-omega">Ω</span>F decomposition provides a standardized comparative layer across investigator analyses — a methodological contribution the consortium has separately identified as a field-level need.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current nPOD-linked analytic practice:</p>
+    <ul>
+      <li>Unified causal modeling across pancreatic-tissue disease-stage strata — recovering the directed structure connecting autoantibody profile, islet mass, insulitis, β-cell phenotypic signatures, and residual function, rather than stratum-by-stratum characterization.</li>
+      <li>Cross-modality integration of histological, transcriptomic, proteomic, and clinical-history data into a single causal substrate.</li>
+      <li>Composite-fragility decomposition (<span class="apex-omega">Ω</span>F) as a standardized comparative layer across nPOD-affiliated investigator analyses — enabling cross-study benchmarking within the consortium on a common analytic footing.</li>
+    </ul>
+    <div class="apex-callout">
+      nPOD is the only resource in T1D research producing pancreatic tissue across the full disease spectrum paired with deep clinical history and multi-omic characterization. The outstanding question — what drives progression from at-risk autoantibody status to clinical disease to established hypoinsulinemia at the tissue level — is no longer a descriptive problem but a causal-inference problem on the integrated nPOD substrate.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the nPOD-configured deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on nPOD multi-modal tissue data.</strong> Recovers the directed structure among histological features, transcriptomic and proteomic signatures, autoantibody profile, and disease-stage clinical covariates, providing the substrate for stage-transition causal inference.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Configured for tissue-level disease-stage data — persistent homology on multi-omic tissue manifolds, heterogeneous-exposure-effect learners for autoantibody profile and environmental-history covariates, Bayesian change-point on disease-stage transition markers — with the composite score as a standardized layer for cross-investigator comparison.</li>
+      <li><strong>Pearl do-calculus and interdiction on the tissue-level graph.</strong> Target prioritization for preservation and regeneration programs is framed as maximum-attenuation intervention on the inferred progression cascade at the tissue level, identifying the tissue-level pathway junctions where interventions produce maximum downstream attenuation.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — pancreatic tissue physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>nPOD tissue reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Autoantibody × HLA × tissue-feature interactions; immune-cell infiltrate × residual β-cell phenotype × endocrine-exocrine coupling</td></tr>
+        <tr><td>R — Reserve</td><td>Residual islet mass by histology; β-cell functional-marker density; residual insulin / C-peptide immunoreactivity across disease-stage strata</td></tr>
+        <tr><td>J — Junction</td><td>Insulitis intensity and immune-cell infiltrate composition at the islet boundary; endocrine-exocrine interface signatures</td></tr>
+        <tr><td>C — Cascade</td><td>β-cell senescence and dedifferentiation cascades in situ; ER-stress and apoptosis markers; epitope-spreading signatures across disease-stage strata</td></tr>
+        <tr><td>T — Temporal</td><td>Disease-stage progression hazard; time-to-established-T1D from autoantibody-positive state given tissue-level and clinical covariates</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>nPOD data is tissue-level, multi-modal, and stratified across disease stages rather than longitudinal per subject. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Persistent homology on multi-omic tissue manifolds</td><td>Topological regime detection across disease-stage strata; identification of discontinuous phenotypic clusters within-stratum</td><td>I, C</td></tr>
+        <tr><td>Heterogeneous-exposure-effect learners (Causal Forest, BART) on autoantibody and environmental-history profile</td><td>Tissue-feature differentiation across autoantibody-profile and environmental-exposure subgroups</td><td>I, C</td></tr>
+        <tr><td>Bayesian change-point across disease-stage strata</td><td>Stage-transition boundary detection in tissue-feature space; progression-marker inflection identification</td><td>C, T</td></tr>
+        <tr><td>Spatial-transcriptomic coupling models (Gaussian random field, neighborhood-enrichment)</td><td>Insulitis × residual β-cell spatial coupling; endocrine-exocrine interface feature characterization</td><td>J, C</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> across cross-modality tissue-feature panels — quantifies directional coupling between histological, transcriptomic, and proteomic signatures of β-cell stress and regeneration.</li>
+      <li><strong>Graph neural networks</strong> on the discovered tissue-level causal graph — provides tractable inference under interventional queries for target-prioritization analyses.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to nPOD and to the broader nPOD-affiliated investigator network within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> nPOD pancreatic-tissue multi-omic data across at least three disease-stage strata (autoantibody-positive at-risk, new-onset T1D, established T1D), paired with donor clinical history and autoantibody profile. Scope prioritized to modalities already shared across the nPOD investigator network (histology, scRNA-seq, proteomics) to maximize consortium utility of the deliverable.</li>
+      <li><strong>Access path.</strong> nPOD Data Access Committee under the sponsorship of a UF Diabetes Institute principal investigator.</li>
+      <li><strong>Deliverable.</strong> Cross-modality tissue-level causal graph spanning the selected disease-stage strata. Per-donor <span class="apex-omega">Ω</span>F decomposition across the full five-pillar framework, positioned as a standardized cross-investigator comparative layer. Pearl-do-calculus ranking of tissue-level pathway junctions where preservation and regeneration interventions are predicted to produce maximum downstream attenuation.</li>
+      <li><strong>Success criteria.</strong> Tissue-level causal graph validated against pre-specified biological priors from nPOD and UF investigators; identification of at least one previously unrecognized tissue-level progression pathway; methodological deliverable suitable for publication in an nPOD-affiliated venue and usable by the broader investigator network as a standardized comparative substrate.</li>
+      <li><strong>Timeline.</strong> Fourteen to sixteen weeks from data access, reflecting the cross-modality and cross-stratum integration complexity.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 expansion): integration across all available nPOD modalities simultaneously, prospective tissue-acquisition coordination, bespoke assay development.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>nPOD is a uniquely positioned resource.</strong> Pancreatic tissue across the full T1D disease spectrum, paired with deep clinical history and cross-modality multi-omic characterization, does not exist elsewhere. The analytic tools appropriate to tissue-level causal integration at this scale — causal-discovery engines, persistent homology, spatial-transcriptomic modeling — have only recently matured to production grade against it.</li>
+      <li><strong>Preservation and regeneration programs are tissue-driven.</strong> Teplizumab, verapamil, DYRK1A inhibitors, and forthcoming agents operate on tissue-level pathway junctions that nPOD data characterizes better than any patient-trajectory dataset. Principled target prioritization routes through tissue-level causal inference, which is the Manifold deployment's native substrate.</li>
+      <li><strong>Replacement paradigm broadens, not narrows, the tissue-biology question.</strong> Insulin-independence in early-phase Vertex VX-880 cohorts and reproducible human β-cell proliferation via DYRK1A inhibition both reinforce the field's need for tissue-level understanding of what distinguishes residual-function phenotypes — the question nPOD is structured to answer.</li>
+      <li><strong>Consortium-utility framing aligns with funding priorities.</strong> nPOD, Breakthrough T1D, Helmsley Charitable Trust, and NIH NIDDK have each prioritized methodological deliverables that serve the broader investigator network; a standardized <span class="apex-omega">Ω</span>F decomposition is structured to meet that requirement.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for nPOD tissue-level multi-modal data represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a University of Florida Diabetes Institute principal investigator affiliated with nPOD is sought for:</p>
+    <ol>
+      <li>Retrospective nPOD cross-modality tissue data access under the nPOD Data Access Committee framework.</li>
+      <li>Co-authorship on the tissue-level causal-integration methodological manuscript, positioned as an nPOD-affiliated consortium deliverable.</li>
+      <li>Co-application to NIH NIDDK, Breakthrough T1D, or the Helmsley Charitable Trust for the Phase 2 arm extending integration across additional modalities and disease-stage strata.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

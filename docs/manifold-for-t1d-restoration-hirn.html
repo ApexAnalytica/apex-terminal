@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · NIDDK HIRN)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-HIRN</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">NIDDK Human Islet Research Network — cross-consortium multi-omic causal integration</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>The NIH NIDDK Human Islet Research Network (HIRN) was established on the recognition that T1D restoration research is fundamentally a multi-disciplinary integration problem. Its four operating consortia — CBDS (Beta-Cell Death and Survival), CTAR (Targeting and Regeneration), CHIB (Human Islet Biomimetics and Bioengineering), and HIPP (Human Islet Phenotyping Program) — each contribute rich, orthogonal signal to the same underlying biological substrate. The field-level analytic gap is the integration itself:</p>
+    <ul>
+      <li><strong>Cross-consortium causal integration.</strong> β-cell death pathways (CBDS), regenerative target space (CTAR), engineered-islet biomimetics (CHIB), and phenotypic characterization (HIPP) cohere biologically but are typically analyzed within consortium boundaries. The directed structure connecting them — which death cascade responds to which regenerative intervention in which engineered substrate under which phenotypic profile — is the natural domain of a causal-discovery engine.</li>
+      <li><strong>Multi-omic data volume has outrun conventional integration.</strong> HIPP's deep phenotyping of human islets, combined with the cross-consortium transcriptomic, proteomic, and functional-assay output, exceeds what parallel-correlation GWAS-style integration recovers. Principled conditional-independence-based directed-acyclic-graph inference is the tool the volume warrants.</li>
+      <li><strong>Translational pipeline requires interdiction framing.</strong> Moving HIRN-generated biology into trial-ready interventions — whether pharmacologic (CTAR), engineered (CHIB), or cell-therapy-adjacent — is a rational-ordering problem on the inferred causal graph, not a discovery problem.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped across the HIRN analytic surface:</p>
+    <ul>
+      <li>Unified causal modeling across consortia — integrating β-cell death cascade (CBDS), regenerative-target pathway (CTAR), biomimetic-engineering substrate (CHIB), and phenotypic characterization (HIPP) into a single directed graph rather than parallel consortium analyses.</li>
+      <li>Principled target prioritization across the combined pipeline — which regenerative target attenuates which death cascade under which engineered context, ranked by composite intervention leverage.</li>
+      <li>Composite-fragility framing for cross-consortium benchmarking — a standardized <span class="apex-omega">Ω</span>F decomposition that allows CBDS death markers, CTAR regenerative readouts, CHIB graft-performance measures, and HIPP phenotype signatures to be compared and integrated on a common analytic substrate.</li>
+    </ul>
+    <div class="apex-callout">
+      HIRN's constituent consortia are individually world-class. The field-level question is whether their combined output can be integrated on a single causal substrate to produce translational leverage that exceeds the sum of consortium outputs — a problem of cross-consortium causal inference and principled interdiction.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the HIRN-configured deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on cross-consortium multi-omic data.</strong> Recovers the directed structure among death-cascade markers (CBDS), regenerative-pathway targets (CTAR), engineered-substrate performance (CHIB), and phenotype signatures (HIPP), providing the cross-consortium causal substrate.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Configured as a unifying benchmark across consortium outputs — heterogeneous-treatment-effect learners on CTAR intervention data, persistent-homology and topological estimators on HIPP phenotypic manifolds, change-point estimators on CHIB graft-performance trajectories, survival models on CBDS death-cascade readouts — with the composite score providing a stable integration layer.</li>
+      <li><strong>Pearl do-calculus and interdiction on the cross-consortium graph.</strong> Translational-pipeline prioritization — which regenerative target, engineered substrate, and phenotypic patient subgroup to advance — is framed as maximum-attenuation intervention on the inferred directed structure, producing principled target rankings rather than consortium-by-consortium empirical selection.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — HIRN cross-consortium physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>HIRN reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Cross-consortium signal interactions: death-cascade × regenerative-target × engineered-substrate × phenotype coupling</td></tr>
+        <tr><td>R — Reserve</td><td>Baseline and engineered β-cell functional mass across HIPP phenotyping and CHIB biomimetic substrates</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic and death-regeneration cascade junctions; cross-consortium transfer-entropy structure</td></tr>
+        <tr><td>C — Cascade</td><td>CBDS death cascades (ER stress, apoptosis, autophagy) and their interaction with CTAR regenerative cascades (DYRK1A, mTOR, FOXO1)</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of β-cell loss, graft compromise, or regenerative response loss across the integrated pipeline</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>HIRN data is heterogeneous across consortia in modality, sample size, and longitudinal structure. The criticality layer is configured to accommodate the full range:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Persistent homology on HIPP multi-omic phenotypic manifolds</td><td>Topological regime detection across donor phenotypes; identification of discontinuous phenotypic clusters</td><td>I, C</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, BART) on CTAR intervention data</td><td>Which targets produce differential response across HIPP-characterized phenotypic subgroups</td><td>I, C</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on CHIB graft-performance trajectories</td><td>Graft-compromise and biomimetic-substrate failure detection with calibrated uncertainty</td><td>J, T</td></tr>
+        <tr><td>Survival and mixed-effects models on CBDS death-cascade markers</td><td>Per-donor death-cascade hazard; time-to-apoptosis given stressor exposure</td><td>R, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> across consortium signal modalities — quantifies directional coupling between CBDS death-cascade activation, CTAR regenerative-pathway engagement, CHIB substrate response, and HIPP phenotypic state.</li>
+      <li><strong>Graph neural networks</strong> on the discovered cross-consortium causal graph — provides tractable inference under interventional queries once the graph is stabilized.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of cross-consortium analytic value within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> HIRN-shared multi-omic and functional data across at least two consortia — candidates include HIPP human-islet phenotyping output paired with either CBDS death-cascade assays or CTAR regenerative-intervention data. Cross-consortium integration is the analytic target rather than any single-consortium deepening.</li>
+      <li><strong>Access path.</strong> HIRN coordinating-center-sponsored Data Use Agreement, under the co-sponsorship of consortium principal investigators across the selected analytic pairing.</li>
+      <li><strong>Deliverable.</strong> Cross-consortium <span class="apex-omega">Ω</span>F decomposition integrating at least two consortium output streams onto a single causal graph. Prioritized target ranking via Pearl do-calculus with interdiction. Reproducible analytic pipeline suitable for community release as a HIRN-sanctioned methodological deliverable.</li>
+      <li><strong>Success criteria.</strong> Cross-consortium causal graph whose structure is validated against pre-specified biological priors from consortium PIs; prioritized target ranking that identifies at least one HIRN-tractable intervention pathway not prominent in single-consortium analyses; methodological deliverable suitable for publication in a HIRN-affiliated venue.</li>
+      <li><strong>Timeline.</strong> Twelve to sixteen weeks from data access, reflecting the cross-consortium integration complexity.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 expansion): integration across all four HIRN consortia simultaneously, prospective experimental validation, and bespoke assay development.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>HIRN is structurally positioned for integrative analytics.</strong> The consortium architecture was established explicitly to produce cross-modality integration; the analytic tools capable of delivering that integration at scale — causal-discovery engines on multi-omic data, composite-fragility decomposition — have only recently matured to production grade.</li>
+      <li><strong>Replacement and regeneration paradigms are converging.</strong> Insulin-independence in early-phase Vertex VX-880 cohorts and reproducible human β-cell proliferation via DYRK1A inhibition both reinforce that the near-term bottleneck is not biological discovery but principled prioritization across modalities — the problem HIRN was built to address.</li>
+      <li><strong>Cross-consortium prioritization has direct trial-design consequences.</strong> The targets and substrates HIRN advances become the candidate interventions for subsequent clinical studies. Principled interdiction-based ranking reduces the combinatorial design space actionably.</li>
+      <li><strong>Funding mechanisms are aligned.</strong> The NIH NIDDK HIRN itself, the Breakthrough T1D Cures program, and the Helmsley Charitable Trust Restoring Insulin Production stream all support cross-modality integrative analytics as a defined funding priority.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; cross-consortium configuration represents bounded, well-scoped integration work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with HIRN coordinating-center leadership and co-sponsoring consortium principal investigators is sought for:</p>
+    <ol>
+      <li>Cross-consortium retrospective data access under the HIRN coordinating-center Data Use Agreement framework.</li>
+      <li>Co-authorship on the cross-consortium causal-integration methodological manuscript, positioned as a HIRN-affiliated deliverable.</li>
+      <li>Co-application to NIH NIDDK HIRN expansion, Breakthrough T1D Cures, or the Helmsley Charitable Trust for the Phase 2 arm extending integration across additional consortia.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

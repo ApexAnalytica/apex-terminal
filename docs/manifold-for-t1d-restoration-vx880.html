@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · VX-880 Trial Site)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-VX880</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">VX-880 stem-cell-derived islet-therapy analytics — post-infusion trajectory, graft-function hazard, and patient-level response decomposition</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>The VX-880 trial has produced an outcome that was, five years ago, aspirational: patients with longstanding Type 1 Diabetes achieving insulin-independence following infusion of stem-cell-derived islet cells. The clinical and biological proof-of-principle is established. The analytic problem is now generalization:</p>
+    <ul>
+      <li><strong>Small-<em>n</em>, rich-signal trajectories.</strong> Each patient contributes an exceptionally dense longitudinal record — serial C-peptide AUC on mixed-meal-tolerance testing, continuous-glucose-monitor trajectories, inflammatory and cytokine panels, immunosuppression pharmacokinetics, autoantibody titers, graft-function biomarkers. Classical trial biostatistics under-exploit the joint dynamical structure.</li>
+      <li><strong>Graft-function hazard is the central question.</strong> The field must characterize what predicts durable engraftment, what precedes early graft compromise, and what distinguishes patients who reach insulin-independence from those who achieve partial response, across a sample size where subject-level hazard estimation is the constraint.</li>
+      <li><strong>Immunosuppression × autoimmunity × graft interaction.</strong> Continuing autoimmune pressure interacts with the immunosuppression regimen and with graft-level immunogenicity to produce a response surface that is fundamentally a causal-graph problem — not a marginal analysis.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice across stem-cell-derived islet-therapy trials:</p>
+    <ul>
+      <li>Rigorous graft-function hazard estimation at trial-realistic sample sizes (<em>n</em> typically under twenty per arm), with calibrated uncertainty.</li>
+      <li>Treatment of the post-infusion metabolic and immunologic panel as a <em>joint dynamical system</em> rather than as parallel endpoints, enabling early-warning detection of graft compromise before mean-function measures decline.</li>
+      <li>Unified causal modeling of donor-cell quality, recipient-immune state, immunosuppression exposure, and graft outcome — the substrate for principled second-generation regimen design.</li>
+    </ul>
+    <div class="apex-callout">
+      VX-880's initial cohort achieving insulin-independence constitutes a proof-of-principle. The next wave of analytic questions — who reaches durable engraftment, what precedes graft compromise, which adjuncts and immunosuppression regimens most attenuate loss-of-function hazard — is a problem of causal inference on small-<em>n</em> high-signal trajectories.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the VX-880-trial-configured deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on the post-infusion multi-signal record.</strong> Recovers the directed structure among donor-cell characteristics, immunosuppression exposure, immunologic response, metabolic trajectory, and graft-function outcome — the substrate for heterogeneous-response inference and regimen-design interdiction.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Individual estimators are configured to small-<em>n</em> longitudinal trajectories — Gaussian process regression on sparse post-infusion data, Bayesian online change-point on CGM and inflammatory panels, variance-based early-warning signals, and heterogeneous-treatment-effect learners for immunosuppression response — and the composite fragility score provides a stable integration layer across them.</li>
+      <li><strong>Pearl do-calculus and interdiction.</strong> Second-generation regimen design (adjunct immunosuppression, tolerogenic combinations, encapsulation-based approaches such as VX-264) is framed as a maximum-attenuation intervention on the inferred causal graph, producing a principled ordering of candidate modifications rather than empirical iteration.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — post-infusion physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>VX-880 post-infusion reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Donor-cell characteristic × recipient-HLA × immunosuppression-exposure interactions; graft × host-immune compatibility</td></tr>
+        <tr><td>R — Reserve</td><td>Post-infusion functional graft mass (C-peptide AUC on MMTT); stress-test response under mixed-meal or glucagon challenge; time-to-first-independence</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic coupling: cytokine-panel ↔ C-peptide transfer entropy; autoantibody trajectory × graft-function correlation</td></tr>
+        <tr><td>C — Cascade</td><td>Early-inflammation cascade post-infusion; allo- and auto-immune escalation triggers; progression of graft attrition</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of graft compromise, response loss, or insulin-dependence return given current trajectory</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>VX-880 trial data is small-<em>n</em> per arm, longitudinally dense per subject, and signal-rich across metabolic, immunologic, and pharmacologic panels. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Gaussian process regression on sparse post-infusion trajectories</td><td>Graft-function estimation and calibrated uncertainty with <em>n</em> &lt; 20 and irregular follow-up</td><td>R, T</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on CGM and inflammatory panels</td><td>Graft-compromise detection with calibrated uncertainty; earliest-signal inflammatory escalation</td><td>J, T</td></tr>
+        <tr><td>Variance-based early-warning signals on high-frequency CGM windows</td><td>Leading indicator of graft compromise before mean C-peptide declines</td><td>J, T</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, S / T / X-learners, BART)</td><td>Recipient-level response prediction under immunosuppression regimen variants; identification of responder / non-responder subgroups at realistic sample sizes</td><td>I, C</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> between inflammatory cytokine panels and C-peptide / CGM signals — quantifies the immune–metabolic coupling (J) that drives graft rejection and response loss.</li>
+      <li><strong>Persistent homology</strong> on longitudinal multi-omic trajectories — topological regime detection across pre-compromise and post-compromise states; particularly valuable when only subclinical signals precede visible graft attrition.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to the trial site within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> Site-level VX-880 post-infusion record: serial C-peptide AUC on MMTT, CGM trajectories, inflammatory and cytokine panels, immunosuppression pharmacokinetics, autoantibody titers, and graft-function biomarkers, with per-subject donor-cell and recipient covariates. Where available, early VX-264 encapsulated-variant data as complementary signal.</li>
+      <li><strong>Access path.</strong> Site-institutional Data Use Agreement, under the sponsorship of the trial principal investigator.</li>
+      <li><strong>Deliverable.</strong> Per-subject <span class="apex-omega">Ω</span>F trajectory integrating Gaussian-process, change-point, and heterogeneous-treatment-effect estimators. Graft-function hazard decomposition at 30, 90, 180, and 365 days post-infusion. Pearl-do-calculus characterization of the adjunct and immunosuppression interventions predicted to most attenuate loss-of-function hazard.</li>
+      <li><strong>Success criteria.</strong> Graft-compromise change-point detection preceding the trial's pre-specified metabolic endpoint by a clinically meaningful margin in at least one retrospective subject; identification of at least one interpretable responder / non-responder subgroup decomposable along <span class="apex-omega">Ω</span>F pillars; interdiction-engine output interpretable and actionable by the site's clinical team.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 prospective arm): prospective trial design, live CGM ingestion from current subjects, bespoke immunologic assays.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Replacement has crossed the proof-of-principle threshold.</strong> Insulin-independence in early-phase VX-880 patients is a stage-change for the field. The next five years will be defined by generalization — identifying responders, characterizing graft-compromise precursors, and designing second-generation regimens — which is an analytic problem before it is a clinical one.</li>
+      <li><strong>Signal density exceeds current analytic exploitation.</strong> Each post-infusion subject contributes a longitudinal record whose joint dynamical structure is under-exploited by endpoint-by-endpoint biostatistics. Composite fragility framing recovers the signal that classical trial analysis leaves on the table.</li>
+      <li><strong>Encapsulated and next-generation variants are entering trials.</strong> The analytic substrate for VX-264 and successor programs will be comparable in structure and smaller still in initial <em>n</em>; the tools that most efficiently exploit the VX-880 record are the tools that will accelerate the follow-on programs.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, and the NIH NIDDK Human Islet Research Network (HIRN) consortium all have active Requests for Proposals spanning stem-cell-derived islet-therapy analytics.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the VX-880 post-infusion analytic domain represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a VX-880 trial principal investigator at the participating site is sought for:</p>
+    <ol>
+      <li>Retrospective post-infusion trial data access under the site's existing Data Use Agreement.</li>
+      <li>Clinical co-authorship on the graft-function hazard and post-infusion response-decomposition benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D Cures, Helmsley Restoring Insulin Production, or NIH NIDDK for the Phase 2 prospective arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

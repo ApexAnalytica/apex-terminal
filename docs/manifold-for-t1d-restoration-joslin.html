@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Manifold for T1D (Restoration · Joslin)</title>
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Research Brief · M-T1D-02-JOSLIN</div>
+      <div>2026-04-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title apex-title--long">Manifold for Type 1 Diabetes — Restoration</h1>
+  <p class="apex-subtitle">Joslin Diabetes Center — β-cell preservation, Medalist residual-function analytics, and honeymoon-phase response prediction</p>
+
+  <main>
+
+    <h2>1 · The clinical problem</h2>
+    <p>Type 1 Diabetes does not end at diagnosis — it begins a decades-long contest for residual and restored β-cell function. Three clinical paradigms are now converging across the field (preservation, regeneration, replacement), and the Joslin Diabetes Center sits at the center of the preservation paradigm with two assets that no other institution possesses at comparable depth:</p>
+    <ul>
+      <li><strong>The Joslin Medalist Study.</strong> Fifty or more years of T1D, with a subset of patients retaining detectable C-peptide and mixed-meal-tolerance-test response decades after diagnosis. The Medalist cohort is the world's most direct empirical demonstration that β-cell function can persist under continuous autoimmune pressure — and the identification of the patient features that predict this persistence is a causal-inference problem the cohort has, to date, been analyzed on without a unified framework.</li>
+      <li><strong>The Joslin Clinic new-onset and honeymoon population.</strong> One of the largest T1D clinical populations in the United States, with serial C-peptide AUC, MMTT, autoantibody titer, and (for recent cohorts) CGM data across the window in which teplizumab, verapamil, low-dose ATG, and GLP-1 adjuncts are clinically actionable.</li>
+    </ul>
+    <p>Three capabilities remain underdeveloped in current analytic practice across preservation studies, including the analyses applied to Medalist and Clinic data to date:</p>
+    <ul>
+      <li>Separation of heterogeneous treatment effect (response to teplizumab versus verapamil versus combination regimens) from noise at realistic trial sample sizes.</li>
+      <li>Treatment of post-diagnosis metabolic trajectories (C-peptide decay curves, CGM variability, inflammatory panels) as a <em>joint dynamical system</em> rather than as parallel endpoints.</li>
+      <li>Unified causal modeling of the features distinguishing Medalist-phenotype long-term residual function from expected C-peptide decline, spanning HLA, autoantibody profile, metabolic history, and stress-response signatures.</li>
+    </ul>
+    <div class="apex-callout">
+      The Medalist observation — that some patients retain measurable C-peptide fifty years into T1D — is a stage-change in how the field conceives of β-cell reserve. The outstanding question is no longer whether persistent residual function exists, but what distinguishes the patients in whom it persists — a problem of causal inference across genetic, immunologic, and longitudinal-metabolic data.
+    </div>
+
+    <h2>2 · What Manifold brings</h2>
+    <p>Manifold is a causal-intelligence platform for detecting structural fragility and regime transitions in complex multi-signal systems. Three engine capabilities form the basis of the Joslin-configured restoration deployment:</p>
+    <ol>
+      <li><strong>Causal discovery (Spirtes / PC algorithm) on the Medalist multi-omic panel and Clinic longitudinal data.</strong> Recovers the directed structure among HLA, autoantibody profile, metabolic history, and residual C-peptide response, providing the substrate for principled responder / non-responder classification.</li>
+      <li><strong>Criticality estimators feeding a composite fragility score (<span class="apex-omega">Ω</span>F).</strong> Individual estimators are configured to the Joslin data — nonlinear mixed-effects C-peptide decay, Bayesian change-point on honeymoon-end timing, heterogeneous-treatment-effect learners for preservation-agent response — and the composite fragility score provides a stable integration layer across them.</li>
+      <li><strong>Pearl do-calculus and interdiction.</strong> Preservation-therapy selection is framed as a maximum-attenuation intervention on the inferred causal graph, producing a principled ordering of teplizumab, verapamil, low-dose ATG, and GLP-1 adjuncts on a per-patient basis rather than empirical sequencing.</li>
+    </ol>
+
+    <h2>3 · <span class="apex-omega">Ω</span>F pillar mapping — Joslin preservation physiology</h2>
+    <table>
+      <thead>
+        <tr><th><span class="apex-omega">Ω</span>F pillar</th><th>Joslin reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>I — Interaction</td><td>Autoantibody × HLA × drug-exposure interactions for preservation response; Medalist-phenotype genotype × metabolic-history interactions</td></tr>
+        <tr><td>R — Reserve</td><td>C-peptide AUC on MMTT as direct β-cell functional-mass proxy; Medalist long-horizon residual-function signature</td></tr>
+        <tr><td>J — Junction</td><td>Immune–metabolic coupling: autoantibody titer ↔ C-peptide transfer entropy; cytokine-panel ↔ glycemic-variability coupling across honeymoon</td></tr>
+        <tr><td>C — Cascade</td><td>Autoreactive T-cell clonal expansion post-diagnosis; epitope-spreading rate; β-cell senescence and ER-stress trajectory in Medalist tissue</td></tr>
+        <tr><td>T — Temporal</td><td>Hazard of honeymoon-end given current trajectory; time-to-loss-of-residual-function in Medalist long-horizon subjects</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4 · Criticality estimator configuration</h2>
+    <p>Joslin preservation data is longitudinally rich, heterogeneous in treatment response, and — in the Medalist subset — uniquely long-horizon. The criticality layer is configured accordingly:</p>
+    <table>
+      <thead>
+        <tr><th>Estimator</th><th>What it catches</th><th>Pillar feed</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nonlinear mixed-effects C-peptide decay models</td><td>Per-subject honeymoon-phase prognosis; subject-level deviation from cohort decay curve; Medalist-phenotype classification</td><td>R, T</td></tr>
+        <tr><td>Heterogeneous-treatment-effect learners (Causal Forest, S / T / X-learners, BART)</td><td>Who responds to teplizumab versus verapamil versus ATG versus GLP-1 combinations, at realistic Clinic sample sizes</td><td>I, C</td></tr>
+        <tr><td>Bayesian online change-point (BOCPD) on CGM and autoantibody titer</td><td>Honeymoon-end detection with calibrated uncertainty; inflection detection in long-horizon Medalist trajectories</td><td>J, T</td></tr>
+        <tr><td>Persistent-function survival models on Medalist time-to-C-peptide-loss</td><td>Hazard estimation for residual-function persistence across decades</td><td>R, T</td></tr>
+      </tbody>
+    </table>
+    <p>Additional estimators available within the same layer for subsequent phases:</p>
+    <ul>
+      <li><strong>Transfer entropy</strong> between inflammatory cytokine panels and C-peptide signal — quantifies the immune–metabolic coupling (J) that drives honeymoon-end and long-term β-cell attrition.</li>
+      <li><strong>Variance-based early-warning signals</strong> on rolling CGM windows — leading indicator of honeymoon-end before mean C-peptide declines.</li>
+    </ul>
+
+    <h2>5 · Proposed initial engagement (Phase 1)</h2>
+    <p>The scope of the proposed Phase 1 engagement is defined to produce a deliverable of demonstrable analytic value to Joslin within a contained time and data footprint.</p>
+    <ul>
+      <li><strong>Primary dataset.</strong> Retrospective Joslin Clinic new-onset / honeymoon cohort with serial C-peptide AUC on MMTT, autoantibody titer panels, HLA typing, and — where available — preservation-agent exposure (teplizumab, verapamil, low-dose ATG, GLP-1). Medalist residual-function subset as long-horizon validation.</li>
+      <li><strong>Access path.</strong> Joslin-internal Data Use Agreement and IRB, under the sponsorship of a Medalist-study or Clinic-affiliated principal investigator.</li>
+      <li><strong>Deliverable.</strong> Per-subject <span class="apex-omega">Ω</span>F trajectory integrating mixed-effects, heterogeneous-treatment-effect, and change-point estimators. For the Clinic cohort: 6, 12, and 24-month C-peptide hazard with preservation-agent response classification. For the Medalist subset: causal-graph characterization of the features distinguishing persistent-function from expected-decline phenotypes.</li>
+      <li><strong>Success criteria.</strong> Heterogeneous-treatment-effect recovery on a held-out preservation-agent arm matching or exceeding the pre-specified biostatistical analysis; identification of at least one interpretable responder / non-responder subgroup decomposable along <span class="apex-omega">Ω</span>F pillars; Medalist-phenotype classifier with AUC lift over available baselines.</li>
+      <li><strong>Timeline.</strong> Twelve to fourteen weeks from data access.</li>
+      <li><strong>Excluded from Phase 1</strong> (reserved for the Phase 2 prospective arm): live CGM ingestion from open-loop pumps, bespoke immunologic assays, and prospective trial design.</li>
+    </ul>
+
+    <h2>6 · Rationale and timing</h2>
+    <ul>
+      <li><strong>Preservation has approved agents.</strong> Teplizumab post-diagnosis, verapamil, low-dose ATG, and GLP-1 adjuncts are all clinically actionable today; the analytic gap lies in matching Joslin Clinic patients to therapy rather than in drug discovery.</li>
+      <li><strong>The Medalist cohort is a unique substrate.</strong> No other institution has comparable long-horizon data on residual C-peptide function. The analytic tools required to exploit it — causal discovery, compositefragility decomposition, long-horizon survival modeling — are precisely the tools Manifold configures.</li>
+      <li><strong>Replacement has crossed the proof-of-principle threshold.</strong> Insulin-independence in early-phase Vertex VX-880 patients is a stage-change for the field; the preservation question — who should be preserved, with what, until replacement is broadly available — becomes more important, not less, as replacement matures.</li>
+      <li><strong>Relevant funding mechanisms are active.</strong> The Breakthrough T1D Cures program, the Helmsley Charitable Trust Restoring Insulin Production stream, and NIH NIDDK all have active Requests for Proposals spanning preservation and residual-function analytics.</li>
+      <li><strong>The platform is production-ready.</strong> Manifold's causal, criticality, and interdiction engines are production-grade; configuration for the Joslin preservation and Medalist domains represents bounded, well-scoped work.</li>
+    </ul>
+
+    <h2>7 · Proposed partnership</h2>
+    <p>Partnership with a Joslin Medalist-study or Clinic-affiliated principal investigator is sought for:</p>
+    <ol>
+      <li>Retrospective Clinic and Medalist data access under Joslin's existing Data Use Agreement and IRB.</li>
+      <li>Clinical co-authorship on the preservation heterogeneous-treatment-effect / Medalist-phenotype-classification benchmark manuscript.</li>
+      <li>Co-application to Breakthrough T1D, the Helmsley Charitable Trust, or NIH NIDDK for the Phase 2 prospective arm.</li>
+    </ol>
+    <p>In exchange, Apex Analytica contributes the causal-inference engine, the <span class="apex-omega">Ω</span>F framework, and the engineering team. Apex retains commercial rights to the platform; research intellectual property from the joint work is shared on standard academic–industry terms.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS™</span>
+  </footer>
+
+  <div class="apex-screen-only">Press ⌘P → Save as PDF</div>
+</body>
+</html>

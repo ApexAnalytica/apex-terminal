@@ -19,6 +19,14 @@ const DOMAIN_MAP: Record<string, string[]> = {
   "macro-inflation": ["Macro Impact: Inflation & Policy"],
   // Athena ISR domains
   "defense-isr": ["Drone Swarms", "SATCOM", "ISR Fusion", "Chip Embargo", "Secure Compute", "Kill Chain"],
+  // Life sciences
+  "t1d-beta-cell": [
+    "T1D Autoimmune",
+    "T1D \u03B2-cell Biology",
+    "T1D Metabolic",
+    "T1D Intervention",
+    "T1D Complications",
+  ],
 };
 
 /**

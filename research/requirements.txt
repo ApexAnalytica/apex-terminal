@@ -5,3 +5,4 @@ pandas>=2.2
 requests>=2.32
 scikit-learn>=1.4
 pyreadr>=0.5
+ripser>=0.6

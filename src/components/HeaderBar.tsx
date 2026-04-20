@@ -9,16 +9,17 @@ import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "./DomainSelector";
-
-const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[] = [
-  { id: "spirtes", label: "SPIRTES", icon: "◇", color: "var(--accent-cyan)" },
-  { id: "tarski", label: "TARSKI", icon: "⊢", color: "var(--accent-green)" },
-  { id: "pearl", label: "PEARL", icon: "⟐", color: "var(--accent-amber)" },
-  { id: "pareto", label: "PARETO", icon: "⚠", color: "var(--accent-red)" },
-];
+import { resolveDomainProfile } from "@/lib/domain-profiles";
 
 export default function HeaderBar() {
   const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive, selectedDomains, setDomainSelectorOpen } = useApexStore();
+  const profile = resolveDomainProfile(selectedDomains);
+  const MODULE_TABS = profile.modules.map((m) => ({
+    id: m.id as ModuleId,
+    label: m.name,
+    icon: m.icon,
+    color: m.color,
+  }));
   const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
 
   // During replay, override omega state with current epoch's values

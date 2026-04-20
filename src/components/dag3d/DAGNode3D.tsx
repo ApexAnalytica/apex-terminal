@@ -7,6 +7,8 @@ import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
 import { NodeMetrics } from "@/lib/graph-layout";
+import { useApexStore } from "@/stores/useApexStore";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
 
 // Shared reactive flag: set by CameraRig when orbit controls are actively dragging.
 // Uses a subscription pattern so nodes re-render when orbiting starts/stops.
@@ -84,6 +86,9 @@ function DAGNode3DInner({
   onDoubleClick,
 }: DAGNode3DProps) {
   const isOrbiting = useOrbitActive();
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const profile = resolveDomainProfile(selectedDomains);
+  const pillarLabels = profile.pillarLabels;
   const meshRef = useRef<THREE.Mesh>(null);
   const selectionRingRef = useRef<THREE.Mesh>(null);
   const birthProgress = useRef(isConsequence ? 0 : 1);
@@ -131,11 +136,11 @@ function DAGNode3DInner({
   });
 
   const axes = [
-    { label: "IRREPLACEABILITY", value: node.omegaFragility.irreplaceability },
-    { label: "RESTORE LATENCY", value: node.omegaFragility.restorationLatency },
-    { label: "JURISD HAZARD", value: node.omegaFragility.jurisdictionalHazard },
-    { label: "CASCADE LOAD", value: node.omegaFragility.cascadeLoad },
-    { label: "TAIL DEPTH", value: node.omegaFragility.tailDepth },
+    { label: pillarLabels.irreplaceability, value: node.omegaFragility.irreplaceability },
+    { label: pillarLabels.restorationLatency, value: node.omegaFragility.restorationLatency },
+    { label: pillarLabels.jurisdictionalHazard, value: node.omegaFragility.jurisdictionalHazard },
+    { label: pillarLabels.cascadeLoad, value: node.omegaFragility.cascadeLoad },
+    { label: pillarLabels.tailDepth, value: node.omegaFragility.tailDepth },
   ];
 
   return (

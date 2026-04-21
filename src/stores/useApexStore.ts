@@ -41,7 +41,7 @@ export const DATASET_COLORS = [
   "#76ff03", // lime
 ];
 import { mergeGraphs } from "@/lib/import/merge";
-import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
+import { EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -327,6 +327,44 @@ function FrameMonitor() {
   return null;
 }
 
+// Drives invalidate() while replay is active so demand-mode still animates.
+function ReplayInvalidator() {
+  const { invalidate } = useThree();
+  useFrame(() => {
+    const { replayActive, replayPlaying } = useApexStore.getState();
+    if (replayActive && replayPlaying) invalidate();
+  });
+  return null;
+}
+
+// Watches store slices that change during interaction and calls invalidate()
+// so demand-mode Canvas re-renders exactly when needed (item #1).
+function StoreInvalidator() {
+  const { invalidate } = useThree();
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+  const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const severedEdges = useApexStore((s) => s.severedEdges);
+  const currentEpoch = useApexStore((s) => s.currentEpoch);
+
+  // Invalidate on any store change that affects visible state
+  useEffect(() => { invalidate(); }, [selectedNode, invalidate]);
+  useEffect(() => { invalidate(); }, [selectedNodes, invalidate]);
+  useEffect(() => { invalidate(); }, [timelinePosition, invalidate]);
+  useEffect(() => { invalidate(); }, [severedEdges, invalidate]);
+  useEffect(() => { invalidate(); }, [currentEpoch, invalidate]);
+
+  // Expose a stable callback so node hover can trigger invalidate
+  // without subscribing StoreInvalidator to hover state
+  useEffect(() => {
+    const handler = () => invalidate();
+    window.addEventListener("dag3d-invalidate", handler);
+    return () => window.removeEventListener("dag3d-invalidate", handler);
+  }, [invalidate]);
+
+  return null;
+}
+
 function ReplayTickDriver() {
   useReplayTick();
   return null;
@@ -424,32 +462,31 @@ function ShiftDragSelect({
 
 export default function CausalDAG3D() {
   const graphData = useFilteredGraph();
-  const {
-    setGraphData,
-    truthFilter,
-    interventionMode,
-    interventionTarget,
-    setInterventionTarget,
-    selectedNode,
-    setSelectedNode,
-    selectedNodes: multiSelectedNodes,
-    setSelectedNodes,
-    isolateSelection,
-    scissorsMode,
-    severedEdges,
-    severEdge,
-    ablationMode,
-    ablatedNodeIds,
-    ablatedEdgeIds,
-    toggleAblatedNode,
-    toggleAblatedEdge,
-    replayActive,
-    currentEpoch,
-    baselineEpochs,
-    interventionEpochs,
-    activeTimeline,
-    isLive,
-  } = useApexStore();
+  // Fine-grained selectors — each subscribes only to its own slice (item #4)
+  const setGraphData = useApexStore((s) => s.setGraphData);
+  const truthFilter = useApexStore((s) => s.truthFilter);
+  const interventionMode = useApexStore((s) => s.interventionMode);
+  const interventionTarget = useApexStore((s) => s.interventionTarget);
+  const setInterventionTarget = useApexStore((s) => s.setInterventionTarget);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const scissorsMode = useApexStore((s) => s.scissorsMode);
+  const severedEdges = useApexStore((s) => s.severedEdges);
+  const severEdge = useApexStore((s) => s.severEdge);
+  const ablationMode = useApexStore((s) => s.ablationMode);
+  const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
+  const ablatedEdgeIds = useApexStore((s) => s.ablatedEdgeIds);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
+  const toggleAblatedEdge = useApexStore((s) => s.toggleAblatedEdge);
+  const replayActive = useApexStore((s) => s.replayActive);
+  const currentEpoch = useApexStore((s) => s.currentEpoch);
+  const baselineEpochs = useApexStore((s) => s.baselineEpochs);
+  const interventionEpochs = useApexStore((s) => s.interventionEpochs);
+  const activeTimeline = useApexStore((s) => s.activeTimeline);
+  const isLive = useApexStore((s) => s.isLive);
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -526,6 +563,15 @@ export default function CausalDAG3D() {
     return map;
   }, [graphData.edges]);
 
+  // Pre-build nodeById map keyed on topologyKey (item #10): O(N) lookup inside posMap
+  // instead of the O(N²) graphData.nodes.find(n => n.id === nodeId) per scrub tick.
+  const nodeById = useMemo(() => {
+    const m = new Map<string, (typeof graphData.nodes)[number]>();
+    for (const n of graphData.nodes) m.set(n.id, n);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+
   // Store baseline omega scores (live/initial values) as a reference point.
   // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
   const baselineOmegaRef = useRef<Record<string, number>>({});
@@ -563,7 +609,8 @@ export default function CausalDAG3D() {
       // Historical mode: use the temporal omega value directly
       // High omega (>5) = stressed, pulls inward
       // Low omega (<5) = relaxed, pushes outward
-      const node = graphData.nodes.find((n) => n.id === nodeId);
+      // Use O(1) nodeById lookup (item #10) instead of O(N) find
+      const node = nodeById.get(nodeId);
       if (!node) return 0;
       const omega = node.omegaFragility.composite;
       // Map 0-10 omega to -1 to +1 stress (5 = neutral)
@@ -582,8 +629,11 @@ export default function CausalDAG3D() {
 
     // Compute per-domain centroids for more structured movement
     const domainCentroids: Record<string, [number, number, number, number]> = {};
-    for (const node of graphData.nodes) {
-      const p = basePosMap[node.id];
+    // Use nodeById for O(1) per-node lookup (item #10)
+    for (const id of ids) {
+      const node = nodeById.get(id);
+      if (!node) continue;
+      const p = basePosMap[id];
       if (!p) continue;
       if (!domainCentroids[node.domain]) domainCentroids[node.domain] = [0, 0, 0, 0];
       domainCentroids[node.domain][0] += p[0];
@@ -608,7 +658,7 @@ export default function CausalDAG3D() {
         continue;
       }
 
-      const node = graphData.nodes.find((n) => n.id === id);
+      const node = nodeById.get(id);
       const dc = node ? domainCentroids[node.domain] : null;
 
       if (stress > 0) {
@@ -666,7 +716,7 @@ export default function CausalDAG3D() {
 
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive]);
+  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive, nodeById]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 
@@ -881,8 +931,11 @@ export default function CausalDAG3D() {
         />
       )}
       <DAGErrorBoundary>
+      {/* frameloop="demand" stops the render loop when idle — invalidate() is called
+          on every interaction event so nothing visible is lost (item #1). */}
       <Canvas
         key={canvasKey}
+        frameloop="demand"
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
@@ -898,7 +951,9 @@ export default function CausalDAG3D() {
         }}
         onPointerMissed={() => {
           if (selectedNode) setSelectedNode(null);
+          window.dispatchEvent(new Event("dag3d-invalidate"));
         }}
+        onPointerMove={() => window.dispatchEvent(new Event("dag3d-invalidate"))}
       >
           <ambientLight intensity={0.4} />
           <pointLight position={[80, 80, 80]} intensity={0.8} color="#00e5ff" />
@@ -1016,6 +1071,8 @@ export default function CausalDAG3D() {
           <CameraRig posMap={posMap} topologyKey={topologyKey} shiftDragging={shiftDragging} />
           <FrameMonitor />
           <ReplayTickDriver />
+          <ReplayInvalidator />
+          <StoreInvalidator />
           <ShiftDragSelect
             posMap={posMap}
             graphNodes={graphData.nodes}

@@ -353,6 +353,11 @@ export async function loadRealTemporalData(
     .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
     .map((e, i) => ({ ...e, id: `real-evt-${i}` }));
 
+  // Release the 2.3MB raw JSON — its only job was to prevent concurrent
+  // double-fetches during this processing pass. Now that we're done it has
+  // no value and can be GC'd (item #14).
+  cachedData = null;
+
   return { nodes: nodeMap, edges: edgeMap, events, rangeStart, rangeEnd };
 }
 

@@ -1465,6 +1465,18 @@ function CascadeHeader() {
   const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
 
+  // Pre-build full-graph adjacency, memoized on graphData.edges identity only
+  // so selection changes don't rebuild it (item #9).
+  const fullNeighborSets = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    graphData.nodes.forEach((nd) => m.set(nd.id, new Set()));
+    graphData.edges.filter((e) => !e.isSevered).forEach((e) => {
+      m.get(e.source)?.add(e.target);
+      m.get(e.target)?.add(e.source);
+    });
+    return m;
+  }, [graphData.edges, graphData.nodes]);
+
   // Compute comprehensive network metrics
   const netMetrics = useMemo(() => {
     const allNodes = graphData.nodes;
@@ -1577,12 +1589,19 @@ function CascadeHeader() {
       }));
 
     // 5. Clustering coefficient (local, undirected)
-    const neighborSets = new Map<string, Set<string>>();
-    nodes.forEach((nd) => neighborSets.set(nd.id, new Set()));
-    edges.forEach((e) => {
-      neighborSets.get(e.source)?.add(e.target);
-      neighborSets.get(e.target)?.add(e.source);
-    });
+    // Reuse pre-built adjacency (item #9): if no selection, use fullNeighborSets
+    // directly; if scoped, rebuild only for the selected subgraph.
+    const neighborSets: Map<string, Set<string>> = isScoped
+      ? (() => {
+          const m = new Map<string, Set<string>>();
+          nodes.forEach((nd) => m.set(nd.id, new Set()));
+          edges.forEach((e) => {
+            m.get(e.source)?.add(e.target);
+            m.get(e.target)?.add(e.source);
+          });
+          return m;
+        })()
+      : fullNeighborSets;
     let clusterSum = 0;
     let clusterCount = 0;
     nodes.forEach((nd) => {
@@ -1661,7 +1680,7 @@ function CascadeHeader() {
       totalNodeCount: allNodes.length, totalEdgeCount: allEdges.length,
       isScoped,
     };
-  }, [graphData, cascade, selectedNodes]);
+  }, [graphData, cascade, selectedNodes, fullNeighborSets]);
 
   const metricColor = (val: number, threshLow: number, threshHigh: number) =>
     val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";

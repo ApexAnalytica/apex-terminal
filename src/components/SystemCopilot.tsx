@@ -41,46 +41,47 @@ function getRoleLabel(role: CopilotMessage["role"]): string {
 }
 
 export default function SystemCopilot() {
-  const {
-    copilotMessages,
-    addCopilotMessage,
-    graphData,
-    selectedNode,
-    severedEdges,
-    shocks,
-    interventionMode,
-    interventionTarget,
-    ablationMode,
-    ablatedNodeIds,
-    ablatedEdgeIds,
-    activeModule,
-    llmProvider,
-    claudeApiKey,
-    geminiApiKey,
-    claudeModel,
-    geminiModel,
-    ollamaUrl,
-    ollamaModel,
-    isLlmStreaming,
-    setLlmProvider,
-    setClaudeApiKey,
-    setGeminiApiKey,
-    setClaudeModel,
-    setGeminiModel,
-    setOllamaUrl,
-    setOllamaModel,
-    setIsLlmStreaming,
-    importedDatasets,
-    removeImportedDataset,
-    currentSnapshot,
-    snapshotHistory,
-    isComputeLoading,
-    setSnapshot,
-    setIsComputeLoading,
-    baselineEpochs,
-    currentEpoch,
-    tarskiReport,
-  } = useApexStore();
+  // Fine-grained selectors — subscribe only to fields this component actually
+  // uses, so unrelated store mutations (graph topology, timeline scrub, etc.)
+  // don't trigger re-renders here (item #8).
+  const copilotMessages = useApexStore((s) => s.copilotMessages);
+  const addCopilotMessage = useApexStore((s) => s.addCopilotMessage);
+  const graphData = useApexStore((s) => s.graphData);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const severedEdges = useApexStore((s) => s.severedEdges);
+  const shocks = useApexStore((s) => s.shocks);
+  const interventionMode = useApexStore((s) => s.interventionMode);
+  const interventionTarget = useApexStore((s) => s.interventionTarget);
+  const ablationMode = useApexStore((s) => s.ablationMode);
+  const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
+  const ablatedEdgeIds = useApexStore((s) => s.ablatedEdgeIds);
+  const activeModule = useApexStore((s) => s.activeModule);
+  const llmProvider = useApexStore((s) => s.llmProvider);
+  const claudeApiKey = useApexStore((s) => s.claudeApiKey);
+  const geminiApiKey = useApexStore((s) => s.geminiApiKey);
+  const claudeModel = useApexStore((s) => s.claudeModel);
+  const geminiModel = useApexStore((s) => s.geminiModel);
+  const ollamaUrl = useApexStore((s) => s.ollamaUrl);
+  const ollamaModel = useApexStore((s) => s.ollamaModel);
+  const isLlmStreaming = useApexStore((s) => s.isLlmStreaming);
+  const setLlmProvider = useApexStore((s) => s.setLlmProvider);
+  const setClaudeApiKey = useApexStore((s) => s.setClaudeApiKey);
+  const setGeminiApiKey = useApexStore((s) => s.setGeminiApiKey);
+  const setClaudeModel = useApexStore((s) => s.setClaudeModel);
+  const setGeminiModel = useApexStore((s) => s.setGeminiModel);
+  const setOllamaUrl = useApexStore((s) => s.setOllamaUrl);
+  const setOllamaModel = useApexStore((s) => s.setOllamaModel);
+  const setIsLlmStreaming = useApexStore((s) => s.setIsLlmStreaming);
+  const importedDatasets = useApexStore((s) => s.importedDatasets);
+  const removeImportedDataset = useApexStore((s) => s.removeImportedDataset);
+  const currentSnapshot = useApexStore((s) => s.currentSnapshot);
+  const snapshotHistory = useApexStore((s) => s.snapshotHistory);
+  const isComputeLoading = useApexStore((s) => s.isComputeLoading);
+  const setSnapshot = useApexStore((s) => s.setSnapshot);
+  const setIsComputeLoading = useApexStore((s) => s.setIsComputeLoading);
+  const baselineEpochs = useApexStore((s) => s.baselineEpochs);
+  const currentEpoch = useApexStore((s) => s.currentEpoch);
+  const tarskiReport = useApexStore((s) => s.tarskiReport);
 
   // Copilot provider: Gemini or Ollama; Claude is for compute only
   const copilotProvider: LLMProvider = llmProvider === "ollama" ? "ollama" : "gemini";
@@ -102,6 +103,11 @@ export default function SystemCopilot() {
   const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
   const streamingMsgRef = useRef<string | null>(null);
+  // Streaming text is held in a ref (not store state) during the stream so each
+  // token doesn't trigger a full store subscriber cascade (item #8).
+  // Local React state is used for incremental UI updates instead.
+  const streamingTextRef = useRef<string>("");
+  const [streamingDisplayText, setStreamingDisplayText] = useState<string>("");
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenMsgRef = useRef<string | null>(null);
@@ -418,30 +424,31 @@ export default function SystemCopilot() {
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let accumulated = "";
+        streamingTextRef.current = "";
+        setStreamingDisplayText("");
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           accumulated += decoder.decode(value, { stream: true });
-          // During streaming, only strip action tags for display — do NOT execute.
-          // Executing here would fire every action multiple times as it appears in
-          // successive chunks.
+          // During streaming, keep text in local ref/state — NOT in the store —
+          // so per-token updates don't cascade to every store subscriber (item #8).
           const displayTextStreaming = stripActions(accumulated);
-          useApexStore.setState((s) => ({
-            copilotMessages: s.copilotMessages.map((m) =>
-              m.id === assistantId ? { ...m, content: displayTextStreaming } : m
-            ),
-          }));
+          streamingTextRef.current = displayTextStreaming;
+          setStreamingDisplayText(displayTextStreaming);
         }
 
         // After streaming completes, execute any actions from the full response
         const { displayText, actionResults } = processLlmActions(accumulated);
-        // Update final display text
+        // Flush final text to the store in one write
         useApexStore.setState((s) => ({
           copilotMessages: s.copilotMessages.map((m) =>
             m.id === assistantId ? { ...m, content: displayText } : m
           ),
         }));
+        // Reset local streaming state
+        streamingTextRef.current = "";
+        setStreamingDisplayText("");
         // Log action results as system messages
         if (actionResults.length > 0) {
           const actionSummary = actionResults.map((r) => `  \u2022 ${r}`).join("\n");
@@ -463,6 +470,8 @@ export default function SystemCopilot() {
         }));
       } finally {
         streamingMsgRef.current = null;
+        streamingTextRef.current = "";
+        setStreamingDisplayText("");
         setIsLlmStreaming(false);
       }
     },
@@ -886,14 +895,18 @@ export default function SystemCopilot() {
                   className="whitespace-pre-wrap pl-2 border-l border-border"
                   style={{ color: getRoleColor(msg.role) }}
                 >
-                  {msg.content || (isLlmStreaming && msg.id === streamingMsgRef.current ? "" : msg.content)}
+                  {/* During streaming, show local state text (not store) to avoid
+                      per-token store subscriber cascade (item #8) */}
+                  {msg.id === streamingMsgRef.current && isLlmStreaming
+                    ? streamingDisplayText
+                    : msg.content}
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
 
-          {/* Thinking indicator */}
-          {isLlmStreaming && copilotMessages[copilotMessages.length - 1]?.content === "" && (
+          {/* Thinking indicator — show while streaming has not yet produced text */}
+          {isLlmStreaming && streamingDisplayText === "" && (
             <div className="text-[10px] font-mono text-accent-cyan animate-pulse pl-2">
               APEX is thinking...
             </div>

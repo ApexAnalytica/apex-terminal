@@ -245,7 +245,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Graph — start empty; populated when user selects domains in DomainSelector
   graphData: EMPTY_GRAPH,
   initialGraph: EMPTY_GRAPH,
-  setGraphData: (g) => set({ graphData: g, initialGraph: g }),
+  setGraphData: (g) => {
+    set({ graphData: g, initialGraph: g, temporalData: null });
+    // Re-fire temporal load so the new graph gets its real-data mappings
+    // resolved (without this, switching profiles keeps stale temporal data).
+    get().initTemporalData();
+  },
 
   // Shocks
   shocks: [],

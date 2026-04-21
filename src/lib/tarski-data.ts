@@ -47,6 +47,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Maritime chokepoints (Strait of Hormuz) impose hard throughput limits on all downstream flows",
     plainText: "Chokepoints like the Strait of Hormuz have a maximum capacity — you can't push more through than they can handle.",
     relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
+    appliesTo: ["geopolitical"],
     checksFor: "Chokepoint nodes exceeding flow capacity",
     diagramHint: "━━▶ [STRAIT] ▶━━  cap exceeded",
   },
@@ -71,6 +72,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "High-weight edges connected to nodes with extreme jurisdictional hazard (sanctions, conflict zones, export controls) require manual verification",
     plainText: "High-impact connections to sanctioned or conflict-zone nodes need manual review.",
     relevantDomains: ["Sovereign Risk", "Financial Contagion", "Saudi Aramco Energy", "QatarEnergy LNG"],
+    appliesTo: ["geopolitical"],
     checksFor: "Heavy links to sanctioned / conflict-zone nodes",
     diagramHint: "━━▶ [SANCTIONED ⚠] ▶━━",
   },
@@ -82,6 +84,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Nodes in conflict-adjacent jurisdictions with high restoration latency may face force majeure contract suspension",
     plainText: "Nodes in war-adjacent regions may have contracts suspended due to force majeure.",
     relevantDomains: ["Sovereign Risk", "Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer"],
+    appliesTo: ["geopolitical"],
     checksFor: "Contract suspension risk in conflict zones",
     diagramHint: "[CONFLICT ZONE] → obligations suspended",
   },
@@ -93,6 +96,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk",
     plainText: "If every export route goes through one chokepoint, that's a concentration risk.",
     relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
+    appliesTo: ["geopolitical"],
     checksFor: "All exports routing through single chokepoint",
     diagramHint: "PROD ──▶ [CHOKE] ──▶ MARKET (no alt route)",
   },
@@ -147,6 +151,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Plasma glucose outside 40–600 mg/dL is incompatible with consciousness and survival without acute intervention (severe hypo / hyperosmolar coma)",
     plainText: "Blood sugar must stay between 40 and 600 mg/dL — outside this range, the patient goes unconscious.",
     relevantDomains: ["T1D Metabolic", "T1D Complications"],
+    appliesTo: ["t1d"],
     checksFor: "Glucose trajectories that cross unsurvivable thresholds",
     diagramHint: "[glucose < 40] ✗  |  [glucose > 600] ✗",
   },
@@ -158,6 +163,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Plasma insulin concentration is bounded below by zero — endogenous secretion and exogenous delivery are additive, never subtractive",
     plainText: "You can't have negative insulin — the body can stop making it, but it can't take it back.",
     relevantDomains: ["T1D Metabolic", "T1D Intervention", "T1D \u03B2-cell Biology"],
+    appliesTo: ["t1d"],
     checksFor: "Models that produce negative insulin concentrations",
     diagramHint: "[insulin] ≥ 0",
   },
@@ -169,6 +175,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "In established T1D without a regeneration intervention (SC-β transplant, stem-cell-derived islets), stimulated C-peptide is monotone non-increasing — β-cell mass cannot spontaneously recover",
     plainText: "Once β-cells are gone, they don't come back on their own — C-peptide only falls.",
     relevantDomains: ["T1D \u03B2-cell Biology", "T1D Autoimmune"],
+    appliesTo: ["t1d"],
     checksFor: "Spontaneous C-peptide recovery not explained by intervention",
     diagramHint: "C-pep ↘  (no regen) ✓  |  C-pep ↗  (unexplained) ✗",
   },
@@ -180,6 +187,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Each unit of exogenous insulin lowers glucose by a patient-specific insulin-sensitivity factor within physiologic bounds [20, 100] mg/dL per unit",
     plainText: "Each unit of insulin drops glucose by a predictable amount — between 20 and 100 mg/dL per unit.",
     relevantDomains: ["T1D Metabolic", "T1D Intervention"],
+    appliesTo: ["t1d"],
     checksFor: "Dose-response edges with implausible insulin-sensitivity factors",
     diagramHint: "+1 u insulin → Δglc ∈ [-100, -20]",
   },
@@ -191,6 +199,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Stimulated C-peptide below 0.2 nmol/L implies residual β-cell mass under ~5% of baseline; below this floor, endogenous glycemic regulation is insufficient and exogenous insulin is obligate",
     plainText: "Below a tiny fraction of normal β-cell mass, the body can't regulate sugar at all and needs external insulin.",
     relevantDomains: ["T1D \u03B2-cell Biology", "T1D Intervention"],
+    appliesTo: ["t1d"],
     checksFor: "Interventions assuming endogenous regulation below the mass floor",
     diagramHint: "C-pep < 0.2 → [insulin REQUIRED]",
   },
@@ -202,6 +211,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Islet autoantibody count is monotone non-decreasing at population scale — seroreversion is rare and asymmetric; once two or more antibodies are present, progression to clinical T1D is effectively irreversible",
     plainText: "Once someone develops multiple islet autoantibodies, they almost never lose them — autoimmunity is a one-way door.",
     relevantDomains: ["T1D Autoimmune"],
+    appliesTo: ["t1d"],
     checksFor: "Models that assume autoantibody seroreversion at scale",
     diagramHint: "autoAb(t) = 2 → autoAb(t+1) ≥ 2",
   },
@@ -215,6 +225,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "American Diabetes Association glycemic target for most patients; sustained deviation without documented individualization flags clinical concern",
     plainText: "Adult HbA1c should stay under 7%; kids under 7.5%. Staying higher without a reason is a red flag.",
     relevantDomains: ["T1D Metabolic", "T1D Intervention"],
+    appliesTo: ["t1d"],
     checksFor: "Trajectories chronically above ADA target without individualization note",
     diagramHint: "HbA1c > 7% (adult)  ⚠",
   },
@@ -226,6 +237,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "International CGM consensus targets (Battelino et al. 2019) — regimens that fail these thresholds warrant adjustment regardless of HbA1c",
     plainText: "Spend most of the day between 70–180 mg/dL, and almost no time below 70.",
     relevantDomains: ["T1D Metabolic"],
+    appliesTo: ["t1d"],
     checksFor: "CGM cohorts falling below TIR or above TBR thresholds",
     diagramHint: "TIR 70% | TBR<70 4% | TBR<54 1%",
   },
@@ -237,6 +249,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "FDA-approved indication for teplizumab is Stage-2 T1D (≥2 autoantibodies with dysglycemia but not overt disease) in patients aged 8 and older — use outside this window is off-label",
     plainText: "Teplizumab is only approved for pre-diabetic patients with multiple autoantibodies — not for already-diagnosed T1D.",
     relevantDomains: ["T1D Autoimmune", "T1D Intervention"],
+    appliesTo: ["t1d"],
     checksFor: "Teplizumab intervention edges on Stage-3 or pediatric-under-8 nodes",
     diagramHint: "[Stage-2, age≥8] → teplizumab ✓",
   },
@@ -248,6 +261,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Diabetic ketoacidosis is defined by this conjunction (ADA criteria); any state matching triggers urgent intervention and preempts routine optimization goals",
     plainText: "When all four markers hit together, it's DKA — a medical emergency that overrides everything else.",
     relevantDomains: ["T1D Metabolic", "T1D Complications"],
+    appliesTo: ["t1d"],
     checksFor: "Snapshots meeting DKA criteria not flagged as emergencies",
     diagramHint: "[glc>250 ∧ pH<7.3 ∧ HCO3<18 ∧ ketones+]",
   },
@@ -259,6 +273,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Standard eligibility window for β-cell-preservation trials (AbATE, Protege, TrialNet family) — enrollment outside this window breaks the comparability of historical outcome data",
     plainText: "Most β-cell preservation trials only enroll within ~3 months of diagnosis and with measurable C-peptide.",
     relevantDomains: ["T1D Intervention", "T1D \u03B2-cell Biology"],
+    appliesTo: ["t1d"],
     checksFor: "Trial-enrollment edges outside the canonical window",
     diagramHint: "[dx+100d, C-pep≥0.2] → trial ✓",
   },
@@ -272,6 +287,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "In the first year post-diagnosis, stimulated C-peptide typically declines 30–70%; trajectories outside this band suggest atypical progression (LADA, MODY mislabel, or responder to intervention)",
     plainText: "C-peptide usually drops 30–70% in the first year. Staying flatter or falling faster is unusual.",
     relevantDomains: ["T1D \u03B2-cell Biology"],
+    appliesTo: ["t1d"],
     checksFor: "Year-1 decay slopes outside the canonical band",
     diagramHint: "C-pep Δ₀→₁₂ ∉ [-70%, -30%]  ⚠",
   },
@@ -283,6 +299,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Coefficient of variation above 36% over a 14-day CGM window marks brittle/unstable diabetes; regimen review and structured education are indicated",
     plainText: "When glucose swings wildly (CV>36%), the regimen needs a rethink — not just dose tweaks.",
     relevantDomains: ["T1D Metabolic"],
+    appliesTo: ["t1d"],
     checksFor: "14-day CV above the brittleness threshold",
     diagramHint: "CV > 36%  ▓▓▓▓▓  brittle",
   },
@@ -294,6 +311,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Early-morning glucose rise driven by cortisol/GH counter-regulation — must be distinguished from Somogyi rebound (which requires a preceding nocturnal hypo)",
     plainText: "Morning glucose climbs are usually the dawn phenomenon — not a rebound — unless there was a low overnight.",
     relevantDomains: ["T1D Metabolic"],
+    appliesTo: ["t1d"],
     checksFor: "Morning-rise edges mislabeled as Somogyi",
     diagramHint: "03:00 ──↗── 08:00   (no prior hypo)",
   },
@@ -305,6 +323,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     description: "Diabetic kidney disease typically reaches CKD stage 3 only 10+ years after onset; earlier progression flags accelerated phenotypes (hypertension, APOL1, poor glycemic control)",
     plainText: "Kidney disease usually takes a decade to develop — showing up sooner is a warning sign of a fast-progressing phenotype.",
     relevantDomains: ["T1D Complications"],
+    appliesTo: ["t1d"],
     checksFor: "DKD-stage-3 onset within 10 years of T1D diagnosis",
     diagramHint: "[dx] ──(<10y)──> [DKD-3]  ⚠",
   },
@@ -323,10 +342,18 @@ export interface ScoredAxiom {
 /**
  * Score and rank axioms by relevance to the provided graph.
  * Considers: which domains are present, graph structure (chokepoints, hubs, cross-domain edges).
+ * `activeProfileId` filters out axioms whose `appliesTo` excludes the current profile;
+ * omit it to get all axioms regardless of profile.
  */
-export function scoreAxiomRelevance(graph: CausalGraph): ScoredAxiom[] {
+export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string): ScoredAxiom[] {
   // Gather active domains from graph nodes
   const activeDomains = new Set(graph.nodes.map((n) => n.domain));
+
+  // Filter out axioms that are explicitly scoped to other profiles.
+  // Axioms without `appliesTo` are universal (temporal priority, DAG integrity, etc.).
+  const inScope = activeProfileId
+    ? AXIOM_LIBRARY.filter((a) => !a.appliesTo || a.appliesTo.includes(activeProfileId))
+    : AXIOM_LIBRARY;
 
   // Structural facts about the current graph
   const hasChokepoints = graph.nodes.some(
@@ -343,7 +370,7 @@ export function scoreAxiomRelevance(graph: CausalGraph): ScoredAxiom[] {
     return n.omegaFragility.cascadeLoad >= 7 && outDegree >= 3;
   });
 
-  return AXIOM_LIBRARY.map((axiom) => {
+  return inScope.map((axiom) => {
     let score = 0;
     const matchedDomains: string[] = [];
     let reason = "";

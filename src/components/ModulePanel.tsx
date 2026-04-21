@@ -6,6 +6,7 @@ import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
 import { getDomainColor } from "@/lib/graph-data";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
 import TrinityPanel from "./TrinityPanel";
 import InterventionControls from "./InterventionControls";
 import MonteCarloForecast from "./MonteCarloForecast";
@@ -311,6 +312,7 @@ function AxiomIcon({ axiomId, color }: { axiomId: string; color: string }) {
 
 function TarskiPanel() {
   const graphData = useApexStore((s) => s.graphData);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
   const truthFilter = useApexStore((s) => s.truthFilter);
   const setTruthFilter = useApexStore((s) => s.setTruthFilter);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
@@ -320,10 +322,12 @@ function TarskiPanel() {
   const runTarskiWithAxioms = useApexStore((s) => s.runTarskiWithAxioms);
   const [expandedAxiom, setExpandedAxiom] = useState<string | null>(null);
 
-  // Score axioms by relevance to current graph
+  // Score axioms by relevance to current graph, filtered by the active profile
+  // so e.g. T1D sessions don't surface chokepoint / force-majeure axioms.
+  const activeProfileId = resolveDomainProfile(selectedDomains).id;
   const scoredAxioms = useMemo(
-    () => scoreAxiomRelevance(graphData),
-    [graphData]
+    () => scoreAxiomRelevance(graphData, activeProfileId),
+    [graphData, activeProfileId]
   );
 
   // Split into recommended (score >= 0.4) and other
@@ -356,9 +360,9 @@ function TarskiPanel() {
   }, [activeAxiomIds, setEnabledAxioms]);
 
   const selectAll = useCallback(() => {
-    setEnabledAxioms(new Set(AXIOM_LIBRARY.map((a) => a.id)));
+    setEnabledAxioms(new Set(scoredAxioms.map((sa) => sa.axiom.id)));
     setHasCustomized(true);
-  }, [setEnabledAxioms]);
+  }, [scoredAxioms, setEnabledAxioms]);
 
   const selectSuggested = useCallback(() => {
     setEnabledAxioms(suggestedIds);
@@ -655,7 +659,7 @@ function TarskiPanel() {
 
         {/* Active count indicator */}
         <div className="text-[8px] font-mono text-text-muted text-center">
-          {activeAxiomIds.size} of {AXIOM_LIBRARY.length} constraints active
+          {activeAxiomIds.size} of {scoredAxioms.length} constraints active
           {!hasCustomized && activeAxiomIds.size > 0 && (
             <span className="text-accent-green ml-1">(auto)</span>
           )}

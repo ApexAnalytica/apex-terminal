@@ -203,6 +203,11 @@ export interface TarskiAxiom {
   plainText: string;
   /** Which graph-domain keywords make this axiom more relevant */
   relevantDomains?: string[];
+  /** Restricts which DomainProfile ids (e.g. "geopolitical", "t1d") this
+      axiom applies to. Omit for truly universal laws (temporal priority,
+      DAG integrity). When set, the Tarski panel hides this axiom on any
+      other profile. */
+  appliesTo?: string[];
   /** One-liner: what structure this axiom looks for */
   checksFor?: string;
   /** SVG-friendly mini-diagram label (e.g. "A → B → A  ✗") */

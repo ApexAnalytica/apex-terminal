@@ -4,12 +4,81 @@ import { useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
+import { getNodeDataDescription } from "@/lib/real-timeseries";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 
 const CHART_HEIGHT = 120;
 // left/right are overridden at runtime to match the TimeDial track's actual
 // horizontal span so the chart's plot region and the scrubber line up.
 const PAD = { top: 12, bottom: 20, left: 32, right: 12 };
+
+/**
+ * A "sparse" series is one with fewer published timepoints than this threshold
+ * relative to the visible x-axis span. We show a badge and render hold-forward.
+ * Dense synthetic/real series (e.g. monthly oil prices) are unaffected.
+ */
+const SPARSE_POINT_THRESHOLD = 20;
+
+/**
+ * Build a hold-forward step-line path string for the given history,
+ * extended to xEnd. For each segment [i, i+1] the value is held at
+ * history[i].omegaComposite until history[i+1].timestamp. After the
+ * last published point the value is held forward to xEnd.
+ *
+ * Returns the polyline points string and the fill polygon points string.
+ * Only used when history.length >= 1.
+ */
+function buildHoldForwardPoints(
+  history: NodeTemporalState[],
+  xStart: number,
+  xEnd: number,
+  yMin: number,
+  yMax: number,
+  plotLeft: number,
+  plotRight: number,
+  totalWidth: number,
+): { linePoints: string; fillPoints: string } {
+  const plotW = totalWidth - plotLeft - plotRight;
+  const xRange = xEnd - xStart || 1;
+  const yRange = yMax - yMin || 1;
+
+  const toX = (ts: number) =>
+    plotLeft + ((ts - xStart) / xRange) * plotW;
+  const toY = (omega: number) =>
+    PAD.top + (1 - (omega - yMin) / yRange) * (CHART_HEIGHT - PAD.top - PAD.bottom);
+
+  const pts: string[] = [];
+
+  for (let i = 0; i < history.length; i++) {
+    const x = toX(history[i].timestamp);
+    const y = toY(history[i].omegaComposite);
+    if (i === 0) {
+      pts.push(`${x},${y}`);
+    } else {
+      // Step: horizontal segment at previous value, then drop to new value
+      const prevY = toY(history[i - 1].omegaComposite);
+      pts.push(`${x},${prevY}`);
+      pts.push(`${x},${y}`);
+    }
+  }
+
+  // Hold last value forward to xEnd
+  if (history.length > 0) {
+    const lastY = toY(history[history.length - 1].omegaComposite);
+    const endX = toX(xEnd);
+    pts.push(`${endX},${lastY}`);
+  }
+
+  const linePoints = pts.join(" ");
+
+  // Fill polygon: baseline is yMin (bottom of chart)
+  const baseY = toY(yMin);
+  const firstX = history.length > 0 ? toX(history[0].timestamp) : toX(xStart);
+  const lastX = toX(xEnd);
+  const fillPoints = `${firstX},${baseY} ${linePoints} ${lastX},${baseY}`;
+
+  return { linePoints, fillPoints };
+}
 
 function getLineColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -78,14 +147,20 @@ export default function TimeSeriesOverlay() {
   const plotInset = geom;
   const chartW = geom.width;
 
-  // Gather histories for pinned nodes
+  // Gather histories for pinned nodes.
+  // Nodes with exactly 1 history point (unmapped fallback) are included
+  // as a flat horizontal line at their static omega — previously they
+  // were silently dropped (history.length < 2 guard), causing the chart
+  // to show nothing for those pins.
   const curves = useMemo(() => {
     if (!temporalData || pinnedNodes.length === 0) return [];
     return pinnedNodes
       .map((nodeId) => {
         const nodeData = temporalData.nodes.get(nodeId);
         const node = graphData.nodes.find((n) => n.id === nodeId);
-        if (!nodeData || !node || nodeData.history.length < 2) return null;
+        // No temporal entry at all → falls through to noDataNodes
+        if (!nodeData || !node || nodeData.history.length === 0) return null;
+        const dataDesc = getNodeDataDescription(nodeId);
         return {
           nodeId,
           label: node.label,
@@ -93,6 +168,10 @@ export default function TimeSeriesOverlay() {
           color: getDomainColor(node.domain),
           history: nodeData.history,
           currentOmega: node.omegaFragility.composite,
+          // Number of *published* timepoints (1 = unmapped fallback flat line)
+          pointCount: nodeData.history.length,
+          sourceLabel: dataDesc?.label ?? null,
+          sourceUnit: dataDesc?.unit ?? null,
         };
       })
       .filter(Boolean) as {
@@ -102,10 +181,14 @@ export default function TimeSeriesOverlay() {
       color: string;
       history: NodeTemporalState[];
       currentOmega: number;
+      pointCount: number;
+      sourceLabel: string | null;
+      sourceUnit: string | null;
     }[];
   }, [pinnedNodes, temporalData, graphData]);
 
-  // Pinned nodes that have no time series data (for legend display)
+  // Pinned nodes that have zero history entries — truly no temporal data
+  // (nodes with ≥ 1 history point are now included in curves above)
   const noDataNodes = useMemo(() => {
     if (!temporalData) return [];
     const curveIds = new Set(curves.map((c) => c.nodeId));
@@ -192,20 +275,32 @@ export default function TimeSeriesOverlay() {
         xRange;
     const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
     for (const curve of curves) {
-      // Find closest timestamp in history
-      let closest = curve.history[0];
-      for (const h of curve.history) {
-        if (
-          Math.abs(h.timestamp - ts) < Math.abs(closest.timestamp - ts)
-        ) {
-          closest = h;
+      const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
+      let omega: number;
+      if (isSparse) {
+        // Hold-forward: return the last published value at or before hoverTs.
+        // If hoverTs is before the first point, return the first point's value.
+        let held = curve.history[0].omegaComposite;
+        for (const h of curve.history) {
+          if (h.timestamp <= ts) held = h.omegaComposite;
+          else break;
         }
+        omega = held;
+      } else {
+        // Dense series: find closest timestamp (original behaviour)
+        let closest = curve.history[0];
+        for (const h of curve.history) {
+          if (Math.abs(h.timestamp - ts) < Math.abs(closest.timestamp - ts)) {
+            closest = h;
+          }
+        }
+        omega = closest.omegaComposite;
       }
       values.push({
         nodeId: curve.nodeId,
         label: curve.label,
         color: curve.color,
-        omega: closest.omegaComposite,
+        omega,
       });
     }
     return { ts, values };
@@ -301,6 +396,59 @@ export default function TimeSeriesOverlay() {
                 {/* Curves */}
                 {curves.map((curve) => {
                   const w = chartW;
+                  const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
+
+                  if (isSparse) {
+                    // Hold-forward step-line rendering:
+                    // Each published value is held until the next published
+                    // point, then steps up/down. The last value is extended
+                    // to xEnd. This makes a 3-point series cover the full
+                    // axis width rather than collapsing to a tiny segment.
+                    // Handles the 1-point fallback (flat horizontal line).
+                    const { linePoints, fillPoints } = buildHoldForwardPoints(
+                      curve.history,
+                      xStart,
+                      xEnd,
+                      yMin,
+                      yMax,
+                      plotInset.left,
+                      plotInset.right,
+                      w,
+                    );
+                    return (
+                      <g key={curve.nodeId}>
+                        <polygon
+                          points={fillPoints}
+                          fill={`${curve.color}08`}
+                        />
+                        <polyline
+                          points={linePoints}
+                          fill="none"
+                          stroke={curve.color}
+                          strokeWidth={1.5}
+                          strokeLinejoin="round"
+                          strokeDasharray="6 3"
+                          opacity={0.75}
+                        />
+                        {/* Published point markers */}
+                        {curve.history.map((h) => {
+                          const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
+                          return (
+                            <circle
+                              key={h.timestamp}
+                              cx={x}
+                              cy={y}
+                              r={3}
+                              fill={curve.color}
+                              opacity={0.9}
+                            />
+                          );
+                        })}
+                      </g>
+                    );
+                  }
+
+                  // Dense series — original solid polyline rendering
                   const points = curve.history
                     .map((h) => {
                       const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
@@ -460,25 +608,51 @@ export default function TimeSeriesOverlay() {
           {/* Legend */}
           <div className="flex items-center gap-2 px-4 pb-2 flex-wrap">
             <div className="min-w-[72px] flex-shrink-0" />
-            {curves.map((curve) => (
-              <button
-                key={curve.nodeId}
-                onClick={() => togglePinned(curve.nodeId)}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border hover:border-accent-red/40 transition-colors group"
-                title={`Remove ${curve.label}`}
-              >
-                <span
-                  className="w-2 h-0.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: curve.color }}
-                />
-                <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
-                  {curve.label}
-                </span>
-                <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
-                  {"\u2715"}
-                </span>
-              </button>
-            ))}
+            {curves.map((curve) => {
+              const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
+              const tooltipParts: string[] = [];
+              if (curve.sourceLabel) tooltipParts.push(`${curve.sourceLabel}${curve.sourceUnit ? ` (${curve.sourceUnit})` : ""}`);
+              tooltipParts.push(isSparse ? `${curve.pointCount} published timepoint${curve.pointCount !== 1 ? "s" : ""} — hold-forward rendering` : `${curve.pointCount} datapoints`);
+              tooltipParts.push("Click to remove");
+              return (
+                <button
+                  key={curve.nodeId}
+                  onClick={() => togglePinned(curve.nodeId)}
+                  className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border hover:border-accent-red/40 transition-colors group"
+                  title={tooltipParts.join(" · ")}
+                >
+                  {/* Swatch — dashed for sparse series to match the chart line style */}
+                  <span
+                    className="w-3 flex-shrink-0"
+                    style={{
+                      height: "1.5px",
+                      backgroundColor: isSparse ? "transparent" : curve.color,
+                      borderTop: isSparse ? `1.5px dashed ${curve.color}` : "none",
+                    }}
+                  />
+                  <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
+                    {curve.label}
+                  </span>
+                  {/* Sparsity badge — shown for sparse real data */}
+                  {isSparse && (
+                    <span
+                      className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wide px-1 py-px rounded flex-shrink-0"
+                      style={{
+                        color: curve.color,
+                        backgroundColor: `${curve.color}18`,
+                        border: `1px solid ${curve.color}40`,
+                        opacity: 0.85,
+                      }}
+                    >
+                      {curve.pointCount === 1 ? "STATIC" : `${curve.pointCount}PT`}
+                    </span>
+                  )}
+                  <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
+                    {"\u2715"}
+                  </span>
+                </button>
+              );
+            })}
             {noDataNodes.map((nd) => (
               <button
                 key={nd.nodeId}

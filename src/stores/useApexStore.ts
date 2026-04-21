@@ -222,6 +222,11 @@ interface ApexState {
   timelineSelection: { start: number; end: number } | null; // user-selected date range window
   timelineFullRange: { start: number; end: number } | null; // saved full range before zoom
   setTimelinePosition: (ts: number) => void;
+  // rAF-batched variant — coalesces rapid scrub calls to ≤ display refresh rate
+  // (~60fps), preventing posMap/omegaKey recalculation on every pointer-move pixel.
+  // TimeDial (or any scrub handler) should prefer this over setTimelinePosition
+  // for continuous drag events (item #5).
+  setTimelinePositionThrottled: (ts: number) => void;
   setTimelineRange: (range: { start: number; end: number }) => void;
   setIsLive: (live: boolean) => void;
   setTimelineGranularity: (g: TimeGranularity) => void;
@@ -701,6 +706,26 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setTimelinePosition: (ts) =>
     set({ timelinePosition: ts, isLive: false }),
+
+  // rAF-batched scrub: coalesces rapid pointer-move events into at most one
+  // store write per animation frame (~60fps).  Eliminates O(N) omegaKey/posMap
+  // recalculation on every scrub pixel.  Use this for continuous drag; the
+  // semantics of setTimelinePosition are unchanged (item #5).
+  setTimelinePositionThrottled: (() => {
+    let rafHandle: number | null = null;
+    let pending: number | null = null;
+    return (ts: number) => {
+      pending = ts;
+      if (rafHandle !== null) return; // already scheduled
+      rafHandle = requestAnimationFrame(() => {
+        rafHandle = null;
+        if (pending !== null) {
+          set({ timelinePosition: pending, isLive: false });
+          pending = null;
+        }
+      });
+    };
+  })(),
 
   setTimelineRange: (range) =>
     set({ timelineRange: range }),

@@ -51,7 +51,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "NODE INSPECTOR",
     description:
-      "Click any node to open the Node Inspector in the right panel. It shows the node\u2019s \u03A9-Fragility composite score (0\u201310) broken into five pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth. Each pillar is expandable with a detailed explanation, formula, and physical constraint. Connected edges are listed below with causal mechanisms. Click any explanation text to have it read aloud by the AI copilot.",
+      "Click any node to open the Node Inspector in the right panel. It shows the node\u2019s \u03A9-Fragility composite score (0\u201310) broken into five pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth. Each pillar is expandable with a detailed explanation, formula, and physical constraint. Connected edges are listed below with causal mechanisms.",
     tooltipPosition: "left",
   },
   {

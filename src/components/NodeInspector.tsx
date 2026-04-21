@@ -9,13 +9,6 @@ import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
-/** Dispatch content to the copilot for display + TTS readout */
-function dispatchSpeak(title: string, text: string) {
-  window.dispatchEvent(
-    new CustomEvent("apex-speak-content", { detail: { title, text } })
-  );
-}
-
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
   if (value >= 7) return "#ffab00";
@@ -280,18 +273,8 @@ export default function NodeInspector() {
                     transition={{ duration: 0.15 }}
                     className="overflow-hidden"
                   >
-                    <div
-                      className="mt-1.5 p-2 rounded border border-accent-cyan/20 bg-accent-cyan/5 text-[8px] font-mono text-foreground/80 leading-relaxed cursor-pointer hover:border-accent-cyan/40 transition-colors group"
-                      onClick={() => dispatchSpeak(
-                        `${node.shortLabel} — ${profile.pillarLabels.composite} Methodology`,
-                        methodology
-                      )}
-                      title="Click to read aloud"
-                    >
+                    <div className="mt-1.5 p-2 rounded border border-accent-cyan/20 bg-accent-cyan/5 text-[8px] font-mono text-foreground/80 leading-relaxed">
                       {methodology}
-                      <div className="text-[6px] text-text-muted opacity-0 group-hover:opacity-60 transition-opacity mt-1">
-                        {"\uD83D\uDD0A"} click to read aloud
-                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -338,14 +321,7 @@ export default function NodeInspector() {
                           transition={{ duration: 0.15 }}
                           className="overflow-hidden"
                         >
-                          <div
-                            className="mt-1 p-2 rounded border border-border bg-surface-elevated space-y-1.5 cursor-pointer hover:border-accent-cyan/30 transition-colors group"
-                            onClick={() => dispatchSpeak(
-                              `${node.shortLabel} — ${axis.label} (${axis.value.toFixed(1)}/10)`,
-                              `${desc.short} ${desc.detail} Formula: ${desc.formula}`
-                            )}
-                            title="Click to read aloud"
-                          >
+                          <div className="mt-1 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
                             <div className="text-[8px] font-mono text-foreground/90 leading-relaxed">
                               {desc.short}
                             </div>
@@ -354,9 +330,6 @@ export default function NodeInspector() {
                             </div>
                             <div className="text-[7px] font-mono text-accent-cyan/60 leading-relaxed border-t border-border pt-1">
                               {desc.formula}
-                            </div>
-                            <div className="text-[6px] font-mono text-text-muted opacity-0 group-hover:opacity-60 transition-opacity mt-0.5">
-                              {"\uD83D\uDD0A"} click to read aloud
                             </div>
                           </div>
                         </motion.div>

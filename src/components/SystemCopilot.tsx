@@ -167,36 +167,6 @@ export default function SystemCopilot() {
     window.speechSynthesis.speak(utterance);
   }, [ttsEnabled]);
 
-  // Force-speak text (ignores TTS toggle — used for explicit click-to-speak)
-  const forceSpeakText = useCallback((text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-
-    const clean = text
-      .replace(/[*_#`~]/g, "")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/\n{2,}/g, ". ")
-      .replace(/\n/g, ", ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!clean) return;
-
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.rate = 0.92;
-    utterance.pitch = 0.82;
-    utterance.volume = 1;
-
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(
-      (v) => v.name.includes("Daniel") || v.name.includes("Google UK English Male") || v.name.includes("Alex")
-    ) ?? voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("male"))
-      ?? voices.find((v) => v.lang.startsWith("en"));
-    if (preferred) utterance.voice = preferred;
-
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
   // Auto-speak assistant responses when TTS is enabled
   useEffect(() => {
     if (!ttsEnabled) return;
@@ -215,26 +185,6 @@ export default function SystemCopilot() {
       window.speechSynthesis.getVoices();
     }
   }, []);
-
-  // Listen for click-to-speak events from panel content
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.text) return;
-      const title = detail.title || "SYSTEM READOUT";
-      // Add as assistant message to copilot
-      addCopilotMessage({
-        id: `readout-${Date.now()}`,
-        role: "assistant",
-        content: `**${title}**\n\n${detail.text}`,
-        timestamp: Date.now(),
-      });
-      // Always speak (regardless of TTS toggle)
-      forceSpeakText(`${title}. ${detail.text}`);
-    };
-    window.addEventListener("apex-speak-content", handler);
-    return () => window.removeEventListener("apex-speak-content", handler);
-  }, [addCopilotMessage, forceSpeakText]);
 
   // Inject node context message when selection changes
   useEffect(() => {

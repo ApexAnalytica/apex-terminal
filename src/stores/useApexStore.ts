@@ -163,8 +163,22 @@ interface ApexState {
   setDomainSelectorOpen: (open: boolean) => void;
 
   // Persona
-  activePersona: "scientist" | "analyst" | "cross";
-  setActivePersona: (persona: "scientist" | "analyst" | "cross") => void;
+  activePersona:
+    | "scientist"
+    | "financial"
+    | "macro"
+    | "geopolitical"
+    | "cross"
+    | "analyst"; // "analyst" retained only to tolerate legacy persisted values
+  setActivePersona: (
+    persona:
+      | "scientist"
+      | "financial"
+      | "macro"
+      | "geopolitical"
+      | "cross"
+      | "analyst",
+  ) => void;
 
   // Data source selection (which datasets to load)
   selectedDataSources: string[];
@@ -506,8 +520,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
 
-  // Persona
-  activePersona: "analyst",
+  // Persona (default: financial — more specific than the prior "analyst")
+  activePersona: "financial",
   setActivePersona: (persona) => set({ activePersona: persona }),
 
   // Data sources

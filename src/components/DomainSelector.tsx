@@ -48,19 +48,41 @@ interface DomainGroup {
   domains: DomainCard[];
 }
 
-type Persona = "scientist" | "analyst" | "cross";
+type Persona =
+  | "scientist"
+  | "financial"
+  | "macro"
+  | "geopolitical"
+  | "cross";
 
 const PERSONAS: { id: Persona; label: string; desc: string }[] = [
-  { id: "analyst", label: "ANALYST", desc: "Geopolitical · Financial · Macro" },
+  { id: "financial", label: "FINANCIAL", desc: "Markets · Credit · Sovereign" },
+  { id: "macro", label: "MACRO", desc: "Growth · Inflation · Policy" },
+  { id: "geopolitical", label: "GEOPOLITICAL", desc: "Energy · Infra · Defense" },
   { id: "scientist", label: "SCIENTIST", desc: "Life Sciences" },
-  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · cross-dataset multi-select" },
+  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · multi-select" },
 ];
 
-// Which dataset families each persona may see
-const PERSONA_DATASETS: Record<Persona, Set<DomainCard["dataset"]>> = {
-  analyst: new Set(["main", "athena"]),
-  scientist: new Set(["t1d"]),
-  cross: new Set(["main", "athena", "t1d"]),
+// Each persona shows a subset of domain groups (by group label).
+// CROSS shows everything and is the only persona allowed to multi-select
+// across different datasets.
+const PERSONA_GROUPS: Record<Persona, Set<string>> = {
+  financial: new Set(["FINANCIAL & SOVEREIGN", "MENA ENERGY & COMMODITIES"]),
+  macro: new Set(["MACRO IMPACT", "FINANCIAL & SOVEREIGN"]),
+  geopolitical: new Set([
+    "MENA ENERGY & COMMODITIES",
+    "INFRASTRUCTURE & DEFENSE",
+    "FINANCIAL & SOVEREIGN",
+  ]),
+  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
+  cross: new Set([
+    "MENA ENERGY & COMMODITIES",
+    "FINANCIAL & SOVEREIGN",
+    "INFRASTRUCTURE & DEFENSE",
+    "MACRO IMPACT",
+    "LIFE SCIENCES",
+    "FRONTIER",
+  ]),
 };
 
 const DOMAIN_GROUPS: DomainGroup[] = [
@@ -328,19 +350,23 @@ function getCascadeExamples(domainIds: string[]): string[] {
 }
 
 export default function DomainSelector() {
-  const {
-    domainSelectorOpen,
-    setDomainSelectorOpen,
-    isMultiDomainMode,
-    setIsMultiDomainMode,
-    setSelectedDomains,
-    setVisibleCategories,
-    setVisibleDiscoverySources,
-    setSelectedDataSources,
-    setGraphData,
-    activePersona,
-    setActivePersona,
-  } = useApexStore();
+  const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
+  const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
+  const setIsMultiDomainMode = useApexStore((s) => s.setIsMultiDomainMode);
+  const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
+  const setVisibleCategories = useApexStore((s) => s.setVisibleCategories);
+  const setVisibleDiscoverySources = useApexStore((s) => s.setVisibleDiscoverySources);
+  const setSelectedDataSources = useApexStore((s) => s.setSelectedDataSources);
+  const setGraphData = useApexStore((s) => s.setGraphData);
+  const activePersonaRaw = useApexStore((s) => s.activePersona) as string;
+  const setActivePersona = useApexStore((s) => s.setActivePersona);
+
+  // Migrate legacy "analyst" value (pre-subdivision) to the new default.
+  const activePersona: Persona = (
+    PERSONAS.some((p) => p.id === activePersonaRaw)
+      ? activePersonaRaw
+      : "financial"
+  ) as Persona;
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
   const [localMulti, setLocalMulti] = useState(false);
@@ -348,27 +374,22 @@ export default function DomainSelector() {
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
 
-  // Cards visible for the active persona
-  const allowedDatasets = PERSONA_DATASETS[activePersona];
-  const visibleGroups = DOMAIN_GROUPS.map((g) => ({
-    ...g,
-    domains: g.domains.filter((d) => allowedDatasets.has(d.dataset)),
-  })).filter((g) => g.domains.length > 0);
+  // Cards visible for the active persona (filtered by domain group)
+  const allowedGroups = PERSONA_GROUPS[activePersona];
+  const visibleGroups = DOMAIN_GROUPS
+    .filter((g) => allowedGroups.has(g.label));
 
   const switchPersona = useCallback(
     (persona: Persona) => {
       setActivePersona(persona);
-      const allowed = PERSONA_DATASETS[persona];
-      // Drop any currently-selected cards that don't belong to the new persona's datasets
-      setLocalSelected((prev) =>
-        prev.filter((id) => {
-          const card = DOMAIN_CARDS.find((d) => d.id === id);
-          return card && allowed.has(card.dataset);
-        })
+      const allowed = PERSONA_GROUPS[persona];
+      // Drop any currently-selected cards that don't belong to the new persona's groups
+      const allowedCardIds = new Set(
+        DOMAIN_GROUPS
+          .filter((g) => allowed.has(g.label))
+          .flatMap((g) => g.domains.map((d) => d.id))
       );
-      // Cross-domain is the only persona that allows cross-dataset multi-select;
-      // others still allow multi-select within their own family.
-      // We don't force single-select on switch — just drop out-of-persona cards.
+      setLocalSelected((prev) => prev.filter((id) => allowedCardIds.has(id)));
     },
     [setActivePersona]
   );
@@ -378,8 +399,8 @@ export default function DomainSelector() {
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
-        // In Analyst/Scientist personas, multi-select is allowed within the same
-        // dataset family only. In Cross-Domain, any combination is allowed.
+        // Focused personas restrict multi-select to a single dataset family to
+        // keep the rendered graph coherent. CROSS-DOMAIN is the escape hatch.
         if (activePersona !== "cross") {
           const card = DOMAIN_CARDS.find((d) => d.id === id);
           const filtered = card

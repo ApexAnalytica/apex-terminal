@@ -123,12 +123,22 @@ export default function RiskPropagationFlow() {
     return ids;
   }, [selectedNode, selectedNodes]);
 
-  // Get the nodes to display time series for
-  // Selected nodes (single + multi) shown first, then fill remaining slots with top risk nodes
-  const displayNodes = useMemo(() => {
-    const riskCards = buildRiskCards(activeGraph, shocks);
-    const riskMap = new Map(riskCards.map((c) => [c.nodeId, c]));
+  // Compute base risk cards once per {activeGraph, shocks} — not on timeline scrub.
+  // temporalGraph (and therefore activeGraph) only changes when the snapshot itself
+  // changes, but the riskMap allocation used to re-run on every timelinePosition tick
+  // because the outer memo included allSelectedIds in its deps and was therefore
+  // re-evaluated whenever selection changed, pulling in the activeGraph recompute path.
+  // Splitting into two memos breaks that coupling.
+  const { riskCards, riskMap } = useMemo(() => {
+    const cards = buildRiskCards(activeGraph, shocks);
+    const map = new Map(cards.map((c) => [c.nodeId, c]));
+    return { riskCards: cards, riskMap: map };
+  }, [activeGraph, shocks]);
 
+  // Get the nodes to display time series for.
+  // Selected nodes (single + multi) shown first, then fill remaining slots with top risk nodes.
+  // Depends on riskCards/riskMap identity (stable across scrub) + allSelectedIds.
+  const displayNodes = useMemo(() => {
     if (allSelectedIds.size > 0) {
       // Build cards for all selected nodes, even if they're not top-risk
       const selectedCards: typeof riskCards = [];
@@ -159,7 +169,7 @@ export default function RiskPropagationFlow() {
       return [...selectedCards, ...remaining].slice(0, maxSlots);
     }
     return riskCards.slice(0, 5);
-  }, [activeGraph, shocks, allSelectedIds]);
+  }, [riskCards, riskMap, allSelectedIds, activeGraph, shocks]);
 
   // Get temporal history for each display node
   const nodeHistories = useMemo(() => {

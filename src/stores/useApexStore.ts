@@ -162,6 +162,10 @@ interface ApexState {
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
 
+  // Persona
+  activePersona: "scientist" | "analyst" | "cross";
+  setActivePersona: (persona: "scientist" | "analyst" | "cross") => void;
+
   // Data source selection (which datasets to load)
   selectedDataSources: string[];
   setSelectedDataSources: (sources: string[]) => void;
@@ -496,6 +500,10 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSelectedDomains: (domains) => set({ selectedDomains: domains }),
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
+
+  // Persona
+  activePersona: "analyst",
+  setActivePersona: (persona) => set({ activePersona: persona }),
 
   // Data sources
   selectedDataSources: ["middle-east-playbooks"],

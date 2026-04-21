@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ExpiredPage() {
@@ -18,10 +19,13 @@ export default function ExpiredPage() {
       <div className="w-full max-w-md space-y-8 text-center">
         {/* Logo */}
         <div className="space-y-2">
-          <img
+          <Image
             src="/logo.png"
             alt="Manifold Logo"
-            className="w-40 h-40 mx-auto object-contain"
+            width={160}
+            height={160}
+            className="mx-auto object-contain"
+            priority
           />
           <h1 className="text-xl font-[family-name:var(--font-michroma)] tracking-[0.3em] text-accent-cyan">
             MANIFOLD

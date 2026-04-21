@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
@@ -61,10 +62,13 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <img
+          <Image
             src="/logo.png"
             alt="Manifold Logo"
-            className="w-40 h-40 mx-auto object-contain"
+            width={160}
+            height={160}
+            className="mx-auto object-contain"
+            priority
           />
           <h1 className="text-xl font-[family-name:var(--font-michroma)] tracking-[0.3em] text-accent-cyan">
             MANIFOLD

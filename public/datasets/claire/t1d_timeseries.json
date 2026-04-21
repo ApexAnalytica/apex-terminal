@@ -1,0 +1,470 @@
+{
+  "vx880_trial": [
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "c_peptide_positive_pct",
+      "metric_value": 0.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-04-01",
+      "metric_name": "c_peptide_positive_pct",
+      "metric_value": 100.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "c_peptide_positive_pct",
+      "metric_value": 100.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "hba1c_mean",
+      "metric_value": 7.8,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "hba1c_mean",
+      "metric_value": 6.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "tir_70_180_pct",
+      "metric_value": 49.5,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "tir_70_180_pct",
+      "metric_value": 93.3,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "glucose_cv_pct",
+      "metric_value": 36.3,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "glucose_cv_pct",
+      "metric_value": 20.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "exogenous_insulin_iu_per_day",
+      "metric_value": 40.9,
+      "unit": "IU/day",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "exogenous_insulin_iu_per_day",
+      "metric_value": 3.3,
+      "unit": "IU/day",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "insulin_independent_pct",
+      "metric_value": 0.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "insulin_independent_pct",
+      "metric_value": 83.3,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2023-01-01",
+      "metric_name": "severe_hypo_pct",
+      "metric_value": 100.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    },
+    {
+      "trial": "FORWARD-101",
+      "sponsor": "Vertex",
+      "therapy": "zimislecel",
+      "date": "2024-01-01",
+      "metric_name": "severe_hypo_pct",
+      "metric_value": 0.0,
+      "unit": "%",
+      "cohort_size": 12,
+      "source": "https://www.nejm.org/doi/abs/10.1056/NEJMoa2506549",
+      "notes": "Vertex FORWARD-101 Phase 1/2, 12 patients receiving full single dose; Reichman NEJM 2025 + Vertex ADA 85th Scientific Sessions June 2025"
+    }
+  ],
+  "tn10_teplizumab": [
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2011-01-01",
+      "metric_name": "c_peptide_auc_pmol_per_ml",
+      "metric_value": 1.96,
+      "unit": "pmol/mL",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "placebo",
+      "date": "2011-01-01",
+      "metric_name": "c_peptide_auc_pmol_per_ml",
+      "metric_value": 1.68,
+      "unit": "pmol/mL",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2013-01-01",
+      "metric_name": "stage3_t1d_free_pct",
+      "metric_value": 57.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "placebo",
+      "date": "2013-01-01",
+      "metric_name": "stage3_t1d_free_pct",
+      "metric_value": 28.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2012-01-01",
+      "metric_name": "c_peptide_decline_from_baseline_pct",
+      "metric_value": 8.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "placebo",
+      "date": "2012-01-01",
+      "metric_name": "c_peptide_decline_from_baseline_pct",
+      "metric_value": 27.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2013-01-01",
+      "metric_name": "c_peptide_decline_from_baseline_pct",
+      "metric_value": 34.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "placebo",
+      "date": "2013-01-01",
+      "metric_name": "c_peptide_decline_from_baseline_pct",
+      "metric_value": 51.0,
+      "unit": "%",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2019-01-01",
+      "metric_name": "median_t1d_delay_years",
+      "metric_value": 2.0,
+      "unit": "years",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    },
+    {
+      "trial": "TN-10",
+      "sponsor": "TrialNet / NIDDK",
+      "therapy": "teplizumab",
+      "arm": "teplizumab",
+      "date": "2021-01-01",
+      "metric_name": "median_t1d_delay_years",
+      "metric_value": 2.7,
+      "unit": "years",
+      "source": "https://repository.niddk.nih.gov/study/113",
+      "notes": "TrialNet TN-10 teplizumab vs placebo in at-risk Stage 2 T1D relatives; Herold NEJM 2019 + Perdigoto STM 2021 extended follow-up"
+    }
+  ],
+  "t1d_index": [
+    {
+      "country": "Global",
+      "date": "2021-01-01",
+      "metric_name": "prevalence_millions",
+      "metric_value": 8.4,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2022-01-01",
+      "metric_name": "prevalence_millions",
+      "metric_value": 8.66,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2023-01-01",
+      "metric_name": "prevalence_millions",
+      "metric_value": 8.93,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2024-01-01",
+      "metric_name": "prevalence_millions",
+      "metric_value": 9.21,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "prevalence_millions",
+      "metric_value": 9.5,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2021-01-01",
+      "metric_name": "incidence_thousands_yoy",
+      "metric_value": 466.0,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2022-01-01",
+      "metric_name": "incidence_thousands_yoy",
+      "metric_value": 477.2,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2023-01-01",
+      "metric_name": "incidence_thousands_yoy",
+      "metric_value": 488.7,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2024-01-01",
+      "metric_name": "incidence_thousands_yoy",
+      "metric_value": 500.4,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "incidence_thousands_yoy",
+      "metric_value": 513.0,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2021-01-01",
+      "metric_name": "premature_deaths_thousands",
+      "metric_value": 170.0,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2022-01-01",
+      "metric_name": "premature_deaths_thousands",
+      "metric_value": 171.0,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2023-01-01",
+      "metric_name": "premature_deaths_thousands",
+      "metric_value": 172.3,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2024-01-01",
+      "metric_name": "premature_deaths_thousands",
+      "metric_value": 173.1,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "premature_deaths_thousands",
+      "metric_value": 174.0,
+      "unit": "thousands",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "ped_0_14_prevalence_millions",
+      "metric_value": 1.0,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "youth_15_19_prevalence_millions",
+      "metric_value": 0.8,
+      "unit": "millions",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    },
+    {
+      "country": "Global",
+      "date": "2025-01-01",
+      "metric_name": "undiagnosed_death_share_pct",
+      "metric_value": 17.2,
+      "unit": "%",
+      "source": "https://www.t1dindex.org/about/",
+      "notes": "T1D Index v3.0 / IDF Diabetes Atlas 11th edition 2025 global estimates; Ogle DRCP 2025 \u2014 open-source Markov projection model"
+    }
+  ]
+}

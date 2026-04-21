@@ -10,10 +10,16 @@
 import type { ManifoldModule } from "./types";
 
 export type EstimatorId =
+  // Criticality engines (graph-derived)
+  | "csd"
+  | "ph"
+  | "lppls"
+  // Patient-trace estimators (TS-ported)
   | "bocpd"
   | "transfer-entropy"
   | "moran"
   | "takens"
+  // Clinical / trial estimators (Python reference canonical)
   | "hte-meta"
   | "cox-ph"
   | "nlme"
@@ -151,7 +157,7 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   pillarLabels: GEOPOLITICAL_PILLARS,
   pillarDetails: GEOPOLITICAL_PILLAR_DETAILS,
   compositeMethodology: GEOPOLITICAL_METHODOLOGY,
-  criticalityEstimators: ["bocpd", "transfer-entropy"],
+  criticalityEstimators: ["csd", "ph", "lppls"],
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────

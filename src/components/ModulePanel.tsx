@@ -6,7 +6,8 @@ import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
 import { getDomainColor } from "@/lib/graph-data";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
+import { getEstimatorMeta } from "@/lib/criticality-registry";
 import TrinityPanel from "./TrinityPanel";
 import InterventionControls from "./InterventionControls";
 import MonteCarloForecast from "./MonteCarloForecast";
@@ -753,6 +754,8 @@ function ParetoPanel({
   const baselineEpochs = useApexStore((s) => s.baselineEpochs);
   const interventionEpochs = useApexStore((s) => s.interventionEpochs);
   const activeTimeline = useApexStore((s) => s.activeTimeline);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const activeProfile = useMemo(() => resolveDomainProfile(selectedDomains), [selectedDomains]);
   const engine = useMemo(() => getEngineProvider(), []);
   const presetShocks = useMemo(() => getPresetShocks(), []);
   const omegaState = useMemo(() => engine.scanTailRisk(shocks), [engine, shocks]);
@@ -837,8 +840,18 @@ function ParetoPanel({
   const getCritColor = (epochs: number) =>
     epochs < 20 ? "#ff1744" : epochs < 80 ? "#ffab00" : "#00e676";
 
-  // Which criticality model is selected in the tab-strip picker (one at a time)
-  const [selectedCrit, setSelectedCrit] = useState<"csd" | "ph" | "lppls">("csd");
+  // Which criticality model is selected in the tab-strip picker (one at a time).
+  // Keyed by EstimatorId so it composes with the profile-driven estimator list.
+  const [selectedCrit, setSelectedCrit] = useState<EstimatorId>(
+    () => activeProfile.criticalityEstimators[0] ?? "csd"
+  );
+  // If the profile changes (e.g. user switches from T1D back to geopolitical)
+  // reset the selection to the new profile's first estimator.
+  useEffect(() => {
+    if (!activeProfile.criticalityEstimators.includes(selectedCrit)) {
+      setSelectedCrit(activeProfile.criticalityEstimators[0] ?? "csd");
+    }
+  }, [activeProfile, selectedCrit]);
   // Collapsible TOP Ω-CRITICAL NODES list — default collapsed to keep panel tight
   const [topNodesOpen, setTopNodesOpen] = useState(false);
 
@@ -1055,69 +1068,121 @@ function ParetoPanel({
         </div>
       </div>
       {(() => {
-        const models = [
-          {
-            key: "csd" as const,
-            abbrev: "CSD",
-            fullName: "CRITICAL SLOWING DOWN",
-            epochs: csdEpochs,
-            maxEpochs: 200,
-            color: getCritColor(csdEpochs),
-            confidence: csdData.confidence,
-            timeSeries: csdData.timeSeries,
-            modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
-            shortDesc: "Recovery rate decay — epochs until perturbation recovery time diverges to infinity",
-            methodology: [
-              `Fits an AR(1) autoregression x_{t+1} = α·x_t + (1−α)·μ to the mean Ω-composite trajectory across the ${scopeLabel} (the same series shown in the bottom ΩF TIME SERIES cards). As a system approaches a tipping point, perturbations decay more slowly → α → 1 (Scheffer et al. 2009).`,
-              `Sample size n = ${csdData.sampleSize}. ${csdData.sampleSize >= 5 ? `Estimated lag-1 autocorrelation α = ${csdData.alpha.toFixed(3)}; AR(1) one-step-ahead R² = ${(csdData.rSquared * 100).toFixed(1)}%. Confidence = R² × min(1, n/30) penalises under-sampled fits.` : `Need ≥5 observations to estimate α — run the temporal replay to populate the trajectory.`}`,
-              `Spectral context: λmax = ${csdData.lambdaMax.toFixed(3)} from the live weighted adjacency (${graphData.edges.length} edges). Solid line: observed Ω trajectory. Dashed line: AR(1) one-step-ahead forecast.`,
-            ],
-            formula: `α = ${Number.isFinite(csdData.alpha) ? csdData.alpha.toFixed(3) : "—"} | R² = ${(csdData.rSquared * 100).toFixed(1)}% | n = ${csdData.sampleSize} | λmax = ${csdData.lambdaMax.toFixed(3)}`,
-            assessment: csdData.sampleSize < 5
-              ? `INSUFFICIENT DATA — only ${csdData.sampleSize} observation(s) in the scoped Ω trajectory. Trigger a temporal replay or widen the selection to populate the AR(1) fit window.`
-              : `${csdData.alpha >= 0.95 ? "CRITICAL" : csdData.alpha >= 0.8 ? "Near-critical" : "Subcritical"} — AR(1) α = ${csdData.alpha.toFixed(3)} on n=${csdData.sampleSize}. ${csdData.alpha >= 0.95 ? "Perturbations barely decay; recovery time diverges." : csdData.alpha >= 0.8 ? "Autocorrelation rising — early-warning signature active." : "Adequate recovery rate; no slowing-down signature."} Spectral λmax = ${csdData.lambdaMax.toFixed(3)} corroborates from graph structure.`,
-          },
-          {
-            key: "ph" as const,
-            abbrev: "PH",
-            fullName: "PERSISTENT HOMOLOGY",
-            epochs: phEpochs,
-            maxEpochs: 300,
-            color: getCritColor(phEpochs),
-            confidence: phData.confidence,
-            timeSeries: phData.timeSeries,
-            modelSeries: phData.modelSeries,
-            shortDesc: `Topological fragility holes — epochs until high-Ω cluster boundaries collapse`,
-            methodology: [
-              `Sweeps a filtration threshold ε from 0→10 across all ${graphData.nodes.length} nodes. At each ε, nodes with Ω ≤ ε and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical β₁ collapse model.`,
-              `Computes β₀ (connected components via union-find) and β₁ (1-cycles via Euler characteristic: β₁ ≈ E − V + β₀) at each filtration step — showing how topological holes appear and collapse.`,
-              `When persistent holes vanish (β₁ → 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above Ω > 7.0 form critical cluster boundaries.`,
-            ],
-            formula: `β₁ = |E| − |V| + β₀ | filtration: ε ∈ [0, 10] | critical when β₁ → 0`,
-            assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. Ω range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak β₁ at filtration midpoint indicates topological complexity.`,
-          },
-          {
-            key: "lppls" as const,
-            abbrev: "LPPLS",
-            fullName: "LOG-PERIODIC POWER LAW SINGULARITY",
-            epochs: lpplsEpochs,
-            maxEpochs: 250,
-            color: getCritColor(lpplsEpochs),
-            confidence: lpplsData.confidence,
-            timeSeries: lpplsData.timeSeries,
-            modelSeries: lpplsData.modelSeries,
-            shortDesc: "Super-exponential fragility growth — epochs until singularity (tc) is reached",
-            methodology: [
-              `Fits the LPPLS model y(t) = A + B(tc−t)^m · [1 + C·cos(ω·ln(tc−t) + φ)] (Sornette 2003) to the same scoped mean-Ω trajectory as CSD — ${scopeLabel}, n=${lpplsData.sampleSize}.`,
-              `${lpplsData.sampleSize >= 5 ? `R² = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and LPPLS fit. Confidence = R² × min(1, n/30). ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit — trajectory may not follow LPPLS dynamics."}` : `Need ≥5 observations to score the fit — dashed line is the projected curve only.`}`,
-              `Critical time tc is derived from the CSD epoch countdown so all three models share a coherent horizon. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
-            ],
-            formula: `ω = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${lpplsData.sampleSize >= 5 ? `R² = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R² = — (n=${lpplsData.sampleSize}, need ≥5)`}`,
-            assessment: lpplsData.sampleSize < 5
-              ? `INSUFFICIENT DATA — only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
-              : `LPPLS fit R² = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped Ω trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure — bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature — trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise ω by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks — baseline oscillation frequency."}`,
-          },
-        ];
+        // Build a descriptor per active-profile estimator. "Ready" engines
+        // (CSD/PH/LPPLS) get their live graph-derived methodology text;
+        // data-hungry estimators fall back to the registry's placeholder
+        // content + an explicit empty-state panel.
+        type ModelDescriptor = {
+          key: EstimatorId;
+          abbrev: string;
+          fullName: string;
+          epochs: number;
+          maxEpochs: number;
+          color: string;
+          confidence: number;
+          timeSeries: number[];
+          modelSeries: number[] | undefined;
+          shortDesc: string;
+          methodology: string[];
+          formula: string;
+          assessment: string;
+          emptyState?: CriticalityEmptyState;
+        };
+
+        const models: ModelDescriptor[] = activeProfile.criticalityEstimators.map((id) => {
+          const meta = getEstimatorMeta(id);
+          if (id === "csd") {
+            return {
+              key: "csd",
+              abbrev: "CSD",
+              fullName: "CRITICAL SLOWING DOWN",
+              epochs: csdEpochs,
+              maxEpochs: 200,
+              color: getCritColor(csdEpochs),
+              confidence: csdData.confidence,
+              timeSeries: csdData.timeSeries,
+              modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
+              shortDesc: meta.shortDesc,
+              methodology: [
+                `Fits an AR(1) autoregression x_{t+1} = \u03B1\u00B7x_t + (1\u2212\u03B1)\u00B7\u03BC to the mean \u03A9-composite trajectory across the ${scopeLabel} (the same series shown in the bottom \u03A9F TIME SERIES cards). As a system approaches a tipping point, perturbations decay more slowly \u2192 \u03B1 \u2192 1 (Scheffer et al. 2009).`,
+                `Sample size n = ${csdData.sampleSize}. ${csdData.sampleSize >= 5 ? `Estimated lag-1 autocorrelation \u03B1 = ${csdData.alpha.toFixed(3)}; AR(1) one-step-ahead R\u00B2 = ${(csdData.rSquared * 100).toFixed(1)}%. Confidence = R\u00B2 \u00D7 min(1, n/30) penalises under-sampled fits.` : `Need \u22655 observations to estimate \u03B1 \u2014 run the temporal replay to populate the trajectory.`}`,
+                `Spectral context: \u03BBmax = ${csdData.lambdaMax.toFixed(3)} from the live weighted adjacency (${graphData.edges.length} edges). Solid line: observed \u03A9 trajectory. Dashed line: AR(1) one-step-ahead forecast.`,
+              ],
+              formula: `\u03B1 = ${Number.isFinite(csdData.alpha) ? csdData.alpha.toFixed(3) : "\u2014"} | R\u00B2 = ${(csdData.rSquared * 100).toFixed(1)}% | n = ${csdData.sampleSize} | \u03BBmax = ${csdData.lambdaMax.toFixed(3)}`,
+              assessment: csdData.sampleSize < 5
+                ? `INSUFFICIENT DATA \u2014 only ${csdData.sampleSize} observation(s) in the scoped \u03A9 trajectory. Trigger a temporal replay or widen the selection to populate the AR(1) fit window.`
+                : `${csdData.alpha >= 0.95 ? "CRITICAL" : csdData.alpha >= 0.8 ? "Near-critical" : "Subcritical"} \u2014 AR(1) \u03B1 = ${csdData.alpha.toFixed(3)} on n=${csdData.sampleSize}. ${csdData.alpha >= 0.95 ? "Perturbations barely decay; recovery time diverges." : csdData.alpha >= 0.8 ? "Autocorrelation rising \u2014 early-warning signature active." : "Adequate recovery rate; no slowing-down signature."} Spectral \u03BBmax = ${csdData.lambdaMax.toFixed(3)} corroborates from graph structure.`,
+            };
+          }
+          if (id === "ph") {
+            return {
+              key: "ph",
+              abbrev: "PH",
+              fullName: "PERSISTENT HOMOLOGY",
+              epochs: phEpochs,
+              maxEpochs: 300,
+              color: getCritColor(phEpochs),
+              confidence: phData.confidence,
+              timeSeries: phData.timeSeries,
+              modelSeries: phData.modelSeries,
+              shortDesc: meta.shortDesc,
+              methodology: [
+                `Sweeps a filtration threshold \u03B5 from 0\u219210 across all ${graphData.nodes.length} nodes. At each \u03B5, nodes with \u03A9 \u2264 \u03B5 and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical \u03B2\u2081 collapse model.`,
+                `Computes \u03B2\u2080 (connected components via union-find) and \u03B2\u2081 (1-cycles via Euler characteristic: \u03B2\u2081 \u2248 E \u2212 V + \u03B2\u2080) at each filtration step \u2014 showing how topological holes appear and collapse.`,
+                `When persistent holes vanish (\u03B2\u2081 \u2192 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above \u03A9 > 7.0 form critical cluster boundaries.`,
+              ],
+              formula: `\u03B2\u2081 = |E| \u2212 |V| + \u03B2\u2080 | filtration: \u03B5 \u2208 [0, 10] | critical when \u03B2\u2081 \u2192 0`,
+              assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. \u03A9 range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak \u03B2\u2081 at filtration midpoint indicates topological complexity.`,
+            };
+          }
+          if (id === "lppls") {
+            return {
+              key: "lppls",
+              abbrev: "LPPLS",
+              fullName: "LOG-PERIODIC POWER LAW SINGULARITY",
+              epochs: lpplsEpochs,
+              maxEpochs: 250,
+              color: getCritColor(lpplsEpochs),
+              confidence: lpplsData.confidence,
+              timeSeries: lpplsData.timeSeries,
+              modelSeries: lpplsData.modelSeries,
+              shortDesc: meta.shortDesc,
+              methodology: [
+                `Fits the LPPLS model y(t) = A + B(tc\u2212t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc\u2212t) + \u03C6)] (Sornette 2003) to the same scoped mean-\u03A9 trajectory as CSD \u2014 ${scopeLabel}, n=${lpplsData.sampleSize}.`,
+                `${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and LPPLS fit. Confidence = R\u00B2 \u00D7 min(1, n/30). ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to score the fit \u2014 dashed line is the projected curve only.`}`,
+                `Critical time tc is derived from the CSD epoch countdown so all three models share a coherent horizon. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
+              ],
+              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
+              assessment: lpplsData.sampleSize < 5
+                ? `INSUFFICIENT DATA \u2014 only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
+                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped \u03A9 trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise \u03C9 by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks \u2014 baseline oscillation frequency."}`,
+            };
+          }
+          // Estimator has a static-registry entry with no live runtime yet:
+          // render the card in an empty state that still teaches what the
+          // method does and which inputs it needs.
+          const emptyState: CriticalityEmptyState =
+            meta.defaultAvailability === "pending-port"
+              ? { kind: "pending-port", reference: meta.pythonReference ?? "research/estimators/" }
+              : { kind: "awaiting-data", inputs: meta.requiredInputs ?? "Not yet specified." };
+          return {
+            key: id,
+            abbrev: meta.abbrev,
+            fullName: meta.fullName,
+            epochs: 0,
+            maxEpochs: 1,
+            color: meta.color,
+            confidence: 0,
+            timeSeries: [],
+            modelSeries: undefined,
+            shortDesc: meta.shortDesc,
+            methodology: meta.methodology,
+            formula: meta.formula,
+            assessment: meta.placeholderAssessment,
+            emptyState,
+          };
+        });
+
         const selected = models.find((m) => m.key === selectedCrit) ?? models[0];
         return (
           <>
@@ -1145,14 +1210,14 @@ function ParetoPanel({
                         className="text-[10px] font-[family-name:var(--font-michroma)] tabular-nums font-bold leading-none shrink-0"
                         style={{ color: m.color }}
                       >
-                        T-{m.epochs}
+                        {m.emptyState ? "T\u2013\u2013" : `T-${m.epochs}`}
                       </span>
                     </div>
                     <div className="h-0.5 mt-1 w-full bg-border rounded overflow-hidden">
                       <div
                         className="h-full transition-all duration-500"
                         style={{
-                          width: `${Math.min(100, (m.epochs / m.maxEpochs) * 100)}%`,
+                          width: m.emptyState ? "0%" : `${Math.min(100, (m.epochs / m.maxEpochs) * 100)}%`,
                           backgroundColor: m.color,
                           opacity: 0.8,
                         }}
@@ -1179,6 +1244,7 @@ function ParetoPanel({
               methodology={selected.methodology}
               formula={selected.formula}
               assessment={selected.assessment}
+              emptyState={selected.emptyState}
             />
           </>
         );
@@ -1980,6 +2046,10 @@ function CritSparkline({
   );
 }
 
+type CriticalityEmptyState =
+  | { kind: "awaiting-data"; inputs: string }
+  | { kind: "pending-port"; reference: string };
+
 function CriticalityCard({
   abbrev,
   fullName,
@@ -1996,6 +2066,7 @@ function CriticalityCard({
   methodology,
   formula,
   assessment,
+  emptyState,
 }: {
   abbrev: string;
   fullName: string;
@@ -2012,9 +2083,11 @@ function CriticalityCard({
   methodology: string[];
   formula: string;
   assessment: string;
+  emptyState?: CriticalityEmptyState;
 }) {
   const confPct = Math.round(confidence * 100);
   const confColor = confPct >= 70 ? "#00e676" : confPct >= 40 ? "#ffab00" : "#ff5252";
+  const isEmpty = !!emptyState;
   return (
     <div
       className="border rounded overflow-hidden transition-all duration-300"
@@ -2041,17 +2114,30 @@ function CriticalityCard({
                 className="font-[family-name:var(--font-michroma)] text-[22px] font-bold tabular-nums leading-none"
                 style={{ color }}
               >
-                T-{epochs}
+                {isEmpty ? "T\u2013\u2013" : `T-${epochs}`}
               </span>
               <div className="flex items-center justify-end gap-1.5 mt-0.5">
                 <div className="text-[8px] font-mono text-text-muted">EPOCHS</div>
-                <div className="text-[7px] font-mono px-1 py-0.5 rounded" style={{
-                  color: confColor,
-                  backgroundColor: `${confColor}15`,
-                  border: `1px solid ${confColor}30`,
-                }}>
-                  {confPct}% conf
-                </div>
+                {isEmpty ? (
+                  <div
+                    className="text-[7px] font-mono px-1 py-0.5 rounded"
+                    style={{
+                      color: "#90a4ae",
+                      backgroundColor: "rgba(144,164,174,0.1)",
+                      border: "1px solid rgba(144,164,174,0.3)",
+                    }}
+                  >
+                    {emptyState!.kind === "awaiting-data" ? "awaiting data" : "pending port"}
+                  </div>
+                ) : (
+                  <div className="text-[7px] font-mono px-1 py-0.5 rounded" style={{
+                    color: confColor,
+                    backgroundColor: `${confColor}15`,
+                    border: `1px solid ${confColor}30`,
+                  }}>
+                    {confPct}% conf
+                  </div>
+                )}
               </div>
             </div>
             <span
@@ -2064,7 +2150,7 @@ function CriticalityCard({
         </div>
         <div className="h-1 w-full bg-border rounded overflow-hidden">
           <div className="h-full rounded transition-all duration-500" style={{
-            width: `${Math.min(100, (epochs / maxEpochs) * 100)}%`,
+            width: isEmpty ? "0%" : `${Math.min(100, (epochs / maxEpochs) * 100)}%`,
             backgroundColor: color,
             opacity: 0.7,
           }} />
@@ -2077,51 +2163,89 @@ function CriticalityCard({
       {/* Expandable detail section */}
       {expanded && (
         <div className="px-2.5 pb-2.5 space-y-2.5 border-t" style={{ borderColor: `${color}20` }}>
-          {/* Time Series Chart */}
-          <div className="mt-2">
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              TEMPORAL SIGNAL
-            </div>
-            <div className="border rounded p-1 transition-all duration-300" style={{
-              borderColor: `${color}15`,
-              backgroundColor: "rgba(0,0,0,0.15)",
+          {isEmpty ? (
+            <div className="mt-2 p-2.5 rounded border border-dashed" style={{
+              borderColor: "rgba(144,164,174,0.4)",
+              backgroundColor: "rgba(144,164,174,0.05)",
             }}>
-              <CritSparkline
-                data={timeSeries}
-                modelData={modelSeries}
-                color={color}
-                height={chartExpanded ? 240 : 140}
-                abbrev={abbrev}
-                fullName={fullName}
-                formula={formula}
-                isExpanded={!!chartExpanded}
-              />
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider mb-1.5" style={{ color: "#90a4ae" }}>
+                {emptyState!.kind === "awaiting-data" ? "AWAITING DATA" : "PENDING TS PORT"}
+              </div>
+              {emptyState!.kind === "awaiting-data" ? (
+                <>
+                  <div className="text-[9px] font-mono text-text-muted leading-relaxed mb-1.5">
+                    TS implementation is in place; the estimator runs as soon as an input series is wired into the store.
+                  </div>
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-0.5">
+                    REQUIRED INPUTS
+                  </div>
+                  <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+                    {emptyState!.inputs}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[9px] font-mono text-text-muted leading-relaxed mb-1.5">
+                    Python reference is canonical. TS port deferred until a linear-algebra dependency decision lands.
+                  </div>
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-0.5">
+                    REFERENCE
+                  </div>
+                  <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+                    {emptyState!.reference}
+                  </div>
+                </>
+              )}
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Time Series Chart */}
+              <div className="mt-2">
+                <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+                  TEMPORAL SIGNAL
+                </div>
+                <div className="border rounded p-1 transition-all duration-300" style={{
+                  borderColor: `${color}15`,
+                  backgroundColor: "rgba(0,0,0,0.15)",
+                }}>
+                  <CritSparkline
+                    data={timeSeries}
+                    modelData={modelSeries}
+                    color={color}
+                    height={chartExpanded ? 240 : 140}
+                    abbrev={abbrev}
+                    fullName={fullName}
+                    formula={formula}
+                    isExpanded={!!chartExpanded}
+                  />
+                </div>
+              </div>
 
-          {/* Confidence gauge */}
-          <div>
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              MODEL CONFIDENCE
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-border rounded overflow-hidden">
-                <div className="h-full rounded transition-all duration-700" style={{
-                  width: `${confPct}%`,
-                  backgroundColor: confColor,
-                  opacity: 0.85,
-                }} />
+              {/* Confidence gauge */}
+              <div>
+                <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+                  MODEL CONFIDENCE
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-border rounded overflow-hidden">
+                    <div className="h-full rounded transition-all duration-700" style={{
+                      width: `${confPct}%`,
+                      backgroundColor: confColor,
+                      opacity: 0.85,
+                    }} />
+                  </div>
+                  <div className="text-[10px] font-[family-name:var(--font-michroma)] tabular-nums" style={{ color: confColor }}>
+                    {confPct}%
+                  </div>
+                </div>
+                <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-relaxed">
+                  {confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
+                   confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
+                   "Weak signal — insufficient simulation data; run cascade for higher confidence."}
+                </div>
               </div>
-              <div className="text-[10px] font-[family-name:var(--font-michroma)] tabular-nums" style={{ color: confColor }}>
-                {confPct}%
-              </div>
-            </div>
-            <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-relaxed">
-              {confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
-               confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
-               "Weak signal — insufficient simulation data; run cascade for higher confidence."}
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Methodology explanation — click to speak */}
           <div

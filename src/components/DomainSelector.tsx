@@ -48,6 +48,21 @@ interface DomainGroup {
   domains: DomainCard[];
 }
 
+type Persona = "scientist" | "analyst" | "cross";
+
+const PERSONAS: { id: Persona; label: string; desc: string }[] = [
+  { id: "analyst", label: "ANALYST", desc: "Geopolitical · Financial · Macro" },
+  { id: "scientist", label: "SCIENTIST", desc: "Life Sciences" },
+  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · cross-dataset multi-select" },
+];
+
+// Which dataset families each persona may see
+const PERSONA_DATASETS: Record<Persona, Set<DomainCard["dataset"]>> = {
+  analyst: new Set(["main", "athena"]),
+  scientist: new Set(["t1d"]),
+  cross: new Set(["main", "athena", "t1d"]),
+};
+
 const DOMAIN_GROUPS: DomainGroup[] = [
   {
     label: "MENA ENERGY & COMMODITIES",
@@ -323,6 +338,8 @@ export default function DomainSelector() {
     setVisibleDiscoverySources,
     setSelectedDataSources,
     setGraphData,
+    activePersona,
+    setActivePersona,
   } = useApexStore();
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
@@ -331,15 +348,52 @@ export default function DomainSelector() {
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
 
+  // Cards visible for the active persona
+  const allowedDatasets = PERSONA_DATASETS[activePersona];
+  const visibleGroups = DOMAIN_GROUPS.map((g) => ({
+    ...g,
+    domains: g.domains.filter((d) => allowedDatasets.has(d.dataset)),
+  })).filter((g) => g.domains.length > 0);
+
+  const switchPersona = useCallback(
+    (persona: Persona) => {
+      setActivePersona(persona);
+      const allowed = PERSONA_DATASETS[persona];
+      // Drop any currently-selected cards that don't belong to the new persona's datasets
+      setLocalSelected((prev) =>
+        prev.filter((id) => {
+          const card = DOMAIN_CARDS.find((d) => d.id === id);
+          return card && allowed.has(card.dataset);
+        })
+      );
+      // Cross-domain is the only persona that allows cross-dataset multi-select;
+      // others still allow multi-select within their own family.
+      // We don't force single-select on switch — just drop out-of-persona cards.
+    },
+    [setActivePersona]
+  );
+
   const toggleDomain = useCallback(
     (id: string) => {
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
+        // In Analyst/Scientist personas, multi-select is allowed within the same
+        // dataset family only. In Cross-Domain, any combination is allowed.
+        if (activePersona !== "cross") {
+          const card = DOMAIN_CARDS.find((d) => d.id === id);
+          const filtered = card
+            ? prev.filter((prevId) => {
+                const prevCard = DOMAIN_CARDS.find((d) => d.id === prevId);
+                return prevCard && prevCard.dataset === card.dataset;
+              })
+            : prev;
+          return [...filtered, id];
+        }
         return [...prev, id];
       });
     },
-    [localMulti]
+    [localMulti, activePersona]
   );
 
   const switchMode = useCallback(
@@ -427,6 +481,35 @@ export default function DomainSelector() {
               </div>
             </div>
 
+            {/* Persona Selector */}
+            <div className="px-6 pt-4 pb-2 border-b border-border/50">
+              <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-2">
+                PERSONA
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {PERSONAS.map((p) => {
+                  const isActive = activePersona === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => switchPersona(p.id)}
+                      className="flex flex-col px-3 py-1.5 rounded border transition-all text-left"
+                      style={{
+                        borderColor: isActive ? "var(--accent-cyan)" : "var(--border)",
+                        backgroundColor: isActive ? "rgba(0,229,255,0.08)" : "transparent",
+                        color: isActive ? "var(--accent-cyan)" : "var(--text-muted)",
+                      }}
+                    >
+                      <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider">
+                        {p.label}
+                      </span>
+                      <span className="text-[7px] font-mono opacity-60 mt-0.5">{p.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Mode Toggle */}
             <div className="px-6 pt-4 flex gap-2">
               <button
@@ -460,7 +543,7 @@ export default function DomainSelector() {
 
             {/* Grouped Domain Cards */}
             <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-4">
-              {DOMAIN_GROUPS.map((group) => (
+              {visibleGroups.map((group) => (
                 <div key={group.label}>
                   <div
                     className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider mb-1.5"

@@ -9,17 +9,20 @@ import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "./DomainSelector";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
+
+// Top-bar tabs are pinned to the four canonical labels regardless of active
+// domain profile. Profile-scoped vocabulary lives in the right panel / pillar
+// bars / methodology popup only.
+const MODULE_TABS = GEOPOLITICAL_PROFILE.modules.map((m) => ({
+  id: m.id as ModuleId,
+  label: m.name,
+  icon: m.icon,
+  color: m.color,
+}));
 
 export default function HeaderBar() {
   const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive, selectedDomains, setDomainSelectorOpen } = useApexStore();
-  const profile = resolveDomainProfile(selectedDomains);
-  const MODULE_TABS = profile.modules.map((m) => ({
-    id: m.id as ModuleId,
-    label: m.name,
-    icon: m.icon,
-    color: m.color,
-  }));
   const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
 
   // During replay, override omega state with current epoch's values

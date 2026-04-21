@@ -265,6 +265,7 @@ export const T1D_PROFILE: DomainProfile = {
   criticalityEstimators: [
     "bocpd",
     "transfer-entropy",
+    "moran",
     "hte-meta",
     "cox-ph",
     "nlme",

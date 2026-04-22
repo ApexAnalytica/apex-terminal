@@ -66,6 +66,20 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Admin-only routes — gated by ADMIN_EMAILS allowlist
+  if (pathname.startsWith("/admin")) {
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const email = user.email?.toLowerCase() ?? "";
+    if (!adminEmails.includes(email)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // Trusted users — always allowed
   if (profile.access_type === "trusted") {
     return supabaseResponse;

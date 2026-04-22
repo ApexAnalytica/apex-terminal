@@ -224,25 +224,28 @@ function EdgeInspector({
 const nodeTypes = { causal: CausalNode2D };
 
 /**
- * Helper: re-fits the viewport when the 2D view becomes visible
- * (both views are always mounted; display: none/block toggles visibility).
- * Also re-fits when topology changes (nodes added/removed).
+ * Re-fits the viewport whenever the *set* of visible nodes changes — not just
+ * the count. Keying off count alone leaves the viewport stuck on the previous
+ * framing when the user swaps one isolated selection for another of equal size
+ * (e.g., 3 → different 3 nodes in isolate mode), which read as a "pre-filter
+ * snapshot" bug.
  */
-function FitViewOnVisible({ nodeCount }: { nodeCount: number }) {
+function FitViewOnVisible({ visibleKey, isEmpty }: { visibleKey: string; isEmpty: boolean }) {
   const { fitView } = useReactFlow();
   const viewMode = useApexStore((s) => s.viewMode);
   const prevViewMode = useRef(viewMode);
-  const prevNodeCount = useRef(nodeCount);
+  const prevKey = useRef(visibleKey);
   const hasFittedOnce = useRef(false);
 
   useEffect(() => {
     const becameVisible = prevViewMode.current !== "2d" && viewMode === "2d";
-    const topologyChanged = prevNodeCount.current !== nodeCount;
-    const firstMount = !hasFittedOnce.current && viewMode === "2d" && nodeCount > 0;
+    const visibleSetChanged = prevKey.current !== visibleKey;
+    const firstMount = !hasFittedOnce.current && viewMode === "2d" && !isEmpty;
     prevViewMode.current = viewMode;
-    prevNodeCount.current = nodeCount;
+    prevKey.current = visibleKey;
 
-    if (becameVisible || topologyChanged || firstMount) {
+    if (isEmpty) return;
+    if (becameVisible || visibleSetChanged || firstMount) {
       hasFittedOnce.current = true;
       // Small delay to let ReactFlow finish rendering the nodes
       const timer = setTimeout(() => {
@@ -250,7 +253,7 @@ function FitViewOnVisible({ nodeCount }: { nodeCount: number }) {
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [viewMode, nodeCount, fitView]);
+  }, [viewMode, visibleKey, isEmpty, fitView]);
 
   return null;
 }
@@ -458,6 +461,14 @@ function CausalDAG2DInner() {
     return edges.filter((e) => selSet.has(e.source) && selSet.has(e.target));
   }, [edges, isolateSelection, multiSelectedNodes]);
 
+  // Stable key over the *set* of rendered node ids — drives FitViewOnVisible so
+  // the viewport re-centers whenever the visible set changes, including
+  // swaps where the count stays the same (e.g. changing the isolated selection).
+  const visibleKey = useMemo(
+    () => visibleNodes.map((n) => n.id).sort().join("|"),
+    [visibleNodes],
+  );
+
   const onInit = useCallback(() => {}, []);
 
   const onEdgeClick: EdgeMouseHandler = useCallback(
@@ -529,7 +540,7 @@ function CausalDAG2DInner() {
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
         <Controls showInteractive={false} position="bottom-right" />
-        <FitViewOnVisible nodeCount={visibleNodes.length} />
+        <FitViewOnVisible visibleKey={visibleKey} isEmpty={visibleNodes.length === 0} />
       </ReactFlow>
       {selectedNodesCount > 0 && (
         <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">

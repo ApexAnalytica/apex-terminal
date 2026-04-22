@@ -32,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Public routes — no auth required
-  const publicRoutes = ["/login", "/trial-signup", "/expired", "/forgot-password", "/reset-password", "/auth"];
+  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/expired", "/forgot-password", "/reset-password", "/auth"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||

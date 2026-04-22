@@ -132,14 +132,20 @@ export default function LoginPage() {
         <p className="text-center text-[9px] font-mono text-text-muted">
           Trial provides full platform access for 48 hours.
           <br />
-          Contact{" "}
+          Have an invite code?{" "}
+          <Link
+            href="/trusted-signup"
+            className="text-accent-cyan/70 hover:text-accent-cyan"
+          >
+            Activate full access
+          </Link>
+          {" · "}
           <a
             href="mailto:info@apexanalytica.co"
             className="text-accent-cyan/70 hover:text-accent-cyan"
           >
             info@apexanalytica.co
-          </a>{" "}
-          for extended access.
+          </a>
         </p>
       </div>
     </div>

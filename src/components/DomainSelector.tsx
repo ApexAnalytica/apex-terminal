@@ -373,6 +373,7 @@ export default function DomainSelector() {
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
+  const [showCascadePaths, setShowCascadePaths] = useState(false);
 
   // Cards visible for the active persona (filtered by domain group)
   const allowedGroups = PERSONA_GROUPS[activePersona];
@@ -627,34 +628,43 @@ export default function DomainSelector() {
               ))}
             </div>
 
-            {/* Cascade Examples */}
-            <AnimatePresence>
-              {cascadeExamples.length > 0 && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
+            {/* Cascade Examples (collapsed by default) */}
+            {cascadeExamples.length > 0 && (
+              <div className="px-6 pb-2">
+                <button
+                  onClick={() => setShowCascadePaths((p) => !p)}
+                  className="flex items-center gap-2 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-amber transition-colors"
                 >
-                  <div className="px-6 pb-2">
-                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1.5">
-                      CROSS-DOMAIN CASCADE PATHS
-                    </div>
-                    <div className="space-y-1">
-                      {cascadeExamples.map((ex, i) => (
-                        <div
-                          key={i}
-                          className="text-[9px] font-mono text-accent-amber/80 px-3 py-1.5 rounded bg-accent-amber/5 border border-accent-amber/15"
-                        >
-                          {ex}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <span style={{ transform: showCascadePaths ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
+                  CROSS-DOMAIN CASCADE PATHS
+                  <span className="text-[7px] font-mono text-text-muted/50">
+                    {cascadeExamples.length} example{cascadeExamples.length > 1 ? "s" : ""}
+                  </span>
+                </button>
+                <AnimatePresence>
+                  {showCascadePaths && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2 space-y-1">
+                        {cascadeExamples.map((ex, i) => (
+                          <div
+                            key={i}
+                            className="text-[9px] font-mono text-accent-amber/80 px-3 py-1.5 rounded bg-accent-amber/5 border border-accent-amber/15"
+                          >
+                            {ex}
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
             {/* Data Layers */}
             <div className="px-6 pb-2">

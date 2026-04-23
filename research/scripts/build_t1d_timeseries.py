@@ -201,6 +201,19 @@ INDEX_RECORDS = [
 # Assemble and write
 # ---------------------------------------------------------------------------
 
+def _load_sidecar(filename: str, source_key: str) -> list:
+    """Load a JAEB extractor sidecar if present; else warn and return []."""
+    path = os.path.join(os.path.dirname(OUT), filename)
+    if not os.path.exists(path):
+        print(f"[warn] {filename} not found — run research/scripts/extract_*.py first")
+        return []
+    with open(path) as f:
+        payload = json.load(f)
+    records = payload.get("records", [])
+    print(f"[merge] {source_key}: {len(records)} records from {filename}")
+    return records
+
+
 def main() -> None:
     out_dir = os.path.dirname(OUT)
     os.makedirs(out_dir, exist_ok=True)
@@ -209,6 +222,11 @@ def main() -> None:
         "vx880_trial": VX880_RECORDS,
         "tn10_teplizumab": TN10_RECORDS,
         "t1d_index": INDEX_RECORDS,
+        "jaeb_cpep": _load_sidecar("cpep_cohort.json", "jaeb_cpep"),
+        "t1dx_registry_hba1c": _load_sidecar(
+            "t1dx_registry.json", "t1dx_registry_hba1c",
+        ),
+        "d1namo_cgm": _load_sidecar("d1namo_cgm.json", "d1namo_cgm"),
     }
 
     with open(OUT, "w") as f:

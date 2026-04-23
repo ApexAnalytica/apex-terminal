@@ -1083,12 +1083,12 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     label: "C-peptide Positivity (VX-880)",
   },
   t1d_c_peptide: {
-    source: "tn10_teplizumab",
-    description: "C-peptide AUC — TrialNet TN-10 teplizumab vs placebo baseline C-peptide AUC (stage-2 at-risk cohort)",
-    metricFilter: { metric_name: "c_peptide_auc_pmol_per_ml", arm: "teplizumab" },
+    source: "jaeb_cpep",
+    description: "Residual β-cell function — JAEB C-PEP 762-visit cohort, stimulated C-peptide MMTT AUC median, stratified by years-since-diagnosis (rendered as disease-duration trajectory)",
+    metricFilter: { metric_name: "cpep_mmtt_auc_median" },
     valueKey: "metric_value",
-    unit: "pmol/mL",
-    label: "C-peptide AUC (TN-10 tepliz)",
+    unit: "nmol/L·min",
+    label: "C-peptide MMTT AUC (JAEB cohort)",
   },
   t1d_cgm_tir: {
     source: "vx880_trial",
@@ -1129,6 +1129,22 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     valueKey: "metric_value",
     unit: "thousands",
     label: "T1D New Cases / Year",
+  },
+  t1d_population_hba1c: {
+    source: "t1dx_registry_hba1c",
+    description: "Real-world adolescent glycemic control — T1D Exchange Registry HbA1c mean in 13–17y band across four cross-sectional waves (2010–12, 2015–16, 2016–17, 2017–18)",
+    metricFilter: { metric_name: "hba1c_mean_pct", age_band_years: "13-17" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "HbA1c Mean, 13–17y (T1DX)",
+  },
+  t1d_realworld_tir: {
+    source: "d1namo_cgm",
+    description: "Real-world continuous-glucose Time-in-Range (70–180 mg/dL) — D1NAMO 9-subject T1D cohort median, q25 and q75 across 4-day recording windows",
+    metricFilter: { metric_name: "tir_70_180_pct_cohort_median" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "CGM TIR Median (D1NAMO)",
   },
 
   // Kill Chain nodes

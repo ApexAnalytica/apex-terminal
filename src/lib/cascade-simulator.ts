@@ -32,6 +32,12 @@ const DEFAULT_CONFIG: CascadeConfig = {
 };
 
 // ─── Category Mapping ───────────────────────────────────────────
+// Maps an incoming shock to the node categories it can strike. The `science`
+// category covers biomedical / research nodes (e.g. T1D pathway graphs) and
+// must appear under health / regulatory / environmental — otherwise a shock
+// injected from a T1D-domain session lands on zero nodes, the cascade stays
+// flat, and the solver's fallback ("cascade damage too low to rank cuts")
+// fires even though the graph has clear structural vulnerabilities.
 const SHOCK_TO_NODE_CATEGORIES: Record<ShockCategory, NodeCategory[]> = {
   compute: ["manufacturing", "infrastructure"],
   energy: ["energy"],
@@ -40,9 +46,9 @@ const SHOCK_TO_NODE_CATEGORIES: Record<ShockCategory, NodeCategory[]> = {
   geopolitical: ["geopolitical", "finance"],
   financial: ["finance", "economic"],
   cyber: ["infrastructure", "communications"],
-  regulatory: ["finance", "economic", "geopolitical"],
-  environmental: ["energy", "infrastructure", "agriculture"],
-  health: ["economic", "agriculture"],
+  regulatory: ["finance", "economic", "geopolitical", "science"],
+  environmental: ["energy", "infrastructure", "agriculture", "science"],
+  health: ["economic", "agriculture", "science"],
 };
 
 export function mapShocksToNodes(

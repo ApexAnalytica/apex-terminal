@@ -43,36 +43,49 @@ export interface InterdictionCandidate {
 
 /**
  * Compute a scalar damage score from a cascade simulation.
- * Combines peak mean shock intensity, critical epoch proximity, and
- * the final omega buffer deficit. Range: 0 (no damage) to 100 (total collapse).
+ *
+ * Three orthogonal components so cutting a single edge produces a visible
+ * delta in sparse graphs (previous version summed two mean-intensity terms
+ * that collapse to the same value in sparse cascades, making every cut
+ * look identical and tripping the structural-vulnerability fallback):
+ *   (1) spread   — peak mean intensity across all nodes (breadth)
+ *   (2) hot-node — peak (intensity × ΩF/10) on any single node (depth on
+ *                  high-fragility targets; cuts that protect one critical
+ *                  chokepoint show up here even if the mean barely moves)
+ *   (3) critical — bonus when the Ω-buffer breaches threshold.
  */
-function computeDamage(epochs: EpochSnapshot[]): number {
+function computeDamage(
+  epochs: EpochSnapshot[],
+  baseOmegaMap: Map<string, number>,
+): number {
   if (epochs.length === 0) return 0;
 
-  // Peak mean shock intensity across all epochs
   let peakMeanIntensity = 0;
+  let peakHotNode = 0;
+
   for (const snap of epochs) {
     let total = 0;
     let count = 0;
-    for (const state of Object.values(snap.nodeStates)) {
+    for (const [id, state] of Object.entries(snap.nodeStates)) {
       total += state.shockIntensity;
       count++;
+      const baseOmega = baseOmegaMap.get(id) ?? 5;
+      const hotness = state.shockIntensity * (baseOmega / 10);
+      if (hotness > peakHotNode) peakHotNode = hotness;
     }
-    if (count > 0) peakMeanIntensity = Math.max(peakMeanIntensity, total / count);
+    if (count > 0) {
+      const mean = total / count;
+      if (mean > peakMeanIntensity) peakMeanIntensity = mean;
+    }
   }
 
-  // Lowest omega buffer reached
-  const minBuffer = Math.min(...epochs.map((e) => e.omegaBuffer));
-
-  // Did it reach criticality?
   const reachedCritical = epochs.some((e) => e.isCritical);
 
-  // Composite damage: weighted combination
-  const intensityScore = peakMeanIntensity * 40; // 0-40
-  const bufferScore = (100 - minBuffer) * 0.4; // 0-40
-  const criticalBonus = reachedCritical ? 20 : 0; // 0 or 20
+  const spreadScore = peakMeanIntensity * 40;  // 0-40
+  const hotNodeScore = peakHotNode * 35;       // 0-35
+  const criticalBonus = reachedCritical ? 25 : 0; // 0 or 25
 
-  return Math.min(100, intensityScore + bufferScore + criticalBonus);
+  return Math.min(100, spreadScore + hotNodeScore + criticalBonus);
 }
 
 // ─── Greedy Minimax Solver ──────────────────────────────────────
@@ -97,9 +110,17 @@ export function solveInterdiction(
   budget: number = 3,
   mode: "edge" | "node" | "both" = "edge"
 ): InterdictionResult {
+  // Pre-compute base ΩF per node once; computeDamage uses this to weight
+  // hot-node damage so cuts protecting high-fragility targets score higher
+  // than cuts on peripheral nodes.
+  const baseOmegaMap = new Map<string, number>();
+  for (const node of graph.nodes) {
+    baseOmegaMap.set(node.id, node.omegaFragility.composite);
+  }
+
   // Baseline: no interventions
   const baselineEpochs = simulateCascade(graph, shocks, severedEdges);
-  const baselineDamage = computeDamage(baselineEpochs);
+  const baselineDamage = computeDamage(baselineEpochs, baseOmegaMap);
 
   const interventions: InterdictionCandidate[] = [];
   const removedEdgeIds = new Set(severedEdges);
@@ -164,7 +185,7 @@ export function solveInterdiction(
       }
 
       const epochs = simulateCascade(testGraph, shocks, testSevered);
-      const damage = computeDamage(epochs);
+      const damage = computeDamage(epochs, baseOmegaMap);
 
       if (damage < bestDamage) {
         bestDamage = damage;

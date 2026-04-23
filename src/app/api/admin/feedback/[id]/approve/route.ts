@@ -17,9 +17,8 @@ export async function POST(
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const { id } = await params;
-  const feedbackId = Number(id);
-  if (!Number.isInteger(feedbackId) || feedbackId <= 0) {
+  const { id: feedbackId } = await params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(feedbackId)) {
     return NextResponse.json({ error: "Invalid feedback id" }, { status: 400 });
   }
 

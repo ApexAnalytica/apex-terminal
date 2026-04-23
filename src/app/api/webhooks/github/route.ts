@@ -23,12 +23,12 @@ function verifySignature(payload: string, signature: string | null): boolean {
   }
 }
 
-function extractFeedbackId(text: string | null | undefined): number | null {
+function extractFeedbackId(text: string | null | undefined): string | null {
   if (!text) return null;
-  const match = text.match(/Feedback-ID:\s*(\d+)/i);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  const match = text.match(
+    /Feedback-ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+  );
+  return match ? match[1].toLowerCase() : null;
 }
 
 type PullRequestEvent = {

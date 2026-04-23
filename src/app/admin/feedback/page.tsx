@@ -4,7 +4,7 @@ import FeedbackAdminList from "./FeedbackAdminList";
 export const dynamic = "force-dynamic";
 
 type FeedbackRow = {
-  id: number;
+  id: string;
   created_at: string;
   updated_at: string | null;
   type: string;

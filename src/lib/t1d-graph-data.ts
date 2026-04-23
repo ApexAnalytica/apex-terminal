@@ -227,6 +227,36 @@ const NODES: CausalNode[] = [
     isRestricted: false,
     datasetColor: T1D_COLOR,
   },
+  {
+    id: "t1d_population_hba1c",
+    label: "Population Glycemic Control (HbA1c, T1DX Registry)",
+    shortLabel: "HbA1c-pop",
+    category: "science",
+    omegaFragility: omega(7.6, 5.0, 6.5, 4.5, 9.0, 8.0),
+    globalConcentration: "Adolescent 13–17y cohort persistently ~8.7% across 4 T1DX waves — chronic under-target",
+    replacementTime: "Weeks to months per individual; population-level shift stalled since 2010",
+    physicalConstraint: "Real-world adherence ceiling — the ADA <7% target remains unmet in >70% of adolescents",
+    domain: "T1D Metabolic",
+    discoverySource: "merged",
+    isConfounded: false,
+    isRestricted: false,
+    datasetColor: T1D_COLOR,
+  },
+  {
+    id: "t1d_realworld_tir",
+    label: "Real-World CGM Time-in-Range (D1NAMO cohort)",
+    shortLabel: "TIR-RW",
+    category: "science",
+    omegaFragility: omega(7.0, 5.0, 6.0, 3.5, 8.5, 8.0),
+    globalConcentration: "D1NAMO 9-subject cohort median TIR ~60% under standard MDI / pump care",
+    replacementTime: "Responds within days to closed-loop system adoption",
+    physicalConstraint: "4-day recording window + small n limits external validity; treat as proof-of-concept signal",
+    domain: "T1D Metabolic",
+    discoverySource: "PCMCI+",
+    isConfounded: false,
+    isRestricted: false,
+    datasetColor: T1D_COLOR,
+  },
 ];
 
 const EDGES: CausalEdge[] = [
@@ -245,6 +275,11 @@ const EDGES: CausalEdge[] = [
   // Metabolic → complications
   { id: "t1d_e9", source: "t1d_cgm_tir", target: "t1d_dkd", weight: -0.6, lag: 36, type: "temporal", confidence: 0.8, isInconsistent: false, physicalMechanism: "Glycemic exposure drives mesangial matrix expansion over years" },
   { id: "t1d_e10", source: "t1d_cgm_tir", target: "t1d_retinopathy", weight: -0.55, lag: 24, type: "temporal", confidence: 0.8, isInconsistent: false, physicalMechanism: "Hyperglycemia-driven microvascular damage accumulates" },
+  { id: "t1d_e15", source: "t1d_c_peptide", target: "t1d_population_hba1c", weight: -0.45, lag: 3, type: "temporal", confidence: 0.75, isInconsistent: false, physicalMechanism: "Residual endogenous insulin reduces post-prandial hyperglycemia → lower HbA1c" },
+  { id: "t1d_e16", source: "t1d_population_hba1c", target: "t1d_dkd", weight: 0.7, lag: 60, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Each 1% HbA1c rise ~1.3× DKD progression risk (DCCT/EDIC legacy)" },
+  { id: "t1d_e17", source: "t1d_population_hba1c", target: "t1d_retinopathy", weight: 0.65, lag: 48, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Cumulative glycemic exposure drives microvascular damage (DCCT)" },
+  { id: "t1d_e18", source: "t1d_realworld_tir", target: "t1d_population_hba1c", weight: -0.8, lag: 2, type: "temporal", confidence: 0.95, isInconsistent: false, physicalMechanism: "TIR % and HbA1c are mathematically coupled via time-averaged glucose (Vigersky/Battelino 2019)" },
+  { id: "t1d_e19", source: "t1d_c_peptide", target: "t1d_realworld_tir", weight: 0.5, lag: 0, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Residual endogenous insulin dampens CGM excursions, raising TIR" },
 
   // Interventions
   { id: "t1d_e11", source: "t1d_teplizumab", target: "t1d_cd8_teff", weight: -0.6, lag: 0, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "anti-CD3 induces partial T-cell anergy / exhaustion" },

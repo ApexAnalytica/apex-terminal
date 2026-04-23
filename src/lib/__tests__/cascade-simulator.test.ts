@@ -35,13 +35,12 @@ describe("mapShocksToNodes", () => {
     expect(map.has("A")).toBe(false);
   });
 
-  it("distributes severity evenly across matching nodes", () => {
+  it("applies full severity to each matching node", () => {
     const graph = linearGraph();
     const shock = makeShock({ id: "s", category: "compute", severity: 0.6 });
     const map = mapShocksToNodes(graph, [shock]);
-    // 2 matching nodes → 0.3 each
-    expect(map.get("A")).toBeCloseTo(0.3, 5);
-    expect(map.get("B")).toBeCloseTo(0.3, 5);
+    expect(map.get("A")).toBeCloseTo(0.6, 5);
+    expect(map.get("B")).toBeCloseTo(0.6, 5);
   });
 
   it("accumulates multiple shocks on same node, capped at 1", () => {
@@ -78,7 +77,7 @@ describe("simulateCascade", () => {
     expect(snapshots[0].epoch).toBe(0);
     // A and B should be activated at epoch 0
     expect(snapshots[0].nodeStates["A"].isActivated).toBe(true);
-    expect(snapshots[0].nodeStates["A"].shockIntensity).toBeCloseTo(0.3, 5);
+    expect(snapshots[0].nodeStates["A"].shockIntensity).toBeCloseTo(0.6, 5);
   });
 
   it("propagates signal: outSignal = sourceIntensity * weight * dampingFactor", () => {
@@ -259,6 +258,31 @@ describe("simulateCascade", () => {
       expect(profile.restorationLatency).toBeLessThanOrEqual(10);
       expect(profile.jurisdictionalHazard).toBeLessThanOrEqual(10);
     }
+  });
+
+  it("severing the injection frontier materially reduces peak cascade intensity", () => {
+    // A (shocked) → B → C with no other paths. Severing A→B must isolate B and C.
+    const graph = linearGraph();
+    // Restrict the shock to only A by reclassifying B and C out of "compute" mapping.
+    graph.nodes[1] = { ...graph.nodes[1], category: "agriculture" };
+    graph.nodes[2] = { ...graph.nodes[2], category: "agriculture" };
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.8 });
+
+    const peakMean = (snapshots: ReturnType<typeof simulateCascade>) =>
+      Math.max(
+        ...snapshots.map((s) => {
+          const intensities = Object.values(s.nodeStates).map((n) => n.shockIntensity);
+          return intensities.reduce((a, b) => a + b, 0) / intensities.length;
+        })
+      );
+
+    const baseline = simulateCascade(graph, [shock], [], { maxEpochs: 20 });
+    const cut = simulateCascade(graph, [shock], ["e_AB"], { maxEpochs: 20 });
+
+    const baselinePeak = peakMean(baseline);
+    const cutPeak = peakMean(cut);
+    // Cutting the sole propagation path must drop peak-mean intensity by >10%.
+    expect(cutPeak).toBeLessThan(baselinePeak * 0.9);
   });
 
   it("signal propagates through chain A→B→C over multiple epochs", () => {

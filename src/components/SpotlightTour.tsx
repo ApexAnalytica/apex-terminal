@@ -7,6 +7,9 @@ import { useApexStore } from "@/stores/useApexStore";
 interface TourStep {
   id: string;
   targetSelector: string | null;
+  /** Optional extra element to highlight + arrow to, for steps where two
+   *  parts of the UI are being described at once (e.g. tabs + panel). */
+  secondaryTargetSelector?: string;
   title: string;
   description: string;
   tooltipPosition: "top" | "bottom" | "left" | "right" | "center";
@@ -25,6 +28,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "module-tabs",
     targetSelector: '[data-tour="module-tabs"]',
+    secondaryTargetSelector: '[data-tour="module-panel"]',
     title: "FOUR ANALYSIS ENGINES",
     description:
       "The four engine tabs drive the right-hand panel. SPIRTES discovers causal structure from data. TARSKI verifies edges against physical, regulatory, and heuristic constraints. PEARL runs do-calculus interventions and network interdiction. PARETO monitors tail risk and criticality horizons. Switching tabs updates the right panel \u2014 the graph stays put.",
@@ -263,6 +267,47 @@ function computeArrow(
   }
 }
 
+/** Auto-pick an arrow from the tooltip to an arbitrary cutout, choosing the
+ *  tooltip edge / cutout edge that minimizes the crossing. Used for secondary
+ *  highlights, which aren't aligned with the step's tooltipPosition. */
+function autoArrow(
+  cutout: CutoutRect | null,
+  tooltipTop: number,
+  tooltipLeft: number,
+  tooltipHeight: number,
+): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
+  if (!cutout) return null;
+  const h = tooltipHeight || 200;
+  const ttCenterX = tooltipLeft + TOOLTIP_WIDTH / 2;
+  const ttCenterY = tooltipTop + h / 2;
+  const cuCenterX = cutout.x + cutout.width / 2;
+  const cuCenterY = cutout.y + cutout.height / 2;
+  const dx = cuCenterX - ttCenterX;
+  const dy = cuCenterY - ttCenterY;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx >= 0) {
+      return {
+        from: { x: tooltipLeft + TOOLTIP_WIDTH, y: ttCenterY },
+        to: { x: cutout.x, y: cuCenterY },
+      };
+    }
+    return {
+      from: { x: tooltipLeft, y: ttCenterY },
+      to: { x: cutout.x + cutout.width, y: cuCenterY },
+    };
+  }
+  if (dy >= 0) {
+    return {
+      from: { x: ttCenterX, y: tooltipTop + h },
+      to: { x: cuCenterX, y: cutout.y },
+    };
+  }
+  return {
+    from: { x: ttCenterX, y: tooltipTop },
+    to: { x: cuCenterX, y: cutout.y + cutout.height },
+  };
+}
+
 function computeTooltipPosition(
   cutout: CutoutRect | null,
   position: TourStep["tooltipPosition"],
@@ -319,6 +364,7 @@ export default function SpotlightTour() {
   const sawDomainSelectorRef = useRef(false);
 
   const [cutout, setCutout] = useState<CutoutRect | null>(null);
+  const [secondaryCutout, setSecondaryCutout] = useState<CutoutRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [showDomainHint, setShowDomainHint] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -330,23 +376,21 @@ export default function SpotlightTour() {
   const isLast = tourStep === TOUR_STEPS.length - 1;
 
   const measureTarget = useCallback(() => {
-    if (!step?.targetSelector) {
-      setCutout(null);
-      return;
-    }
-    const el = document.querySelector(step.targetSelector);
-    if (!el) {
-      setCutout(null);
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const pad = STEP_PADDING[step.id] ?? DEFAULT_PADDING;
-    setCutout({
-      x: rect.x - pad,
-      y: rect.y - pad,
-      width: rect.width + pad * 2,
-      height: rect.height + pad * 2,
-    });
+    const pad = step ? STEP_PADDING[step.id] ?? DEFAULT_PADDING : DEFAULT_PADDING;
+    const measure = (sel: string | null | undefined): CutoutRect | null => {
+      if (!sel) return null;
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return {
+        x: rect.x - pad,
+        y: rect.y - pad,
+        width: rect.width + pad * 2,
+        height: rect.height + pad * 2,
+      };
+    };
+    setCutout(measure(step?.targetSelector ?? null));
+    setSecondaryCutout(measure(step?.secondaryTargetSelector));
   }, [step]);
 
   const updatePositions = useCallback(() => {
@@ -419,31 +463,6 @@ export default function SpotlightTour() {
       setShowDomainHint(false);
     }
   }, [step, selectedDomains]);
-
-  // Auto-advance when the user clicks inside the highlighted cutout. Listen
-  // in capture phase so our handler fires before the target's own; defer the
-  // step increment to the next tick so the underlying click still runs.
-  // Skipped for welcome-and-domain (its own selector-close logic handles it)
-  // and finish (no target).
-  useEffect(() => {
-    if (!tourActive || !step || !cutout) return;
-    if (step.id === "welcome-and-domain" || step.id === "finish") return;
-
-    const handler = (e: MouseEvent) => {
-      const { clientX, clientY } = e;
-      const inside =
-        clientX >= cutout.x &&
-        clientX <= cutout.x + cutout.width &&
-        clientY >= cutout.y &&
-        clientY <= cutout.y + cutout.height;
-      if (!inside) return;
-      setTimeout(() => {
-        setTourStep(useApexStore.getState().tourStep + 1);
-      }, 0);
-    };
-    window.addEventListener("click", handler, true);
-    return () => window.removeEventListener("click", handler, true);
-  }, [tourActive, step, cutout, setTourStep]);
 
   useEffect(() => {
     if (!tourActive) return;
@@ -531,14 +550,45 @@ export default function SpotlightTour() {
     tooltipPos.left,
     tooltipHeightRef.current,
   );
+  const secondaryArrow = autoArrow(
+    secondaryCutout,
+    tooltipPos.top,
+    tooltipPos.left,
+    tooltipHeightRef.current,
+  );
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "none" }}>
-        {/* SVG overlay for the border + connector arrow. Dimming is done with
-            div rectangles below so the cutout area is guaranteed untouched. */}
+        {/* Dim + borders + arrows via a single SVG. Mask-based dim supports
+            multiple cutouts (e.g. module-tabs + module-panel). SVG is
+            pointer-events-none so clicks pass through; the tour only closes
+            via SKIP TOUR / Esc / finishing. */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
+            <mask id="spotlight-mask" maskUnits="userSpaceOnUse">
+              <rect x="0" y="0" width="100%" height="100%" fill="white" />
+              {cutout && (
+                <rect
+                  x={cutout.x}
+                  y={cutout.y}
+                  width={cutout.width}
+                  height={cutout.height}
+                  rx={8}
+                  fill="black"
+                />
+              )}
+              {secondaryCutout && (
+                <rect
+                  x={secondaryCutout.x}
+                  y={secondaryCutout.y}
+                  width={secondaryCutout.width}
+                  height={secondaryCutout.height}
+                  rx={8}
+                  fill="black"
+                />
+              )}
+            </mask>
             <marker
               id="spotlight-arrowhead"
               viewBox="0 0 10 10"
@@ -551,7 +601,15 @@ export default function SpotlightTour() {
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-cyan, #00e5ff)" />
             </marker>
           </defs>
-          {/* Bright border around the cutout so it reads as a clear window */}
+          <rect
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            fill="rgba(0, 0, 0, 0.78)"
+            mask="url(#spotlight-mask)"
+          />
+          {/* Primary border */}
           {cutout && (
             <motion.rect
               x={cutout.x}
@@ -570,7 +628,26 @@ export default function SpotlightTour() {
               key={`border-${step.id}`}
             />
           )}
-          {/* Connector arrow from tooltip edge to highlighted element */}
+          {/* Secondary border */}
+          {secondaryCutout && (
+            <motion.rect
+              x={secondaryCutout.x}
+              y={secondaryCutout.y}
+              width={secondaryCutout.width}
+              height={secondaryCutout.height}
+              rx={8}
+              fill="none"
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={2.5}
+              strokeOpacity={1}
+              style={{ filter: "drop-shadow(0 0 6px rgba(0, 229, 255, 0.5))" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              key={`border-secondary-${step.id}`}
+            />
+          )}
+          {/* Primary arrow */}
           {arrow && (
             <motion.line
               key={`arrow-${step.id}`}
@@ -588,65 +665,25 @@ export default function SpotlightTour() {
               transition={{ duration: 0.25, delay: 0.1 }}
             />
           )}
+          {/* Secondary arrow */}
+          {secondaryArrow && (
+            <motion.line
+              key={`arrow-secondary-${step.id}`}
+              x1={secondaryArrow.from.x}
+              y1={secondaryArrow.from.y}
+              x2={secondaryArrow.to.x}
+              y2={secondaryArrow.to.y}
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={1.5}
+              strokeOpacity={0.9}
+              strokeDasharray="4 3"
+              markerEnd="url(#spotlight-arrowhead)"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.25, delay: 0.1 }}
+            />
+          )}
         </svg>
-
-        {/* 4 dim rectangles around the cutout. Click-inert — only SKIP TOUR
-            or Esc close the tour. The cutout area itself has no overlay
-            element at all, so the underlying UI renders at full brightness
-            and receives clicks directly. */}
-        {cutout ? (
-          <>
-            <div
-              className="absolute"
-              style={{
-                left: 0,
-                top: 0,
-                right: 0,
-                height: Math.max(0, cutout.y),
-                background: "rgba(0, 0, 0, 0.78)",
-                pointerEvents: "auto",
-              }}
-            />
-            <div
-              className="absolute"
-              style={{
-                left: 0,
-                top: cutout.y + cutout.height,
-                right: 0,
-                bottom: 0,
-                background: "rgba(0, 0, 0, 0.78)",
-                pointerEvents: "auto",
-              }}
-            />
-            <div
-              className="absolute"
-              style={{
-                left: 0,
-                top: cutout.y,
-                width: Math.max(0, cutout.x),
-                height: cutout.height,
-                background: "rgba(0, 0, 0, 0.78)",
-                pointerEvents: "auto",
-              }}
-            />
-            <div
-              className="absolute"
-              style={{
-                left: cutout.x + cutout.width,
-                top: cutout.y,
-                right: 0,
-                height: cutout.height,
-                background: "rgba(0, 0, 0, 0.78)",
-                pointerEvents: "auto",
-              }}
-            />
-          </>
-        ) : (
-          <div
-            className="absolute inset-0"
-            style={{ background: "rgba(0, 0, 0, 0.78)", pointerEvents: "auto" }}
-          />
-        )}
 
         {/* Tooltip card */}
         <motion.div

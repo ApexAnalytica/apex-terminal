@@ -475,16 +475,8 @@ function TarskiPanel() {
         {isExpanded && (
           <div className="px-2 pb-2 border-t border-border/30 pt-2 space-y-2">
             {/* Full explanation */}
-            <div
-              className="text-[8px] font-mono text-foreground/85 leading-relaxed p-2 rounded bg-background/50 cursor-pointer hover:bg-background/70 transition-colors"
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent("apex-speak-content", {
-                  detail: { title: `Constraint: ${axiom.name}`, text: axiom.plainText + ". " + axiom.description }
-                }));
-              }}
-            >
+            <div className="text-[8px] font-mono text-foreground/85 leading-relaxed p-2 rounded bg-background/50">
               {axiom.description}
-              <span className="text-text-muted ml-1 opacity-60">(click to hear)</span>
             </div>
 
             {/* What it checks for */}
@@ -2436,21 +2428,10 @@ function CriticalityCard({
             </>
           )}
 
-          {/* Methodology explanation — click to speak */}
-          <div
-            className="cursor-pointer hover:bg-surface-elevated/50 rounded p-1 -m-1 transition-colors group"
-            onClick={() => window.dispatchEvent(new CustomEvent("apex-speak-content", {
-              detail: { title: `${abbrev} \u2014 Methodology`, text: methodology.join(" ") }
-            }))}
-            title="Click to read aloud"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                METHODOLOGY
-              </div>
-              <div className="text-[6px] font-mono text-text-muted opacity-0 group-hover:opacity-60 transition-opacity">
-                {"\uD83D\uDD0A"} read aloud
-              </div>
+          {/* Methodology explanation */}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              METHODOLOGY
             </div>
             <div className="space-y-1.5">
               {methodology.map((line, i) => (
@@ -2471,21 +2452,10 @@ function CriticalityCard({
             </div>
           </div>
 
-          {/* Current assessment — click to speak */}
-          <div
-            className="cursor-pointer hover:bg-surface-elevated/50 rounded p-1 -m-1 transition-colors group"
-            onClick={() => window.dispatchEvent(new CustomEvent("apex-speak-content", {
-              detail: { title: `${abbrev} \u2014 Assessment`, text: assessment }
-            }))}
-            title="Click to read aloud"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                CURRENT ASSESSMENT
-              </div>
-              <div className="text-[6px] font-mono text-text-muted opacity-0 group-hover:opacity-60 transition-opacity">
-                {"\uD83D\uDD0A"} read aloud
-              </div>
+          {/* Current assessment */}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              CURRENT ASSESSMENT
             </div>
             <div className="text-[9px] font-mono text-text-muted leading-relaxed">
               {assessment}

@@ -487,7 +487,7 @@ export default function SpotlightTour() {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "auto" }}>
+      <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "none" }}>
         {/* SVG overlay with mask cutout + connector arrow */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
@@ -528,24 +528,6 @@ export default function SpotlightTour() {
             fill="rgba(0, 0, 0, 0.75)"
             mask="url(#spotlight-mask)"
           />
-          {/* Highlight ring around cutout */}
-          {cutout && (
-            <motion.rect
-              x={cutout.x}
-              y={cutout.y}
-              width={cutout.width}
-              height={cutout.height}
-              rx={6}
-              fill="none"
-              stroke="var(--accent-cyan, #00e5ff)"
-              strokeWidth={1.5}
-              strokeOpacity={0.85}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2 }}
-              key={`ring-${step.id}`}
-            />
-          )}
           {/* Connector arrow from tooltip edge to highlighted element */}
           {arrow && (
             <motion.line
@@ -574,28 +556,29 @@ export default function SpotlightTour() {
           <>
             <div
               className="absolute"
-              style={{ left: 0, top: 0, right: 0, height: Math.max(0, cutout.y) }}
+              style={{ left: 0, top: 0, right: 0, height: Math.max(0, cutout.y), pointerEvents: "auto" }}
               onClick={step.id === "welcome-and-domain" ? undefined : close}
             />
             <div
               className="absolute"
-              style={{ left: 0, top: cutout.y + cutout.height, right: 0, bottom: 0 }}
+              style={{ left: 0, top: cutout.y + cutout.height, right: 0, bottom: 0, pointerEvents: "auto" }}
               onClick={step.id === "welcome-and-domain" ? undefined : close}
             />
             <div
               className="absolute"
-              style={{ left: 0, top: cutout.y, width: Math.max(0, cutout.x), height: cutout.height }}
+              style={{ left: 0, top: cutout.y, width: Math.max(0, cutout.x), height: cutout.height, pointerEvents: "auto" }}
               onClick={step.id === "welcome-and-domain" ? undefined : close}
             />
             <div
               className="absolute"
-              style={{ left: cutout.x + cutout.width, top: cutout.y, right: 0, height: cutout.height }}
+              style={{ left: cutout.x + cutout.width, top: cutout.y, right: 0, height: cutout.height, pointerEvents: "auto" }}
               onClick={step.id === "welcome-and-domain" ? undefined : close}
             />
           </>
         ) : (
           <div
             className="absolute inset-0"
+            style={{ pointerEvents: "auto" }}
             onClick={step.id === "welcome-and-domain" ? undefined : close}
           />
         )}

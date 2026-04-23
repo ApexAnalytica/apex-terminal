@@ -73,6 +73,7 @@ export default function HeaderBar() {
               onClick={() => setDomainSelectorOpen(true)}
               className="flex items-center gap-1.5 px-2 py-1 rounded border border-border hover:border-accent-cyan/40 transition-colors group shrink-0"
               title="Change domain workspace"
+              data-tour="domain-selector-trigger"
             >
               {selectedDomains.map((id) => {
                 const domain = DOMAIN_CARDS.find((d) => d.id === id);

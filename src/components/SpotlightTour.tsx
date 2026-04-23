@@ -19,74 +19,91 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: null,
     title: "WELCOME TO MANIFOLD",
     description:
-      "APEX Analytica MANIFOLD is a causal-inference platform for discovering, verifying, and stress-testing causal networks across multiple domains. It combines four analysis engines with an AI copilot, 3D graph visualization, and real-time criticality monitoring. This tour will walk you through every feature.",
+      "APEX Analytica MANIFOLD is a causal-inference platform for discovering, verifying, and stress-testing causal networks across multiple domains. It combines four analysis engines with an AI copilot, 2D/3D/geo graph visualization, and real-time criticality monitoring. This tour walks you through every feature \u2014 use the NEXT / BACK buttons or arrow keys to move through it, or SKIP TOUR to exit. You can relaunch it anytime from the \u201C?\u201D button in the top-right.",
     tooltipPosition: "center",
   },
   {
     id: "domain-selection",
-    targetSelector: '[data-tour="module-tabs"]',
-    title: "DOMAIN SELECTION",
+    targetSelector: '[data-tour="domain-selector-trigger"]',
+    title: "DOMAIN WORKSPACE",
     description:
-      "Start by selecting your analysis domains. Click the domain selector to choose from categories like Saudi Aramco Energy, QatarEnergy LNG, QAFCO Fertilizer, Ma\u2019aden Phosphate, and more. You can select as many domains as you want \u2014 the platform builds cross-domain causal connections automatically, letting you compare risks across completely different sectors.",
+      "Everything starts with a domain. The workspace button (top-left, next to the MANIFOLD logo) opens the Domain Selector. Domains are grouped by persona \u2014 Financial, Macro, Geopolitical, Scientist, Cross-Domain \u2014 and cover everything from Strait of Hormuz energy flows to Type-1 Diabetes \u03B2-cell dynamics. Pick one or several; the platform auto-builds cross-domain causal links so you can compare very different sectors inside one graph.",
     tooltipPosition: "bottom",
   },
   {
     id: "module-tabs",
     targetSelector: '[data-tour="module-tabs"]',
-    title: "ENGINE TABS",
+    title: "FOUR ANALYSIS ENGINES",
     description:
-      "Four analysis engines power the platform. SPIRTES discovers causal structure from data. TARSKI verifies edges against physical laws. PEARL runs counterfactual interventions (do-calculus). PARETO monitors tail risk and criticality horizons. Click any tab to switch \u2014 the right panel updates to show that engine\u2019s controls.",
+      "The four engine tabs drive the right-hand panel. SPIRTES discovers causal structure from data. TARSKI verifies edges against physical, regulatory, and heuristic constraints. PEARL runs do-calculus interventions and network interdiction. PARETO monitors tail risk and criticality horizons. Switching tabs updates the right panel \u2014 the graph stays put.",
     tooltipPosition: "bottom",
   },
   {
     id: "dag-canvas",
     targetSelector: '[data-tour="dag-canvas"]',
-    title: "CAUSAL NETWORK \u2014 2D & 3D",
+    title: "CAUSAL NETWORK CANVAS",
     description:
-      "The central canvas renders the causal directed acyclic graph. Toggle between 2D (flat layout with animated causal flow) and 3D (WebGL with orbit controls). In 3D: drag to rotate, scroll to zoom, click nodes to inspect. Directed edges show arrows; dashed lines indicate confounded relationships. Node size and color intensity reflect \u03A9-Fragility scores \u2014 hotter colors mean higher systemic risk.",
+      "The center canvas renders your causal DAG. Node size and color intensity encode \u03A9-Fragility \u2014 hotter means more systemic risk. Solid arrows are directed causal edges; dashed lines are confounded or latent relationships. In 3D: drag to orbit, scroll to zoom. Click any node to open the inspector on the right. Shift+drag for box-select when you need a subgraph.",
+    tooltipPosition: "top",
+  },
+  {
+    id: "view-modes",
+    targetSelector: '[data-tour="dag-canvas"]',
+    title: "3D / 2D / MAP VIEWS",
+    description:
+      "Top-right of the canvas: three view-mode buttons. 3D (WebGL force-directed, the default), 2D (flat React Flow layout with animated causal flow), and MAP (geographic projection on MapLibre for domains with real-world coordinates, e.g. energy infrastructure). All three stay mounted to preserve WebGL context; you can flip between them without losing state.",
     tooltipPosition: "top",
   },
   {
     id: "node-inspection",
     targetSelector: '[data-tour="module-panel"]',
-    title: "NODE INSPECTOR",
+    title: "NODE INSPECTOR & \u03A9 PILLARS",
     description:
-      "Click any node to open the Node Inspector in the right panel. It shows the node\u2019s \u03A9-Fragility composite score (0\u201310) broken into five pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth. Each pillar is expandable with a detailed explanation, formula, and physical constraint. Connected edges are listed below with causal mechanisms. Click any explanation text to have it read aloud by the AI copilot.",
+      "Click a node and the right panel becomes its inspector. The composite \u03A9-Fragility score (0\u201310) decomposes into five expandable pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth \u2014 each with the formula, physical constraint, and explanation behind it. Connected edges appear below with causal mechanisms. Click any explanatory paragraph and the AI copilot reads it aloud.",
     tooltipPosition: "left",
   },
   {
     id: "spirtes-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "SPIRTES ENGINE \u2014 STRUCTURE DISCOVERY",
+    title: "SPIRTES \u2014 STRUCTURE DISCOVERY",
     description:
-      "The Spirtes Engine runs three causal discovery algorithms in parallel. The cascade header shows spectral radius (\u03BBmax) \u2014 when below 1.0 the network is stable. The Trinity panel renders three sub-graphs: DCD/NOTEARS (nonlinear structure in circular layout), PCMCI+ (temporal lags across T-2/T-1/T-0 columns), and FCI (hidden confounder detection with dashed edges and \u2018?\u2019 markers for latent causes).",
+      "SPIRTES runs three causal-discovery algorithms in parallel. DCD/NOTEARS for nonlinear structure, PCMCI+ for time-lagged effects across T-2/T-1/T-0 columns, and FCI for hidden-confounder detection (dashed edges with \u2018?\u2019 markers mean a latent common cause). The cascade header shows spectral radius \u03BBmax \u2014 below 1.0 the network is contractive and stable.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
   },
   {
     id: "tarski-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "TARSKI ENGINE \u2014 CONSTRAINT VERIFICATION",
+    title: "TARSKI \u2014 CONSTRAINT VERIFICATION",
     description:
-      "The Tarski Engine verifies your causal graph against domain-aware physical and regulatory constraints. Constraints are automatically ranked by relevance to your selected domains \u2014 energy chokepoints surface for energy domains, jurisdictional checks for sovereign risk, etc. Toggle individual constraints on/off, then hit VERIFY to run. Three tiers: PHYSICAL (immutable laws), REGULATORY (sanctions, export controls), and HEURISTIC (anomaly flags). Results show exactly which edges violated which constraints, with clickable proof traces.",
+      "TARSKI audits every edge against domain-aware axioms in three tiers: PHYSICAL (immutable laws), REGULATORY (sanctions, export controls, treaties), and HEURISTIC (anomaly flags). Constraints are auto-ranked by relevance to your active domains. Toggle any axiom, hit VERIFY, and the canvas recolors \u2014 violating edges turn red, with clickable proof traces explaining which constraint failed.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("tarski"),
   },
   {
-    id: "pearl-deep",
+    id: "pearl-interventions",
     targetSelector: '[data-tour="module-panel"]',
-    title: "PEARL ENGINE \u2014 COUNTERFACTUAL ANALYSIS",
+    title: "PEARL \u2014 DO-CALCULUS & ABLATIONS",
     description:
-      "The Pearl Engine implements do-calculus for structural interventions. Select a do(X) target node to isolate it from upstream causes. Use the scissors tool to sever individual causal links. The Ablation panel lets you remove nodes or edges and replay the cascade to compare baseline vs. intervention outcomes. Network Interdiction runs minimax optimization to identify the most cost-effective edges to cut for maximum damage reduction.",
+      "PEARL implements structural interventions. Select a do(X) target to isolate a node from its causes. Use SEVER to cut individual edges (they go amber \u2014 functionally removed but physically possible) or ABLATE to delete nodes/edges entirely. Run an intervention cascade and the Time Dial gains a second timeline so you can compare baseline vs. counterfactual outcomes side-by-side.",
+    tooltipPosition: "left",
+    onEnter: () => useApexStore.getState().setActiveModule("pearl"),
+  },
+  {
+    id: "pearl-interdiction",
+    targetSelector: '[data-tour="module-panel"]',
+    title: "CASCADE DEFENSE \u2014 AUTO-INTERDICTION",
+    description:
+      "Below the manual tools: CASCADE DEFENSE runs minimax optimization to find the cheapest set of edges whose removal maximally reduces downstream cascade damage. When an attacker-defender min-cut is solvable, you get explicit SEVER / ABLATE buttons per recommended cut. When it isn\u2019t, the panel falls back to a structural-vulnerability ranking of the next most brittle edges. Results auto-trigger a Monte Carlo forecast so you can see the expected damage distribution before committing.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pearl"),
   },
   {
     id: "pareto-deep",
     targetSelector: '[data-tour="module-panel"]',
-    title: "PARETO ENGINE \u2014 CRITICALITY HORIZONS",
+    title: "PARETO \u2014 CRITICALITY HORIZONS",
     description:
-      "The Pareto Engine tracks three independent criticality measures. CSD (Critical Slowing Down) monitors recovery rate decay via spectral radius \u2014 as \u03BBmax approaches 1.0, the system loses its ability to absorb shocks. PH (Persistent Homology) sweeps a filtration to detect topological fragility holes. LPPLS (Log-Periodic Power Law Singularity) fits the Sornette crash prediction model. Each shows a T-N epoch countdown with confidence scores.",
+      "PARETO tracks three independent criticality signals, each with its own T-N countdown and confidence. CSD (Critical Slowing Down) watches recovery-rate decay via \u03BBmax approaching 1.0. PH (Persistent Homology) sweeps a filtration for topological fragility holes. LPPLS (Log-Periodic Power Law Singularity) fits the Sornette crash model. Each card shows observed vs. model signal, formula, methodology, and current assessment.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
@@ -95,7 +112,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "INTERACTIVE CRITICALITY CHARTS",
     description:
-      "Expand any criticality card to see its temporal signal chart. Hover to see exact values at each timestep (observed data as solid line, model fit as dashed line). Click \u201C\u25C0 expand panel\u201D to widen the right panel for a larger, more legible chart view. The expanded chart shows observed vs. model values and the residual. Each card also shows model confidence, methodology, formula, and current assessment.",
+      "Expand any criticality card to see its temporal chart \u2014 observed values as a solid line, model fit dashed. Hover for exact values. Click \u201C\u25C0 expand panel\u201D to widen the right panel for a more legible chart, including the residual. Each card exposes its model confidence, methodology, formula, and live assessment in one place.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
@@ -104,7 +121,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "SHOCK INJECTION & TOP CRITICAL NODES",
     description:
-      "Below the criticality horizons, the \u03A9-Fragility Assessment shows the system\u2019s buffer (NOMINAL/ELEVATED/CRITICAL/OMEGA_BREACH). The top 8 most critical nodes are ranked by \u03A9-score \u2014 click any to select it in the graph. The Scenario Injector lets you stress-test with preset shocks: Strait of Hormuz Closure, Abqaiq Processing Attack, Ras Laffan LNG Train Outage, and more. Each shock has a calibrated severity that depletes the \u03A9-buffer.",
+      "Under the criticality cards: the \u03A9-Fragility Assessment summarizes the buffer state \u2014 NOMINAL, ELEVATED, CRITICAL, or OMEGA_BREACH. The top critical nodes are ranked by \u03A9-score; click one to select it in the graph. The Scenario Injector loads preset shocks calibrated for your active domain (Strait of Hormuz closure, Abqaiq attack, LNG train outage, insulin supply-chain disruption, etc.) and each one depletes the buffer according to its severity.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
@@ -113,7 +130,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="cd-omega"]',
     title: "CD\u03A9 DOOMSDAY MONITOR",
     description:
-      "The Causal Distance Omega monitor is always visible in the header. The segmented buffer bar shows depletion (green \u2192 amber \u2192 red). It displays: time-to-failure (T-Nd), regime type (STABLE, MELT_UP, CRASH, PHASE_TRANSITION, STAGNATION), and Dragon King probability. The bar flashes when the system enters OMEGA_BREACH. Active shock count is shown alongside the alert level indicator.",
+      "The Causal-Distance-Omega monitor sits in the header, always on. The segmented bar shows buffer depletion (green \u2192 amber \u2192 red). It reports time-to-failure (T-Nd), regime classification (STABLE, MELT_UP, CRASH, PHASE_TRANSITION, STAGNATION), Dragon-King probability, and active-shock count. The bar flashes when the system enters OMEGA_BREACH \u2014 no matter which engine tab you\u2019re on.",
     tooltipPosition: "bottom",
   },
   {
@@ -121,7 +138,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="system-copilot"]',
     title: "AI SYSTEM COPILOT",
     description:
-      "The left panel is your AI copilot powered by Gemini. Type questions about the network, ask for explanations, or request analysis. The copilot has full context of the graph structure, active shocks, and engine outputs. It supports voice input (microphone icon) and voice output (speaker icon \u2014 reads responses aloud). Action buttons provide one-click analysis: Discover Structure, Explain Rejection, Verify Logic.",
+      "The left panel is your AI copilot. It has full context of the graph, active shocks, engine outputs, and recent interventions. Type questions, request explanations, or ask for analysis in plain language \u2014 the copilot responds with graph-grounded reasoning rather than generic prose. It also powers the click-to-speak behavior in the Node Inspector.",
     tooltipPosition: "right",
   },
   {
@@ -129,7 +146,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="system-copilot"]',
     title: "VOICE I/O & CLICK-TO-SPEAK",
     description:
-      "Enable the speaker icon (\uD83D\uDD0A) for voice output \u2014 the copilot will read all responses aloud in a Jarvis-style voice. Use the microphone icon (\uD83C\uDF99\uFE0F) for voice input \u2014 speak your query instead of typing. Additionally, click any explanation text in the Node Inspector or Module Panel to have it rendered in the copilot and spoken aloud. This lets you click around the interface and have every detail explained audibly.",
+      "Turn on the speaker icon and the copilot reads every response aloud in a Jarvis-style voice. Turn on the microphone and you can dictate queries instead of typing. Separately, clicking any explanation text in the Node Inspector, pillar breakdowns, or constraint traces routes that text through the copilot and has it spoken aloud \u2014 useful for hands-free exploration.",
     tooltipPosition: "right",
   },
   {
@@ -137,7 +154,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="action-buttons"]',
     title: "COMPUTE WITH CLAUDE",
     description:
-      "The COMPUTE WITH CLAUDE button generates a comprehensive System State Snapshot \u2014 a structured analysis of all nodes, edges, engine outputs, and criticality metrics. Claude performs the deep computation; Gemini reads the results to answer follow-up questions. If no Claude API key is configured, a local snapshot is computed from the graph structure. Snapshots are shown as a status badge in the copilot.",
+      "COMPUTE WITH CLAUDE generates a full System State Snapshot \u2014 a structured digest of nodes, edges, engine outputs, and criticality metrics. Claude does the heavy computation; the copilot uses that snapshot as context for follow-up questions. If no Claude key is configured, a local snapshot is computed from graph structure instead. Snapshot status appears as a badge in the copilot header.",
     tooltipPosition: "right",
   },
   {
@@ -145,7 +162,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="risk-flow"]',
     title: "TIME DIAL & CASCADE REPLAY",
     description:
-      "The timeline scrubber at the bottom controls cascade replay. After injecting shocks and running a cascade simulation, drag the dial to scrub through epochs \u2014 watch nodes activate, edges propagate, and the \u03A9-buffer deplete in real time. Switch between baseline and intervention timelines to compare outcomes. Use keyboard arrows for fine control, or let it auto-play.",
+      "The timeline scrubber at the bottom controls cascade replay. After injecting shocks or running an intervention, drag the dial to scrub epochs \u2014 watch nodes activate, edges propagate, and the \u03A9-buffer deplete step-by-step. When a counterfactual exists, the dial gains two timelines: BASELINE vs. INTERVENTION. Use arrow keys for fine control, or let it auto-play.",
     tooltipPosition: "top",
   },
   {
@@ -153,15 +170,15 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="risk-flow"]',
     title: "RISK PROPAGATION CARDS",
     description:
-      "The risk card strip shows per-node vulnerability scores in a scrollable horizontal band. Cards are color-coded by severity. Click any card to select that node in the DAG and open its inspector. During cascade replay, cards update in real time to reflect shock propagation.",
+      "The horizontal card strip above the time dial shows per-node vulnerability scores in real time, color-coded by severity. Click any card to select that node and open its inspector. During cascade replay the cards update every epoch so you can watch which nodes light up first and how the shock spreads.",
     tooltipPosition: "top",
   },
   {
-    id: "view-toggle",
-    targetSelector: '[data-tour="module-tabs"]',
-    title: "2D / 3D VIEW TOGGLE",
+    id: "text-size-toggle",
+    targetSelector: '[data-tour="text-size-toggle"]',
+    title: "TEXT SIZE (S / M / L)",
     description:
-      "Switch between 2D and 3D graph views using the toggle in the header. Both views stay mounted to prevent WebGL context loss. In 2D, directed edges show animated dashes for one-way causal flow. In 3D, arrows appear only on directed/temporal edges. Node positioning is consistent across both views. Shift+drag to box-select multiple nodes for subgraph analysis.",
+      "Some analysts run Manifold on large displays or from a distance. Use the S / M / L toggle in the header to scale the entire UI up or down. Your choice persists across sessions \u2014 it\u2019s saved in local storage and applied before the page renders so there\u2019s no flash.",
     tooltipPosition: "bottom",
   },
   {
@@ -169,21 +186,34 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="import-button"]',
     title: "IMPORT YOUR OWN DATA",
     description:
-      "Import custom datasets via CSV, JSON, or adjacency matrices to build your own causal graphs. The platform auto-detects format and maps your data into the \u03A9-Fragility framework. All four engines \u2014 structure discovery, truth verification, counterfactual analysis, and criticality monitoring \u2014 work on imported data just as they do on the built-in domains.",
+      "Bring your own graph. IMPORT accepts CSV, JSON, or adjacency matrices; the platform auto-detects format and maps columns into the \u03A9-Fragility framework. All four engines \u2014 discovery, verification, counterfactual, criticality \u2014 work on imported graphs exactly as they do on built-in domains. Multiple datasets can coexist and merge via cross-domain edges.",
     tooltipPosition: "bottom",
+  },
+  {
+    id: "feedback-widget",
+    targetSelector: '[data-tour="feedback-widget"]',
+    title: "FEEDBACK & FEATURE REQUESTS",
+    description:
+      "The floating pill in the bottom-right corner is your direct line to the team. File bugs, request features, or ask for new datasets \u2014 each category routes into our triage pipeline and becomes a tracked GitHub issue. If a feature request is approved it can be auto-implemented and shipped back to you as a PR. Use it liberally.",
+    tooltipPosition: "left",
   },
   {
     id: "finish",
     targetSelector: null,
     title: "YOU\u2019RE READY",
     description:
-      "You\u2019ve seen every major feature. Start by selecting domains, exploring nodes in the 3D graph, and running analyses with the AI copilot. Inject shocks to stress-test, use Pearl for counterfactual reasoning, and monitor the criticality horizons in real time. Click the \u201C?\u201D button anytime to relaunch this tour. For voice interaction, enable the speaker and microphone icons in the copilot.",
+      "You\u2019ve seen every major feature. Typical flow: pick a domain \u2192 explore nodes \u2192 run SPIRTES or TARSKI \u2192 inject a shock or run PEARL interdiction \u2192 watch the cascade on the time dial \u2192 monitor PARETO horizons. The \u201C?\u201D button in the top-right replays this tour at any time. If something feels missing or off, use the feedback widget \u2014 it goes straight to us.",
     tooltipPosition: "center",
   },
 ];
 
 const PADDING = 8;
 const GAP = 16;
+
+// Bump this whenever the tour content changes substantially enough that
+// already-onboarded users should see it again. Currently unused — the
+// first-visit auto-launch only triggers when nothing has been stored yet.
+const TOUR_STORAGE_KEY = "manifold:tour-seen";
 
 interface CutoutRect {
   x: number;
@@ -194,6 +224,43 @@ interface CutoutRect {
 
 const TOOLTIP_WIDTH = 320; // w-80
 const VIEWPORT_MARGIN = 12;
+
+function computeArrow(
+  cutout: CutoutRect | null,
+  position: TourStep["tooltipPosition"],
+  tooltipTop: number,
+  tooltipLeft: number,
+  tooltipHeight: number,
+): { from: { x: number; y: number }; to: { x: number; y: number } } | null {
+  if (!cutout || position === "center") return null;
+  const h = tooltipHeight || 200;
+  const ttCenterX = tooltipLeft + TOOLTIP_WIDTH / 2;
+  const ttCenterY = tooltipTop + h / 2;
+  const cuCenterX = cutout.x + cutout.width / 2;
+  const cuCenterY = cutout.y + cutout.height / 2;
+  switch (position) {
+    case "top":
+      return {
+        from: { x: ttCenterX, y: tooltipTop + h },
+        to: { x: cuCenterX, y: cutout.y },
+      };
+    case "bottom":
+      return {
+        from: { x: ttCenterX, y: tooltipTop },
+        to: { x: cuCenterX, y: cutout.y + cutout.height },
+      };
+    case "left":
+      return {
+        from: { x: tooltipLeft + TOOLTIP_WIDTH, y: ttCenterY },
+        to: { x: cutout.x, y: cuCenterY },
+      };
+    case "right":
+      return {
+        from: { x: tooltipLeft, y: ttCenterY },
+        to: { x: cutout.x + cutout.width, y: cuCenterY },
+      };
+  }
+}
 
 function computeTooltipPosition(
   cutout: CutoutRect | null,
@@ -286,6 +353,22 @@ export default function SpotlightTour() {
     }
   }, [tourActive]);
 
+  // First-visit auto-launch: open the tour exactly once per browser, keyed on
+  // localStorage. Dismissing (SKIP / close / finish) sets the flag so it won't
+  // trigger again. Users can still relaunch manually via the "?" button.
+  useEffect(() => {
+    try {
+      const seen = window.localStorage.getItem(TOUR_STORAGE_KEY);
+      if (!seen) {
+        setTourActive(true);
+      }
+    } catch {
+      // localStorage unavailable (private mode, etc.) — skip auto-launch
+    }
+    // Run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Call onEnter when step changes
   useEffect(() => {
     if (!tourActive || !step) return;
@@ -323,6 +406,13 @@ export default function SpotlightTour() {
     if (preTourModuleRef.current) {
       useApexStore.getState().setActiveModule(preTourModuleRef.current as "spirtes" | "tarski" | "pearl" | "pareto");
     }
+    // Also close the domain-selector modal in case a tour step opened it
+    useApexStore.getState().setDomainSelectorOpen(false);
+    try {
+      window.localStorage.setItem(TOUR_STORAGE_KEY, "1");
+    } catch {
+      // ignore
+    }
     setTourActive(false);
   }, [setTourActive]);
 
@@ -352,11 +442,19 @@ export default function SpotlightTour() {
 
   if (!tourActive || !step) return null;
 
+  const arrow = computeArrow(
+    cutout,
+    step.tooltipPosition,
+    tooltipPos.top,
+    tooltipPos.left,
+    tooltipHeightRef.current,
+  );
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "auto" }}>
-        {/* SVG overlay with mask cutout */}
-        <svg className="absolute inset-0 w-full h-full">
+        {/* SVG overlay with mask cutout + connector arrow */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
             <mask id="spotlight-mask">
               <rect x="0" y="0" width="100%" height="100%" fill="white" />
@@ -375,6 +473,17 @@ export default function SpotlightTour() {
                 />
               )}
             </mask>
+            <marker
+              id="spotlight-arrowhead"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-cyan, #00e5ff)" />
+            </marker>
           </defs>
           <rect
             x="0"
@@ -384,6 +493,42 @@ export default function SpotlightTour() {
             fill="rgba(0, 0, 0, 0.75)"
             mask="url(#spotlight-mask)"
           />
+          {/* Highlight ring around cutout */}
+          {cutout && (
+            <motion.rect
+              x={cutout.x}
+              y={cutout.y}
+              width={cutout.width}
+              height={cutout.height}
+              rx={6}
+              fill="none"
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={1.5}
+              strokeOpacity={0.85}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              key={`ring-${step.id}`}
+            />
+          )}
+          {/* Connector arrow from tooltip edge to highlighted element */}
+          {arrow && (
+            <motion.line
+              key={`arrow-${step.id}`}
+              x1={arrow.from.x}
+              y1={arrow.from.y}
+              x2={arrow.to.x}
+              y2={arrow.to.y}
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={1.5}
+              strokeOpacity={0.9}
+              strokeDasharray="4 3"
+              markerEnd="url(#spotlight-arrowhead)"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.25, delay: 0.1 }}
+            />
+          )}
         </svg>
 
         {/* Click-blocker on dimmed area (clicking closes tour) */}

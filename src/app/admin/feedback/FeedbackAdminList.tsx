@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 type FeedbackRow = {
-  id: number;
+  id: string;
   created_at: string;
   updated_at: string | null;
   type: string;
@@ -37,7 +37,7 @@ const STATUS_FILTERS: Array<FeedbackRow["status"] | "all"> = [
 
 export default function FeedbackAdminList({ rows }: { rows: FeedbackRow[] }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedbackRow["status"] | "all">("all");
   const [notes, setNotes] = useState("");
   const [pending, startTransition] = useTransition();
@@ -46,7 +46,7 @@ export default function FeedbackAdminList({ rows }: { rows: FeedbackRow[] }) {
   const visibleRows = rows.filter((r) => filter === "all" || r.status === filter);
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
-  async function act(id: number, action: "approve" | "reject", adminNotes?: string) {
+  async function act(id: string, action: "approve" | "reject", adminNotes?: string) {
     setActionError(null);
     try {
       const res = await fetch(`/api/admin/feedback/${id}/${action}`, {

@@ -28,7 +28,7 @@ export type CreatedIssue = {
 };
 
 export async function createFeedbackIssue(args: {
-  feedbackId: number;
+  feedbackId: string;
   type: string;
   message: string;
   adminNotes: string | null;
@@ -36,7 +36,8 @@ export async function createFeedbackIssue(args: {
 }): Promise<CreatedIssue> {
   const { owner, name } = repo();
 
-  const title = `[feedback #${args.feedbackId}] ${args.type}: ${args.message
+  const shortId = args.feedbackId.slice(0, 8);
+  const title = `[feedback ${shortId}] ${args.type}: ${args.message
     .slice(0, 70)
     .replace(/\s+/g, " ")
     .trim()}${args.message.length > 70 ? "…" : ""}`;

@@ -128,6 +128,7 @@ export default function FeedbackWidget() {
       {/* Toggle button */}
       <button
         onClick={() => setOpen(!open)}
+        data-tour="feedback-widget"
         className={`flex items-center gap-2 px-4 py-2 rounded-full border shadow-lg transition-all ${
           open
             ? "bg-accent-cyan/10 border-accent-cyan/40 text-accent-cyan"

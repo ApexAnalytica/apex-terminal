@@ -15,6 +15,7 @@ export default function TextSizeToggle() {
       className="hidden md:flex items-center rounded border border-border overflow-hidden shrink-0"
       role="radiogroup"
       aria-label="Text size"
+      data-tour="text-size-toggle"
     >
       {OPTIONS.map((opt) => {
         const active = size === opt.value;

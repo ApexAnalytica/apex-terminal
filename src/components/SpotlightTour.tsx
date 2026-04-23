@@ -15,20 +15,12 @@ interface TourStep {
 
 const TOUR_STEPS: TourStep[] = [
   {
-    id: "welcome",
-    targetSelector: null,
-    title: "WELCOME TO MANIFOLD",
+    id: "welcome-and-domain",
+    targetSelector: '[data-tour="domain-selector-modal"]',
+    title: "WELCOME \u2014 PICK A DOMAIN",
     description:
-      "APEX Analytica MANIFOLD is a causal-inference platform for discovering, verifying, and stress-testing causal networks across multiple domains. It combines four analysis engines with an AI copilot, 2D/3D/geo graph visualization, and real-time criticality monitoring. This tour walks you through every feature \u2014 use the NEXT / BACK buttons or arrow keys to move through it, or SKIP TOUR to exit. You can relaunch it anytime from the \u201C?\u201D button in the top-right.",
-    tooltipPosition: "center",
-  },
-  {
-    id: "domain-selection",
-    targetSelector: '[data-tour="domain-selector-trigger"]',
-    title: "DOMAIN WORKSPACE",
-    description:
-      "Everything starts with a domain. The workspace button (top-left, next to the MANIFOLD logo) opens the Domain Selector. Domains are grouped by persona \u2014 Financial, Macro, Geopolitical, Scientist, Cross-Domain \u2014 and cover everything from Strait of Hormuz energy flows to Type-1 Diabetes \u03B2-cell dynamics. Pick one or several; the platform auto-builds cross-domain causal links so you can compare very different sectors inside one graph.",
-    tooltipPosition: "bottom",
+      "Welcome to APEX Analytica MANIFOLD \u2014 a causal-inference platform for discovering, verifying, and stress-testing networks across sectors. Everything starts here with a domain. Use the selector on the left to pick one or more: Financial, Macro, Geopolitical, Scientist (including Type-1 Diabetes \u03B2-cell dynamics), or Cross-Domain. Pick what fits your analysis, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the \u201C?\u201D in the top-right.",
+    tooltipPosition: "right",
   },
   {
     id: "module-tabs",
@@ -312,6 +304,8 @@ export default function SpotlightTour() {
   const tourStep = useApexStore((s) => s.tourStep);
   const setTourActive = useApexStore((s) => s.setTourActive);
   const setTourStep = useApexStore((s) => s.setTourStep);
+  const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
+  const sawDomainSelectorRef = useRef(false);
 
   const [cutout, setCutout] = useState<CutoutRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
@@ -374,6 +368,24 @@ export default function SpotlightTour() {
     if (!tourActive || !step) return;
     step.onEnter?.();
   }, [tourActive, tourStep, step]);
+
+  // Auto-advance the welcome/domain step when the user closes the selector
+  // (i.e. they've picked a domain and committed). Only fires if we observed
+  // the modal open while on this step.
+  useEffect(() => {
+    if (!tourActive || step?.id !== "welcome-and-domain") {
+      sawDomainSelectorRef.current = false;
+      return;
+    }
+    if (domainSelectorOpen) {
+      sawDomainSelectorRef.current = true;
+      return;
+    }
+    if (sawDomainSelectorRef.current && !domainSelectorOpen) {
+      sawDomainSelectorRef.current = false;
+      setTourStep(tourStep + 1);
+    }
+  }, [tourActive, step, domainSelectorOpen, tourStep, setTourStep]);
 
   useEffect(() => {
     if (!tourActive) return;

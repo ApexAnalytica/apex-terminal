@@ -48,6 +48,43 @@ interface DomainGroup {
   domains: DomainCard[];
 }
 
+type Persona =
+  | "scientist"
+  | "financial"
+  | "macro"
+  | "geopolitical"
+  | "cross";
+
+const PERSONAS: { id: Persona; label: string; desc: string }[] = [
+  { id: "financial", label: "FINANCIAL", desc: "Markets · Credit · Sovereign" },
+  { id: "macro", label: "MACRO", desc: "Growth · Inflation · Policy" },
+  { id: "geopolitical", label: "GEOPOLITICAL", desc: "Energy · Infra · Defense" },
+  { id: "scientist", label: "SCIENTIST", desc: "Life Sciences" },
+  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · multi-select" },
+];
+
+// Each persona shows a subset of domain groups (by group label).
+// CROSS shows everything and is the only persona allowed to multi-select
+// across different datasets.
+const PERSONA_GROUPS: Record<Persona, Set<string>> = {
+  financial: new Set(["FINANCIAL & SOVEREIGN", "MENA ENERGY & COMMODITIES"]),
+  macro: new Set(["MACRO IMPACT", "FINANCIAL & SOVEREIGN"]),
+  geopolitical: new Set([
+    "MENA ENERGY & COMMODITIES",
+    "INFRASTRUCTURE & DEFENSE",
+    "FINANCIAL & SOVEREIGN",
+  ]),
+  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
+  cross: new Set([
+    "MENA ENERGY & COMMODITIES",
+    "FINANCIAL & SOVEREIGN",
+    "INFRASTRUCTURE & DEFENSE",
+    "MACRO IMPACT",
+    "LIFE SCIENCES",
+    "FRONTIER",
+  ]),
+};
+
 const DOMAIN_GROUPS: DomainGroup[] = [
   {
     label: "MENA ENERGY & COMMODITIES",
@@ -313,33 +350,72 @@ function getCascadeExamples(domainIds: string[]): string[] {
 }
 
 export default function DomainSelector() {
-  const {
-    domainSelectorOpen,
-    setDomainSelectorOpen,
-    isMultiDomainMode,
-    setIsMultiDomainMode,
-    setSelectedDomains,
-    setVisibleCategories,
-    setVisibleDiscoverySources,
-    setSelectedDataSources,
-    setGraphData,
-  } = useApexStore();
+  const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
+  const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
+  const setIsMultiDomainMode = useApexStore((s) => s.setIsMultiDomainMode);
+  const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
+  const setVisibleCategories = useApexStore((s) => s.setVisibleCategories);
+  const setVisibleDiscoverySources = useApexStore((s) => s.setVisibleDiscoverySources);
+  const setSelectedDataSources = useApexStore((s) => s.setSelectedDataSources);
+  const setGraphData = useApexStore((s) => s.setGraphData);
+  const activePersonaRaw = useApexStore((s) => s.activePersona) as string;
+  const setActivePersona = useApexStore((s) => s.setActivePersona);
+
+  // Migrate legacy "analyst" value (pre-subdivision) to the new default.
+  const activePersona: Persona = (
+    PERSONAS.some((p) => p.id === activePersonaRaw)
+      ? activePersonaRaw
+      : "financial"
+  ) as Persona;
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
   const [localMulti, setLocalMulti] = useState(false);
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
+  const [showCascadePaths, setShowCascadePaths] = useState(false);
+
+  // Cards visible for the active persona (filtered by domain group)
+  const allowedGroups = PERSONA_GROUPS[activePersona];
+  const visibleGroups = DOMAIN_GROUPS
+    .filter((g) => allowedGroups.has(g.label));
+
+  const switchPersona = useCallback(
+    (persona: Persona) => {
+      setActivePersona(persona);
+      const allowed = PERSONA_GROUPS[persona];
+      // Drop any currently-selected cards that don't belong to the new persona's groups
+      const allowedCardIds = new Set(
+        DOMAIN_GROUPS
+          .filter((g) => allowed.has(g.label))
+          .flatMap((g) => g.domains.map((d) => d.id))
+      );
+      setLocalSelected((prev) => prev.filter((id) => allowedCardIds.has(id)));
+    },
+    [setActivePersona]
+  );
 
   const toggleDomain = useCallback(
     (id: string) => {
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
+        // Focused personas restrict multi-select to a single dataset family to
+        // keep the rendered graph coherent. CROSS-DOMAIN is the escape hatch.
+        if (activePersona !== "cross") {
+          const card = DOMAIN_CARDS.find((d) => d.id === id);
+          const filtered = card
+            ? prev.filter((prevId) => {
+                const prevCard = DOMAIN_CARDS.find((d) => d.id === prevId);
+                return prevCard && prevCard.dataset === card.dataset;
+              })
+            : prev;
+          return [...filtered, id];
+        }
         return [...prev, id];
       });
     },
-    [localMulti]
+    [localMulti, activePersona]
   );
 
   const switchMode = useCallback(
@@ -427,6 +503,35 @@ export default function DomainSelector() {
               </div>
             </div>
 
+            {/* Persona Selector */}
+            <div className="px-6 pt-4 pb-2 border-b border-border/50">
+              <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-2">
+                PERSONA
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {PERSONAS.map((p) => {
+                  const isActive = activePersona === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => switchPersona(p.id)}
+                      className="flex flex-col px-3 py-1.5 rounded border transition-all text-left"
+                      style={{
+                        borderColor: isActive ? "var(--accent-cyan)" : "var(--border)",
+                        backgroundColor: isActive ? "rgba(0,229,255,0.08)" : "transparent",
+                        color: isActive ? "var(--accent-cyan)" : "var(--text-muted)",
+                      }}
+                    >
+                      <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider">
+                        {p.label}
+                      </span>
+                      <span className="text-[7px] font-mono opacity-60 mt-0.5">{p.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Mode Toggle */}
             <div className="px-6 pt-4 flex gap-2">
               <button
@@ -460,7 +565,7 @@ export default function DomainSelector() {
 
             {/* Grouped Domain Cards */}
             <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-4">
-              {DOMAIN_GROUPS.map((group) => (
+              {visibleGroups.map((group) => (
                 <div key={group.label}>
                   <div
                     className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider mb-1.5"
@@ -523,34 +628,43 @@ export default function DomainSelector() {
               ))}
             </div>
 
-            {/* Cascade Examples */}
-            <AnimatePresence>
-              {cascadeExamples.length > 0 && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
+            {/* Cascade Examples (collapsed by default) */}
+            {cascadeExamples.length > 0 && (
+              <div className="px-6 pb-2">
+                <button
+                  onClick={() => setShowCascadePaths((p) => !p)}
+                  className="flex items-center gap-2 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-amber transition-colors"
                 >
-                  <div className="px-6 pb-2">
-                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1.5">
-                      CROSS-DOMAIN CASCADE PATHS
-                    </div>
-                    <div className="space-y-1">
-                      {cascadeExamples.map((ex, i) => (
-                        <div
-                          key={i}
-                          className="text-[9px] font-mono text-accent-amber/80 px-3 py-1.5 rounded bg-accent-amber/5 border border-accent-amber/15"
-                        >
-                          {ex}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <span style={{ transform: showCascadePaths ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
+                  CROSS-DOMAIN CASCADE PATHS
+                  <span className="text-[7px] font-mono text-text-muted/50">
+                    {cascadeExamples.length} example{cascadeExamples.length > 1 ? "s" : ""}
+                  </span>
+                </button>
+                <AnimatePresence>
+                  {showCascadePaths && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2 space-y-1">
+                        {cascadeExamples.map((ex, i) => (
+                          <div
+                            key={i}
+                            className="text-[9px] font-mono text-accent-amber/80 px-3 py-1.5 rounded bg-accent-amber/5 border border-accent-amber/15"
+                          >
+                            {ex}
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
             {/* Data Layers */}
             <div className="px-6 pb-2">

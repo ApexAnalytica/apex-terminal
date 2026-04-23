@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -38,10 +39,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-8">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <img
+          <Image
             src="/logo.png"
             alt="Manifold Logo"
-            className="w-40 h-40 mx-auto object-contain"
+            width={160}
+            height={160}
+            className="mx-auto object-contain"
+            priority
           />
           <h1 className="text-xl font-[family-name:var(--font-michroma)] tracking-[0.3em] text-accent-cyan">
             MANIFOLD
@@ -128,14 +132,20 @@ export default function LoginPage() {
         <p className="text-center text-[9px] font-mono text-text-muted">
           Trial provides full platform access for 48 hours.
           <br />
-          Contact{" "}
+          Have an invite code?{" "}
+          <Link
+            href="/trusted-signup"
+            className="text-accent-cyan/70 hover:text-accent-cyan"
+          >
+            Activate full access
+          </Link>
+          {" · "}
           <a
             href="mailto:info@apexanalytica.co"
             className="text-accent-cyan/70 hover:text-accent-cyan"
           >
             info@apexanalytica.co
-          </a>{" "}
-          for extended access.
+          </a>
         </p>
       </div>
     </div>

@@ -5,7 +5,6 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
-import { MAIN_GRAPH } from "@/lib/graph-data";
 import HeaderBar from "@/components/HeaderBar";
 import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
@@ -46,9 +45,12 @@ const CausalDAGMap = dynamic(() => import("@/components/CausalDAGMap"), {
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
 
-  // Protect graph data from console extraction
+  // Protect graph data from console extraction — import dynamically so the
+  // 2,920-line graph-data module isn't on the critical-path bundle (item #6).
   useEffect(() => {
-    protectGraphData(MAIN_GRAPH);
+    import("@/lib/graph-data").then(({ MAIN_GRAPH }) => {
+      protectGraphData(MAIN_GRAPH);
+    });
   }, []);
 
   // Block DevTools shortcuts in production

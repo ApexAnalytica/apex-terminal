@@ -1067,6 +1067,86 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     label: "On-Prem Workload Share",
   },
 
+  // ─── T1D β-cell Restoration (Tier-A: digitized published sources) ─────
+  //
+  // VX-880 (Vertex FORWARD-101, 12-patient stem-cell islet replacement) and
+  // TN-10 (TrialNet teplizumab delay-of-onset) provide trial-level trajectories.
+  // T1D Index v3.0 provides global population-level prevalence/incidence/mortality.
+  // Nodes without a Tier-A mapping (autoantibodies, complications, immune cells)
+  // fall back to NO-DATA sparklines until Tier-B/C datasets land.
+  t1d_beta_mass: {
+    source: "vx880_trial",
+    description: "Functional β-cell mass — proxied by VX-880 FORWARD-101 C-peptide positivity in 12 stem-cell islet recipients (baseline → day 90 → day 365)",
+    metricFilter: { metric_name: "c_peptide_positive_pct" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "C-peptide Positivity (VX-880)",
+  },
+  t1d_c_peptide: {
+    source: "jaeb_cpep",
+    description: "Residual β-cell function — JAEB C-PEP 762-visit cohort, stimulated C-peptide MMTT AUC median, stratified by years-since-diagnosis (rendered as disease-duration trajectory)",
+    metricFilter: { metric_name: "cpep_mmtt_auc_median" },
+    valueKey: "metric_value",
+    unit: "nmol/L·min",
+    label: "C-peptide MMTT AUC (JAEB cohort)",
+  },
+  t1d_cgm_tir: {
+    source: "vx880_trial",
+    description: "CGM Time-in-Range (70–180 mg/dL) — VX-880 FORWARD-101 cohort mean TIR at baseline vs day 365",
+    metricFilter: { metric_name: "tir_70_180_pct" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "TIR 70–180 mg/dL (VX-880)",
+  },
+  t1d_hypo_events: {
+    source: "vx880_trial",
+    description: "Severe hypoglycemia — VX-880 cohort fraction experiencing severe-hypo events at baseline (eligibility criterion: 100%) vs day 365 (0%)",
+    metricFilter: { metric_name: "severe_hypo_pct" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Severe Hypo Events (VX-880)",
+  },
+  t1d_teplizumab: {
+    source: "tn10_teplizumab",
+    description: "Teplizumab clinical effect — TN-10 Stage-3 T1D-free survival at 2y in teplizumab arm (vs 28% in placebo)",
+    metricFilter: { metric_name: "stage3_t1d_free_pct", arm: "teplizumab" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "T1D-Free @ 2y (TN-10 tepliz)",
+  },
+  t1d_stem_cell_beta: {
+    source: "vx880_trial",
+    description: "Stem-cell-derived β-cell replacement — VX-880 FORWARD-101 cohort insulin-independence % at baseline vs day 365",
+    metricFilter: { metric_name: "insulin_independent_pct" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Insulin Independence (VX-880)",
+  },
+  t1d_dka: {
+    source: "t1d_index",
+    description: "DKA precipitant exposure — proxied by global T1D incidence trajectory (T1D Index v3.0); higher incidence → more new-onset DKA presentations",
+    metricFilter: { metric_name: "incidence_thousands_yoy" },
+    valueKey: "metric_value",
+    unit: "thousands",
+    label: "T1D New Cases / Year",
+  },
+  t1d_population_hba1c: {
+    source: "t1dx_registry_hba1c",
+    description: "Real-world adolescent glycemic control — T1D Exchange Registry HbA1c mean in 13–17y band across four cross-sectional waves (2010–12, 2015–16, 2016–17, 2017–18)",
+    metricFilter: { metric_name: "hba1c_mean_pct", age_band_years: "13-17" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "HbA1c Mean, 13–17y (T1DX)",
+  },
+  t1d_realworld_tir: {
+    source: "d1namo_cgm",
+    description: "Real-world continuous-glucose Time-in-Range (70–180 mg/dL) — D1NAMO 9-subject T1D cohort median, q25 and q75 across 4-day recording windows",
+    metricFilter: { metric_name: "tir_70_180_pct_cohort_median" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "CGM TIR Median (D1NAMO)",
+  },
+
   // Kill Chain nodes
   ooda_latency: {
     source: "defense_isr",

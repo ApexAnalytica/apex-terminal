@@ -16,7 +16,7 @@ The model is intentionally minimal: there are exactly two access tiers (`trusted
 | `trial` | Default for any new sign-up via `/trial-signup` (or any user not explicitly promoted). | 48 hours after signup. | After expiry, all authenticated requests are redirected to `/expired`. |
 | `trusted` | Set manually by an admin via `update public.profiles set access_type = 'trusted'`. | Never. | Used for engineers, paying customers, design partners, and demo accounts. |
 
-There is **no self-service upgrade path** in the product. Promoting a trial user to trusted is a deliberate, logged Postgres update.
+Trusted users can self-register via `/trusted-signup` using an **invite code** issued by the platform team. The invite code is validated server-side by `POST /api/trusted-signup` (service-role); the browser never learns the secret. For users who signed up as trial first, promotion is a deliberate, logged Postgres update (see §6.1).
 
 ---
 
@@ -110,11 +110,12 @@ matcher: [
 
 | Page | File | Purpose |
 |---|---|---|
-| `/login` | `src/app/login/page.tsx` | Email + password sign-in via `supabase.auth.signInWithPassword`. Logo above title. |
+| `/login` | `src/app/login/page.tsx` | Email + password sign-in via `supabase.auth.signInWithPassword`. Logo above title. Links to both signup paths. |
 | `/trial-signup` | `src/app/trial-signup/page.tsx` | Self-service trial. Calls `supabase.auth.signUp` with `raw_user_meta_data.access_type = 'trial'`. |
+| `/trusted-signup` | `src/app/trusted-signup/page.tsx` | Invite-code signup for trusted users. Posts to `/api/trusted-signup` (server-side, service-role), then signs in automatically. |
 | `/expired` | `src/app/expired/page.tsx` | Wall shown to expired trial users. Provides a "contact us" CTA. |
 
-All three are public routes per the middleware. They share the same logo (`/public/logo.png`) and styling.
+All four are public routes per the middleware. They share the same logo (`/public/logo.png`) and styling.
 
 The sign-out button lives in `HeaderBar.tsx` and calls `supabase.auth.signOut()` followed by `router.push('/login')` and `router.refresh()` to clear server-rendered state.
 
@@ -136,27 +137,39 @@ The **service-role** key is only used in `src/app/api/feedback/route.ts`. It is 
 
 ## 6. Operations runbook
 
-### 6.1 Add a trusted user (the normal path)
+### 6.1 Add a trusted user — invite code (preferred)
 
-1. Have the user sign up at `/trial-signup` (this exercises the trigger and verifies the email in one step).
-2. In Supabase Dashboard → SQL Editor, run:
-   ```sql
-   update public.profiles
-   set access_type = 'trusted', trial_expires_at = null
-   where email = 'user@example.com';
-   ```
-3. Confirm:
-   ```sql
-   select email, access_type, trial_expires_at
-   from public.profiles
-   where email = 'user@example.com';
-   ```
+1. Share the current `TRUSTED_INVITE_CODE` with the user via a secure channel (DM, Signal, etc.).
+2. Direct them to `/trusted-signup`. They enter their email, password, org, and the invite code.
+3. The server-side API route validates the code, creates the user via `admin.createUser`, and sets `access_type = 'trusted'` — no manual SQL required.
 
-### 6.2 Pre-create a trusted user (no self-signup)
+To rotate the invite code: update the `TRUSTED_INVITE_CODE` env var in Vercel and redeploy. Old codes stop working immediately.
+
+### 6.2 Promote an existing trial user to trusted
+
+If a user already signed up via `/trial-signup`, promote them in Supabase Dashboard → SQL Editor:
+
+```sql
+update public.profiles
+set access_type = 'trusted', trial_expires_at = null
+where email = 'user@example.com';
+```
+
+Confirm:
+
+```sql
+select email, access_type, trial_expires_at
+from public.profiles
+where email = 'user@example.com';
+```
+
+> **Email case matters.** Supabase stores emails lowercased. Use `where email ilike 'User@example.com'` if unsure.
+
+### 6.3 Pre-create a trusted user (no self-signup)
 
 1. Supabase Dashboard → Authentication → Users → **Add user**. Set email and a temporary password.
-2. The trigger creates a `profiles` row with `access_type = 'trial'`.
-3. Run the same `update` as 6.1 to flip them to trusted.
+2. The trigger creates a `profiles` row with `access_type = 'trial'` (the trigger ignores client metadata for safety; only service-role calls can set trusted).
+3. Run the same `update` as 6.2 to flip them to trusted.
 4. Send the temporary password via your secure channel and ask the user to rotate it on first login.
 
 ### 6.3 Extend or reset a trial

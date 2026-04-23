@@ -6,7 +6,22 @@ import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 
 export default function DAGOverlay() {
-  const { graphData, activeModule, viewMode, setViewMode, truthFilter, selectedNode, setSelectedNode, selectedNodes, setSelectedNodes, isolateSelection, setIsolateSelection, addCopilotMessage, isLive, timelinePosition } = useApexStore();
+  // Fine-grained selectors so this component only re-renders when its own
+  // slices change, not on any store mutation (item #4).
+  const graphData = useApexStore((s) => s.graphData);
+  const activeModule = useApexStore((s) => s.activeModule);
+  const viewMode = useApexStore((s) => s.viewMode);
+  const setViewMode = useApexStore((s) => s.setViewMode);
+  const truthFilter = useApexStore((s) => s.truthFilter);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const setIsolateSelection = useApexStore((s) => s.setIsolateSelection);
+  const addCopilotMessage = useApexStore((s) => s.addCopilotMessage);
+  const isLive = useApexStore((s) => s.isLive);
+  const timelinePosition = useApexStore((s) => s.timelinePosition);
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;

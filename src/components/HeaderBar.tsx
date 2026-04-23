@@ -7,19 +7,23 @@ import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/li
 import { createClient } from "@/lib/supabase/client";
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
+import TextSizeToggle from "./TextSizeToggle";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "./DomainSelector";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
+
+// Top-bar tabs are pinned to the four canonical labels regardless of active
+// domain profile. Profile-scoped vocabulary lives in the right panel / pillar
+// bars / methodology popup only.
+const MODULE_TABS = GEOPOLITICAL_PROFILE.modules.map((m) => ({
+  id: m.id as ModuleId,
+  label: m.name,
+  icon: m.icon,
+  color: m.color,
+}));
 
 export default function HeaderBar() {
   const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive, selectedDomains, setDomainSelectorOpen } = useApexStore();
-  const profile = resolveDomainProfile(selectedDomains);
-  const MODULE_TABS = profile.modules.map((m) => ({
-    id: m.id as ModuleId,
-    label: m.name,
-    icon: m.icon,
-    color: m.color,
-  }));
   const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
 
   // During replay, override omega state with current epoch's values
@@ -69,6 +73,7 @@ export default function HeaderBar() {
               onClick={() => setDomainSelectorOpen(true)}
               className="flex items-center gap-1.5 px-2 py-1 rounded border border-border hover:border-accent-cyan/40 transition-colors group shrink-0"
               title="Change domain workspace"
+              data-tour="domain-selector-trigger"
             >
               {selectedDomains.map((id) => {
                 const domain = DOMAIN_CARDS.find((d) => d.id === id);
@@ -125,6 +130,7 @@ export default function HeaderBar() {
       {/* Right: Meta — z-10 so it always sits above the center section */}
       <div className="flex items-center gap-1.5 md:gap-3 shrink-0 z-10 bg-surface-elevated">
         <ImportButton />
+        <TextSizeToggle />
         <button
           onClick={() => setTourActive(true)}
           className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"

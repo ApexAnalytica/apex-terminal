@@ -27,8 +27,20 @@ let cachedData: TimeseriesJSON | null = null;
 
 async function loadTimeseriesJSON(): Promise<TimeseriesJSON> {
   if (cachedData) return cachedData;
-  const resp = await fetch("/datasets/claire/timeseries.json");
-  cachedData = await resp.json();
+  const [geoResp, t1dResp] = await Promise.all([
+    fetch("/datasets/claire/timeseries.json"),
+    fetch("/datasets/claire/t1d_timeseries.json"),
+  ]);
+  const [geo, t1d] = await Promise.all([
+    geoResp.json() as Promise<TimeseriesJSON>,
+    t1dResp.ok
+      ? (t1dResp.json() as Promise<TimeseriesJSON>)
+      : Promise.resolve({} as TimeseriesJSON),
+  ]);
+  // T1D sources live in their own file so the geopolitical 2.3MB payload stays
+  // isolated. Source keys are namespaced (vx880_trial, tn10_teplizumab, …) so
+  // there's no collision with the geopolitical sources.
+  cachedData = { ...geo, ...t1d };
   return cachedData!;
 }
 
@@ -340,6 +352,11 @@ export async function loadRealTemporalData(
   const events: TemporalEvent[] = REAL_EVENTS
     .filter((e) => e.date >= rangeStart && e.date <= rangeEnd)
     .map((e, i) => ({ ...e, id: `real-evt-${i}` }));
+
+  // Release the 2.3MB raw JSON — its only job was to prevent concurrent
+  // double-fetches during this processing pass. Now that we're done it has
+  // no value and can be GC'd (item #14).
+  cachedData = null;
 
   return { nodes: nodeMap, edges: edgeMap, events, rangeStart, rangeEnd };
 }

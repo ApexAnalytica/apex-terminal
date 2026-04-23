@@ -41,7 +41,7 @@ export const DATASET_COLORS = [
   "#76ff03", // lime
 ];
 import { mergeGraphs } from "@/lib/import/merge";
-import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
+import { EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
@@ -162,6 +162,24 @@ interface ApexState {
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
 
+  // Persona
+  activePersona:
+    | "scientist"
+    | "financial"
+    | "macro"
+    | "geopolitical"
+    | "cross"
+    | "analyst"; // "analyst" retained only to tolerate legacy persisted values
+  setActivePersona: (
+    persona:
+      | "scientist"
+      | "financial"
+      | "macro"
+      | "geopolitical"
+      | "cross"
+      | "analyst",
+  ) => void;
+
   // Data source selection (which datasets to load)
   selectedDataSources: string[];
   setSelectedDataSources: (sources: string[]) => void;
@@ -222,6 +240,11 @@ interface ApexState {
   timelineSelection: { start: number; end: number } | null; // user-selected date range window
   timelineFullRange: { start: number; end: number } | null; // saved full range before zoom
   setTimelinePosition: (ts: number) => void;
+  // rAF-batched variant — coalesces rapid scrub calls to ≤ display refresh rate
+  // (~60fps), preventing posMap/omegaKey recalculation on every pointer-move pixel.
+  // TimeDial (or any scrub handler) should prefer this over setTimelinePosition
+  // for continuous drag events (item #5).
+  setTimelinePositionThrottled: (ts: number) => void;
   setTimelineRange: (range: { start: number; end: number }) => void;
   setIsLive: (live: boolean) => void;
   setTimelineGranularity: (g: TimeGranularity) => void;
@@ -245,7 +268,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Graph — start empty; populated when user selects domains in DomainSelector
   graphData: EMPTY_GRAPH,
   initialGraph: EMPTY_GRAPH,
-  setGraphData: (g) => set({ graphData: g, initialGraph: g }),
+  setGraphData: (g) => {
+    set({ graphData: g, initialGraph: g, temporalData: null });
+    // Re-fire temporal load so the new graph gets its real-data mappings
+    // resolved (without this, switching profiles keeps stale temporal data).
+    get().initTemporalData();
+  },
 
   // Shocks
   shocks: [],
@@ -492,6 +520,10 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
 
+  // Persona (default: financial — more specific than the prior "analyst")
+  activePersona: "financial",
+  setActivePersona: (persona) => set({ activePersona: persona }),
+
   // Data sources
   selectedDataSources: ["middle-east-playbooks"],
   setSelectedDataSources: (sources) => set({ selectedDataSources: sources }),
@@ -701,6 +733,26 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setTimelinePosition: (ts) =>
     set({ timelinePosition: ts, isLive: false }),
+
+  // rAF-batched scrub: coalesces rapid pointer-move events into at most one
+  // store write per animation frame (~60fps).  Eliminates O(N) omegaKey/posMap
+  // recalculation on every scrub pixel.  Use this for continuous drag; the
+  // semantics of setTimelinePosition are unchanged (item #5).
+  setTimelinePositionThrottled: (() => {
+    let rafHandle: number | null = null;
+    let pending: number | null = null;
+    return (ts: number) => {
+      pending = ts;
+      if (rafHandle !== null) return; // already scheduled
+      rafHandle = requestAnimationFrame(() => {
+        rafHandle = null;
+        if (pending !== null) {
+          set({ timelinePosition: pending, isLive: false });
+          pending = null;
+        }
+      });
+    };
+  })(),
 
   setTimelineRange: (range) =>
     set({ timelineRange: range }),

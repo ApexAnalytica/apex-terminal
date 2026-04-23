@@ -53,6 +53,13 @@ body {
   font-family: var(--font-mono), 'Courier New', monospace;
 }
 
+/* User-adjustable text size. Applied via data attribute on <html> set by
+ * useTextSize + a blocking inline script in RootLayout to avoid FOUC.
+ * The app's UI uses fixed px sizes (700+ occurrences), so zoom is the only
+ * viable knob — root font-size would be a no-op. */
+html[data-text-size="sm"] { zoom: 0.9; }
+html[data-text-size="lg"] { zoom: 1.15; }
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 4px;

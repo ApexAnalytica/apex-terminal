@@ -110,7 +110,11 @@ function DAGNode3DInner({
   const dimmed = anyNodeSelected && !isSelected && !isNeighborOfSelected;
   const nodeOpacity = isAblated ? 0.15 : isGreyedOut ? 0.08 : dimmed ? 0.2 : 0.9;
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
+    // Gate all per-frame work: skip static nodes that don't need animation (item #2)
+    const needsAnimation = isConsequence || shockGlow > 0 || birthProgress.current < 1 || isSelected;
+    if (!needsAnimation) return;
+
     // Birth animation for consequence nodes
     if (birthProgress.current < 1) {
       birthProgress.current = Math.min(1, birthProgress.current + delta * 2);
@@ -124,12 +128,15 @@ function DAGNode3DInner({
       const birth = birthProgress.current;
       const baseScale = (isSelected ? 1.15 : 1) * birth;
       const pulseIntensity = isConsequence ? 0.08 : (0.03 + shockGlow * 0.12);
-      const pulseSpeed = isConsequence ? 0.005 : (0.002 + shockGlow * 0.003);
-      const pulse = Math.sin(Date.now() * pulseSpeed * (1 + composite / 10)) * pulseIntensity;
+      // Use clock.elapsedTime instead of Date.now() (item #2)
+      const t = clock.elapsedTime;
+      const pulseSpeed = isConsequence ? 5 : (2 + shockGlow * 3);
+      const pulse = Math.sin(t * pulseSpeed * (1 + composite / 10)) * pulseIntensity;
       meshRef.current.scale.setScalar(baseScale + pulse);
     }
     if (selectionRingRef.current) {
-      const ringPulse = 0.3 + Math.sin(Date.now() * 0.004) * 0.15;
+      const t = clock.elapsedTime;
+      const ringPulse = 0.3 + Math.sin(t * 4) * 0.15;
       const mat = selectionRingRef.current.material as THREE.MeshBasicMaterial;
       mat.opacity = ringPulse;
     }
@@ -199,10 +206,13 @@ function DAGNode3DInner({
           e.stopPropagation();
           setHovered(true);
           document.body.style.cursor = "pointer";
+          // Trigger a frame in demand mode (item #1)
+          window.dispatchEvent(new Event("dag3d-invalidate"));
         }}
         onPointerOut={() => {
           setHovered(false);
           document.body.style.cursor = "";
+          window.dispatchEvent(new Event("dag3d-invalidate"));
         }}
       >
         <sphereGeometry args={[size, 24, 24]} />

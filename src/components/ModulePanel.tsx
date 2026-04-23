@@ -8,10 +8,10 @@ import { getDomainColor } from "@/lib/graph-data";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
 import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
+import { moransI } from "@/lib/estimators/moran";
+import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import TrinityPanel from "./TrinityPanel";
-import InterventionControls from "./InterventionControls";
 import MonteCarloForecast from "./MonteCarloForecast";
-import AblationPanel from "./AblationPanel";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
@@ -86,13 +86,11 @@ export default function ModulePanel() {
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Structural what-if analysis. Apply do(X) to isolate a node from its upstream causes,
-              sever causal links, and observe counterfactual downstream effects.
+              Run interdiction from the copilot to produce candidate cuts, then the Monte Carlo
+              forecast auto-simulates the counterfactual {"\u03A9"}-buffer trajectory under those cuts.
             </div>
             <CopilotInterdictionResults />
-            <InterventionControls />
             <MonteCarloForecast expanded={expandedChart === "pearl"} />
-            <AblationPanel />
           </div>
         )}
 
@@ -1150,6 +1148,178 @@ function ParetoPanel({
                 : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped \u03A9 trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise \u03C9 by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks \u2014 baseline oscillation frequency."}`,
             };
           }
+          // ── BOCPD ──────────────────────────────────────────────────
+          if (id === "bocpd") {
+            const t1dSeries = extractT1DSeries(temporalData);
+            // Summarise data availability across all T1D nodes.
+            const seriesInfo = T1D_NODE_IDS.map((nid) => {
+              const s = t1dSeries.get(nid);
+              return s ? `${nid}: ${s.values.length}pt (${s.source})` : `${nid}: 0pt`;
+            });
+            const maxN = Math.max(
+              ...T1D_NODE_IDS.map((nid) => t1dSeries.get(nid)?.values.length ?? 0),
+            );
+            const bestEntry = T1D_NODE_IDS.map((nid) => t1dSeries.get(nid)).find(
+              (s) => s && s.values.length === maxN,
+            );
+            const inputs = `BOCPD requires ≥20 observations per series.\n` +
+              `Longest available series: ${maxN} point(s)` +
+              (bestEntry ? ` from ${bestEntry.source}` : "") + `.\n` +
+              `T1D node availability:\n${seriesInfo.join("\n")}`;
+            return {
+              key: "bocpd",
+              abbrev: meta.abbrev,
+              fullName: meta.fullName,
+              epochs: 0,
+              maxEpochs: 1,
+              color: meta.color,
+              confidence: 0,
+              timeSeries: [],
+              modelSeries: undefined,
+              shortDesc: meta.shortDesc,
+              methodology: meta.methodology,
+              formula: `INSUFFICIENT DATA — need ≥20 points, have ${maxN}` +
+                (bestEntry ? ` (from ${bestEntry.source})` : ""),
+              assessment: `INSUFFICIENT DATA — BOCPD (Adams & MacKay 2007) requires ≥20 observations to estimate a meaningful run-length posterior. All 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points (VX-880 FORWARD-101 has 3 points; TN-10 has 2–3; T1D Index has 5). Maximum available: ${maxN} point(s). Card is shown so the estimator tab is always visible; it will activate automatically once series reach ≥20 points.`,
+              emptyState: { kind: "awaiting-data" as const, inputs },
+            };
+          }
+          // ── TRANSFER ENTROPY ────────────────────────────────────────
+          if (id === "transfer-entropy") {
+            const t1dSeries = extractT1DSeries(temporalData);
+            const lengths = T1D_NODE_IDS.map((nid) => ({
+              nid,
+              n: t1dSeries.get(nid)?.values.length ?? 0,
+              src: t1dSeries.get(nid)?.source,
+            }));
+            const sorted = [...lengths].sort((a, b) => b.n - a.n);
+            const [best1, best2] = sorted;
+            const inputs = `Transfer Entropy requires ≥50 observations on both X and Y series.\n` +
+              `Best X series: ${best1?.nid ?? "none"} → ${best1?.n ?? 0}pt` +
+              (best1?.src ? ` (${best1.src})` : "") + `\n` +
+              `Best Y series: ${best2?.nid ?? "none"} → ${best2?.n ?? 0}pt` +
+              (best2?.src ? ` (${best2.src})` : "") + `\n` +
+              `All series: ${lengths.map((l) => `${l.nid}:${l.n}`).join(", ")}`;
+            return {
+              key: "transfer-entropy",
+              abbrev: meta.abbrev,
+              fullName: meta.fullName,
+              epochs: 0,
+              maxEpochs: 1,
+              color: meta.color,
+              confidence: 0,
+              timeSeries: [],
+              modelSeries: undefined,
+              shortDesc: meta.shortDesc,
+              methodology: meta.methodology,
+              formula: `INSUFFICIENT DATA — need ≥50 pts on both series; have ${best1?.n ?? 0}(x) / ${best2?.n ?? 0}(y)`,
+              assessment: `INSUFFICIENT DATA — Transfer Entropy (Schreiber 2000) requires ≥50 observations on both the source (X) and target (Y) series for the binning estimator to be well-conditioned. Longest T1D series currently: ${best1?.n ?? 0} point(s). Card remains visible; will activate when paired T1D series reach ≥50 points each.`,
+              emptyState: { kind: "awaiting-data" as const, inputs },
+            };
+          }
+          // ── MORAN'S I ────────────────────────────────────────────────
+          if (id === "moran") {
+            // Build weight matrix from graph edges.  Use binary adjacency
+            // (0/1) derived from the live edge list, then row-normalise.
+            const t1dNodeIds = T1D_NODE_IDS;
+            const n = t1dNodeIds.length;
+            try {
+              // Collect current omegaFragility.composite per T1D node from graphData.
+              const values: number[] = t1dNodeIds.map((nid) => {
+                const gn = graphData.nodes.find((nd) => nd.id === nid);
+                return gn?.omegaFragility.composite ?? 0;
+              });
+
+              // Build adjacency from graphData.edges restricted to T1D×T1D pairs.
+              const idxOf = (nid: string) => t1dNodeIds.indexOf(nid);
+              const W: number[][] = Array.from({ length: n }, () =>
+                new Array(n).fill(0),
+              );
+              let edgeCount = 0;
+              for (const e of graphData.edges) {
+                if (e.isSevered) continue;
+                const si = idxOf(e.source);
+                const ti = idxOf(e.target);
+                if (si >= 0 && ti >= 0) {
+                  W[si][ti] = 1;
+                  W[ti][si] = 1;
+                  edgeCount++;
+                }
+              }
+
+              // Compute S0 to check if graph has any structure.
+              let S0 = 0;
+              for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) S0 += W[i][j];
+
+              if (S0 === 0) {
+                // No edges connect T1D nodes — matrix is all zeros, Moran's I
+                // undefined.  Fall through to insufficient-graph-structure.
+                throw new Error("no_edges");
+              }
+
+              // Row-normalise.
+              const Wn: number[][] = W.map((row) => {
+                const rowSum = row.reduce((a, b) => a + b, 0);
+                return rowSum > 0 ? row.map((v) => v / rowSum) : row;
+              });
+
+              const result = moransI(values, Wn, { nPermutations: 199, seed: 42 });
+              const I = result.I;
+              const E = result.expected;
+              const n7 = n; // for z-score approximation
+              // Analytical z-score under randomisation: approximate
+              // Var(I) ≈ 1/(n-1) (rough first-order); use permutation p instead.
+              const pPerm = result.pPerm;
+              // Convert permutation p to rough z: z ≈ Φ⁻¹(1 - pPerm/2)
+              // Simple threshold-based labeling instead of full quantile.
+              const assessment =
+                pPerm < 0.05 && I > E
+                  ? "Positive spatial autocorrelation — high-fragility T1D nodes cluster together in the graph (p < 0.05 permutation)."
+                  : pPerm < 0.05 && I < E
+                  ? "Negative spatial autocorrelation (dispersed) — high-fragility and low-fragility T1D nodes alternate in the graph (p < 0.05 permutation)."
+                  : `Random pattern — no significant spatial autocorrelation among T1D nodes (permutation p = ${pPerm.toFixed(2)}).`;
+
+              return {
+                key: "moran",
+                abbrev: meta.abbrev,
+                fullName: meta.fullName,
+                epochs: Math.round(Math.abs(I) * 100),
+                maxEpochs: 100,
+                color: meta.color,
+                confidence: pPerm < 0.05 ? 1 - pPerm : 0.3,
+                timeSeries: [],
+                modelSeries: undefined,
+                shortDesc: meta.shortDesc,
+                methodology: [
+                  `Global Moran's I measures spatial autocorrelation of Ω-fragility scores across the ${n7} T1D nodes using the live adjacency graph (${edgeCount} intra-T1D edge(s) found).`,
+                  `Weight matrix W is row-normalised binary adjacency restricted to T1D×T1D edges. S₀ = Σ_ij W_ij = ${S0.toFixed(1)}. Values used: omegaFragility.composite per node.`,
+                  `Statistical significance assessed via ${result.nPermutations} random permutations of node labels. Under the null (random arrangement), I ~ E[I] = ${E.toFixed(4)}.`,
+                ],
+                formula: `Moran's I = N / S₀ · (z^T W z) / (z^T z) = ${I.toFixed(4)} | E[I] = ${E.toFixed(4)} | p_perm = ${pPerm.toFixed(3)} | n = ${n7}, S₀ = ${S0.toFixed(1)}`,
+                assessment,
+              };
+            } catch {
+              return {
+                key: "moran",
+                abbrev: meta.abbrev,
+                fullName: meta.fullName,
+                epochs: 0,
+                maxEpochs: 1,
+                color: meta.color,
+                confidence: 0,
+                timeSeries: [],
+                modelSeries: undefined,
+                shortDesc: meta.shortDesc,
+                methodology: meta.methodology,
+                formula: "Moran's I = N / S₀ · (z^T W z) / (z^T z)",
+                assessment: "INSUFFICIENT GRAPH STRUCTURE — no edges connect T1D nodes in the current graph. Moran's I requires at least one adjacency link between T1D nodes.",
+                emptyState: {
+                  kind: "awaiting-data" as const,
+                  inputs: "Moran's I requires at least one edge between T1D nodes in the causal graph. Load the T1D domain and ensure edges are present.",
+                },
+              };
+            }
+          }
           // Estimator has a static-registry entry with no live runtime yet:
           // render the card in an empty state that still teaches what the
           // method does and which inputs it needs.
@@ -1457,6 +1627,18 @@ function CascadeHeader() {
   const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
 
+  // Pre-build full-graph adjacency, memoized on graphData.edges identity only
+  // so selection changes don't rebuild it (item #9).
+  const fullNeighborSets = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    graphData.nodes.forEach((nd) => m.set(nd.id, new Set()));
+    graphData.edges.filter((e) => !e.isSevered).forEach((e) => {
+      m.get(e.source)?.add(e.target);
+      m.get(e.target)?.add(e.source);
+    });
+    return m;
+  }, [graphData.edges, graphData.nodes]);
+
   // Compute comprehensive network metrics
   const netMetrics = useMemo(() => {
     const allNodes = graphData.nodes;
@@ -1569,12 +1751,19 @@ function CascadeHeader() {
       }));
 
     // 5. Clustering coefficient (local, undirected)
-    const neighborSets = new Map<string, Set<string>>();
-    nodes.forEach((nd) => neighborSets.set(nd.id, new Set()));
-    edges.forEach((e) => {
-      neighborSets.get(e.source)?.add(e.target);
-      neighborSets.get(e.target)?.add(e.source);
-    });
+    // Reuse pre-built adjacency (item #9): if no selection, use fullNeighborSets
+    // directly; if scoped, rebuild only for the selected subgraph.
+    const neighborSets: Map<string, Set<string>> = isScoped
+      ? (() => {
+          const m = new Map<string, Set<string>>();
+          nodes.forEach((nd) => m.set(nd.id, new Set()));
+          edges.forEach((e) => {
+            m.get(e.source)?.add(e.target);
+            m.get(e.target)?.add(e.source);
+          });
+          return m;
+        })()
+      : fullNeighborSets;
     let clusterSum = 0;
     let clusterCount = 0;
     nodes.forEach((nd) => {
@@ -1653,7 +1842,7 @@ function CascadeHeader() {
       totalNodeCount: allNodes.length, totalEdgeCount: allEdges.length,
       isScoped,
     };
-  }, [graphData, cascade, selectedNodes]);
+  }, [graphData, cascade, selectedNodes, fullNeighborSets]);
 
   const metricColor = (val: number, threshLow: number, threshHigh: number) =>
     val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";

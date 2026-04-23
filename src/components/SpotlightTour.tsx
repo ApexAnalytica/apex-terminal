@@ -418,8 +418,6 @@ export default function SpotlightTour() {
     if (preTourModuleRef.current) {
       useApexStore.getState().setActiveModule(preTourModuleRef.current as "spirtes" | "tarski" | "pearl" | "pareto");
     }
-    // Also close the domain-selector modal in case a tour step opened it
-    useApexStore.getState().setDomainSelectorOpen(false);
     try {
       window.localStorage.setItem(TOUR_STORAGE_KEY, "1");
     } catch {
@@ -543,8 +541,14 @@ export default function SpotlightTour() {
           )}
         </svg>
 
-        {/* Click-blocker on dimmed area (clicking closes tour) */}
-        <div className="absolute inset-0" onClick={close} />
+        {/* Click-blocker on dimmed area. During the welcome-and-domain step we
+            don't dismiss on backdrop click — the user is likely trying to
+            interact with the domain-selector modal visible through the cutout.
+            They can still exit via SKIP TOUR, Esc, or the X in the selector. */}
+        <div
+          className="absolute inset-0"
+          onClick={step.id === "welcome-and-domain" ? undefined : close}
+        />
 
         {/* Tooltip card */}
         <motion.div

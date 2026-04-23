@@ -427,7 +427,7 @@
       +-- NodeInspector (omega profile, metadata, edges — persistent)
       +-- SPIRTES: CascadeHeader + TrinityPanel (DCD/PCMCI+/FCI)
       +-- TARSKI:  TruthFilter + AxiomLibrary + ProofTraces
-      +-- PEARL:   InterventionControls + AblationPanel + InterdictionPanel
+      +-- PEARL:   CopilotInterdictionResults + MonteCarloForecast (fan chart)
       +-- PARETO:  DoomsdayClock + ShockPanel + Fragility Index</pre>
 
     <h3>/client Sandbox Components</h3>
@@ -453,9 +453,10 @@
       <tr><td><code>shocks</code></td><td><code>CausalShock[]</code></td><td>HeaderBar (Omega engine), CDOmegaMonitor, ShockPanel</td></tr>
       <tr><td><code>viewMode</code></td><td><code>"2d" | "3d"</code></td><td>DAG renderer toggle</td></tr>
       <tr><td><code>selectedNode</code></td><td><code>string | null</code></td><td>CausalDAG3D (camera, highlighting), NodeInspector, Copilot (context)</td></tr>
-      <tr><td><code>interventionMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (downstream highlight), InterventionControls</td></tr>
-      <tr><td><code>interventionTarget</code></td><td><code>string | null</code></td><td>CausalDAG3D (amber ring), InterventionControls (counterfactual)</td></tr>
-      <tr><td><code>scissorsMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (edge click), InterventionControls</td></tr>
+      <tr><td><code>interventionMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (downstream highlight); auto-set when activeModule === "pearl"</td></tr>
+      <tr><td><code>interventionTarget</code></td><td><code>string | null</code></td><td>CausalDAG3D (amber ring), MonteCarloForecast (do(X) target)</td></tr>
+      <tr><td><code>scissorsMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (edge click)</td></tr>
+      <tr><td><code>lastInterdictionResult</code></td><td><code>InterdictionResult | null</code></td><td>CopilotInterdictionResults (apply buttons), MonteCarloForecast (auto-seeds do(X) target + edge cuts)</td></tr>
       <tr><td><code>severedEdges</code></td><td><code>string[]</code></td><td>CausalDAG3D (greyed-out computation), DAGEdge3D (severed style)</td></tr>
       <tr><td><code>truthFilter</code></td><td><code>"raw" | "verified"</code></td><td>DAGNode3D (restricted badge), DAGEdge3D (inconsistent style)</td></tr>
       <tr><td><code>axiomLevelFilter</code></td><td><code>"all" | 0 | 1 | 2</code></td><td>AxiomLibrary</td></tr>
@@ -466,9 +467,9 @@
     <h3>Ablation State</h3>
     <table>
       <tr><th>State Slice</th><th>Type</th><th>Consumed By</th></tr>
-      <tr><td><code>ablationMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (ablation visuals), AblationPanel</td></tr>
-      <tr><td><code>ablatedNodeIds</code></td><td><code>string[]</code></td><td>AblationPanel, CausalDAG3D</td></tr>
-      <tr><td><code>ablatedEdgeIds</code></td><td><code>string[]</code></td><td>AblationPanel, CausalDAG3D</td></tr>
+      <tr><td><code>ablationMode</code></td><td><code>boolean</code></td><td>CausalDAG3D (ablation visuals)</td></tr>
+      <tr><td><code>ablatedNodeIds</code></td><td><code>string[]</code></td><td>CausalDAG3D, CopilotInterdictionResults (ABLATE action)</td></tr>
+      <tr><td><code>ablatedEdgeIds</code></td><td><code>string[]</code></td><td>CausalDAG3D</td></tr>
     </table>
 
     <h3>LLM Configuration State</h3>
@@ -532,7 +533,7 @@
       <tr><td><code>addCopilotMessage(msg)</code></td><td>Actions, queries, LLM streaming</td><td>Append to chat history</td></tr>
       <tr><td><code>toggleAblatedNode(id)</code></td><td>Node click in ablation mode</td><td>Add/remove from ablation set, auto-ablate connected edges</td></tr>
       <tr><td><code>toggleAblatedEdge(id)</code></td><td>Edge click in ablation mode</td><td>Add/remove from ablation set</td></tr>
-      <tr><td><code>startAblationReplay()</code></td><td>AblationPanel "Run" button</td><td>Build ablated graph, simulate cascade, start replay</td></tr>
+      <tr><td><code>startAblationReplay()</code></td><td>Programmatic trigger (cascade replay with ablated graph)</td><td>Build ablated graph, simulate cascade, start replay</td></tr>
       <tr><td><code>setSnapshot(snapshot)</code></td><td>Compute API response</td><td>Tarski-validate, store, cap history at 50</td></tr>
       <tr><td><code>startReplay()</code></td><td>Cascade replay trigger</td><td>Simulate cascade epochs, start baseline playback</td></tr>
       <tr><td><code>branchFromCurrentEpoch()</code></td><td>Branch button in replay</td><td>Fork from current epoch, create intervention timeline</td></tr>
@@ -697,11 +698,11 @@ computeLayout3D(nodes, edges, existingPositions?)
     </ol>
 
     <h3>Ablation Analysis</h3>
-    <p>Select nodes/edges for removal and compare the resulting cascade against the baseline. Located in <code>AblationPanel.tsx</code> + <code>ablation-engine.ts</code>.</p>
+    <p>Compares a baseline cascade against one with selected nodes/edges removed. Engine in <code>ablation-engine.ts</code>; ablation actions are now driven from <code>CopilotInterdictionResults</code> (ABLATE buttons on solver recommendations) rather than a standalone panel.</p>
     <ul>
       <li>Toggle nodes/edges for ablation (auto-ablates connected edges when a node is selected)</li>
       <li><code>computeAblationComparison(graph, nodeIds, edgeIds)</code> computes structural delta</li>
-      <li>"Run" builds the ablated graph and launches cascade replay on the intervention timeline</li>
+      <li><code>startAblationReplay()</code> builds the ablated graph and launches cascade replay on the intervention timeline</li>
       <li>Mutually exclusive with scissors mode (enabling one disables the other)</li>
     </ul>
 
@@ -1134,7 +1135,7 @@ computeLayout3D(nodes, edges, existingPositions?)
       v
   toggleAblatedNode(id) / toggleAblatedEdge(id)
       |-- Auto-ablates connected edges when node selected
-      |-- AblationPanel shows computeAblationComparison() preview
+      |-- computeAblationComparison() produces structural delta preview
       |
       v  (user clicks RUN)
   startAblationReplay()
@@ -1347,10 +1348,10 @@ computeLayout3D(nodes, edges, existingPositions?)
       <tr><td>Omega buffer</td><td><code>omega-engine.ts</code></td><td><code>max(0, 100 - totalSeverity x 100)</code>, drives status thresholds</td></tr>
       <tr><td>Doomsday T-days</td><td><code>omega-engine.ts</code></td><td><code>max(3, round(365 x buffer/100))</code></td></tr>
       <tr><td>Dragon King detection</td><td><code>omega-engine.ts</code></td><td>Triggered when fragilityIndex exceeds 70</td></tr>
-      <tr><td>Counterfactual E[U]</td><td><code>InterventionControls</code></td><td><code>target.omega x avg_downstream_weight x 10</code></td></tr>
+      <tr><td>Monte Carlo forecast</td><td><code>monte-carlo-engine.ts</code> + <code>MonteCarloForecast</code></td><td>Stochastic omega-buffer trajectories under do(X) + severed edges; p10/p25/p50/p75/p90 fan chart (mulberry32 + Box-Muller)</td></tr>
       <tr><td>Graph surgery</td><td><code>intervention-engine.ts</code></td><td>Sever edge, spawn domain-specific consequence nodes (omega 7.5-9.5)</td></tr>
       <tr><td>Ablation comparison</td><td><code>ablation-engine.ts</code></td><td>Remove nodes/edges, compare cascade metrics vs baseline</td></tr>
-      <tr><td>Greedy minimax interdiction</td><td><code>interdiction-engine.ts</code></td><td>O(budget x candidates) greedy solver for network protection; damage = intensity(40) + buffer(40) + critical(20)</td></tr>
+      <tr><td>Greedy minimax interdiction</td><td><code>interdiction-engine.ts</code></td><td>O(budget x candidates) greedy solver; damage = spread(40) + hot-node(35, OmegaF-weighted) + critical(25) to make single-cut deltas visible in sparse graphs</td></tr>
       <tr><td>Cascade simulation</td><td><code>cascade-simulator.ts</code></td><td>Epoch-based shock propagation with damping, activation thresholds, omega buffer tracking</td></tr>
       <tr><td>Snapshot validation</td><td><code>tarski-validator.ts</code></td><td>5 programmatic axiom checks (A-01, A-02, A-03, H-02, R-01) against SystemStateSnapshot</td></tr>
       <tr><td>Snapshot diff</td><td><code>snapshots/diff.ts</code></td><td>Structured delta: node omega/fragility, edge weight, added/removed, metric changes</td></tr>

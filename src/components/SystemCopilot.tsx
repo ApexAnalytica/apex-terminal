@@ -469,26 +469,7 @@ export default function SystemCopilot() {
     return () => window.removeEventListener("apex-analyze-selection", handler);
   }, [addCopilotMessage]);
 
-  // Listen for ablation interpretation events from AblationPanel (stable listener via refs)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.prompt && isLlmActiveRef.current) {
-        handleStreamingQueryRef.current(detail.prompt);
-      } else if (detail?.prompt) {
-        addCopilotMessage({
-          id: `sys-abl-${Date.now()}`,
-          role: "assistant",
-          content: "LLM not configured. Please set up Gemini or Ollama in settings to interpret ablation results.",
-          timestamp: Date.now(),
-        });
-      }
-    };
-    window.addEventListener("apex-ablation-interpret", handler);
-    return () => window.removeEventListener("apex-ablation-interpret", handler);
-  }, [addCopilotMessage]);
-
-  // ─── Voice Input (Speech-to-Text) ────────────────────────
+// ─── Voice Input (Speech-to-Text) ────────────────────────
   const startListening = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {

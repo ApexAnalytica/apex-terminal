@@ -11,9 +11,7 @@ import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import TrinityPanel from "./TrinityPanel";
-import InterventionControls from "./InterventionControls";
 import MonteCarloForecast from "./MonteCarloForecast";
-import AblationPanel from "./AblationPanel";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
@@ -88,13 +86,11 @@ export default function ModulePanel() {
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Structural what-if analysis. Apply do(X) to isolate a node from its upstream causes,
-              sever causal links, and observe counterfactual downstream effects.
+              Run interdiction from the copilot to produce candidate cuts, then the Monte Carlo
+              forecast auto-simulates the counterfactual {"\u03A9"}-buffer trajectory under those cuts.
             </div>
             <CopilotInterdictionResults />
-            <InterventionControls />
             <MonteCarloForecast expanded={expandedChart === "pearl"} />
-            <AblationPanel />
           </div>
         )}
 

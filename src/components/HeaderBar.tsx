@@ -7,6 +7,7 @@ import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/li
 import { createClient } from "@/lib/supabase/client";
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
+import TextSizeToggle from "./TextSizeToggle";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "./DomainSelector";
 import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
@@ -128,6 +129,7 @@ export default function HeaderBar() {
       {/* Right: Meta — z-10 so it always sits above the center section */}
       <div className="flex items-center gap-1.5 md:gap-3 shrink-0 z-10 bg-surface-elevated">
         <ImportButton />
+        <TextSizeToggle />
         <button
           onClick={() => setTourActive(true)}
           className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"

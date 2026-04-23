@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   description: "by Apex Analytica — Ω-Critical AI Systems™",
 };
 
+// Runs before paint to sync the user's saved text-size with <html> so zoom
+// applies from the first frame instead of snapping in after hydration.
+const TEXT_SIZE_BOOT = `(function(){try{var v=localStorage.getItem("manifold:text-size");if(v==="sm"||v==="md"||v==="lg"){document.documentElement.dataset.textSize=v;}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,6 +29,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT }} />
+      </head>
       <body
         className={`${michroma.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

@@ -459,12 +459,42 @@ function CausalDAGMapInner() {
     ? activeGraph.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
-  // Fit bounds to data on first load
+  // Nodes the map should currently frame. When isolating with a selection,
+  // frame only the selected subset (matches 3D isolate semantics); otherwise
+  // frame the full filtered graph.
+  const nodesToFit = useMemo(() => {
+    if (isolateSelection && selectedNodes.length > 0) {
+      const sel = new Set(selectedNodes);
+      return activeGraph.nodes.filter((n) => sel.has(n.id));
+    }
+    return activeGraph.nodes;
+  }, [activeGraph.nodes, isolateSelection, selectedNodes]);
+
+  // Stable key over the *set* of framed node ids. Re-fits when the set of
+  // visible nodes changes, including count-preserving swaps (e.g. changing
+  // which nodes are isolated) that the previous length-only check missed.
+  const fitKey = useMemo(
+    () => nodesToFit.map((n) => n.id).sort().join("|"),
+    [nodesToFit],
+  );
+
+  const nodesToFitRef = useRef(nodesToFit);
   useEffect(() => {
-    if (!mapRef.current || nodeGeoJSON.features.length === 0) return;
-    const coords = nodeGeoJSON.features.map(
-      (f) => f.geometry.coordinates as [number, number],
+    nodesToFitRef.current = nodesToFit;
+  }, [nodesToFit]);
+
+  useEffect(() => {
+    const nodes = nodesToFitRef.current;
+    if (!mapRef.current || nodes.length === 0) return;
+    const coords = nodes.map((n) =>
+      getNodeCoordinates(n.id, n.globalConcentration ?? "", n.domain),
     );
+
+    if (coords.length === 1) {
+      mapRef.current.flyTo({ center: coords[0], zoom: 6, duration: 800 });
+      return;
+    }
+
     const lngs = coords.map((c) => c[0]);
     const lats = coords.map((c) => c[1]);
     const minLng = Math.min(...lngs);
@@ -477,9 +507,9 @@ function CausalDAGMapInner() {
         [minLng - 5, minLat - 5],
         [maxLng + 5, maxLat + 5],
       ],
-      { duration: 1000, padding: 60 },
+      { duration: 800, padding: 60 },
     );
-  }, [nodeGeoJSON.features.length]);
+  }, [fitKey]);
 
   // Dark map style matching the app theme
   const mapStyle = useMemo(

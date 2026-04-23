@@ -488,26 +488,10 @@ export default function SpotlightTour() {
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "none" }}>
-        {/* SVG overlay with mask cutout + connector arrow */}
+        {/* SVG overlay for the border + connector arrow. Dimming is done with
+            div rectangles below so the cutout area is guaranteed untouched. */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
-            <mask id="spotlight-mask" maskUnits="userSpaceOnUse">
-              <rect x="0" y="0" width="100%" height="100%" fill="white" />
-              {cutout && (
-                <motion.rect
-                  x={cutout.x}
-                  y={cutout.y}
-                  width={cutout.width}
-                  height={cutout.height}
-                  rx={8}
-                  fill="black"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  key={step.id}
-                />
-              )}
-            </mask>
             <marker
               id="spotlight-arrowhead"
               viewBox="0 0 10 10"
@@ -520,14 +504,6 @@ export default function SpotlightTour() {
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-cyan, #00e5ff)" />
             </marker>
           </defs>
-          <rect
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            fill="rgba(0, 0, 0, 0.78)"
-            mask="url(#spotlight-mask)"
-          />
           {/* Bright border around the cutout so it reads as a clear window */}
           {cutout && (
             <motion.rect
@@ -567,38 +543,61 @@ export default function SpotlightTour() {
           )}
         </svg>
 
-        {/* Click catchers for the dimmed area. Rendered as 4 rectangles around
-            the cutout so the highlighted element itself is pointer-transparent
-            and the user can interact with it directly. On welcome-and-domain
-            the backdrop no-ops so stray clicks don't strand the user. */}
+        {/* 4 dim rectangles around the cutout. Click-inert — only SKIP TOUR
+            or Esc close the tour. The cutout area itself has no overlay
+            element at all, so the underlying UI renders at full brightness
+            and receives clicks directly. */}
         {cutout ? (
           <>
             <div
               className="absolute"
-              style={{ left: 0, top: 0, right: 0, height: Math.max(0, cutout.y), pointerEvents: "auto" }}
-              onClick={step.id === "welcome-and-domain" ? undefined : close}
+              style={{
+                left: 0,
+                top: 0,
+                right: 0,
+                height: Math.max(0, cutout.y),
+                background: "rgba(0, 0, 0, 0.78)",
+                pointerEvents: "auto",
+              }}
             />
             <div
               className="absolute"
-              style={{ left: 0, top: cutout.y + cutout.height, right: 0, bottom: 0, pointerEvents: "auto" }}
-              onClick={step.id === "welcome-and-domain" ? undefined : close}
+              style={{
+                left: 0,
+                top: cutout.y + cutout.height,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0, 0, 0, 0.78)",
+                pointerEvents: "auto",
+              }}
             />
             <div
               className="absolute"
-              style={{ left: 0, top: cutout.y, width: Math.max(0, cutout.x), height: cutout.height, pointerEvents: "auto" }}
-              onClick={step.id === "welcome-and-domain" ? undefined : close}
+              style={{
+                left: 0,
+                top: cutout.y,
+                width: Math.max(0, cutout.x),
+                height: cutout.height,
+                background: "rgba(0, 0, 0, 0.78)",
+                pointerEvents: "auto",
+              }}
             />
             <div
               className="absolute"
-              style={{ left: cutout.x + cutout.width, top: cutout.y, right: 0, height: cutout.height, pointerEvents: "auto" }}
-              onClick={step.id === "welcome-and-domain" ? undefined : close}
+              style={{
+                left: cutout.x + cutout.width,
+                top: cutout.y,
+                right: 0,
+                height: cutout.height,
+                background: "rgba(0, 0, 0, 0.78)",
+                pointerEvents: "auto",
+              }}
             />
           </>
         ) : (
           <div
             className="absolute inset-0"
-            style={{ pointerEvents: "auto" }}
-            onClick={step.id === "welcome-and-domain" ? undefined : close}
+            style={{ background: "rgba(0, 0, 0, 0.78)", pointerEvents: "auto" }}
           />
         )}
 

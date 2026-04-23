@@ -67,15 +67,19 @@ describe("solveInterdiction", () => {
     }
   });
 
-  it("greedy ordering produces diminishing returns", () => {
+  it("greedy interventions produce monotonically non-increasing cumulative damage", () => {
     const graph = unstableGraph();
     const result = solveInterdiction(graph, MULTI_SHOCKS, [], 3, "edge");
 
-    // Each successive intervention should have equal or lower marginal reduction
+    // Damage must weakly decrease with each accepted cut (the solver only
+    // accepts a cut if it reduces damage). Marginal reductions themselves
+    // are NOT required to be monotonic — damage isn't submodular, so a
+    // second cut can amplify the first (e.g., jointly isolating a subgraph).
     for (let i = 1; i < result.interventions.length; i++) {
-      expect(result.interventions[i].marginalReduction).toBeLessThanOrEqual(
-        result.interventions[i - 1].marginalReduction + 0.01 // small epsilon for float
+      expect(result.interventions[i].damage).toBeLessThanOrEqual(
+        result.interventions[i - 1].damage + 0.01
       );
+      expect(result.interventions[i].marginalReduction).toBeGreaterThan(0);
     }
   });
 

@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: CascadeConfig = {
   forgettingRate: 0.05,
   stabilityThreshold: 0.001,
   criticalBufferThreshold: 15,
-  omegaShockScale: 0.3,
+  omegaShockScale: 0.6,
 };
 
 // ─── Category Mapping ───────────────────────────────────────────
@@ -59,11 +59,12 @@ export function mapShocksToNodes(
         targetCategories.some((c) => n.domain.toLowerCase().includes(c))
     );
     if (matchingNodes.length === 0) continue;
-    const perNode = shock.severity / matchingNodes.length;
+    // Scenario-level severity applies to each matching node, not divided across them.
+    // Dividing would make big shocks vanish in large graphs, leaving cuts indistinguishable.
     for (const node of matchingNodes) {
       intensityMap.set(
         node.id,
-        Math.min(1, (intensityMap.get(node.id) ?? 0) + perNode)
+        Math.min(1, (intensityMap.get(node.id) ?? 0) + shock.severity)
       );
     }
   }

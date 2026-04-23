@@ -54,7 +54,7 @@ const DEFAULT_MC_CONFIG: MCConfig = {
   dampingFactor: 0.85,
   forgettingRate: 0.05,
   noiseScale: 0.12,
-  omegaShockScale: 0.3,
+  omegaShockScale: 0.6,
 };
 
 // ─── Seeded RNG (Mulberry32) ───────────────────────────────────

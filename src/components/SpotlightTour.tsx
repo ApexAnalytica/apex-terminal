@@ -387,6 +387,31 @@ export default function SpotlightTour() {
     }
   }, [tourActive, step, domainSelectorOpen, tourStep, setTourStep]);
 
+  // Auto-advance when the user clicks inside the highlighted cutout. Listen
+  // in capture phase so our handler fires before the target's own; defer the
+  // step increment to the next tick so the underlying click still runs.
+  // Skipped for welcome-and-domain (its own selector-close logic handles it)
+  // and finish (no target).
+  useEffect(() => {
+    if (!tourActive || !step || !cutout) return;
+    if (step.id === "welcome-and-domain" || step.id === "finish") return;
+
+    const handler = (e: MouseEvent) => {
+      const { clientX, clientY } = e;
+      const inside =
+        clientX >= cutout.x &&
+        clientX <= cutout.x + cutout.width &&
+        clientY >= cutout.y &&
+        clientY <= cutout.y + cutout.height;
+      if (!inside) return;
+      setTimeout(() => {
+        setTourStep(useApexStore.getState().tourStep + 1);
+      }, 0);
+    };
+    window.addEventListener("click", handler, true);
+    return () => window.removeEventListener("click", handler, true);
+  }, [tourActive, step, cutout, setTourStep]);
+
   useEffect(() => {
     if (!tourActive) return;
     updatePositions();
@@ -541,14 +566,39 @@ export default function SpotlightTour() {
           )}
         </svg>
 
-        {/* Click-blocker on dimmed area. During the welcome-and-domain step we
-            don't dismiss on backdrop click — the user is likely trying to
-            interact with the domain-selector modal visible through the cutout.
-            They can still exit via SKIP TOUR, Esc, or the X in the selector. */}
-        <div
-          className="absolute inset-0"
-          onClick={step.id === "welcome-and-domain" ? undefined : close}
-        />
+        {/* Click catchers for the dimmed area. Rendered as 4 rectangles around
+            the cutout so the highlighted element itself is pointer-transparent
+            and the user can interact with it directly. On welcome-and-domain
+            the backdrop no-ops so stray clicks don't strand the user. */}
+        {cutout ? (
+          <>
+            <div
+              className="absolute"
+              style={{ left: 0, top: 0, right: 0, height: Math.max(0, cutout.y) }}
+              onClick={step.id === "welcome-and-domain" ? undefined : close}
+            />
+            <div
+              className="absolute"
+              style={{ left: 0, top: cutout.y + cutout.height, right: 0, bottom: 0 }}
+              onClick={step.id === "welcome-and-domain" ? undefined : close}
+            />
+            <div
+              className="absolute"
+              style={{ left: 0, top: cutout.y, width: Math.max(0, cutout.x), height: cutout.height }}
+              onClick={step.id === "welcome-and-domain" ? undefined : close}
+            />
+            <div
+              className="absolute"
+              style={{ left: cutout.x + cutout.width, top: cutout.y, right: 0, height: cutout.height }}
+              onClick={step.id === "welcome-and-domain" ? undefined : close}
+            />
+          </>
+        ) : (
+          <div
+            className="absolute inset-0"
+            onClick={step.id === "welcome-and-domain" ? undefined : close}
+          />
+        )}
 
         {/* Tooltip card */}
         <motion.div

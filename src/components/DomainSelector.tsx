@@ -273,82 +273,6 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
   return graph;
 }
 
-const CASCADE_EXAMPLES: Record<string, string> = {
-  "energy-systems+manufacturing":
-    "Saudi gas supply disruption \u2192 ammonia feedstock shortage \u2192 QAFCO/Ma'aden output collapse \u2192 global fertilizer price spike \u2192 food inflation",
-  "financial-contagion+supply-chain":
-    "Bank credit freeze \u2192 trade finance collapse \u2192 shipping delays \u2192 manufacturing halt",
-  "financial-contagion+sovereign-risk":
-    "Sovereign default \u2192 bank exposure losses \u2192 cross-border contagion \u2192 currency crisis",
-  "financial-contagion+infrastructure":
-    "Infrastructure bond default \u2192 municipal credit freeze \u2192 utility service degradation",
-  "financial-contagion+defense-isr":
-    "Defense budget sequestration \u2192 ISR procurement freeze \u2192 capability gap \u2192 deterrence erosion",
-  "supply-chain+sovereign-risk":
-    "Export ban \u2192 critical mineral shortage \u2192 manufacturing re-routing \u2192 cost inflation",
-  "supply-chain+infrastructure":
-    "Port failure \u2192 rerouting bottleneck \u2192 energy grid overload \u2192 cascading blackouts",
-  "supply-chain+defense-isr":
-    "Chip fab disruption \u2192 GPU allocation crisis \u2192 edge AI inference halt \u2192 drone fleet grounded",
-  "sovereign-risk+infrastructure":
-    "Fiscal crisis \u2192 infrastructure maintenance cuts \u2192 grid instability \u2192 industrial output drop",
-  "sovereign-risk+defense-isr":
-    "Arms embargo \u2192 SATCOM relay denial \u2192 ISR blackout \u2192 strategic blindspot",
-  "infrastructure+defense-isr":
-    "Subsea cable cut \u2192 SATCOM overload \u2192 ISR data latency \u2192 kill chain degradation",
-  "energy-systems+financial-contagion":
-    "Grid instability \u2192 utility bond default \u2192 energy credit freeze \u2192 rolling blackout financing gap",
-  "energy-systems+supply-chain":
-    "Transformer shortage \u2192 grid expansion halt \u2192 industrial power rationing \u2192 manufacturing delays",
-  "energy-systems+sovereign-risk":
-    "Oil revenue collapse \u2192 sovereign credit downgrade \u2192 capital flight \u2192 currency crisis",
-  "energy-systems+infrastructure":
-    "HVDC cable failure \u2192 grid island separation \u2192 frequency instability \u2192 cascading load shed",
-  "energy-systems+defense-isr":
-    "Energy grid attack \u2192 data center outage \u2192 AI inference halt \u2192 swarm coordination failure",
-  "financial-contagion+manufacturing":
-    "Credit contraction \u2192 agrochemical capex freeze \u2192 fertilizer production gap \u2192 food price shock",
-  "manufacturing+supply-chain":
-    "Phosphate embargo \u2192 fertilizer shortage \u2192 crop yield collapse \u2192 food security crisis",
-  "manufacturing+sovereign-risk":
-    "Export controls \u2192 fertilizer supply disruption \u2192 food price shock \u2192 sovereign instability",
-  "manufacturing+defense-isr":
-    "Chip embargo \u2192 secure compute shortage \u2192 ISR processing bottleneck \u2192 intelligence gap",
-  "defense-isr+infrastructure":
-    "Anti-satellite strike \u2192 GPS degradation \u2192 navigation system failure \u2192 logistics breakdown",
-  "macro-labor+macro-inflation":
-    "Wage growth acceleration \u2192 services inflation persistence \u2192 Core PCE above target \u2192 Fed holds rates higher \u2192 housing and growth slowdown",
-  "macro-inflation+financial-contagion":
-    "Hot CPI print \u2192 Fed rate hike \u2192 USD strengthening \u2192 EM currency contagion \u2192 sovereign debt rollover crisis",
-  "macro-inflation+sovereign-risk":
-    "Persistent US inflation \u2192 extended Fed tightening \u2192 global borrowing cost surge \u2192 EM fiscal stress \u2192 growth contraction",
-  "macro-inflation+energy-systems":
-    "Saudi supply disruption \u2192 PPI energy spike \u2192 CPI energy pass-through \u2192 headline inflation surge \u2192 Fed reaction",
-  "macro-labor+financial-contagion":
-    "US employment collapse \u2192 recession signal \u2192 risk-off \u2192 EM capital flight \u2192 FX reserve depletion",
-  "macro-labor+sovereign-risk":
-    "US GDP contraction \u2192 reduced import demand \u2192 China/Brazil export revenue decline \u2192 growth slowdown",
-  "macro-inflation+manufacturing":
-    "Fertilizer price spike \u2192 CPI food surge \u2192 inflation expectations de-anchor \u2192 Fed overtightens \u2192 demand destruction",
-  "macro-inflation+supply-chain":
-    "Red Sea disruption \u2192 shipping cost spike \u2192 PPI pass-through \u2192 CPI goods inflation \u2192 consumer confidence collapse",
-  "macro-inflation+infrastructure":
-    "Cable cut latency spike \u2192 financial settlement delays \u2192 SOFR volatility \u2192 repo market stress \u2192 cross-border credit freeze",
-};
-
-function getCascadeExamples(domainIds: string[]): string[] {
-  if (domainIds.length < 2) return [];
-  const examples: string[] = [];
-  for (let i = 0; i < domainIds.length; i++) {
-    for (let j = i + 1; j < domainIds.length; j++) {
-      const key = [domainIds[i], domainIds[j]].sort().join("+");
-      const ex = CASCADE_EXAMPLES[key];
-      if (ex) examples.push(ex);
-    }
-  }
-  return examples;
-}
-
 export default function DomainSelector() {
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
   const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
@@ -373,7 +297,6 @@ export default function DomainSelector() {
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
-  const [showCascadePaths, setShowCascadePaths] = useState(false);
 
   // Cards visible for the active persona (filtered by domain group)
   const allowedGroups = PERSONA_GROUPS[activePersona];
@@ -464,8 +387,6 @@ export default function DomainSelector() {
     setVisibleDiscoverySources(localSources);
     setDomainSelectorOpen(false);
   }, [localSelected, localMulti, localCategories, localSources, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
-
-  const cascadeExamples = getCascadeExamples(localSelected);
 
   // Compute which datasets will be loaded based on current selection
   const selectedCards = localSelected.map((id) => DOMAIN_CARDS.find((d) => d.id === id)).filter(Boolean) as DomainCard[];
@@ -628,44 +549,6 @@ export default function DomainSelector() {
                 </div>
               ))}
             </div>
-
-            {/* Cascade Examples (collapsed by default) */}
-            {cascadeExamples.length > 0 && (
-              <div className="px-6 pb-2">
-                <button
-                  onClick={() => setShowCascadePaths((p) => !p)}
-                  className="flex items-center gap-2 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-amber transition-colors"
-                >
-                  <span style={{ transform: showCascadePaths ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
-                  CROSS-DOMAIN CASCADE PATHS
-                  <span className="text-[7px] font-mono text-text-muted/50">
-                    {cascadeExamples.length} example{cascadeExamples.length > 1 ? "s" : ""}
-                  </span>
-                </button>
-                <AnimatePresence>
-                  {showCascadePaths && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-2 space-y-1">
-                        {cascadeExamples.map((ex, i) => (
-                          <div
-                            key={i}
-                            className="text-[9px] font-mono text-accent-amber/80 px-3 py-1.5 rounded bg-accent-amber/5 border border-accent-amber/15"
-                          >
-                            {ex}
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
 
             {/* Data Layers */}
             <div className="px-6 pb-2">

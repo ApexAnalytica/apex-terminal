@@ -527,7 +527,6 @@ function CausalDAG2DInner() {
         onPaneClick={onPaneClick}
         onSelectionChange={onSelectionChange}
         selectionMode={SelectionMode.Partial}
-        selectionOnDrag
         selectionKeyCode="Shift"
         panOnDrag
         fitView

@@ -199,8 +199,17 @@ const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-const PADDING = 8;
+const DEFAULT_PADDING = 8;
 const GAP = 16;
+
+// Step-specific padding overrides. The welcome-and-domain cutout sits on the
+// domain-selector modal, which already has its own bg-black/70 backdrop-blur
+// shell — any extra padding around the cutout exposes that blurred dim and
+// makes the modal look washed out. Zero padding here keeps the cutout flush
+// with the modal body.
+const STEP_PADDING: Record<string, number> = {
+  "welcome-and-domain": 0,
+};
 
 // Bump this whenever the tour content changes substantially enough that
 // already-onboarded users should see it again. Currently unused — the
@@ -305,10 +314,13 @@ export default function SpotlightTour() {
   const setTourActive = useApexStore((s) => s.setTourActive);
   const setTourStep = useApexStore((s) => s.setTourStep);
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
+  const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
   const sawDomainSelectorRef = useRef(false);
 
   const [cutout, setCutout] = useState<CutoutRect | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [showDomainHint, setShowDomainHint] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tooltipHeightRef = useRef(200);
   const preTourModuleRef = useRef<string | null>(null);
@@ -328,11 +340,12 @@ export default function SpotlightTour() {
       return;
     }
     const rect = el.getBoundingClientRect();
+    const pad = STEP_PADDING[step.id] ?? DEFAULT_PADDING;
     setCutout({
-      x: rect.x - PADDING,
-      y: rect.y - PADDING,
-      width: rect.width + PADDING * 2,
-      height: rect.height + PADDING * 2,
+      x: rect.x - pad,
+      y: rect.y - pad,
+      width: rect.width + pad * 2,
+      height: rect.height + pad * 2,
     });
   }, [step]);
 
@@ -370,8 +383,9 @@ export default function SpotlightTour() {
   }, [tourActive, tourStep, step]);
 
   // Auto-advance the welcome/domain step when the user closes the selector
-  // (i.e. they've picked a domain and committed). Only fires if we observed
-  // the modal open while on this step.
+  // AFTER picking at least one domain. If they closed it without picking, we
+  // reopen it so the tour stays coherent (without a pick the workspace button
+  // in the header doesn't render either, so there's no recovery path).
   useEffect(() => {
     if (!tourActive || step?.id !== "welcome-and-domain") {
       sawDomainSelectorRef.current = false;
@@ -381,11 +395,30 @@ export default function SpotlightTour() {
       sawDomainSelectorRef.current = true;
       return;
     }
-    if (sawDomainSelectorRef.current && !domainSelectorOpen) {
+    if (!sawDomainSelectorRef.current) return;
+    if (selectedDomains.length > 0) {
       sawDomainSelectorRef.current = false;
       setTourStep(tourStep + 1);
+    } else {
+      setDomainSelectorOpen(true);
     }
-  }, [tourActive, step, domainSelectorOpen, tourStep, setTourStep]);
+  }, [
+    tourActive,
+    step,
+    domainSelectorOpen,
+    selectedDomains,
+    tourStep,
+    setTourStep,
+    setDomainSelectorOpen,
+  ]);
+
+  // Clear the "pick a domain" hint as soon as the user actually picks one, or
+  // when the tour moves past the welcome step.
+  useEffect(() => {
+    if (step?.id !== "welcome-and-domain" || selectedDomains.length > 0) {
+      setShowDomainHint(false);
+    }
+  }, [step, selectedDomains]);
 
   // Auto-advance when the user clicks inside the highlighted cutout. Listen
   // in capture phase so our handler fires before the target's own; defer the
@@ -452,12 +485,26 @@ export default function SpotlightTour() {
   }, [setTourActive]);
 
   const next = useCallback(() => {
+    if (step?.id === "welcome-and-domain" && selectedDomains.length === 0) {
+      setShowDomainHint(true);
+      if (!domainSelectorOpen) setDomainSelectorOpen(true);
+      return;
+    }
     if (isLast) {
       close();
     } else {
       setTourStep(tourStep + 1);
     }
-  }, [isLast, close, setTourStep, tourStep]);
+  }, [
+    step,
+    selectedDomains,
+    domainSelectorOpen,
+    setDomainSelectorOpen,
+    isLast,
+    close,
+    setTourStep,
+    tourStep,
+  ]);
 
   const back = useCallback(() => {
     if (!isFirst) setTourStep(tourStep - 1);
@@ -633,6 +680,13 @@ export default function SpotlightTour() {
           <p className="text-[11px] font-mono leading-relaxed text-text-muted mb-4">
             {step.description}
           </p>
+
+          {/* Inline hint when the user tries to advance without picking a domain */}
+          {showDomainHint && (
+            <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[10px] font-mono tracking-wider text-amber-300">
+              Pick a domain in the workspace first — the platform can&apos;t render without one.
+            </div>
+          )}
 
           {/* Navigation buttons */}
           <div className="flex items-center justify-between">

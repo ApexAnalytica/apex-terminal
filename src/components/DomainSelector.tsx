@@ -489,6 +489,7 @@ export default function DomainSelector() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.2 }}
+            data-tour="domain-selector-modal"
             className="w-full max-w-2xl mx-4 rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
           >
             {/* Header */}

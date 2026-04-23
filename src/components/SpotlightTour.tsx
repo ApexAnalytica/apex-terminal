@@ -491,7 +491,7 @@ export default function SpotlightTour() {
         {/* SVG overlay with mask cutout + connector arrow */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
-            <mask id="spotlight-mask">
+            <mask id="spotlight-mask" maskUnits="userSpaceOnUse">
               <rect x="0" y="0" width="100%" height="100%" fill="white" />
               {cutout && (
                 <motion.rect
@@ -499,7 +499,7 @@ export default function SpotlightTour() {
                   y={cutout.y}
                   width={cutout.width}
                   height={cutout.height}
-                  rx={6}
+                  rx={8}
                   fill="black"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -525,9 +525,28 @@ export default function SpotlightTour() {
             y="0"
             width="100%"
             height="100%"
-            fill="rgba(0, 0, 0, 0.75)"
+            fill="rgba(0, 0, 0, 0.78)"
             mask="url(#spotlight-mask)"
           />
+          {/* Bright border around the cutout so it reads as a clear window */}
+          {cutout && (
+            <motion.rect
+              x={cutout.x}
+              y={cutout.y}
+              width={cutout.width}
+              height={cutout.height}
+              rx={8}
+              fill="none"
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={2.5}
+              strokeOpacity={1}
+              style={{ filter: "drop-shadow(0 0 6px rgba(0, 229, 255, 0.5))" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              key={`border-${step.id}`}
+            />
+          )}
           {/* Connector arrow from tooltip edge to highlighted element */}
           {arrow && (
             <motion.line

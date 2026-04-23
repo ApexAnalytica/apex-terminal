@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import {
   runMonteCarloForecast,
@@ -330,7 +330,6 @@ export default function MonteCarloForecast({
   const [horizon, setHorizon] = useState(60);
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<MCForecastResult | null>(null);
-  const [lastRunSource, setLastRunSource] = useState<"manual" | "interdiction" | null>(null);
 
   // Derive intervention inputs from interdiction results (if any):
   //  • node cuts → candidate do(X) target (top-ranked first)
@@ -348,32 +347,50 @@ export default function MonteCarloForecast({
       .map((iv) => iv.target.id);
   }, [lastInterdictionResult]);
 
-  // Effective target: user-selected do(X) wins; otherwise fall back to the
-  // copilot's top node intervention from lastInterdictionResult.
-  const effectiveTarget = interventionTarget ?? interdictionNodeTarget;
+  // When interdiction recommends only edge cuts (no node), the MC engine still
+  // needs a target node to seed the do(X) shock. Use the downstream endpoint of
+  // the top-ranked edge cut — severing that edge isolates the node from its
+  // upstream cause, which is the do(X) semantic we want.
+  const interdictionEdgeTarget = useMemo(() => {
+    if (!lastInterdictionResult) return null;
+    const edgeCut = lastInterdictionResult.interventions.find((iv) => iv.target.type === "edge");
+    if (!edgeCut) return null;
+    const edge = graphData.edges.find((e) => e.id === edgeCut.target.id);
+    return edge?.target ?? null;
+  }, [lastInterdictionResult, graphData.edges]);
+
+  // Effective target: user-selected do(X) wins; otherwise use the copilot's
+  // top node intervention, otherwise fall back to an edge-cut downstream node.
+  const effectiveTarget = interventionTarget ?? interdictionNodeTarget ?? interdictionEdgeTarget;
 
   const targetNode = effectiveTarget
     ? graphData.nodes.find((n) => n.id === effectiveTarget)
     : null;
 
-  const runForecast = useCallback((source: "manual" | "interdiction" = "manual") => {
+  // Auto-run whenever the target, cut set, or config changes. All setState
+  // calls are deferred into a timeout so the effect body doesn't trigger a
+  // synchronous cascading render (React 19 lint rule).
+  useEffect(() => {
     if (!effectiveTarget) return;
-    setIsRunning(true);
-    // Merge user-severed edges with interdiction edge cuts so the forecast
-    // reflects the full defensive posture the solver recommended.
     const mergedSevered = Array.from(new Set([...severedEdges, ...interdictionEdgeCuts]));
-    // Run in next tick to allow UI to show spinner
-    setTimeout(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setIsRunning(true);
       const r = runMonteCarloForecast(
         graphData,
         effectiveTarget,
         mergedSevered,
         { numPaths, horizonEpochs: horizon }
       );
+      if (cancelled) return;
       setResult(r);
-      setLastRunSource(source);
       setIsRunning(false);
     }, 16);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [effectiveTarget, graphData, severedEdges, interdictionEdgeCuts, numPaths, horizon]);
 
   // Get median endpoint stats for summary
@@ -392,19 +409,26 @@ export default function MonteCarloForecast({
 
   const hasInterdiction = Boolean(lastInterdictionResult);
   const interdictionNodeCount = lastInterdictionResult?.interventions.filter((iv) => iv.target.type === "node").length ?? 0;
+  const postureLabel = interventionTarget
+    ? "MANUAL do(X)"
+    : interdictionNodeTarget
+      ? "INTERDICTION NODE CUT"
+      : interdictionEdgeTarget
+        ? "INTERDICTION EDGE CUT"
+        : "";
 
   return (
-    <div className="mt-3 pt-3 border-t border-border space-y-2">
+    <div className="space-y-2">
       <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-cyan">
         MONTE CARLO FORECAST
       </div>
       <div className="text-[8px] font-mono text-text-muted">
-        Stochastic simulation of {"\u03A9"}-buffer trajectories under structural intervention.
-        Runs {numPaths} paths with noise-perturbed edge weights and shock propagation.
+        Stochastic simulation of {"\u03A9"}-buffer trajectories. Auto-runs whenever
+        interdiction cuts or configuration change \u2014 no manual trigger.
       </div>
 
-      {hasInterdiction && (
-        <div className="p-2 rounded border border-accent-amber/30 bg-accent-amber/5 space-y-1">
+      {hasInterdiction && effectiveTarget && targetNode && (
+        <div className="p-2 rounded border border-accent-amber/30 bg-accent-amber/5 space-y-0.5">
           <div className="flex items-center justify-between">
             <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
               INTERDICTION {"\u2192"} FORECAST
@@ -414,23 +438,15 @@ export default function MonteCarloForecast({
             </span>
           </div>
           <div className="text-[7px] font-mono text-text-muted leading-relaxed">
-            Using solver cuts as the intervention posture:{" "}
-            {interdictionNodeTarget ? (
-              <>
-                do(<span className="text-accent-amber">{graphData.nodes.find((n) => n.id === interdictionNodeTarget)?.shortLabel ?? interdictionNodeTarget}</span>)
-              </>
-            ) : (
-              <span className="text-accent-amber">edge-only cuts</span>
-            )}
+            Posture: do(<span className="text-accent-amber">{targetNode.shortLabel ?? targetNode.id}</span>)
             {interdictionEdgeCuts.length > 0 && ` + ${interdictionEdgeCuts.length} severed edge${interdictionEdgeCuts.length !== 1 ? "s" : ""}`}.
           </div>
-          <button
-            onClick={() => runForecast("interdiction")}
-            disabled={!effectiveTarget || isRunning}
-            className="w-full text-[8px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1 rounded border border-accent-amber/50 text-accent-amber hover:bg-accent-amber/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isRunning && lastRunSource === "interdiction" ? "SIMULATING\u2026" : "FORECAST WITH INTERDICTION CUTS"}
-          </button>
+        </div>
+      )}
+
+      {!effectiveTarget && (
+        <div className="p-2 rounded border border-border/60 bg-surface-elevated text-[8px] font-mono text-text-muted">
+          Waiting for interdiction cuts (run the solver from the copilot) or a manual do(X) target on the DAG.
         </div>
       )}
 
@@ -463,23 +479,11 @@ export default function MonteCarloForecast({
         </div>
       </div>
 
-      {/* Run button */}
-      <button
-        onClick={() => runForecast("manual")}
-        disabled={!effectiveTarget || isRunning}
-        className="w-full text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-3 py-2 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          borderColor: "var(--accent-cyan)",
-          color: "var(--accent-cyan)",
-          backgroundColor: "rgba(0,229,255,0.06)",
-        }}
-      >
-        {isRunning && lastRunSource === "manual"
-          ? "SIMULATING..."
-          : !effectiveTarget
-            ? "SELECT INTERVENTION TARGET OR RUN INTERDICTION"
-            : `RUN FORECAST \u2014 do(${targetNode?.shortLabel || "X"})`}
-      </button>
+      {isRunning && (
+        <div className="text-[8px] font-mono text-accent-cyan/80 px-1">
+          SIMULATING{"\u2026"} {numPaths} paths {"\u00B7"} horizon {horizon}
+        </div>
+      )}
 
       {/* Results */}
       {result && summary && (
@@ -521,7 +525,7 @@ export default function MonteCarloForecast({
                 FAN CHART {expanded && <span className="text-text-muted ml-1">{"\u00B7"} EXPANDED</span>}
               </span>
               <span className="text-[7px] font-mono text-text-muted">
-                {lastRunSource === "interdiction" ? "INTERDICTION POSTURE" : "MANUAL do(X)"} {"\u00B7"} {numPaths} paths {"\u00B7"} hover for epoch detail
+                {postureLabel} {"\u00B7"} {numPaths} paths {"\u00B7"} hover for epoch detail
               </span>
             </div>
             <div className="p-1">

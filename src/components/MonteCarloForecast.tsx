@@ -15,6 +15,7 @@ function ForecastChart({
   interventionStats,
   baselinePaths,
   interventionPaths,
+  pathAccessor,
   horizonEpochs,
   metric,
   expanded,
@@ -23,6 +24,7 @@ function ForecastChart({
   interventionStats: EpochStats[];
   baselinePaths: MCPath[];
   interventionPaths: MCPath[];
+  pathAccessor: (p: MCPath) => number[];
   horizonEpochs: number;
   metric: string;
   expanded: boolean;
@@ -137,7 +139,7 @@ function ForecastChart({
           {baselinePaths.map((p, idx) => (
             <path
               key={`b${idx}`}
-              d={pathLine(p.omegaBufferSeries)}
+              d={pathLine(pathAccessor(p))}
               fill="none"
               stroke="rgba(200,200,220,1)"
               strokeWidth={0.4}
@@ -148,7 +150,7 @@ function ForecastChart({
           {interventionPaths.map((p, idx) => (
             <path
               key={`i${idx}`}
-              d={pathLine(p.omegaBufferSeries)}
+              d={pathLine(pathAccessor(p))}
               fill="none"
               stroke="rgba(0,229,255,1)"
               strokeWidth={0.4}
@@ -325,11 +327,17 @@ export default function MonteCarloForecast({
     severedEdges,
     lastInterdictionResult,
   } = useApexStore();
+  const trialPrior = useApexStore((s) => s.trialPrior);
 
   const [numPaths, setNumPaths] = useState(200);
   const [horizon, setHorizon] = useState(60);
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<MCForecastResult | null>(null);
+  // Metric toggle — "omega" shows the default Ω-buffer resilience fan,
+  // "survival" shows the literature-calibrated P(event by t) fan built
+  // from the active trial prior. When no prior is published (e.g. the
+  // VX-880 panel isn't mounted) the toggle is disabled and forced to omega.
+  const [metric, setMetric] = useState<"omega" | "survival">("omega");
 
   // Derive intervention inputs from interdiction results (if any):
   //  • node cuts → candidate do(X) target (top-ranked first)
@@ -381,7 +389,11 @@ export default function MonteCarloForecast({
         graphData,
         effectiveTarget,
         mergedSevered,
-        { numPaths, horizonEpochs: horizon }
+        {
+          numPaths,
+          horizonEpochs: horizon,
+          survivalPrior: trialPrior ?? undefined,
+        }
       );
       if (cancelled) return;
       setResult(r);
@@ -391,13 +403,41 @@ export default function MonteCarloForecast({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [effectiveTarget, graphData, severedEdges, interdictionEdgeCuts, numPaths, horizon]);
+  }, [effectiveTarget, graphData, severedEdges, interdictionEdgeCuts, numPaths, horizon, trialPrior]);
+
+  // Effective metric — derived, not stored. When the prior is absent we
+  // can't render a survival fan regardless of the toggle's internal state,
+  // so collapse it to "omega" at the read site. This avoids a setState-in-
+  // effect when the user navigates away from a VX-880-style panel.
+  const effectiveMetric: "omega" | "survival" = trialPrior ? metric : "omega";
+
+  // Resolve active stats based on the selected metric — falls back to the
+  // Ω-buffer fan when the survival arrays aren't present.
+  const activeStats = useMemo(() => {
+    if (!result) return null;
+    if (
+      effectiveMetric === "survival" &&
+      result.baselineSurvivalStats &&
+      result.interventionSurvivalStats
+    ) {
+      return {
+        baseline: result.baselineSurvivalStats,
+        intervention: result.interventionSurvivalStats,
+        accessor: (p: MCPath) => p.survivalSeries ?? [],
+      };
+    }
+    return {
+      baseline: result.baselineStats,
+      intervention: result.interventionStats,
+      accessor: (p: MCPath) => p.omegaBufferSeries,
+    };
+  }, [result, effectiveMetric]);
 
   // Get median endpoint stats for summary
   const summary = useMemo(() => {
-    if (!result) return null;
-    const baseLast = result.baselineStats[result.baselineStats.length - 1];
-    const intLast = result.interventionStats[result.interventionStats.length - 1];
+    if (!activeStats) return null;
+    const baseLast = activeStats.baseline[activeStats.baseline.length - 1];
+    const intLast = activeStats.intervention[activeStats.intervention.length - 1];
     return {
       baselineMedian: baseLast.p50,
       interventionMedian: intLast.p50,
@@ -405,7 +445,7 @@ export default function MonteCarloForecast({
       baselineP10: baseLast.p10,
       interventionP10: intLast.p10,
     };
-  }, [result]);
+  }, [activeStats]);
 
   const hasInterdiction = Boolean(lastInterdictionResult);
   const interdictionNodeCount = lastInterdictionResult?.interventions.filter((iv) => iv.target.type === "node").length ?? 0;
@@ -423,8 +463,10 @@ export default function MonteCarloForecast({
         MONTE CARLO FORECAST
       </div>
       <div className="text-[8px] font-mono text-text-muted">
-        Stochastic simulation of {"\u03A9"}-buffer trajectories. Auto-runs whenever
-        interdiction cuts or configuration change \u2014 no manual trigger.
+        Stochastic simulation of {"\u03A9"}-buffer trajectories
+        {trialPrior ? ` + literature-calibrated P(${trialPrior.label}) survival fan` : ""}
+        . Auto-runs whenever interdiction cuts or configuration change
+        {" \u2014 "}no manual trigger.
       </div>
 
       {hasInterdiction && effectiveTarget && targetNode && (
@@ -486,20 +528,64 @@ export default function MonteCarloForecast({
       )}
 
       {/* Results */}
-      {result && summary && (
+      {result && summary && activeStats && (
         <div className="space-y-2">
+          {/* Metric toggle — only exposed when a survival prior is live */}
+          {trialPrior && (
+            <div className="flex items-center gap-2 text-[8px] font-mono">
+              <span className="text-text-muted tracking-wider">VIEW</span>
+              <div className="inline-flex border border-border rounded overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setMetric("omega")}
+                  className={`px-2 py-0.5 transition-colors ${
+                    metric === "omega"
+                      ? "bg-accent-cyan/15 text-accent-cyan"
+                      : "text-text-muted hover:bg-surface-elevated"
+                  }`}
+                >
+                  {"\u03A9"}-BUFFER
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMetric("survival")}
+                  className={`px-2 py-0.5 transition-colors border-l border-border ${
+                    metric === "survival"
+                      ? "bg-accent-cyan/15 text-accent-cyan"
+                      : "text-text-muted hover:bg-surface-elevated"
+                  }`}
+                >
+                  P(INDEP) {"\u00B7"} S(t)
+                </button>
+              </div>
+              <span className="text-[7px] text-text-muted ml-auto truncate">
+                {effectiveMetric === "survival"
+                  ? `${trialPrior.label} \u00B7 ${trialPrior.source}`
+                  : "system-wide resilience"}
+              </span>
+            </div>
+          )}
+
           {/* Summary stats */}
           <div className="grid grid-cols-3 gap-1.5">
             <div className="p-1.5 rounded border border-border bg-surface-elevated text-center">
-              <div className="text-[7px] font-mono text-text-muted">{"\u03A9"}-BUFFER (BASE)</div>
+              <div className="text-[7px] font-mono text-text-muted">
+                {effectiveMetric === "survival" ? "P(EVENT) BASE" : `${"\u03A9"}-BUFFER (BASE)`}
+              </div>
               <div className="text-[11px] font-mono text-foreground">
-                {summary.baselineMedian.toFixed(1)}
+                {effectiveMetric === "survival"
+                  ? `${summary.baselineMedian.toFixed(1)}%`
+                  : summary.baselineMedian.toFixed(1)}
               </div>
             </div>
             <div className="p-1.5 rounded border border-accent-cyan/30 bg-accent-cyan/5 text-center">
-              <div className="text-[7px] font-mono text-accent-cyan">{"\u03A9"}-BUFFER (do(X))</div>
+              <div className="text-[7px] font-mono text-accent-cyan">
+                {effectiveMetric === "survival" ? "P(EVENT) do(X)" : `${"\u03A9"}-BUFFER (do(X))`}
+              </div>
               <div className="text-[11px] font-mono text-accent-cyan">
-                {summary.interventionMedian.toFixed(1)}
+                {effectiveMetric === "survival"
+                  ? `${summary.interventionMedian.toFixed(1)}%`
+                  : summary.interventionMedian.toFixed(1)}
               </div>
             </div>
             <div className="p-1.5 rounded border border-border bg-surface-elevated text-center">
@@ -508,13 +594,19 @@ export default function MonteCarloForecast({
                 color: summary.delta > 1 ? "#00e676" : summary.delta < -1 ? "#ff1744" : "var(--text-muted)",
               }}>
                 {summary.delta > 0 ? "+" : ""}{summary.delta.toFixed(1)}
+                {effectiveMetric === "survival" ? " pp" : ""}
               </div>
             </div>
           </div>
 
           {/* Tail risk comparison */}
           <div className="flex justify-between text-[7px] font-mono text-text-muted px-1">
-            <span>P10 tail: baseline {summary.baselineP10.toFixed(1)} → do(X) {summary.interventionP10.toFixed(1)}</span>
+            <span>
+              P10 tail: baseline {summary.baselineP10.toFixed(1)}
+              {effectiveMetric === "survival" ? "%" : ""} {"\u2192"} do(X){" "}
+              {summary.interventionP10.toFixed(1)}
+              {effectiveMetric === "survival" ? "%" : ""}
+            </span>
             <span>{numPaths} paths</span>
           </div>
 
@@ -530,12 +622,17 @@ export default function MonteCarloForecast({
             </div>
             <div className="p-1">
               <ForecastChart
-                baselineStats={result.baselineStats}
-                interventionStats={result.interventionStats}
+                baselineStats={activeStats.baseline}
+                interventionStats={activeStats.intervention}
                 baselinePaths={result.baselinePaths}
                 interventionPaths={result.interventionPaths}
+                pathAccessor={activeStats.accessor}
                 horizonEpochs={result.horizonEpochs}
-                metric={`\u03A9-BUFFER TRAJECTORY \u2014 ${horizon} EPOCHS`}
+                metric={
+                  effectiveMetric === "survival"
+                    ? `P(INSULIN INDEPENDENCE) \u00B7 ${horizon} EPOCHS \u00B7 ${trialPrior?.source ?? ""}`
+                    : `\u03A9-BUFFER TRAJECTORY \u2014 ${horizon} EPOCHS`
+                }
                 expanded={expanded}
               />
             </div>
@@ -588,11 +685,17 @@ export default function MonteCarloForecast({
               INTERPRETATION
             </div>
             <div className="text-[8px] font-mono text-text-muted leading-relaxed">
-              {summary.delta > 2
-                ? `Structural intervention on ${targetNode?.shortLabel} improves system resilience. The \u03A9-buffer recovers ${summary.delta.toFixed(1)} points above baseline by t${horizon}, with tightened tail risk (P10: ${summary.interventionP10.toFixed(1)} vs ${summary.baselineP10.toFixed(1)}).`
-                : summary.delta < -2
-                  ? `Warning: do(${targetNode?.shortLabel}) degrades system stability. The \u03A9-buffer drops ${Math.abs(summary.delta).toFixed(1)} points below baseline, indicating the intervention propagates fragility downstream.`
-                  : `The intervention has marginal effect on aggregate \u03A9-buffer (\u0394 = ${summary.delta.toFixed(1)}). The structural isolation of ${targetNode?.shortLabel} does not significantly alter system trajectory over the ${horizon}-epoch horizon.`}
+              {effectiveMetric === "survival" && trialPrior
+                ? (summary.delta < -2
+                    ? `do(${targetNode?.shortLabel}) suppresses ${trialPrior.label}: P(event by t${horizon}) drops ${Math.abs(summary.delta).toFixed(1)} pp below baseline. The structural intervention is routing the attack away from the outcome node — the \u03B2* prior (${trialPrior.beta.toFixed(2)} \u00B1 ${trialPrior.se.toFixed(2)}) survives more of the cascade.`
+                    : summary.delta > 2
+                      ? `do(${targetNode?.shortLabel}) accelerates ${trialPrior.label}: P(event by t${horizon}) rises ${summary.delta.toFixed(1)} pp above baseline — the intervention protects the outcome node from cascade attenuation, letting the full treatment effect express.`
+                      : `The intervention leaves the survival fan roughly unchanged (\u0394 = ${summary.delta.toFixed(1)} pp). The cascade attack on "${trialPrior.outcomeNodeId}" was already low under baseline, so attenuation of the \u03B2* treatment effect is minimal in either arm.`)
+                : summary.delta > 2
+                  ? `Structural intervention on ${targetNode?.shortLabel} improves system resilience. The \u03A9-buffer recovers ${summary.delta.toFixed(1)} points above baseline by t${horizon}, with tightened tail risk (P10: ${summary.interventionP10.toFixed(1)} vs ${summary.baselineP10.toFixed(1)}).`
+                  : summary.delta < -2
+                    ? `Warning: do(${targetNode?.shortLabel}) degrades system stability. The \u03A9-buffer drops ${Math.abs(summary.delta).toFixed(1)} points below baseline, indicating the intervention propagates fragility downstream.`
+                    : `The intervention has marginal effect on aggregate \u03A9-buffer (\u0394 = ${summary.delta.toFixed(1)}). The structural isolation of ${targetNode?.shortLabel} does not significantly alter system trajectory over the ${horizon}-epoch horizon.`}
             </div>
           </div>
         </div>

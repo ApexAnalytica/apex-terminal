@@ -4,6 +4,7 @@ import type {
   CausalNode,
   OmegaFragilityProfile,
 } from "./types";
+import type { TrialPrior } from "./trial-prior";
 
 // ─── Types ─────────────────────────────────────────────────────
 export interface MCConfig {
@@ -13,6 +14,13 @@ export interface MCConfig {
   forgettingRate: number;
   noiseScale: number;      // stochastic perturbation magnitude
   omegaShockScale: number;
+  /**
+   * Optional survival prior — when set, each path additionally emits a
+   * P(event by t) trajectory built from a per-path β* ~ N(prior.beta,
+   * prior.se²) draw, attenuated by the cascade intensity reaching
+   * `prior.outcomeNodeId`. See `TrialPrior` in lib/trial-prior.ts.
+   */
+  survivalPrior?: TrialPrior;
 }
 
 export interface MCPath {
@@ -22,6 +30,12 @@ export interface MCPath {
   targetOmegaSeries: number[];
   /** Per-epoch omega composite for each tracked downstream node */
   downstreamSeries: Map<string, number[]>;
+  /**
+   * Per-epoch P(event by t) × 100 in [0, 100] — only populated when
+   * `config.survivalPrior` is set. Scaled to 0-100 so the existing
+   * fan-chart y-axis renders it without reshaping.
+   */
+  survivalSeries?: number[];
 }
 
 export interface MCForecastResult {
@@ -32,6 +46,12 @@ export interface MCForecastResult {
   /** Summary statistics per epoch */
   baselineStats: EpochStats[];
   interventionStats: EpochStats[];
+  /**
+   * Survival stats per epoch, only populated when `config.survivalPrior`
+   * was set. Units: P(event by t) × 100 in [0, 100].
+   */
+  baselineSurvivalStats?: EpochStats[];
+  interventionSurvivalStats?: EpochStats[];
   /** The node IDs tracked (target + top downstream) */
   trackedNodeIds: string[];
   /** Horizon used */
@@ -145,6 +165,18 @@ function simulatePath(
   const downstreamSeries = new Map<string, number[]>();
   for (const id of trackedIds) downstreamSeries.set(id, []);
 
+  // ── Survival-prior setup (one β* per path) ──
+  // The prior acts as a literature-calibrated overlay on top of the
+  // cascade simulation. Each path draws its own β* so the fan width
+  // at horizon is driven by the Cox SE — tightening when the fit is
+  // precise, widening when it isn't. Hazard is attenuated epoch-by-
+  // epoch by the cascade intensity at the outcome node: when the
+  // attack reaches the outcome, the treatment effect is washed out.
+  const prior = config.survivalPrior;
+  const betaStar = prior ? normalSample(rng, prior.beta, prior.se) : 0;
+  const survivalSeries: number[] | undefined = prior ? [] : undefined;
+  let cumulativeHazard = 0;
+
   // Delay buffers: edgeKey → queued signals
   const delayQueue = new Map<string, { deliverEpoch: number; signal: number }[]>();
 
@@ -239,9 +271,23 @@ function simulatePath(
       const omega = Math.min(10, base.composite * (1 + si * config.omegaShockScale));
       downstreamSeries.get(id)!.push(omega);
     }
+
+    // Survival prior → P(event by t) × 100
+    if (prior && survivalSeries) {
+      // Attack intensity reaching the outcome node in [0, 1].
+      const outcomeIntensity = shockIntensity.get(prior.outcomeNodeId) || 0;
+      // Treatment effect survives only to the extent the outcome node
+      // hasn't been captured by the cascade. When outcomeIntensity = 0
+      // the full β* is applied; at 1 the treatment effect is gone.
+      const effectiveBeta = betaStar * (1 - outcomeIntensity);
+      const hazardThisEpoch = prior.baselineHazardPerEpoch * Math.exp(effectiveBeta);
+      cumulativeHazard += hazardThisEpoch;
+      const P = 1 - Math.exp(-cumulativeHazard);
+      survivalSeries.push(Math.max(0, Math.min(100, P * 100)));
+    }
   }
 
-  return { omegaBufferSeries, targetOmegaSeries, downstreamSeries };
+  return { omegaBufferSeries, targetOmegaSeries, downstreamSeries, survivalSeries };
 }
 
 // ─── Compute Percentile Statistics ─────────────────────────────
@@ -304,11 +350,21 @@ export function runMonteCarloForecast(
   const baselineStats = computeStats(baselinePaths, (p) => p.omegaBufferSeries);
   const interventionStats = computeStats(interventionPaths, (p) => p.omegaBufferSeries);
 
+  // Survival stats — only when the prior was set
+  const baselineSurvivalStats = cfg.survivalPrior
+    ? computeStats(baselinePaths, (p) => p.survivalSeries ?? [])
+    : undefined;
+  const interventionSurvivalStats = cfg.survivalPrior
+    ? computeStats(interventionPaths, (p) => p.survivalSeries ?? [])
+    : undefined;
+
   return {
     baselinePaths,
     interventionPaths,
     baselineStats,
     interventionStats,
+    baselineSurvivalStats,
+    interventionSurvivalStats,
     trackedNodeIds: trackedIds,
     horizonEpochs: cfg.horizonEpochs,
   };

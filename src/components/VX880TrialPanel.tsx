@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { nlmeFit } from "@/lib/estimators/nlme";
 import { coxFit } from "@/lib/estimators/cox";
@@ -8,7 +8,10 @@ import {
   getNaturalHistoryCpeptideCohort,
   getInsulinIndependenceTte,
   VX880_LITERATURE_ANCHORS,
+  VX880_TRIAL_PRIOR_META,
 } from "@/lib/vx880-trial-data";
+import { solveInterdiction } from "@/lib/interdiction-engine";
+import type { CausalShock } from "@/lib/types";
 
 // ─── C-peptide trajectory chart ─────────────────────────────────────
 //
@@ -200,6 +203,12 @@ function CpeptideChart({
 
 export default function VX880TrialPanel() {
   const graphData = useApexStore((s) => s.graphData);
+  const severedEdges = useApexStore((s) => s.severedEdges);
+  const setTrialPrior = useApexStore((s) => s.setTrialPrior);
+  const setLastInterdictionResult = useApexStore(
+    (s) => s.setLastInterdictionResult,
+  );
+  const lastInterdictionResult = useApexStore((s) => s.lastInterdictionResult);
 
   // Only render when the VX-880 flagship subgraph is loaded.
   const hasVx880 = useMemo(
@@ -247,6 +256,79 @@ export default function VX880TrialPanel() {
       controlN,
     };
   }, [hasVx880]);
+
+  // Publish the fitted prior to the store so the MC engine can consume
+  // it. Republished on every analysis change; cleared when the VX-880
+  // subgraph is no longer loaded so other domains don't accidentally
+  // inherit a stale survival fan.
+  useEffect(() => {
+    if (!analysis) {
+      setTrialPrior(null);
+      return;
+    }
+    setTrialPrior({
+      label: VX880_TRIAL_PRIOR_META.label,
+      beta: analysis.cox.beta[0],
+      se: analysis.cox.se[0],
+      outcomeNodeId: VX880_TRIAL_PRIOR_META.outcomeNodeId,
+      baselineHazardPerEpoch: VX880_TRIAL_PRIOR_META.baselineHazardPerEpoch,
+      popK: analysis.popK,
+      tauK: analysis.tauK,
+      source: VX880_TRIAL_PRIOR_META.source,
+    });
+    return () => {
+      // Clear when this panel unmounts or the analysis goes away.
+      setTrialPrior(null);
+    };
+  }, [analysis, setTrialPrior]);
+
+  // ── Counterfactual HR under the current interdiction ──
+  // Maps the solver's reductionPct (fraction of cascade damage
+  // prevented) into a fraction of the treatment effect that survives:
+  //   effectiveβ = β × (reductionPct / 100)
+  // reductionPct = 100% (perfect protection) → full HR restored.
+  // reductionPct = 0%  (no protection)      → HR collapses toward 1.
+  const counterfactualHR = useMemo(() => {
+    if (!analysis) return null;
+    if (!lastInterdictionResult) return null;
+    const { reductionPct, bestDamage, baselineDamage } = lastInterdictionResult;
+    if (baselineDamage <= 0 || !Number.isFinite(reductionPct)) return null;
+    const frac = Math.max(0, Math.min(1, reductionPct / 100));
+    const effectiveBeta = analysis.cox.beta[0] * frac;
+    const hr = Math.exp(effectiveBeta);
+    return {
+      hr,
+      frac,
+      reductionPct,
+      bestDamage,
+      baselineDamage,
+    };
+  }, [analysis, lastInterdictionResult]);
+
+  // ── "Protect graft β-mass" preset chip ──
+  // One-click demo path that (i) seeds a combined graft-attack shock
+  // on the VX-880 subgraph, (ii) runs the edge-cut interdiction solver
+  // against it, and (iii) publishes the result to the store so the MC
+  // fan chart and the counterfactual HR block above both update.
+  const runGraftProtectPreset = useCallback(() => {
+    if (!hasVx880) return;
+    const shock: CausalShock = {
+      id: "vx880_graft_attack_preset",
+      name: "Combined graft-\u03B2-mass attack",
+      severity: 0.75,
+      category: "health",
+      description:
+        "IBMIR + autoimmune recurrence + alloimmune rejection converging on the grafted \u03B2-cell mass — the dominant failure mode on the VX-880 subgraph.",
+    };
+    const result = solveInterdiction(
+      graphData,
+      [shock],
+      severedEdges,
+      3,
+      "edge",
+    );
+    setLastInterdictionResult(result);
+  }, [hasVx880, graphData, severedEdges, setLastInterdictionResult]);
 
   if (!hasVx880 || !analysis) return null;
 
@@ -362,12 +444,23 @@ export default function VX880TrialPanel() {
               β={analysis.cox.beta[0].toFixed(2)} ± {analysis.cox.se[0].toFixed(2)}
             </span>
           </div>
-          <div className="text-[14px] font-mono text-accent-amber pt-0.5">
-            {analysis.hazardRatio.toFixed(2)}
-            <span className="text-[8px] text-text-muted ml-1.5">
+          <div className="text-[14px] font-mono text-accent-amber pt-0.5 flex items-baseline gap-2">
+            <span>{analysis.hazardRatio.toFixed(2)}</span>
+            <span className="text-[8px] text-text-muted">
               (95% CI {analysis.hazardRatioLo.toFixed(2)}–
               {analysis.hazardRatioHi.toFixed(2)})
             </span>
+            {counterfactualHR && (
+              <span className="text-[10px] font-mono text-accent-cyan ml-auto">
+                {"\u2192"} HR{"\u02E2"}{" "}
+                <span className="text-[13px]">
+                  {counterfactualHR.hr.toFixed(2)}
+                </span>
+                <span className="text-[7px] text-text-muted ml-1">
+                  (after interdiction)
+                </span>
+              </span>
+            )}
           </div>
           <div className="text-[7px] font-mono text-text-muted pt-0.5 leading-relaxed">
             Treatment increases the instantaneous hazard of achieving insulin
@@ -379,17 +472,44 @@ export default function VX880TrialPanel() {
             </span>
             .
           </div>
+          {counterfactualHR && (
+            <div className="text-[7px] font-mono text-accent-cyan/80 pt-1 mt-1 border-t border-accent-cyan/20 leading-relaxed">
+              Counterfactual: the current interdiction prevents{" "}
+              <strong>{counterfactualHR.reductionPct.toFixed(0)}%</strong> of
+              cascade damage on the VX-880 subgraph. Treating that as the
+              fraction of β surviving the attack collapses HR from{" "}
+              {analysis.hazardRatio.toFixed(2)} to{" "}
+              <strong>{counterfactualHR.hr.toFixed(2)}</strong> — the
+              treatment effect the graft can still deliver after the
+              solver{"\u2019"}s cuts absorb the upstream assault.
+            </div>
+          )}
         </div>
       </div>
 
+      {/* ── Preset demo path ─────────────────────────────────────── */}
+      <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+        <button
+          type="button"
+          onClick={runGraftProtectPreset}
+          className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan border border-accent-cyan/40 bg-accent-cyan/5 hover:bg-accent-cyan/15 hover:border-accent-cyan/70 rounded px-2 py-1 transition-colors"
+        >
+          {"\u25B6"} PROTECT GRAFT {"\u03B2"}-MASS
+        </button>
+        <span className="text-[7px] font-mono text-text-muted leading-tight">
+          Seeds a combined graft-attack shock (IBMIR + autoimmune recurrence
+          + alloimmune rejection) and runs 3-cut edge interdiction — the MC
+          forecast below and the counterfactual HR above update in place.
+        </span>
+      </div>
+
       {/* ── Bridge to the MC forecast below ─────────────────────── */}
-      <div className="text-[7px] font-mono text-text-muted leading-relaxed pt-1 border-t border-border/30">
-        Next: pick a node on the DAG or run interdiction from the copilot
-        and the Monte Carlo forecast below will simulate the Ω-buffer
-        trajectory under that structural intervention. The VX-880 subgraph
-        encodes the mechanistic routes — IBMIR, autoimmune recurrence,
-        alloimmune rejection — through which any intervention propagates
-        to these same endpoints.
+      <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+        Or pick any node on the DAG / run interdiction from the copilot
+        and the Monte Carlo forecast will simulate the Ω-buffer trajectory
+        alongside a literature-calibrated P(insulin-independence) survival
+        fan built from the Cox fit above (β = {analysis.cox.beta[0].toFixed(2)},
+        SE = {analysis.cox.se[0].toFixed(2)}).
       </div>
     </div>
   );

@@ -21,6 +21,7 @@ import {
   type RelevanceBreakdown,
 } from "@/lib/pareto-relevance";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
+import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
@@ -939,7 +940,20 @@ function ParetoPanel({
   const phData = useMemo(() => {
     const composites = graphData.nodes.map((n) => n.omegaFragility.composite).sort((a, b) => a - b);
     const N = graphData.nodes.length;
-    if (N === 0) return { timeSeries: Array(60).fill(0), confidence: 0, componentCountAtMid: 0 };
+    if (N === 0) {
+      return {
+        timeSeries: Array(60).fill(0),
+        modelSeries: undefined,
+        confidence: 0,
+        componentCountAtMid: 0,
+        clusterFrac: 0,
+        fitRSquared: 0,
+        riseExp: 0.6,
+        center: 0.7,
+        rate: 2,
+        evaluations: 0,
+      };
+    }
 
     // Build real filtration: at each threshold ε, count connected components & cycles
     // Sweep ε from 0 to 10 — nodes appear when their Ω ≤ ε, edges when both endpoints present
@@ -971,18 +985,17 @@ function ParetoPanel({
       points.push(Math.min(1, normalized));
     }
 
-    // Smooth theoretical model: monotonic collapse curve based on cluster density
+    // Parametric β₁ collapse template, fit to the empirical filtration curve
+    // by grid search over (riseExp, center, rate). Cluster-fraction coupling
+    // stays structural (derived from graph), not a free parameter.
     const clusterCount = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length;
     const clusterFrac = clusterCount / Math.max(1, N);
-    const phModelPoints: number[] = Array.from({ length: 60 }, (_, i) => {
-      const t = i / 59;
-      // Theoretical β₁ curve: rises as filtration reveals holes, then collapses
-      const rise = Math.pow(t, 0.6) * (1 + clusterFrac * 0.5);
-      const collapse = Math.exp(-2 * Math.pow(Math.max(0, t - 0.7), 2));
-      return Math.max(0, Math.min(1, rise * collapse * 0.8));
-    });
+    const phFit = fitBettiTemplate(points, { clusterFrac });
+    const phModelPoints = phFit.modelSeries;
 
-    // Confidence: based on topological signal strength
+    // Legacy confidence (kept as a fallback when the relevance system isn't
+    // live for this estimator). Tracks topological signal strength rather
+    // than fit quality — the relevance composite supersedes this in the UI.
     const maxBetti = Math.max(...points);
     const variance = points.reduce((s, v) => s + (v - maxBetti / 2) ** 2, 0) / points.length;
     const topologicalSignal = Math.min(0.35, (clusterCount / Math.max(1, N)) * 1.5);
@@ -993,7 +1006,18 @@ function ParetoPanel({
     const midIdx = Math.min(componentsPerStep.length - 1, Math.floor(componentsPerStep.length / 2));
     const componentCountAtMid = componentsPerStep[midIdx] ?? 0;
 
-    return { timeSeries: points, modelSeries: phModelPoints, confidence, componentCountAtMid };
+    return {
+      timeSeries: points,
+      modelSeries: phModelPoints,
+      confidence,
+      componentCountAtMid,
+      clusterFrac,
+      fitRSquared: phFit.rSquared,
+      riseExp: phFit.riseExp,
+      center: phFit.center,
+      rate: phFit.rate,
+      evaluations: phFit.evaluations,
+    };
   }, [graphData]);
 
   // ── LPPLS: Sornette super-exponential fit to the same scoped Ω trajectory ──
@@ -1091,7 +1115,7 @@ function ParetoPanel({
         key: "ph",
         observed: phData.timeSeries,
         modelSeries: phData.modelSeries,
-        freeParams: 0, // theoretical curve is parameter-free
+        freeParams: 3, // riseExp, center, rate — fit by grid search in phData
         gate: phRegimeGate({
           betti1Curve: phData.timeSeries,
           componentCountAtMid: phData.componentCountAtMid ?? 0,
@@ -1204,12 +1228,12 @@ function ParetoPanel({
               modelSeries: phData.modelSeries,
               shortDesc: meta.shortDesc,
               methodology: [
-                `Sweeps a filtration threshold \u03B5 from 0\u219210 across all ${graphData.nodes.length} nodes. At each \u03B5, nodes with \u03A9 \u2264 \u03B5 and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical \u03B2\u2081 collapse model.`,
+                `Sweeps a filtration threshold \u03B5 from 0\u219210 across all ${graphData.nodes.length} nodes. At each \u03B5, nodes with \u03A9 \u2264 \u03B5 and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: fitted \u03B2\u2081 collapse template.`,
                 `Computes \u03B2\u2080 (connected components via union-find) and \u03B2\u2081 (1-cycles via Euler characteristic: \u03B2\u2081 \u2248 E \u2212 V + \u03B2\u2080) at each filtration step \u2014 showing how topological holes appear and collapse.`,
-                `When persistent holes vanish (\u03B2\u2081 \u2192 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above \u03A9 > 7.0 form critical cluster boundaries.`,
+                `Template \u03B2\u2081(t) = amp \u00B7 t^riseExp \u00B7 (1 + clusterFrac \u00B7 0.5) \u00B7 exp(\u2212rate \u00B7 max(0, t \u2212 center)\u00B2) fit by grid search to the empirical \u03B2\u2081 curve over 60 filtration steps (${phData.evaluations} evaluations). Fit R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}% at riseExp=${phData.riseExp.toFixed(2)}, center=${phData.center.toFixed(2)}, rate=${phData.rate.toFixed(2)}. Cluster-coupling (${(phData.clusterFrac * 100).toFixed(0)}% of nodes above \u03A9 > 7.0) stays structural.`,
               ],
-              formula: `\u03B2\u2081 = |E| \u2212 |V| + \u03B2\u2080 | filtration: \u03B5 \u2208 [0, 10] | critical when \u03B2\u2081 \u2192 0`,
-              assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. \u03A9 range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak \u03B2\u2081 at filtration midpoint indicates topological complexity.`,
+              formula: `\u03B2\u2081 = |E| \u2212 |V| + \u03B2\u2080 | template fit: riseExp=${phData.riseExp.toFixed(2)}, center=${phData.center.toFixed(2)}, rate=${phData.rate.toFixed(2)} | R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}%`,
+              assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. \u03A9 range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Template fit R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}% on \u03B2\u2081 curve (${phData.evaluations} grid evaluations); ${phData.fitRSquared > 0.6 ? "template tracks empirical holes well \u2014 topology has a clear rise-and-collapse structure." : phData.fitRSquared > 0.3 ? "partial template match \u2014 real filtration has structure the template doesn't capture." : "weak template match \u2014 empirical \u03B2\u2081 doesn't follow the rise-collapse shape."}`,
             };
           }
           if (id === "lppls") {

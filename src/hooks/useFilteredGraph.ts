@@ -6,8 +6,13 @@ import type { CausalGraph } from "@/lib/types";
 /**
  * Maps DomainSelector IDs → graph node `domain` field values.
  * A selector ID can match multiple graph domains.
+ *
+ * Exported so tests can assert that every DomainSelector card id with
+ * `hasData: true` has a corresponding entry whose values actually match
+ * real node domains in the loaded dataset. Missing entries cause the
+ * 3D canvas to render empty even though the dataset is loaded.
  */
-const DOMAIN_MAP: Record<string, string[]> = {
+export const DOMAIN_MAP: Record<string, string[]> = {
   "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
   "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
   "financial-contagion": ["Financial Contagion"],
@@ -27,6 +32,9 @@ const DOMAIN_MAP: Record<string, string[]> = {
     "T1D Intervention",
     "T1D Complications",
   ],
+  // VX-880 stem-cell islet transplant subgraph — every node in
+  // t1d-vx880-graph-data.ts carries domain "T1D VX-880".
+  "t1d-vx880": ["T1D VX-880"],
 };
 
 /**

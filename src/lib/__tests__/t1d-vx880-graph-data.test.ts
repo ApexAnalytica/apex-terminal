@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { VX880_GRAPH } from "../t1d-vx880-graph-data";
 import { simulateCascade } from "../cascade-simulator";
 import { solveInterdiction } from "../interdiction-engine";
+import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";
 import type { CausalShock } from "../types";
 
 describe("VX-880 flagship graph", () => {
@@ -75,6 +76,18 @@ describe("VX-880 flagship graph", () => {
       ),
     );
     expect(peakIntensity).toBeGreaterThan(0.05);
+  });
+
+  it("the DomainSelector 't1d-vx880' id maps to the VX-880 graph domain", () => {
+    // Regression guard: without this mapping, useFilteredGraph strips
+    // every VX-880 node before CausalDAG3D renders, leaving the canvas
+    // black even though the dataset is loaded (sidebar still shows counts
+    // from the unfiltered store). See fix for the empty-canvas bug.
+    const mapped = DOMAIN_MAP["t1d-vx880"];
+    expect(mapped, "missing DOMAIN_MAP entry for 't1d-vx880'").toBeDefined();
+    const allowed = new Set(mapped);
+    const accepted = VX880_GRAPH.nodes.filter((n) => allowed.has(n.domain));
+    expect(accepted.length).toBe(VX880_GRAPH.nodes.length);
   });
 
   it("interdiction solver produces ranked cuts on a health shock", () => {

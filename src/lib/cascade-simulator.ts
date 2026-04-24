@@ -56,8 +56,24 @@ export function mapShocksToNodes(
   shocks: CausalShock[]
 ): Map<string, number> {
   const intensityMap = new Map<string, number>();
+  const nodeIdSet = new Set(graph.nodes.map((n) => n.id));
 
   for (const shock of shocks) {
+    // Explicit targeting takes precedence over category broadcast. This is
+    // the path used by tightly-scoped subgraph attacks (e.g. VX-880 graft
+    // preset) where broadcasting to every "science"-category node would
+    // saturate the graph and make every cut look identical to the solver.
+    if (shock.targetNodes && shock.targetNodes.length > 0) {
+      for (const nodeId of shock.targetNodes) {
+        if (!nodeIdSet.has(nodeId)) continue;
+        intensityMap.set(
+          nodeId,
+          Math.min(1, (intensityMap.get(nodeId) ?? 0) + shock.severity)
+        );
+      }
+      continue;
+    }
+
     const targetCategories = SHOCK_TO_NODE_CATEGORIES[shock.category] ?? [];
     const matchingNodes = graph.nodes.filter(
       (n) =>

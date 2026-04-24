@@ -369,7 +369,16 @@ export default function MonteCarloForecast({
 
   // Effective target: user-selected do(X) wins; otherwise use the copilot's
   // top node intervention, otherwise fall back to an edge-cut downstream node.
-  const effectiveTarget = interventionTarget ?? interdictionNodeTarget ?? interdictionEdgeTarget;
+  // Final fallback: when a trial survival prior is active (e.g. VX-880), pin
+  // the target to the prior's outcome node so the survival fan still renders
+  // even before any interdiction runs — without this, opening the VX-880
+  // module shows an empty MC panel until the solver produces cuts.
+  const effectiveTarget =
+    interventionTarget ??
+    interdictionNodeTarget ??
+    interdictionEdgeTarget ??
+    trialPrior?.outcomeNodeId ??
+    null;
 
   const targetNode = effectiveTarget
     ? graphData.nodes.find((n) => n.id === effectiveTarget)
@@ -486,7 +495,7 @@ export default function MonteCarloForecast({
         </div>
       )}
 
-      {!effectiveTarget && (
+      {!effectiveTarget && !trialPrior && (
         <div className="p-2 rounded border border-border/60 bg-surface-elevated text-[8px] font-mono text-text-muted">
           Waiting for interdiction cuts (run the solver from the copilot) or a manual do(X) target on the DAG.
         </div>

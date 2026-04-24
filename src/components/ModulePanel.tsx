@@ -10,6 +10,16 @@ import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
+import {
+  computeRelevanceBatch,
+  csdRegimeGate,
+  lpplsRegimeGate,
+  phRegimeGate,
+  trajectorySufficiency,
+  topologySufficiency,
+  type ModelRelevanceInput,
+  type RelevanceBreakdown,
+} from "@/lib/pareto-relevance";
 import TrinityPanel from "./TrinityPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
@@ -928,11 +938,12 @@ function ParetoPanel({
   const phData = useMemo(() => {
     const composites = graphData.nodes.map((n) => n.omegaFragility.composite).sort((a, b) => a - b);
     const N = graphData.nodes.length;
-    if (N === 0) return { timeSeries: Array(60).fill(0), confidence: 0 };
+    if (N === 0) return { timeSeries: Array(60).fill(0), confidence: 0, componentCountAtMid: 0 };
 
     // Build real filtration: at each threshold ε, count connected components & cycles
     // Sweep ε from 0 to 10 — nodes appear when their Ω ≤ ε, edges when both endpoints present
     const points: number[] = [];
+    const componentsPerStep: number[] = [];
     const thresholds = Array.from({ length: 60 }, (_, i) => (i / 59) * 10);
 
     for (const eps of thresholds) {
@@ -950,6 +961,7 @@ function ParetoPanel({
       for (const nid of activeNodes) find(nid);
       for (const e of activeEdges) union(e.source, e.target);
       const components = new Set(Array.from(activeNodes).map(find)).size;
+      componentsPerStep.push(components);
 
       // Approximate β1 (cycles) via Euler characteristic: β1 ≈ edges - nodes + components
       const beta1 = Math.max(0, activeEdges.length - activeNodes.size + components);
@@ -977,7 +989,10 @@ function ParetoPanel({
     const varianceSignal = Math.min(0.3, Math.sqrt(variance) * 1.5);
     const confidence = Math.min(0.99, topologicalSignal + filtrationCoverage + varianceSignal);
 
-    return { timeSeries: points, modelSeries: phModelPoints, confidence };
+    const midIdx = Math.min(componentsPerStep.length - 1, Math.floor(componentsPerStep.length / 2));
+    const componentCountAtMid = componentsPerStep[midIdx] ?? 0;
+
+    return { timeSeries: points, modelSeries: phModelPoints, confidence, componentCountAtMid };
   }, [graphData]);
 
   // ── LPPLS: Sornette super-exponential fit to the same scoped Ω trajectory ──
@@ -1046,6 +1061,77 @@ function ParetoPanel({
     };
   }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
 
+  // ── Relevance breakdown per model (F · E · G · S, smoothed via EMA) ──
+  // Each ready estimator contributes an input. The composite replaces the
+  // legacy per-model "confidence" badge and is broken out in the card UI so
+  // every percentage is auditable.
+  const prevCompositesRef = useRef<Map<string, number>>(new Map());
+  const lastScopeLabelRef = useRef<string>("");
+  const relevanceMap = useMemo<Map<string, RelevanceBreakdown>>(() => {
+    // Reset EMA state when the scope changes — smoothing across different
+    // node sets would mix unrelated signals.
+    if (lastScopeLabelRef.current !== scopeLabel) {
+      prevCompositesRef.current = new Map();
+      lastScopeLabelRef.current = scopeLabel;
+    }
+
+    const inputs: ModelRelevanceInput[] = [];
+    const edgeCount = graphData.edges.filter((e) => !e.isSevered).length;
+    const nodeCount = graphData.nodes.length;
+
+    if (csdData.modelSeries) {
+      inputs.push({
+        key: "csd",
+        observed: csdData.observedSeries ?? csdData.timeSeries,
+        modelSeries: csdData.modelSeries,
+        freeParams: 2, // α and μ
+        gate: csdRegimeGate({
+          observed: csdData.observedSeries ?? csdData.timeSeries,
+          lambdaMax: csdData.lambdaMax,
+        }),
+        sufficiency: trajectorySufficiency(csdData.sampleSize, edgeCount),
+      });
+    }
+
+    if (phData.modelSeries) {
+      inputs.push({
+        key: "ph",
+        observed: phData.timeSeries,
+        modelSeries: phData.modelSeries,
+        freeParams: 0, // theoretical curve is parameter-free
+        gate: phRegimeGate({
+          betti1Curve: phData.timeSeries,
+          componentCountAtMid: phData.componentCountAtMid ?? 0,
+          nodeCount,
+        }),
+        sufficiency: topologySufficiency(nodeCount),
+      });
+    }
+
+    if (lpplsData.observedSeries && lpplsData.observedSeries.length > 0) {
+      inputs.push({
+        key: "lppls",
+        observed: lpplsData.observedSeries,
+        modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
+        freeParams: 3, // ω, m, tc
+        gate: lpplsRegimeGate({
+          observed: lpplsData.observedSeries,
+          modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
+        }),
+        sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
+      });
+    }
+
+    const result = computeRelevanceBatch(inputs, {
+      previous: prevCompositesRef.current,
+    });
+    // Persist composites for the next render's EMA seed.
+    for (const [key, breakdown] of result) {
+      prevCompositesRef.current.set(key, breakdown.composite);
+    }
+    return result;
+  }, [csdData, phData, lpplsData, graphData.edges, graphData.nodes, scopeLabel]);
+
   const paretoSectionExpanded = expandedChart === "pareto";
 
   return (
@@ -1072,6 +1158,8 @@ function ParetoPanel({
           maxEpochs: number;
           color: string;
           confidence: number;
+          /** Full F·E·G·S breakdown when the model is in the relevance batch. */
+          relevance?: RelevanceBreakdown;
           timeSeries: number[];
           modelSeries: number[] | undefined;
           shortDesc: string;
@@ -1084,6 +1172,7 @@ function ParetoPanel({
         const models: ModelDescriptor[] = activeProfile.criticalityEstimators.map((id) => {
           const meta = getEstimatorMeta(id);
           if (id === "csd") {
+            const rel = relevanceMap.get("csd");
             return {
               key: "csd",
               abbrev: "CSD",
@@ -1091,7 +1180,8 @@ function ParetoPanel({
               epochs: csdEpochs,
               maxEpochs: 200,
               color: getCritColor(csdEpochs),
-              confidence: csdData.confidence,
+              confidence: rel ? rel.composite : csdData.confidence,
+              relevance: rel,
               timeSeries: csdData.timeSeries,
               modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
               shortDesc: meta.shortDesc,
@@ -1107,6 +1197,7 @@ function ParetoPanel({
             };
           }
           if (id === "ph") {
+            const rel = relevanceMap.get("ph");
             return {
               key: "ph",
               abbrev: "PH",
@@ -1114,7 +1205,8 @@ function ParetoPanel({
               epochs: phEpochs,
               maxEpochs: 300,
               color: getCritColor(phEpochs),
-              confidence: phData.confidence,
+              confidence: rel ? rel.composite : phData.confidence,
+              relevance: rel,
               timeSeries: phData.timeSeries,
               modelSeries: phData.modelSeries,
               shortDesc: meta.shortDesc,
@@ -1128,6 +1220,7 @@ function ParetoPanel({
             };
           }
           if (id === "lppls") {
+            const rel = relevanceMap.get("lppls");
             return {
               key: "lppls",
               abbrev: "LPPLS",
@@ -1135,7 +1228,8 @@ function ParetoPanel({
               epochs: lpplsEpochs,
               maxEpochs: 250,
               color: getCritColor(lpplsEpochs),
-              confidence: lpplsData.confidence,
+              confidence: rel ? rel.composite : lpplsData.confidence,
+              relevance: rel,
               timeSeries: lpplsData.timeSeries,
               modelSeries: lpplsData.modelSeries,
               shortDesc: meta.shortDesc,
@@ -1404,6 +1498,7 @@ function ParetoPanel({
               modelSeries={selected.modelSeries}
               chartExpanded={paretoSectionExpanded}
               confidence={selected.confidence}
+              relevance={selected.relevance}
               shortDesc={selected.shortDesc}
               methodology={selected.methodology}
               formula={selected.formula}
@@ -2245,6 +2340,7 @@ function CriticalityCard({
   modelSeries,
   chartExpanded,
   confidence,
+  relevance,
   shortDesc,
   methodology,
   formula,
@@ -2262,6 +2358,7 @@ function CriticalityCard({
   modelSeries?: number[];
   chartExpanded?: boolean;
   confidence: number;
+  relevance?: RelevanceBreakdown;
   shortDesc: string;
   methodology: string[];
   formula: string;
@@ -2271,6 +2368,8 @@ function CriticalityCard({
   const confPct = Math.round(confidence * 100);
   const confColor = confPct >= 70 ? "#00e676" : confPct >= 40 ? "#ffab00" : "#ff5252";
   const isEmpty = !!emptyState;
+  const headlineLabel = relevance ? "rel" : "conf";
+  const sectionLabel = relevance ? "MODEL RELEVANCE" : "MODEL CONFIDENCE";
   return (
     <div
       className="border rounded overflow-hidden transition-all duration-300"
@@ -2318,7 +2417,7 @@ function CriticalityCard({
                     backgroundColor: `${confColor}15`,
                     border: `1px solid ${confColor}30`,
                   }}>
-                    {confPct}% conf
+                    {confPct}% {headlineLabel}
                   </div>
                 )}
               </div>
@@ -2404,10 +2503,10 @@ function CriticalityCard({
                 </div>
               </div>
 
-              {/* Confidence gauge */}
+              {/* Relevance / confidence gauge */}
               <div>
                 <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-                  MODEL CONFIDENCE
+                  {sectionLabel}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-border rounded overflow-hidden">
@@ -2422,11 +2521,67 @@ function CriticalityCard({
                   </div>
                 </div>
                 <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-relaxed">
-                  {confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
-                   confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
-                   "Weak signal — insufficient simulation data; run cascade for higher confidence."}
+                  {relevance
+                    ? (confPct >= 70 ? "Strong signal — model fits the data and the regime matches its assumptions." :
+                       confPct >= 40 ? "Moderate signal — partial fit, partial regime match, or thin data." :
+                       "Weak signal — model is a poor match for the current regime or data is too thin.")
+                    : (confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
+                       confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
+                       "Weak signal — insufficient simulation data; run cascade for higher confidence.")}
                 </div>
               </div>
+
+              {/* F · E · G · S breakdown — only when a relevance computation
+                  is available. Headline = S · G · (0.6·F + 0.4·E), EMA-smoothed. */}
+              {relevance && (
+                <div>
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+                    RELEVANCE BREAKDOWN
+                  </div>
+                  <div className="space-y-1">
+                    {([
+                      { code: "F", label: "FIT", sub: relevance.F },
+                      { code: "E", label: "EVIDENCE", sub: relevance.E },
+                      { code: "G", label: "REGIME", sub: relevance.G },
+                      { code: "S", label: "SUFFICIENCY", sub: relevance.S },
+                    ] as const).map(({ code, label, sub }) => {
+                      const pct = Math.round(sub.score * 100);
+                      const barColor = pct >= 70 ? "#00e676" : pct >= 40 ? "#ffab00" : "#ff5252";
+                      return (
+                        <div key={code} className="flex items-center gap-2">
+                          <div className="w-3 text-[9px] font-[family-name:var(--font-michroma)] text-text-muted">
+                            {code}
+                          </div>
+                          <div className="w-14 text-[7px] font-mono text-text-muted/80 tracking-wider">
+                            {label}
+                          </div>
+                          <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+                            <div className="h-full rounded transition-all duration-500" style={{
+                              width: `${pct}%`,
+                              backgroundColor: barColor,
+                              opacity: 0.8,
+                            }} />
+                          </div>
+                          <div className="w-8 text-right text-[9px] font-mono tabular-nums" style={{ color: barColor }}>
+                            {pct}%
+                          </div>
+                          <div className="flex-[2] min-w-0 text-[8px] font-mono text-text-muted/80 truncate" title={sub.detail}>
+                            {sub.detail}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
+                    composite = S · G · (0.6·F + 0.4·E) ={" "}
+                    {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) ={" "}
+                    {relevance.rawComposite.toFixed(2)}
+                    {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
+                      <> → smoothed {relevance.composite.toFixed(2)}</>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

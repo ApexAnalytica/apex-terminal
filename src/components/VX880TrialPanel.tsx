@@ -312,17 +312,45 @@ export default function VX880TrialPanel() {
   // fan chart and the counterfactual HR block above both update.
   const runGraftProtectPreset = useCallback(() => {
     if (!hasVx880) return;
-    const shock: CausalShock = {
-      id: "vx880_graft_attack_preset",
-      name: "Combined graft-\u03B2-mass attack",
-      severity: 0.75,
-      category: "health",
-      description:
-        "IBMIR + autoimmune recurrence + alloimmune rejection converging on the grafted \u03B2-cell mass — the dominant failure mode on the VX-880 subgraph.",
-    };
+    // Inject three co-firing shocks at the canonical graft-attack entry
+    // points (IBMIR, autoimmune recurrence, alloimmune rejection) instead
+    // of broadcasting a category-level health shock across every science
+    // node. The tight target list keeps the baseline cascade asymmetric
+    // enough for the solver's marginal-reduction step to discriminate
+    // cuts — otherwise every edge looks equally good and the solver bails
+    // with "no candidate cuts".
+    const shocks: CausalShock[] = [
+      {
+        id: "vx880_preset_ibmir",
+        name: "IBMIR peri-infusion strike",
+        severity: 0.85,
+        category: "health",
+        description:
+          "Instant blood-mediated inflammatory reaction destroys a fraction of infused islets within hours.",
+        targetNodes: ["vx880_ibmir"],
+      },
+      {
+        id: "vx880_preset_autoimmune",
+        name: "Autoimmune recurrence",
+        severity: 0.7,
+        category: "health",
+        description:
+          "Memory T-cell reactivation against islet antigens; documented in 20-40% of recipients over 5yr.",
+        targetNodes: ["vx880_autoimmune_recur"],
+      },
+      {
+        id: "vx880_preset_alloimmune",
+        name: "Alloimmune rejection",
+        severity: 0.7,
+        category: "health",
+        description:
+          "Donor-cell-line HLA mismatch drives graft loss, accelerated by inadequate immunosuppression.",
+        targetNodes: ["vx880_alloimmune_reject"],
+      },
+    ];
     const result = solveInterdiction(
       graphData,
-      [shock],
+      shocks,
       severedEdges,
       3,
       "edge",

@@ -18,6 +18,14 @@ export interface CausalShock {
   category: ShockCategory;
   description: string;
   physicalConstraint?: string;
+  /**
+   * Optional override: if supplied, the shock is injected only at these node
+   * ids and the category-based `SHOCK_TO_NODE_CATEGORIES` broadcast is
+   * skipped. Use this for tightly-scoped subgraph attacks (e.g. the VX-880
+   * graft-protect preset) where the default broadcast would saturate the
+   * graph and collapse the interdiction solver's marginal-reduction signal.
+   */
+  targetNodes?: string[];
 }
 
 // ─── Omega State ─────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import {
   type ModelRelevanceInput,
   type RelevanceBreakdown,
 } from "@/lib/pareto-relevance";
+import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import TrinityPanel from "./TrinityPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
@@ -996,34 +997,27 @@ function ParetoPanel({
   }, [graphData]);
 
   // ── LPPLS: Sornette super-exponential fit to the same scoped Ω trajectory ──
-  // Confidence = R²(observed, fitted LPPLS) × samplePenalty.
+  // Parameters (tc, ω, m) are optimised by coarse-to-fine grid search over the
+  // observed window when n ≥ 5. The previously-used derived values are seeded
+  // into the grid so the fit can never regress below the template.
   const lpplsData = useMemo(() => {
     const observed = scopedOmegaSeries;
     const n = observed.length;
     const N = graphData.nodes.length;
     const avgOmega = N > 0 ? graphData.nodes.reduce((s, nd) => s + nd.omegaFragility.composite, 0) / N : 0;
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const phase = avgOmega * 0.3;
 
-    // tc = critical time as a fraction of the observed window length, derived
-    // from the CSD epoch countdown so the three models stay coherent.
-    const tc = 1 + csdEpochs / Math.max(1, csdEpochs + 50);
-    const omega = 6.36 + shockPressure * 2.1;
-    const m = 0.33 + shockPressure * 0.1;
-
-    // Fit on the observed window length when present, else fall back to a
-    // 60-point preview curve for the chart.
-    const renderLen = n >= 5 ? n : 60;
-    const modelPoints: number[] = [];
-    for (let i = 0; i < renderLen; i++) {
-      const t = i / Math.max(1, renderLen - 1);
-      const dt = Math.max(0.01, tc - t);
-      const powerLaw = Math.pow(dt, m);
-      const logPeriodic = 0.2 * Math.cos(omega * Math.log(dt) + avgOmega * 0.3);
-      const signal = 1 - powerLaw * (1 + logPeriodic);
-      modelPoints.push(Math.max(0, Math.min(1, signal)));
-    }
+    // Template values that used to be used verbatim; now a seed into the grid.
+    const seed = {
+      tc: 1 + csdEpochs / Math.max(1, csdEpochs + 50),
+      omega: 6.36 + shockPressure * 2.1,
+      m: 0.33 + shockPressure * 0.1,
+    };
 
     if (n < 5) {
+      // Not enough points to fit — show the seed curve over a 60-point preview.
+      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, phase);
       return {
         timeSeries: observed,
         modelSeries: modelPoints,
@@ -1032,32 +1026,31 @@ function ParetoPanel({
         sampleSize: n,
         rSquared: 0,
         residualFit: 0,
-        omega, m, tc,
+        omega: seed.omega,
+        m: seed.m,
+        tc: seed.tc,
+        fitted: false as const,
+        evaluations: 0,
       };
     }
 
-    // R² between observed (the canonical scoped Ω trajectory) and the LPPLS
-    // model evaluated at matching indices.
-    const obsMean = observed.reduce((s, v) => s + v, 0) / n;
-    let ssRes = 0;
-    let ssTot = 0;
-    for (let t = 0; t < n; t++) {
-      ssRes += (observed[t] - modelPoints[t]) ** 2;
-      ssTot += (observed[t] - obsMean) ** 2;
-    }
-    const rSquared = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+    const fit = fitLppls(observed, { phase, seed });
     const samplePenalty = Math.min(1, n / 30);
-    const confidence = Math.max(0, Math.min(0.99, rSquared * samplePenalty));
+    const confidence = Math.max(0, Math.min(0.99, fit.rSquared * samplePenalty));
 
     return {
-      timeSeries: observed.length > 0 ? observed : modelPoints,
-      modelSeries: modelPoints,
+      timeSeries: observed.length > 0 ? observed : fit.modelSeries,
+      modelSeries: fit.modelSeries,
       observedSeries: observed,
       confidence,
       sampleSize: n,
-      rSquared,
-      residualFit: rSquared,
-      omega, m, tc,
+      rSquared: fit.rSquared,
+      residualFit: fit.rSquared,
+      omega: fit.omega,
+      m: fit.m,
+      tc: fit.tc,
+      fitted: true as const,
+      evaluations: fit.evaluations,
     };
   }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
 
@@ -1235,13 +1228,13 @@ function ParetoPanel({
               shortDesc: meta.shortDesc,
               methodology: [
                 `Fits the LPPLS model y(t) = A + B(tc\u2212t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc\u2212t) + \u03C6)] (Sornette 2003) to the same scoped mean-\u03A9 trajectory as CSD \u2014 ${scopeLabel}, n=${lpplsData.sampleSize}.`,
-                `${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and LPPLS fit. Confidence = R\u00B2 \u00D7 min(1, n/30). ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to score the fit \u2014 dashed line is the projected curve only.`}`,
-                `Critical time tc is derived from the CSD epoch countdown so all three models share a coherent horizon. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
+                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure).`}`,
+                `Phase \u03C6 = mean-\u03A9 \u00D7 0.3 is tied to graph fragility; A=1, B=\u22121, C=0.2 held fixed. tc, \u03C9, m are free parameters fit against the observed window. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
               ],
-              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
+              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)}${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
               assessment: lpplsData.sampleSize < 5
                 ? `INSUFFICIENT DATA \u2014 only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
-                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped \u03A9 trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise \u03C9 by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks \u2014 baseline oscillation frequency."}`,
+                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}.`,
             };
           }
           // ── BOCPD ──────────────────────────────────────────────────

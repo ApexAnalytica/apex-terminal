@@ -10,6 +10,18 @@ import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
+import {
+  computeRelevanceBatch,
+  csdRegimeGate,
+  lpplsRegimeGate,
+  phRegimeGate,
+  trajectorySufficiency,
+  topologySufficiency,
+  type ModelRelevanceInput,
+  type RelevanceBreakdown,
+} from "@/lib/pareto-relevance";
+import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
+import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
@@ -928,11 +940,25 @@ function ParetoPanel({
   const phData = useMemo(() => {
     const composites = graphData.nodes.map((n) => n.omegaFragility.composite).sort((a, b) => a - b);
     const N = graphData.nodes.length;
-    if (N === 0) return { timeSeries: Array(60).fill(0), confidence: 0 };
+    if (N === 0) {
+      return {
+        timeSeries: Array(60).fill(0),
+        modelSeries: undefined,
+        confidence: 0,
+        componentCountAtMid: 0,
+        clusterFrac: 0,
+        fitRSquared: 0,
+        riseExp: 0.6,
+        center: 0.7,
+        rate: 2,
+        evaluations: 0,
+      };
+    }
 
     // Build real filtration: at each threshold ε, count connected components & cycles
     // Sweep ε from 0 to 10 — nodes appear when their Ω ≤ ε, edges when both endpoints present
     const points: number[] = [];
+    const componentsPerStep: number[] = [];
     const thresholds = Array.from({ length: 60 }, (_, i) => (i / 59) * 10);
 
     for (const eps of thresholds) {
@@ -950,6 +976,7 @@ function ParetoPanel({
       for (const nid of activeNodes) find(nid);
       for (const e of activeEdges) union(e.source, e.target);
       const components = new Set(Array.from(activeNodes).map(find)).size;
+      componentsPerStep.push(components);
 
       // Approximate β1 (cycles) via Euler characteristic: β1 ≈ edges - nodes + components
       const beta1 = Math.max(0, activeEdges.length - activeNodes.size + components);
@@ -958,18 +985,17 @@ function ParetoPanel({
       points.push(Math.min(1, normalized));
     }
 
-    // Smooth theoretical model: monotonic collapse curve based on cluster density
+    // Parametric β₁ collapse template, fit to the empirical filtration curve
+    // by grid search over (riseExp, center, rate). Cluster-fraction coupling
+    // stays structural (derived from graph), not a free parameter.
     const clusterCount = graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length;
     const clusterFrac = clusterCount / Math.max(1, N);
-    const phModelPoints: number[] = Array.from({ length: 60 }, (_, i) => {
-      const t = i / 59;
-      // Theoretical β₁ curve: rises as filtration reveals holes, then collapses
-      const rise = Math.pow(t, 0.6) * (1 + clusterFrac * 0.5);
-      const collapse = Math.exp(-2 * Math.pow(Math.max(0, t - 0.7), 2));
-      return Math.max(0, Math.min(1, rise * collapse * 0.8));
-    });
+    const phFit = fitBettiTemplate(points, { clusterFrac });
+    const phModelPoints = phFit.modelSeries;
 
-    // Confidence: based on topological signal strength
+    // Legacy confidence (kept as a fallback when the relevance system isn't
+    // live for this estimator). Tracks topological signal strength rather
+    // than fit quality — the relevance composite supersedes this in the UI.
     const maxBetti = Math.max(...points);
     const variance = points.reduce((s, v) => s + (v - maxBetti / 2) ** 2, 0) / points.length;
     const topologicalSignal = Math.min(0.35, (clusterCount / Math.max(1, N)) * 1.5);
@@ -977,38 +1003,45 @@ function ParetoPanel({
     const varianceSignal = Math.min(0.3, Math.sqrt(variance) * 1.5);
     const confidence = Math.min(0.99, topologicalSignal + filtrationCoverage + varianceSignal);
 
-    return { timeSeries: points, modelSeries: phModelPoints, confidence };
+    const midIdx = Math.min(componentsPerStep.length - 1, Math.floor(componentsPerStep.length / 2));
+    const componentCountAtMid = componentsPerStep[midIdx] ?? 0;
+
+    return {
+      timeSeries: points,
+      modelSeries: phModelPoints,
+      confidence,
+      componentCountAtMid,
+      clusterFrac,
+      fitRSquared: phFit.rSquared,
+      riseExp: phFit.riseExp,
+      center: phFit.center,
+      rate: phFit.rate,
+      evaluations: phFit.evaluations,
+    };
   }, [graphData]);
 
   // ── LPPLS: Sornette super-exponential fit to the same scoped Ω trajectory ──
-  // Confidence = R²(observed, fitted LPPLS) × samplePenalty.
+  // Parameters (tc, ω, m) are optimised by coarse-to-fine grid search over the
+  // observed window when n ≥ 5. The previously-used derived values are seeded
+  // into the grid so the fit can never regress below the template.
   const lpplsData = useMemo(() => {
     const observed = scopedOmegaSeries;
     const n = observed.length;
     const N = graphData.nodes.length;
     const avgOmega = N > 0 ? graphData.nodes.reduce((s, nd) => s + nd.omegaFragility.composite, 0) / N : 0;
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    const phase = avgOmega * 0.3;
 
-    // tc = critical time as a fraction of the observed window length, derived
-    // from the CSD epoch countdown so the three models stay coherent.
-    const tc = 1 + csdEpochs / Math.max(1, csdEpochs + 50);
-    const omega = 6.36 + shockPressure * 2.1;
-    const m = 0.33 + shockPressure * 0.1;
-
-    // Fit on the observed window length when present, else fall back to a
-    // 60-point preview curve for the chart.
-    const renderLen = n >= 5 ? n : 60;
-    const modelPoints: number[] = [];
-    for (let i = 0; i < renderLen; i++) {
-      const t = i / Math.max(1, renderLen - 1);
-      const dt = Math.max(0.01, tc - t);
-      const powerLaw = Math.pow(dt, m);
-      const logPeriodic = 0.2 * Math.cos(omega * Math.log(dt) + avgOmega * 0.3);
-      const signal = 1 - powerLaw * (1 + logPeriodic);
-      modelPoints.push(Math.max(0, Math.min(1, signal)));
-    }
+    // Template values that used to be used verbatim; now a seed into the grid.
+    const seed = {
+      tc: 1 + csdEpochs / Math.max(1, csdEpochs + 50),
+      omega: 6.36 + shockPressure * 2.1,
+      m: 0.33 + shockPressure * 0.1,
+    };
 
     if (n < 5) {
+      // Not enough points to fit — show the seed curve over a 60-point preview.
+      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, phase);
       return {
         timeSeries: observed,
         modelSeries: modelPoints,
@@ -1017,34 +1050,104 @@ function ParetoPanel({
         sampleSize: n,
         rSquared: 0,
         residualFit: 0,
-        omega, m, tc,
+        omega: seed.omega,
+        m: seed.m,
+        tc: seed.tc,
+        fitted: false as const,
+        evaluations: 0,
       };
     }
 
-    // R² between observed (the canonical scoped Ω trajectory) and the LPPLS
-    // model evaluated at matching indices.
-    const obsMean = observed.reduce((s, v) => s + v, 0) / n;
-    let ssRes = 0;
-    let ssTot = 0;
-    for (let t = 0; t < n; t++) {
-      ssRes += (observed[t] - modelPoints[t]) ** 2;
-      ssTot += (observed[t] - obsMean) ** 2;
-    }
-    const rSquared = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+    const fit = fitLppls(observed, { phase, seed });
     const samplePenalty = Math.min(1, n / 30);
-    const confidence = Math.max(0, Math.min(0.99, rSquared * samplePenalty));
+    const confidence = Math.max(0, Math.min(0.99, fit.rSquared * samplePenalty));
 
     return {
-      timeSeries: observed.length > 0 ? observed : modelPoints,
-      modelSeries: modelPoints,
+      timeSeries: observed.length > 0 ? observed : fit.modelSeries,
+      modelSeries: fit.modelSeries,
       observedSeries: observed,
       confidence,
       sampleSize: n,
-      rSquared,
-      residualFit: rSquared,
-      omega, m, tc,
+      rSquared: fit.rSquared,
+      residualFit: fit.rSquared,
+      omega: fit.omega,
+      m: fit.m,
+      tc: fit.tc,
+      fitted: true as const,
+      evaluations: fit.evaluations,
     };
   }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
+
+  // ── Relevance breakdown per model (F · E · G · S, smoothed via EMA) ──
+  // Each ready estimator contributes an input. The composite replaces the
+  // legacy per-model "confidence" badge and is broken out in the card UI so
+  // every percentage is auditable.
+  const prevCompositesRef = useRef<Map<string, number>>(new Map());
+  const lastScopeLabelRef = useRef<string>("");
+  const relevanceMap = useMemo<Map<string, RelevanceBreakdown>>(() => {
+    // Reset EMA state when the scope changes — smoothing across different
+    // node sets would mix unrelated signals.
+    if (lastScopeLabelRef.current !== scopeLabel) {
+      prevCompositesRef.current = new Map();
+      lastScopeLabelRef.current = scopeLabel;
+    }
+
+    const inputs: ModelRelevanceInput[] = [];
+    const edgeCount = graphData.edges.filter((e) => !e.isSevered).length;
+    const nodeCount = graphData.nodes.length;
+
+    if (csdData.modelSeries) {
+      inputs.push({
+        key: "csd",
+        observed: csdData.observedSeries ?? csdData.timeSeries,
+        modelSeries: csdData.modelSeries,
+        freeParams: 2, // α and μ
+        gate: csdRegimeGate({
+          observed: csdData.observedSeries ?? csdData.timeSeries,
+          lambdaMax: csdData.lambdaMax,
+        }),
+        sufficiency: trajectorySufficiency(csdData.sampleSize, edgeCount),
+      });
+    }
+
+    if (phData.modelSeries) {
+      inputs.push({
+        key: "ph",
+        observed: phData.timeSeries,
+        modelSeries: phData.modelSeries,
+        freeParams: 3, // riseExp, center, rate — fit by grid search in phData
+        gate: phRegimeGate({
+          betti1Curve: phData.timeSeries,
+          componentCountAtMid: phData.componentCountAtMid ?? 0,
+          nodeCount,
+        }),
+        sufficiency: topologySufficiency(nodeCount),
+      });
+    }
+
+    if (lpplsData.observedSeries && lpplsData.observedSeries.length > 0) {
+      inputs.push({
+        key: "lppls",
+        observed: lpplsData.observedSeries,
+        modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
+        freeParams: 3, // ω, m, tc
+        gate: lpplsRegimeGate({
+          observed: lpplsData.observedSeries,
+          modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
+        }),
+        sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
+      });
+    }
+
+    const result = computeRelevanceBatch(inputs, {
+      previous: prevCompositesRef.current,
+    });
+    // Persist composites for the next render's EMA seed.
+    for (const [key, breakdown] of result) {
+      prevCompositesRef.current.set(key, breakdown.composite);
+    }
+    return result;
+  }, [csdData, phData, lpplsData, graphData.edges, graphData.nodes, scopeLabel]);
 
   const paretoSectionExpanded = expandedChart === "pareto";
 
@@ -1072,6 +1175,8 @@ function ParetoPanel({
           maxEpochs: number;
           color: string;
           confidence: number;
+          /** Full F·E·G·S breakdown when the model is in the relevance batch. */
+          relevance?: RelevanceBreakdown;
           timeSeries: number[];
           modelSeries: number[] | undefined;
           shortDesc: string;
@@ -1084,6 +1189,7 @@ function ParetoPanel({
         const models: ModelDescriptor[] = activeProfile.criticalityEstimators.map((id) => {
           const meta = getEstimatorMeta(id);
           if (id === "csd") {
+            const rel = relevanceMap.get("csd");
             return {
               key: "csd",
               abbrev: "CSD",
@@ -1091,7 +1197,8 @@ function ParetoPanel({
               epochs: csdEpochs,
               maxEpochs: 200,
               color: getCritColor(csdEpochs),
-              confidence: csdData.confidence,
+              confidence: rel ? rel.composite : csdData.confidence,
+              relevance: rel,
               timeSeries: csdData.timeSeries,
               modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
               shortDesc: meta.shortDesc,
@@ -1107,6 +1214,7 @@ function ParetoPanel({
             };
           }
           if (id === "ph") {
+            const rel = relevanceMap.get("ph");
             return {
               key: "ph",
               abbrev: "PH",
@@ -1114,20 +1222,22 @@ function ParetoPanel({
               epochs: phEpochs,
               maxEpochs: 300,
               color: getCritColor(phEpochs),
-              confidence: phData.confidence,
+              confidence: rel ? rel.composite : phData.confidence,
+              relevance: rel,
               timeSeries: phData.timeSeries,
               modelSeries: phData.modelSeries,
               shortDesc: meta.shortDesc,
               methodology: [
-                `Sweeps a filtration threshold \u03B5 from 0\u219210 across all ${graphData.nodes.length} nodes. At each \u03B5, nodes with \u03A9 \u2264 \u03B5 and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: theoretical \u03B2\u2081 collapse model.`,
+                `Sweeps a filtration threshold \u03B5 from 0\u219210 across all ${graphData.nodes.length} nodes. At each \u03B5, nodes with \u03A9 \u2264 \u03B5 and their connecting edges form a simplicial complex. Solid line: computed filtration. Dashed line: fitted \u03B2\u2081 collapse template.`,
                 `Computes \u03B2\u2080 (connected components via union-find) and \u03B2\u2081 (1-cycles via Euler characteristic: \u03B2\u2081 \u2248 E \u2212 V + \u03B2\u2080) at each filtration step \u2014 showing how topological holes appear and collapse.`,
-                `When persistent holes vanish (\u03B2\u2081 \u2192 0), previously isolated fragility clusters merge into system-wide contagion pathways. Currently ${graphData.nodes.filter((n) => n.omegaFragility.composite > 7).length} nodes above \u03A9 > 7.0 form critical cluster boundaries.`,
+                `Template \u03B2\u2081(t) = amp \u00B7 t^riseExp \u00B7 (1 + clusterFrac \u00B7 0.5) \u00B7 exp(\u2212rate \u00B7 max(0, t \u2212 center)\u00B2) fit by grid search to the empirical \u03B2\u2081 curve over 60 filtration steps (${phData.evaluations} evaluations). Fit R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}% at riseExp=${phData.riseExp.toFixed(2)}, center=${phData.center.toFixed(2)}, rate=${phData.rate.toFixed(2)}. Cluster-coupling (${(phData.clusterFrac * 100).toFixed(0)}% of nodes above \u03A9 > 7.0) stays structural.`,
               ],
-              formula: `\u03B2\u2081 = |E| \u2212 |V| + \u03B2\u2080 | filtration: \u03B5 \u2208 [0, 10] | critical when \u03B2\u2081 \u2192 0`,
-              assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. \u03A9 range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Peak \u03B2\u2081 at filtration midpoint indicates topological complexity.`,
+              formula: `\u03B2\u2081 = |E| \u2212 |V| + \u03B2\u2080 | template fit: riseExp=${phData.riseExp.toFixed(2)}, center=${phData.center.toFixed(2)}, rate=${phData.rate.toFixed(2)} | R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}%`,
+              assessment: `Real filtration over ${graphData.nodes.length} nodes and ${graphData.edges.filter((e) => !e.isSevered).length} active edges. \u03A9 range: [${Math.min(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}, ${Math.max(...graphData.nodes.map((n) => n.omegaFragility.composite)).toFixed(1)}]. Template fit R\u00B2 = ${(phData.fitRSquared * 100).toFixed(1)}% on \u03B2\u2081 curve (${phData.evaluations} grid evaluations); ${phData.fitRSquared > 0.6 ? "template tracks empirical holes well \u2014 topology has a clear rise-and-collapse structure." : phData.fitRSquared > 0.3 ? "partial template match \u2014 real filtration has structure the template doesn't capture." : "weak template match \u2014 empirical \u03B2\u2081 doesn't follow the rise-collapse shape."}`,
             };
           }
           if (id === "lppls") {
+            const rel = relevanceMap.get("lppls");
             return {
               key: "lppls",
               abbrev: "LPPLS",
@@ -1135,19 +1245,20 @@ function ParetoPanel({
               epochs: lpplsEpochs,
               maxEpochs: 250,
               color: getCritColor(lpplsEpochs),
-              confidence: lpplsData.confidence,
+              confidence: rel ? rel.composite : lpplsData.confidence,
+              relevance: rel,
               timeSeries: lpplsData.timeSeries,
               modelSeries: lpplsData.modelSeries,
               shortDesc: meta.shortDesc,
               methodology: [
                 `Fits the LPPLS model y(t) = A + B(tc\u2212t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc\u2212t) + \u03C6)] (Sornette 2003) to the same scoped mean-\u03A9 trajectory as CSD \u2014 ${scopeLabel}, n=${lpplsData.sampleSize}.`,
-                `${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and LPPLS fit. Confidence = R\u00B2 \u00D7 min(1, n/30). ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to score the fit \u2014 dashed line is the projected curve only.`}`,
-                `Critical time tc is derived from the CSD epoch countdown so all three models share a coherent horizon. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
+                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure).`}`,
+                `Phase \u03C6 = mean-\u03A9 \u00D7 0.3 is tied to graph fragility; A=1, B=\u22121, C=0.2 held fixed. tc, \u03C9, m are free parameters fit against the observed window. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
               ],
-              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
+              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)}${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
               assessment: lpplsData.sampleSize < 5
                 ? `INSUFFICIENT DATA \u2014 only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
-                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} from the scoped \u03A9 trajectory. ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} ${shocks.length > 0 ? `${shocks.length} active shock(s) raise \u03C9 by ${(shocks.reduce((s, sh) => s + sh.severity, 0) * 2.1).toFixed(1)} rad.` : "No active shocks \u2014 baseline oscillation frequency."}`,
+                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}.`,
             };
           }
           // ── BOCPD ──────────────────────────────────────────────────
@@ -1404,6 +1515,7 @@ function ParetoPanel({
               modelSeries={selected.modelSeries}
               chartExpanded={paretoSectionExpanded}
               confidence={selected.confidence}
+              relevance={selected.relevance}
               shortDesc={selected.shortDesc}
               methodology={selected.methodology}
               formula={selected.formula}
@@ -2245,6 +2357,7 @@ function CriticalityCard({
   modelSeries,
   chartExpanded,
   confidence,
+  relevance,
   shortDesc,
   methodology,
   formula,
@@ -2262,6 +2375,7 @@ function CriticalityCard({
   modelSeries?: number[];
   chartExpanded?: boolean;
   confidence: number;
+  relevance?: RelevanceBreakdown;
   shortDesc: string;
   methodology: string[];
   formula: string;
@@ -2271,6 +2385,8 @@ function CriticalityCard({
   const confPct = Math.round(confidence * 100);
   const confColor = confPct >= 70 ? "#00e676" : confPct >= 40 ? "#ffab00" : "#ff5252";
   const isEmpty = !!emptyState;
+  const headlineLabel = relevance ? "rel" : "conf";
+  const sectionLabel = relevance ? "MODEL RELEVANCE" : "MODEL CONFIDENCE";
   return (
     <div
       className="border rounded overflow-hidden transition-all duration-300"
@@ -2318,7 +2434,7 @@ function CriticalityCard({
                     backgroundColor: `${confColor}15`,
                     border: `1px solid ${confColor}30`,
                   }}>
-                    {confPct}% conf
+                    {confPct}% {headlineLabel}
                   </div>
                 )}
               </div>
@@ -2404,10 +2520,10 @@ function CriticalityCard({
                 </div>
               </div>
 
-              {/* Confidence gauge */}
+              {/* Relevance / confidence gauge */}
               <div>
                 <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-                  MODEL CONFIDENCE
+                  {sectionLabel}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-border rounded overflow-hidden">
@@ -2422,11 +2538,67 @@ function CriticalityCard({
                   </div>
                 </div>
                 <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-relaxed">
-                  {confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
-                   confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
-                   "Weak signal — insufficient simulation data; run cascade for higher confidence."}
+                  {relevance
+                    ? (confPct >= 70 ? "Strong signal — model fits the data and the regime matches its assumptions." :
+                       confPct >= 40 ? "Moderate signal — partial fit, partial regime match, or thin data." :
+                       "Weak signal — model is a poor match for the current regime or data is too thin.")
+                    : (confPct >= 70 ? "Strong signal — grounded in observed epoch data and graph topology." :
+                       confPct >= 40 ? "Moderate signal — partial data coverage; model-augmented projection." :
+                       "Weak signal — insufficient simulation data; run cascade for higher confidence.")}
                 </div>
               </div>
+
+              {/* F · E · G · S breakdown — only when a relevance computation
+                  is available. Headline = S · G · (0.6·F + 0.4·E), EMA-smoothed. */}
+              {relevance && (
+                <div>
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+                    RELEVANCE BREAKDOWN
+                  </div>
+                  <div className="space-y-1">
+                    {([
+                      { code: "F", label: "FIT", sub: relevance.F },
+                      { code: "E", label: "EVIDENCE", sub: relevance.E },
+                      { code: "G", label: "REGIME", sub: relevance.G },
+                      { code: "S", label: "SUFFICIENCY", sub: relevance.S },
+                    ] as const).map(({ code, label, sub }) => {
+                      const pct = Math.round(sub.score * 100);
+                      const barColor = pct >= 70 ? "#00e676" : pct >= 40 ? "#ffab00" : "#ff5252";
+                      return (
+                        <div key={code} className="flex items-center gap-2">
+                          <div className="w-3 text-[9px] font-[family-name:var(--font-michroma)] text-text-muted">
+                            {code}
+                          </div>
+                          <div className="w-14 text-[7px] font-mono text-text-muted/80 tracking-wider">
+                            {label}
+                          </div>
+                          <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+                            <div className="h-full rounded transition-all duration-500" style={{
+                              width: `${pct}%`,
+                              backgroundColor: barColor,
+                              opacity: 0.8,
+                            }} />
+                          </div>
+                          <div className="w-8 text-right text-[9px] font-mono tabular-nums" style={{ color: barColor }}>
+                            {pct}%
+                          </div>
+                          <div className="flex-[2] min-w-0 text-[8px] font-mono text-text-muted/80 truncate" title={sub.detail}>
+                            {sub.detail}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
+                    composite = S · G · (0.6·F + 0.4·E) ={" "}
+                    {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) ={" "}
+                    {relevance.rawComposite.toFixed(2)}
+                    {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
+                      <> → smoothed {relevance.composite.toFixed(2)}</>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

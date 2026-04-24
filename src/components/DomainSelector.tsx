@@ -6,6 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
 import { ATHENA_GRAPH, BRIDGE_EDGES } from "@/lib/athena-graph-data";
 import { T1D_GRAPH } from "@/lib/t1d-graph-data";
+import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
 import { mergeGraphs } from "@/lib/import/merge";
 import type { NodeCategory, CausalGraph } from "@/lib/types";
 
@@ -39,7 +40,7 @@ interface DomainCard {
   colorVar: string;
   description: string;
   hasData: boolean;
-  dataset: "main" | "athena" | "t1d"; // which graph to load
+  dataset: "main" | "athena" | "t1d" | "vx880"; // which graph to load
 }
 
 interface DomainGroup {
@@ -214,6 +215,16 @@ const DOMAIN_GROUPS: DomainGroup[] = [
         hasData: true,
         dataset: "t1d",
       },
+      {
+        id: "t1d-vx880",
+        label: "T1D Stem-Cell Transplant (VX-880)",
+        icon: "\u{1F489}",
+        color: "#40c4ff",
+        colorVar: "var(--accent-blue)",
+        description: "Vertex VX-880 trial topology: HLA/autoantibody risk \u2192 dose + immunosuppression \u2192 engraftment \u2192 graft \u03B2-mass \u2192 MMTT / insulin-independence / severe-hypo endpoints",
+        hasData: true,
+        dataset: "vx880",
+      },
     ],
   },
   {
@@ -246,6 +257,7 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
   const needsMain = selectedDomains.some((d) => d.dataset === "main");
   const needsAthena = selectedDomains.some((d) => d.dataset === "athena");
   const needsT1D = selectedDomains.some((d) => d.dataset === "t1d");
+  const needsVX880 = selectedDomains.some((d) => d.dataset === "vx880");
 
   let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
 
@@ -259,6 +271,10 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
   }
   if (needsT1D) {
     const { graph: merged } = mergeGraphs(graph, { nodes: T1D_GRAPH.nodes, edges: T1D_GRAPH.edges });
+    graph = merged;
+  }
+  if (needsVX880) {
+    const { graph: merged } = mergeGraphs(graph, { nodes: VX880_GRAPH.nodes, edges: VX880_GRAPH.edges });
     graph = merged;
   }
 
@@ -380,6 +396,7 @@ export default function DomainSelector() {
     if (cards.some((d) => d.dataset === "main")) datasets.push("middle-east-playbooks");
     if (cards.some((d) => d.dataset === "athena")) datasets.push("athena-isr");
     if (cards.some((d) => d.dataset === "t1d")) datasets.push("t1d-beta-cell");
+    if (cards.some((d) => d.dataset === "vx880")) datasets.push("t1d-vx880");
     setSelectedDataSources(datasets);
     setSelectedDomains(localSelected);
     setIsMultiDomainMode(localMulti);
@@ -393,7 +410,8 @@ export default function DomainSelector() {
   const willLoadMain = selectedCards.some((d) => d.dataset === "main");
   const willLoadAthena = selectedCards.some((d) => d.dataset === "athena");
   const willLoadT1D = selectedCards.some((d) => d.dataset === "t1d");
-  const totalNodes = (willLoadMain ? MAIN_GRAPH.nodes.length : 0) + (willLoadAthena ? ATHENA_GRAPH.nodes.length : 0) + (willLoadT1D ? T1D_GRAPH.nodes.length : 0);
+  const willLoadVX880 = selectedCards.some((d) => d.dataset === "vx880");
+  const totalNodes = (willLoadMain ? MAIN_GRAPH.nodes.length : 0) + (willLoadAthena ? ATHENA_GRAPH.nodes.length : 0) + (willLoadT1D ? T1D_GRAPH.nodes.length : 0) + (willLoadVX880 ? VX880_GRAPH.nodes.length : 0);
 
   return (
     <AnimatePresence>

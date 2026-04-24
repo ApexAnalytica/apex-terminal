@@ -12,6 +12,7 @@ import {
   TimelineId,
 } from "@/lib/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
+import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
 import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
 import {
@@ -117,6 +118,13 @@ interface ApexState {
   // Interdiction (chat-based)
   lastInterdictionResult: InterdictionResult | null;
   setLastInterdictionResult: (result: InterdictionResult | null) => void;
+
+  // Trial-grounded prior (published by domain-specific analysis panels,
+  // e.g. VX880TrialPanel → MonteCarloForecast). Lets a fitted survival
+  // model act as a shared prior across the Pearl stack without coupling
+  // the MC engine to any specific dataset.
+  trialPrior: TrialPrior | null;
+  setTrialPrior: (prior: TrialPrior | null) => void;
 
   // Tarski axiom filter
   axiomLevelFilter: "all" | 0 | 1 | 2;
@@ -423,6 +431,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Interdiction (chat-based)
   lastInterdictionResult: null,
   setLastInterdictionResult: (result) => set({ lastInterdictionResult: result }),
+
+  trialPrior: null,
+  setTrialPrior: (prior) => set({ trialPrior: prior }),
 
   axiomLevelFilter: "all",
   setAxiomLevelFilter: (f) => set({ axiomLevelFilter: f }),

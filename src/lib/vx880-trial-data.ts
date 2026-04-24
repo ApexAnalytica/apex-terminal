@@ -140,6 +140,33 @@ export function getInsulinIndependenceTte(): {
   };
 }
 
+// ─── Trial-prior scaffold (consumed by MC engine) ───────────────────
+
+/**
+ * Fixed pieces of the VX-880 trial prior that the MC engine needs but
+ * that aren't produced by the NLME/Cox fits themselves. Combined at
+ * runtime with the fit outputs (β, SE, popK, τ_k) to form the full
+ * TrialPrior published to useApexStore.
+ *
+ * `outcomeNodeId` is the id of the insulin-independence endpoint in
+ * `t1d-vx880-graph-data.ts` — the MC engine watches its cascade
+ * intensity to attenuate the treatment effect when the attack path
+ * reaches the outcome.
+ *
+ * `baselineHazardPerEpoch` is calibrated to the control arm: 1 partial-
+ * response event in 12 subjects at month 11 gives an empirical per-
+ * month hazard ≈ 1 / (12 * 11) ≈ 0.0076. With the MC's default 60-
+ * epoch horizon mapped to 12 trial months this is 5 epochs/month, so
+ * ≈ 0.0015 per epoch. Rounding to 0.002 keeps the control-arm fan
+ * landing near the reported ~8% 12-month event rate.
+ */
+export const VX880_TRIAL_PRIOR_META = {
+  label: "VX-880 insulin independence",
+  outcomeNodeId: "vx880_insulin_indep",
+  baselineHazardPerEpoch: 0.002,
+  source: "Reichman NEJM 2023 · DCCT/EDIC",
+} as const;
+
 // ─── Literature-grounded targets (for display) ──────────────────────
 
 /**

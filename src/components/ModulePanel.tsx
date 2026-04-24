@@ -15,6 +15,7 @@ import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
+import VX880TrialPanel from "./VX880TrialPanel";
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
@@ -89,6 +90,7 @@ export default function ModulePanel() {
               Run interdiction from the copilot to produce candidate cuts, then the Monte Carlo
               forecast auto-simulates the counterfactual {"\u03A9"}-buffer trajectory under those cuts.
             </div>
+            <VX880TrialPanel />
             <CopilotInterdictionResults />
             <MonteCarloForecast expanded={expandedChart === "pearl"} />
           </div>

@@ -247,6 +247,11 @@ interface ApexState {
   temporalData: TemporalDataset | null;
   timelineSelection: { start: number; end: number } | null; // user-selected date range window
   timelineFullRange: { start: number; end: number } | null; // saved full range before zoom
+  // True while the user is actively dragging the dial scrubber. Lets the
+  // TimeSeriesOverlay show its hover tooltip pinned to the dial position
+  // even though the cursor is on the dial track, not the chart.
+  timelineDragging: boolean;
+  setTimelineDragging: (dragging: boolean) => void;
   setTimelinePosition: (ts: number) => void;
   // rAF-batched variant — coalesces rapid scrub calls to ≤ display refresh rate
   // (~60fps), preventing posMap/omegaKey recalculation on every pointer-move pixel.
@@ -741,6 +746,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
   timelineSelection: null,
   timelineFullRange: null,
   temporalData: null,
+  timelineDragging: false,
+
+  setTimelineDragging: (dragging) => set({ timelineDragging: dragging }),
 
   setTimelinePosition: (ts) =>
     set({ timelinePosition: ts, isLive: false }),

@@ -192,11 +192,9 @@ interface ApexState {
   selectedDataSources: string[];
   setSelectedDataSources: (sources: string[]) => void;
 
-  // Data layer filters (what to show in the 3D universe)
-  visibleCategories: Set<string>; // node categories to show (empty = all)
-  visibleDiscoverySources: Set<string>; // discovery sources to show (empty = all)
+  // Category filter (what to show in the 3D universe — empty = all)
+  visibleCategories: Set<string>;
   setVisibleCategories: (categories: Set<string>) => void;
-  setVisibleDiscoverySources: (sources: Set<string>) => void;
 
   // Import modal
   importModalOpen: boolean;
@@ -539,11 +537,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
   selectedDataSources: ["middle-east-playbooks"],
   setSelectedDataSources: (sources) => set({ selectedDataSources: sources }),
 
-  // Data layer filters
+  // Category filter
   visibleCategories: new Set<string>(),
-  visibleDiscoverySources: new Set<string>(),
   setVisibleCategories: (categories) => set({ visibleCategories: categories }),
-  setVisibleDiscoverySources: (sources) => set({ visibleDiscoverySources: sources }),
 
   // Import
   importModalOpen: false,

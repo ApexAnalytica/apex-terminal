@@ -10,7 +10,7 @@ import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
 import { mergeGraphs } from "@/lib/import/merge";
 import type { NodeCategory, CausalGraph } from "@/lib/types";
 
-const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
+export const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "economic", label: "ECONOMIC", icon: "📊" },
   { id: "finance", label: "FINANCE", icon: "💰" },
   { id: "energy", label: "ENERGY", icon: "⚡" },
@@ -20,13 +20,6 @@ const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "geopolitical", label: "GEOPOLITICAL", icon: "🌐" },
   { id: "communications", label: "COMMUNICATIONS", icon: "📡" },
   { id: "science", label: "SCIENCE", icon: "🔬" },
-];
-
-const DISCOVERY_SOURCES = [
-  { id: "DCD", label: "DCD / NOTEARS", desc: "Structural" },
-  { id: "PCMCI+", label: "PCMCI+", desc: "Temporal" },
-  { id: "FCI", label: "FCI", desc: "Latent confounders" },
-  { id: "merged", label: "MERGED", desc: "Cross-engine" },
 ];
 
 // ─── Grouped domain structure ────────────────────────────────────
@@ -294,8 +287,6 @@ export default function DomainSelector() {
   const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
   const setIsMultiDomainMode = useApexStore((s) => s.setIsMultiDomainMode);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
-  const setVisibleCategories = useApexStore((s) => s.setVisibleCategories);
-  const setVisibleDiscoverySources = useApexStore((s) => s.setVisibleDiscoverySources);
   const setSelectedDataSources = useApexStore((s) => s.setSelectedDataSources);
   const setGraphData = useApexStore((s) => s.setGraphData);
   const activePersonaRaw = useApexStore((s) => s.activePersona) as string;
@@ -310,9 +301,6 @@ export default function DomainSelector() {
 
   const [localSelected, setLocalSelected] = useState<string[]>([]);
   const [localMulti, setLocalMulti] = useState(false);
-  const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
-  const [localSources, setLocalSources] = useState<Set<string>>(new Set());
-  const [showDataLayers, setShowDataLayers] = useState(false);
 
   // Cards visible for the active persona (filtered by domain group)
   const allowedGroups = PERSONA_GROUPS[activePersona];
@@ -367,24 +355,6 @@ export default function DomainSelector() {
     []
   );
 
-  const toggleCategory = useCallback((id: string) => {
-    setLocalCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleSource = useCallback((id: string) => {
-    setLocalSources((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   const handleLaunch = useCallback(() => {
     if (localSelected.length === 0) return;
     // Auto-build graph from selected domains (loads correct datasets)
@@ -400,10 +370,8 @@ export default function DomainSelector() {
     setSelectedDataSources(datasets);
     setSelectedDomains(localSelected);
     setIsMultiDomainMode(localMulti);
-    setVisibleCategories(localCategories);
-    setVisibleDiscoverySources(localSources);
     setDomainSelectorOpen(false);
-  }, [localSelected, localMulti, localCategories, localSources, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setVisibleCategories, setVisibleDiscoverySources, setDomainSelectorOpen]);
+  }, [localSelected, localMulti, setGraphData, setSelectedDataSources, setSelectedDomains, setIsMultiDomainMode, setDomainSelectorOpen]);
 
   // Compute which datasets will be loaded based on current selection
   const selectedCards = localSelected.map((id) => DOMAIN_CARDS.find((d) => d.id === id)).filter(Boolean) as DomainCard[];
@@ -566,102 +534,6 @@ export default function DomainSelector() {
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* Data Layers */}
-            <div className="px-6 pb-2">
-              <button
-                onClick={() => setShowDataLayers((p) => !p)}
-                className="flex items-center gap-2 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-cyan transition-colors"
-              >
-                <span style={{ transform: showDataLayers ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "inline-block" }}>▶</span>
-                DATA LAYERS
-                <span className="text-[7px] font-mono text-text-muted/50">
-                  {localCategories.size === 0 && localSources.size === 0 ? "ALL" : `${localCategories.size + localSources.size} filters`}
-                </span>
-              </button>
-              <AnimatePresence>
-                {showDataLayers && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-2 space-y-3">
-                      {/* Node Categories */}
-                      <div>
-                        <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-1.5">
-                          NODE CATEGORIES
-                          <span className="ml-2 text-[7px] font-mono text-text-muted/40">
-                            {localCategories.size === 0 ? "showing all" : `${localCategories.size} selected`}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {NODE_CATEGORIES.map((cat) => {
-                            const active = localCategories.size === 0 || localCategories.has(cat.id);
-                            return (
-                              <button
-                                key={cat.id}
-                                onClick={() => toggleCategory(cat.id)}
-                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
-                                style={{
-                                  borderColor: localCategories.has(cat.id) ? "var(--accent-cyan)" : "var(--border)",
-                                  backgroundColor: localCategories.has(cat.id) ? "rgba(0,229,255,0.08)" : "transparent",
-                                  color: active ? "var(--foreground)" : "var(--text-muted)",
-                                  opacity: active ? 1 : 0.4,
-                                }}
-                              >
-                                {cat.icon} {cat.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Discovery Sources */}
-                      <div>
-                        <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/60 mb-1.5">
-                          DISCOVERY ENGINES
-                          <span className="ml-2 text-[7px] font-mono text-text-muted/40">
-                            {localSources.size === 0 ? "showing all" : `${localSources.size} selected`}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {DISCOVERY_SOURCES.map((src) => {
-                            const active = localSources.size === 0 || localSources.has(src.id);
-                            return (
-                              <button
-                                key={src.id}
-                                onClick={() => toggleSource(src.id)}
-                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
-                                style={{
-                                  borderColor: localSources.has(src.id) ? "var(--accent-cyan)" : "var(--border)",
-                                  backgroundColor: localSources.has(src.id) ? "rgba(0,229,255,0.08)" : "transparent",
-                                  color: active ? "var(--foreground)" : "var(--text-muted)",
-                                  opacity: active ? 1 : 0.4,
-                                }}
-                              >
-                                {src.label} <span className="text-text-muted/50">{src.desc}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {(localCategories.size > 0 || localSources.size > 0) && (
-                        <button
-                          onClick={() => { setLocalCategories(new Set()); setLocalSources(new Set()); }}
-                          className="text-[7px] font-mono text-accent-cyan/60 hover:text-accent-cyan transition-colors"
-                        >
-                          ✕ CLEAR ALL FILTERS
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
             {/* Footer */}

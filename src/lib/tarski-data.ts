@@ -522,7 +522,14 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
 
   // ── A-04: Chokepoint Throughput Ceiling ──
   // Strait of Hormuz nodes are chokepoints — flag all edges passing through them
-  // if their aggregate load exceeds reasonable bounds
+  // if their aggregate load exceeds reasonable bounds.
+  //
+  // When a chokepoint node carries `liveData` (set by feed hooks like
+  // useHormuzFeed), prefer the quantitative ratio value/capacity. Otherwise
+  // fall back to the structural edge-weight sum so demos with no feed
+  // attached still produce sensible flags.
+  const A04_LIVE_THRESHOLD = 0.9; // saturation ratio
+  const A04_STRUCT_THRESHOLD = 3.0; // edge-weight sum
   const chokepoints = graph.nodes.filter((n) =>
     n.label.toLowerCase().includes("strait of hormuz") ||
     n.label.toLowerCase().includes("chokepoint")
@@ -530,11 +537,27 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   if (isEnabled("A-04")) for (const cp of chokepoints) {
     const inEdges = inboundEdges.get(cp.id) || [];
     const outEdges = outboundEdges.get(cp.id) || [];
-    const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
-                      outEdges.reduce((s, e) => s + e.weight, 0);
-    if (totalFlow > 3.0) {
+
+    let violation = false;
+    let detail: string | undefined;
+    if (cp.liveData) {
+      const { value, capacity, unit, source } = cp.liveData;
+      const ratio = capacity > 0 ? value / capacity : 0;
+      if (ratio > A04_LIVE_THRESHOLD) {
+        violation = true;
+        detail = `${cp.label}: ${value.toFixed(2)}/${capacity.toFixed(2)} ${unit} = ${(ratio * 100).toFixed(1)}% — ${source}`;
+      }
+    } else {
+      const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
+                        outEdges.reduce((s, e) => s + e.weight, 0);
+      if (totalFlow > A04_STRUCT_THRESHOLD) {
+        violation = true;
+        detail = `${cp.label}: structural edge-weight sum ${totalFlow.toFixed(2)} > ${A04_STRUCT_THRESHOLD} (no live feed attached)`;
+      }
+    }
+
+    if (violation) {
       restrictedNodeIds.add(cp.id);
-      // Flag temporal edges through chokepoint as needing verification
       for (const e of [...inEdges, ...outEdges]) {
         if (e.type === "temporal" || e.type === "confounded") {
           inconsistentEdgeIds.add(e.id);
@@ -544,6 +567,7 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
             verdict: "FLAGGED",
             solverUsed: "Z3",
             checkTimeMs: Math.round(Math.random() * 12 + 6),
+            detail,
           });
         }
       }

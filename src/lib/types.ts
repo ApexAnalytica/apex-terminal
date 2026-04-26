@@ -110,6 +110,19 @@ export type NodeCategory =
 
 export type EdgeType = "directed" | "confounded" | "temporal";
 
+export interface LiveDataPoint {
+  /** observed quantity in the unit below (e.g. mb/d for Hormuz) */
+  value: number;
+  /** physical / regulatory ceiling against which value is compared */
+  capacity: number;
+  /** unit string for display ("mb/d", "%", "USD/bbl", ...) */
+  unit: string;
+  /** ISO-8601 timestamp when upstream feed reported this value */
+  observedAt: string;
+  /** human-readable provenance ("EIA v2 / Persian Gulf producers (mock)") */
+  source: string;
+}
+
 export interface CausalNode {
   id: string;
   label: string;
@@ -127,6 +140,8 @@ export interface CausalNode {
   isConsequence?: boolean; // spawned by link break tool
   consequenceOf?: string; // edge ID that spawned this node
   datasetColor?: string; // color from imported dataset
+  /** Live API-fed measurement, set by feed hooks; absence = no live source attached */
+  liveData?: LiveDataPoint;
 }
 
 export interface CausalEdge {
@@ -228,6 +243,8 @@ export interface ProofTrace {
   verdict: "REJECTED" | "FLAGGED" | "TIMEOUT";
   solverUsed: "Z3" | "cvc5";
   checkTimeMs: number;
+  /** Optional human-readable detail (e.g. "Hormuz: 18.4/21 mb/d = 87.6% — EIA") */
+  detail?: string;
 }
 
 // ─── Pearl Counterfactuals ──────────────────────────────────────

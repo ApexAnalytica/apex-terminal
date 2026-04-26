@@ -10,6 +10,7 @@ import {
   CausalGraph,
   EpochSnapshot,
   TimelineId,
+  LiveDataPoint,
 } from "@/lib/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
@@ -75,6 +76,9 @@ interface ApexState {
   enabledAxioms: Set<string>;
   setEnabledAxioms: (axioms: Set<string>) => void;
   runTarskiWithAxioms: () => void;
+  /** Apply a live-feed measurement to chokepoint nodes (label match);
+   *  reruns Tarski validation when truthFilter === "verified". */
+  applyHormuzLiveData: (point: LiveDataPoint) => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -309,6 +313,37 @@ export const useApexStore = create<ApexState>((set, get) => ({
       const report = runTarskiValidation(cleanGraph, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
       const flaggedGraph = applyTarskiFlags(cleanGraph, report);
       return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
+    }),
+  applyHormuzLiveData: (point) =>
+    set((s) => {
+      // Match the same label predicate A-04 uses so the live measurement lands
+      // on every chokepoint node A-04 already inspects.
+      const isChokepoint = (label: string) => {
+        const l = label.toLowerCase();
+        return l.includes("strait of hormuz") || l.includes("chokepoint");
+      };
+      let touched = false;
+      const nextNodes = s.graphData.nodes.map((n) => {
+        if (!isChokepoint(n.label)) return n;
+        const existing = n.liveData;
+        if (existing && existing.observedAt === point.observedAt && existing.value === point.value) {
+          return n; // identical reading — preserve reference for memo stability
+        }
+        touched = true;
+        return { ...n, liveData: point };
+      });
+      if (!touched) return s;
+      const nextGraph = { ...s.graphData, nodes: nextNodes };
+      if (s.truthFilter === "verified") {
+        const cleanGraph = clearTarskiFlags(nextGraph);
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { graphData: flaggedGraph, tarskiReport: report };
+      }
+      return { graphData: nextGraph };
     }),
   setTruthFilter: (f) =>
     set((s) => {

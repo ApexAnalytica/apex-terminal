@@ -46,10 +46,11 @@ The application expects the following variables. Every single one must be set in
 | `SUPABASE_SERVICE_ROLE_KEY` | ❌ | `src/app/api/feedback/route.ts` | Service-role key for the feedback writer. **Never** prefix with `NEXT_PUBLIC_` — service role bypasses RLS and must stay server-only. |
 | `GEMINI_API_KEY` | ❌ | `src/app/api/copilot/route.ts` (+ enrich/structure) | Google Gemini provider key. |
 | `ANTHROPIC_API_KEY` | ❌ | same | Anthropic provider key. Either provider can be the active one. |
+| `EIA_API_KEY` | ❌ | `src/app/api/feeds/eia/hormuz/route.ts` | US EIA v2 key for Persian Gulf crude production feed (Tarski A-04 chokepoint axiom). Optional: when unset, the route serves deterministic mock data tagged `(mock)` in its `source` field. Register at https://www.eia.gov/opendata/register.php. |
 
 ### 2.1 Local development
 
-`.env.local` at the repo root holds the same five variables for `npm run dev`. This file is gitignored. To bring a new engineer up, the platform team copies the current Production values via the Vercel dashboard and pastes them into `.env.local` on the new laptop.
+`.env.local` at the repo root holds the same variables for `npm run dev`. This file is gitignored. To bring a new engineer up, the platform team copies the current Production values via the Vercel dashboard and pastes them into `.env.local` on the new laptop. `EIA_API_KEY` is the only optional entry — the EIA-fed feeds fall back to mock data when it is unset.
 
 ### 2.2 Scoping rules
 

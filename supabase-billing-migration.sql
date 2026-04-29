@@ -41,9 +41,17 @@ alter table public.profiles
   add column if not exists current_period_start timestamptz,
   add column if not exists current_period_end   timestamptz,
   add column if not exists mercury_invoice_id   text,
-  add column if not exists seats                integer default 1
-    check (seats is null or seats >= 1),
+  add column if not exists seats                integer not null default 1,
   add column if not exists domain_access        text[];   -- NULL => use tier default
+
+-- 2a. Tighten `seats` constraints on already-applied databases.
+-- (No-op on a fresh apply; a re-run from v1 brings the column to spec.)
+update public.profiles set seats = 1 where seats is null;
+alter table public.profiles
+  alter column seats set default 1,
+  alter column seats set not null;
+alter table public.profiles drop constraint if exists profiles_seats_check;
+alter table public.profiles add constraint profiles_seats_check check (seats >= 1);
 
 -- 3. Backfill `tier` from legacy access_type ------------------
 update public.profiles
@@ -169,5 +177,27 @@ insert into public.tier_features (tier, domain_ids, description) values
   ('trusted',      '{}', 'Internal/comp accounts — all public domains'),
   ('expired',      '{}', 'No access — upgrade wall')
 on conflict (tier) do nothing;
+
+-- 9. Phase 3 cron helper: flip lapsed trials to 'expired'. -----
+-- Idempotent. Safe to invoke on a schedule. Returns the number of
+-- rows transitioned so cron logs are useful. Uses current_period_end
+-- as the source of truth (matches middleware's isExpired()), with a
+-- legacy fallback to trial_expires_at for any rows the backfill
+-- missed.
+create or replace function public.expire_trial_users()
+returns integer as $$
+declare
+  _count integer;
+begin
+  update public.profiles
+  set tier = 'expired'::public.tier,
+      subscription_status = 'none'
+  where tier = 'trial'::public.tier
+    and coalesce(current_period_end, trial_expires_at) is not null
+    and coalesce(current_period_end, trial_expires_at) <= now();
+  get diagnostics _count = row_count;
+  return _count;
+end;
+$$ language plpgsql security definer;
 
 commit;

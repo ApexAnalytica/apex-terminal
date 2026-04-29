@@ -386,11 +386,16 @@ function CausalDAG2DInner() {
     });
   }, [graphData, truthFilter, currentSnapshot, idHash]);
 
-  // Filter nodes for isolation mode
+  // Filter nodes for isolation mode + reflect store selection on each node.
+  // Controlling `selected` from the store (instead of letting React Flow
+  // manage it internally) keeps the marquee selection alive across the
+  // re-render that ISOLATE triggers — otherwise RF sometimes drops its
+  // internal selection state when we hand it a new nodes array.
   const visibleNodes = useMemo(() => {
-    if (!isolateSelection || multiSelectedNodes.length === 0) return nodes;
     const selSet = new Set(multiSelectedNodes);
-    return nodes.filter((n) => selSet.has(n.id));
+    const decorated = nodes.map((n) => ({ ...n, selected: selSet.has(n.id) }));
+    if (!isolateSelection || multiSelectedNodes.length === 0) return decorated;
+    return decorated.filter((n) => selSet.has(n.id));
   }, [nodes, isolateSelection, multiSelectedNodes]);
 
   const edges: Edge[] = useMemo(

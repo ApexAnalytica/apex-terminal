@@ -820,11 +820,17 @@ function ParetoPanel({
 
   // Mean omegaComposite trajectory across the scoped nodes, normalized 0–1.
   // Single source of truth shared with the bottom ΩF TIME SERIES cards.
+  //
+  // Histories are filtered to length ≥ 5 before the min-clip — a single node
+  // with one entry would otherwise collapse the trajectory to T=1 and starve
+  // every live estimator (CSD's AR(1) fit needs n≥5). 5 matches the smallest
+  // n at which any criticality model can produce a non-degenerate result.
   const scopedOmegaSeries = useMemo<number[]>(() => {
     if (!temporalData || scopedNodeIds.length === 0) return [];
+    const MIN_USEFUL_HISTORY = 5;
     const histories = scopedNodeIds
       .map((id) => temporalData.nodes.get(id)?.history ?? [])
-      .filter((h) => h.length > 0);
+      .filter((h) => h.length >= MIN_USEFUL_HISTORY);
     if (histories.length === 0) return [];
     const T = Math.min(...histories.map((h) => h.length));
     const series: number[] = [];

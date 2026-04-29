@@ -10,6 +10,8 @@ import {
   VX880_LITERATURE_ANCHORS,
   VX880_TRIAL_PRIOR_META,
   VX880_COVARIATE_MODIFIERS,
+  VX880_COVARIATE_BASELINE,
+  computeCovariateLogHR,
 } from "@/lib/vx880-trial-data";
 import { solveInterdiction } from "@/lib/interdiction-engine";
 import type { CausalShock } from "@/lib/types";
@@ -363,21 +365,15 @@ export default function VX880TrialPanel() {
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
 
   // Cox-covariate slider state (the do-operator surface). Each slider
-  // shifts the displayed HR multiplicatively via VX880_COVARIATE_MODIFIERS.
-  // Defaults match the trial-cohort baseline so HR equals exp(β) until
-  // the audience moves a knob.
-  const [covariates, setCovariates] = useState({
-    hlaMismatch: VX880_COVARIATE_MODIFIERS.hlaMismatch.baseline,
-    autoantibodyZ: VX880_COVARIATE_MODIFIERS.autoantibodyZ.baseline,
-    isIntensity: VX880_COVARIATE_MODIFIERS.isIntensity.baseline,
-  });
-  const resetCovariates = useCallback(() => {
-    setCovariates({
-      hlaMismatch: VX880_COVARIATE_MODIFIERS.hlaMismatch.baseline,
-      autoantibodyZ: VX880_COVARIATE_MODIFIERS.autoantibodyZ.baseline,
-      isIntensity: VX880_COVARIATE_MODIFIERS.isIntensity.baseline,
-    });
-  }, []);
+  // shifts both the displayed HR and the trialPrior.beta published to
+  // the MC engine via VX880_COVARIATE_MODIFIERS. Defaults match the
+  // trial-cohort baseline so HR equals exp(β) until the audience moves
+  // a knob.
+  const [covariates, setCovariates] = useState(VX880_COVARIATE_BASELINE);
+  const resetCovariates = useCallback(
+    () => setCovariates(VX880_COVARIATE_BASELINE),
+    [],
+  );
 
   // Only render when the VX-880 flagship subgraph is loaded.
   const hasVx880 = useMemo(
@@ -426,18 +422,21 @@ export default function VX880TrialPanel() {
     };
   }, [hasVx880]);
 
-  // Publish the fitted prior to the store so the MC engine can consume
-  // it. Republished on every analysis change; cleared when the VX-880
-  // subgraph is no longer loaded so other domains don't accidentally
-  // inherit a stale survival fan.
+  // Publish the fitted prior (adjusted by current covariate sliders) to
+  // the store so the MC engine can consume it. Republished on every
+  // analysis or covariate change so the displayed HR and the survival
+  // fan stay in lock-step when the audience drags a slider. Cleared
+  // when the VX-880 subgraph is no longer loaded so other domains don't
+  // accidentally inherit a stale survival fan.
   useEffect(() => {
     if (!analysis) {
       setTrialPrior(null);
       return;
     }
+    const covariateLogHR = computeCovariateLogHR(covariates);
     setTrialPrior({
       label: VX880_TRIAL_PRIOR_META.label,
-      beta: analysis.cox.beta[0],
+      beta: analysis.cox.beta[0] + covariateLogHR,
       se: analysis.cox.se[0],
       outcomeNodeId: VX880_TRIAL_PRIOR_META.outcomeNodeId,
       baselineHazardPerEpoch: VX880_TRIAL_PRIOR_META.baselineHazardPerEpoch,
@@ -449,7 +448,7 @@ export default function VX880TrialPanel() {
       // Clear when this panel unmounts or the analysis goes away.
       setTrialPrior(null);
     };
-  }, [analysis, setTrialPrior]);
+  }, [analysis, covariates, setTrialPrior]);
 
   // ── Counterfactual HR under the current interdiction ──
   // Maps the solver's reductionPct (fraction of cascade damage
@@ -476,10 +475,12 @@ export default function VX880TrialPanel() {
       }
     }
 
-    // Covariate adjustment (literature-anchored multiplicative modifiers).
-    // Sign: HLA mismatch ↑ and autoantibody titer ↑ shrink HR toward 1;
-    // tighter immunosuppression ↑ preserves HR. Δ values are 0 at baseline
-    // so this collapses to the trial-fit HR when the sliders are untouched.
+    // Covariate adjustment (illustrative multiplicative modifiers, see
+    // VX880_COVARIATE_MODIFIERS provenance note). Sign: HLA mismatch ↑
+    // and autoantibody titer ↑ shrink HR toward 1; tighter
+    // immunosuppression ↑ preserves HR. Δ values are 0 at baseline so
+    // this collapses to the trial-fit HR when sliders are untouched.
+    // Per-pillar Δs surfaced separately for the breakdown panel below.
     const cm = VX880_COVARIATE_MODIFIERS;
     const hlaDelta =
       -cm.hlaMismatch.deltaLogHR *
@@ -490,7 +491,7 @@ export default function VX880TrialPanel() {
     const isDelta =
       cm.isIntensity.deltaLogHR *
       (covariates.isIntensity - cm.isIntensity.baseline);
-    const covariateLogHR = hlaDelta + aabDelta + isDelta;
+    const covariateLogHR = computeCovariateLogHR(covariates);
 
     const effectiveBeta = analysis.cox.beta[0] * frac + covariateLogHR;
     const hr = Math.exp(effectiveBeta);
@@ -872,14 +873,18 @@ export default function VX880TrialPanel() {
             );
           },
         )}
+        <div className="text-[7px] font-mono text-accent-amber/70 leading-relaxed border border-accent-amber/20 bg-accent-amber/5 rounded px-1.5 py-1">
+          <strong>Illustrative scaffold — not citation-grade.</strong> The δ
+          values are order-of-magnitude estimates rounded for clean math,
+          anchored in the neighbourhood of the cited families but not
+          lifted from a specific table cell. Replace per-collaborator with
+          refit values from their cohort or table values from the cited
+          papers before using in a published model.
+        </div>
         <div className="text-[7px] font-mono text-text-muted leading-relaxed">
-          Multiplicative shifts on the trial-fit log-HR. Anchors:{" "}
-          <span className="text-text-muted/70">
-            HLA {VX880_COVARIATE_MODIFIERS.hlaMismatch.citation}; aAb{" "}
-            {VX880_COVARIATE_MODIFIERS.autoantibodyZ.citation}; IS{" "}
-            {VX880_COVARIATE_MODIFIERS.isIntensity.citation}
-          </span>
-          . Sliders compose with the interdiction fraction above.
+          Sliders compose multiplicatively with the interdiction fraction
+          above and propagate to the MC survival fan via trialPrior.β.
+          Hover any slider for its anchor citation.
         </div>
       </div>
 

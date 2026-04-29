@@ -365,6 +365,7 @@ export default function SpotlightTour() {
 
   const [cutout, setCutout] = useState<CutoutRect | null>(null);
   const [secondaryCutout, setSecondaryCutout] = useState<CutoutRect | null>(null);
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [showDomainHint, setShowDomainHint] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -391,6 +392,7 @@ export default function SpotlightTour() {
     };
     setCutout(measure(step?.targetSelector ?? null));
     setSecondaryCutout(measure(step?.secondaryTargetSelector));
+    setViewport({ w: window.innerWidth, h: window.innerHeight });
   }, [step]);
 
   const updatePositions = useCallback(() => {
@@ -557,38 +559,47 @@ export default function SpotlightTour() {
     tooltipHeightRef.current,
   );
 
+  // Build a single dim path: outer viewport rect plus a rounded-rect
+  // sub-path per cutout. With fill-rule="evenodd" each inner sub-path
+  // subtracts from the fill, regardless of winding — so the highlighted
+  // element renders at full brightness. No SVG mask, no browser ambiguity.
+  const dimPath = (() => {
+    const { w, h } = viewport;
+    if (!w || !h) return "";
+    let d = `M0 0 H${w} V${h} H0 Z`;
+    const addHole = (c: CutoutRect) => {
+      const r = Math.min(8, c.width / 2, c.height / 2);
+      const x2 = c.x + c.width;
+      const y2 = c.y + c.height;
+      // Standard CW rounded rect — evenodd subtracts it regardless.
+      d += ` M${c.x + r} ${c.y}`;
+      d += ` H${x2 - r}`;
+      d += ` A${r} ${r} 0 0 1 ${x2} ${c.y + r}`;
+      d += ` V${y2 - r}`;
+      d += ` A${r} ${r} 0 0 1 ${x2 - r} ${y2}`;
+      d += ` H${c.x + r}`;
+      d += ` A${r} ${r} 0 0 1 ${c.x} ${y2 - r}`;
+      d += ` V${c.y + r}`;
+      d += ` A${r} ${r} 0 0 1 ${c.x + r} ${c.y}`;
+      d += ` Z`;
+    };
+    if (cutout) addHole(cutout);
+    if (secondaryCutout) addHole(secondaryCutout);
+    return d;
+  })();
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "none" }}>
-        {/* Dim + borders + arrows via a single SVG. Mask-based dim supports
-            multiple cutouts (e.g. module-tabs + module-panel). SVG is
+        {/* Dim + borders + arrows via a single SVG. The dim is one
+            evenodd-filled path with the viewport as the outer ring and each
+            cutout as a hole — supports any number of cutouts and is
+            unambiguous across browsers (the prior SVG mask had inconsistent
+            behavior in some engines, leaving the cutout looking dim). SVG is
             pointer-events-none so clicks pass through; the tour only closes
             via SKIP TOUR / Esc / finishing. */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
-            <mask id="spotlight-mask" maskUnits="userSpaceOnUse">
-              <rect x="0" y="0" width="100%" height="100%" fill="white" />
-              {cutout && (
-                <rect
-                  x={cutout.x}
-                  y={cutout.y}
-                  width={cutout.width}
-                  height={cutout.height}
-                  rx={8}
-                  fill="black"
-                />
-              )}
-              {secondaryCutout && (
-                <rect
-                  x={secondaryCutout.x}
-                  y={secondaryCutout.y}
-                  width={secondaryCutout.width}
-                  height={secondaryCutout.height}
-                  rx={8}
-                  fill="black"
-                />
-              )}
-            </mask>
             <marker
               id="spotlight-arrowhead"
               viewBox="0 0 10 10"
@@ -601,14 +612,13 @@ export default function SpotlightTour() {
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-cyan, #00e5ff)" />
             </marker>
           </defs>
-          <rect
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            fill="rgba(0, 0, 0, 0.78)"
-            mask="url(#spotlight-mask)"
-          />
+          {dimPath && (
+            <path
+              d={dimPath}
+              fillRule="evenodd"
+              fill="rgba(0, 0, 0, 0.78)"
+            />
+          )}
           {/* Primary border */}
           {cutout && (
             <motion.rect

@@ -132,7 +132,16 @@ export function solveInterdiction(
   // dominated by downstream propagation rather than the invariant
   // source state. Mirrors the same shock→node mapping the simulator
   // uses, so no chance of drift.
-  const shockSourceIds = new Set(mapShocksToNodes(graph, shocks).keys());
+  //
+  // Edge case: if the shock saturates the entire graph (every node is
+  // a source — happens on tightly-scoped subgraphs like VX-880 where
+  // the whole graph is one category and the shock category broadcasts
+  // to it), excluding everyone zeros the score. Fall back to scoring
+  // all nodes in that case so baseline damage is still meaningful.
+  const allSourceIds = new Set(mapShocksToNodes(graph, shocks).keys());
+  const shockSourceIds = allSourceIds.size < graph.nodes.length
+    ? allSourceIds
+    : new Set<string>();
 
   // Baseline: no interventions
   const baselineEpochs = simulateCascade(graph, shocks, severedEdges);

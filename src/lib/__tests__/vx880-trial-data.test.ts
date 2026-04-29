@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   getNaturalHistoryCpeptideCohort,
   getInsulinIndependenceTte,
+  computeCovariateLogHR,
+  VX880_COVARIATE_BASELINE,
+  VX880_COVARIATE_MODIFIERS,
 } from "../vx880-trial-data";
 import { nlmeFit } from "../estimators/nlme";
 import { coxFit } from "../estimators/cox";
@@ -61,5 +64,64 @@ describe("VX-880 trial cohort data", () => {
     const control = subjects.filter((s) => s.treatment === 0).length;
     expect(treated).toBe(12);
     expect(control).toBe(12);
+  });
+});
+
+describe("VX-880 covariate-slider math", () => {
+  it("returns 0 at baseline (no shift to displayed HR)", () => {
+    expect(computeCovariateLogHR(VX880_COVARIATE_BASELINE)).toBe(0);
+  });
+
+  it("more HLA mismatches shrink HR (negative log-HR)", () => {
+    // baseline=3, max=6 → +3 mismatches above baseline.
+    // expected delta = -0.26 * 3 = -0.78 → HR multiplier exp(-0.78) ≈ 0.46
+    const delta = computeCovariateLogHR({
+      ...VX880_COVARIATE_BASELINE,
+      hlaMismatch: 6,
+    });
+    expect(delta).toBeCloseTo(-0.26 * 3, 6);
+    expect(Math.exp(delta)).toBeGreaterThan(0.4);
+    expect(Math.exp(delta)).toBeLessThan(0.5);
+  });
+
+  it("higher autoantibody titer shrinks HR (negative log-HR)", () => {
+    // +2σ above baseline. expected delta = -0.35 * 2 = -0.70.
+    const delta = computeCovariateLogHR({
+      ...VX880_COVARIATE_BASELINE,
+      autoantibodyZ: 2,
+    });
+    expect(delta).toBeCloseTo(-0.35 * 2, 6);
+    expect(delta).toBeLessThan(0);
+  });
+
+  it("more aggressive immunosuppression preserves HR (positive log-HR)", () => {
+    // baseline=1, +1 step → expected +0.69.
+    const delta = computeCovariateLogHR({
+      ...VX880_COVARIATE_BASELINE,
+      isIntensity: 2,
+    });
+    expect(delta).toBeCloseTo(0.69, 6);
+    expect(delta).toBeGreaterThan(0);
+  });
+
+  it("composes additively across the three covariates", () => {
+    // hla=4 (+1), aab=+1, is=2 (+1)
+    const delta = computeCovariateLogHR({
+      hlaMismatch: 4,
+      autoantibodyZ: 1,
+      isIntensity: 2,
+    });
+    const expected = -0.26 * 1 + -0.35 * 1 + 0.69 * 1;
+    expect(delta).toBeCloseTo(expected, 6);
+  });
+
+  it("all modifiers are flagged as illustrative (not citation-grade)", () => {
+    // Honest provenance is a load-bearing piece of the panel — guard
+    // against accidentally upgrading the label without backing data.
+    for (const key of Object.keys(VX880_COVARIATE_MODIFIERS) as Array<
+      keyof typeof VX880_COVARIATE_MODIFIERS
+    >) {
+      expect(VX880_COVARIATE_MODIFIERS[key].provenance).toBe("illustrative");
+    }
   });
 });

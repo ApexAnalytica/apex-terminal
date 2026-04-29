@@ -2762,6 +2762,35 @@ const EDGES: CausalEdge[] = [
   { id: "mi_capacity_utilization__ip_ppi_all_commodities", source: "mi_capacity_utilization", target: "ip_ppi_all_commodities", weight: 0.5, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Capacity utilization above ~80% signals supply bottlenecks and pricing power; producers raise commodity prices as slack evaporates." },
   { id: "ip_fed_funds_effective__mi_mortgage_rate_30y", source: "ip_fed_funds_effective", target: "mi_mortgage_rate_30y", weight: 0.65, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Fed funds rate anchors the short end of the yield curve; mortgage rates track the 10Y Treasury which responds to Fed policy path expectations." },
   { id: "mi_case_shiller_hpi__ip_cpi_oer", source: "mi_case_shiller_hpi", target: "ip_cpi_oer", weight: 0.55, lag: 6, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Home price appreciation feeds into OER with 12-18 month lag as new leases gradually roll into the BLS rental sample." },
+
+  // ─── Physical → Inflation pass-through (audit-driven cross-domain) ─
+  // Closes the loop so physical shocks (Hormuz, Red Sea, fertilizer outages,
+  // China demand) can propagate into US CPI/PPI. Prior to this block the
+  // macro domains only emitted signal; nothing inbound from energy/supply
+  // chain/sovereign reached the inflation print.
+
+  // ── P1: Energy → Inflation ──
+  { id: "sa_ras_tanura_terminal__ip_cpi_energy", source: "sa_ras_tanura_terminal", target: "ip_cpi_energy", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ras Tanura handles ~6.5 Mbbl/d of Saudi crude exports — terminal disruption tightens global crude supply and transmits to retail gasoline prices within weeks." },
+  { id: "sa_abqaiq_plants__ip_cpi_energy", source: "sa_abqaiq_plants", target: "ip_cpi_energy", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d; the 2019 drone attack spiked Brent ~20% intraday — processing-chokepoint events flow through to US CPI energy." },
+  { id: "qf_strait_of_hormuz__ip_cpi_energy", source: "qf_strait_of_hormuz", target: "ip_cpi_energy", weight: 0.65, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Hormuz transit risk (insurance, partial closure) sets the geopolitical risk premium in oil prices that feeds directly into CPI energy." },
+  { id: "qe_north_field_gas_field__ip_cpi_energy", source: "qe_north_field_gas_field", target: "ip_cpi_energy", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "North Field LNG supply disruption tightens global gas markets — transmits to US natural gas / piped utility component of CPI energy via spot price linkage." },
+  { id: "qe_ras_laffan_port__ip_ppi_energy", source: "qe_ras_laffan_port", target: "ip_ppi_energy", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Ras Laffan loads ~77 MTPA LNG; export disruption raises global gas spot benchmarks that feed producer energy costs." },
+
+  // ── P2: Food/Fertilizer → Inflation ──
+  { id: "qf_global_food_prices__ip_cpi_food", source: "qf_global_food_prices", target: "ip_cpi_food", weight: 0.55, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Nitrogen fertilizer price spikes raise global crop input costs; transmits to US CPI food via grain/protein channels with one-quarter lag." },
+  { id: "mn_global_food_price_stress__ip_cpi_food", source: "mn_global_food_price_stress", target: "ip_cpi_food", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Phosphate-driven food price stress propagates into US CPI food through global grain and animal-feed price linkages." },
+  { id: "sc_food_price_inflation__ip_cpi_food", source: "sc_food_price_inflation", target: "ip_cpi_food", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "MENA food price inflation tracks the same global wheat/oilseed cycle that drives US CPI food at home — shared upstream commodity exposure." },
+  { id: "sc_fertilizer_price_index__ip_ppi_all_commodities", source: "sc_fertilizer_price_index", target: "ip_ppi_all_commodities", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Fertilizer is a key agricultural input commodity; price spikes raise the all-commodities PPI index through farm-gate cost transmission." },
+
+  // ── P3: Supply Chain → Goods inflation ──
+  { id: "sc_shipping_cost_index__ip_ppi_all_commodities", source: "sc_shipping_cost_index", target: "ip_ppi_all_commodities", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Container freight costs are a direct input to imported intermediate-goods prices; 2024 Red Sea disruption tripled rates and fed straight into commodities PPI." },
+  { id: "sc_shipping_cost_index__ip_cpi_goods", source: "sc_shipping_cost_index", target: "ip_cpi_goods", weight: 0.55, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Sustained shipping cost increases pass through to retail durables/non-durables with 1-2 quarter lag as importers exhaust pre-priced inventory." },
+  { id: "ic_red_sea_exposure__ip_cpi_goods", source: "ic_red_sea_exposure", target: "ip_cpi_goods", weight: 0.4, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat vector affects both maritime cargo and submarine cables — shared chokepoint stress raises imported-goods costs via shipping reroute." },
+
+  // ── P4: Sovereign → US Macro feedback ──
+  { id: "sr_china_gdp__mi_ism_manufacturing", source: "sr_china_gdp", target: "mi_ism_manufacturing", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "China is the marginal demand setter for global manufacturing; Chinese GDP slowdown reduces US exporter orders and depresses ISM manufacturing PMI." },
+  { id: "sr_china_gdp__mi_industrial_production", source: "sr_china_gdp", target: "mi_industrial_production", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Chinese demand contraction propagates to US industrial production via reduced export volumes and supply-chain feedback through multinational manufacturing networks." },
+  { id: "sr_china_gdp__ip_ppi_all_commodities", source: "sr_china_gdp", target: "ip_ppi_all_commodities", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "China is the largest marginal buyer of global commodities; GDP swings drive copper, steel, and crude prices that anchor the US all-commodities PPI." },
 ];
 
 const METADATA: GraphMetadata = {

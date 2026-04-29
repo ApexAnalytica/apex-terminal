@@ -287,6 +287,7 @@ const PROFILES_BY_DOMAIN_ID: Record<string, DomainProfile> = {
   "frontier-science": GEOPOLITICAL_PROFILE,
   // Life sciences
   "t1d-beta-cell": T1D_PROFILE,
+  "t1d-vx880": T1D_PROFILE,
 };
 
 export function resolveDomainProfile(

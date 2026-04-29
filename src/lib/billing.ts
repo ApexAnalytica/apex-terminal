@@ -75,3 +75,24 @@ export function isExpired(
   if (profile.tier === "trial") return true;
   return false;
 }
+
+// Resolve a user's effective set of accessible domain IDs.
+// Per-profile `domain_access` is the override; otherwise fall back
+// to the tier's default in `tier_features`. Expired users always
+// have empty access (caller should short-circuit before calling
+// this, but we defend in depth).
+export function effectiveDomainAccess(
+  profile: Pick<BillingProfile, "tier" | "domain_access">,
+  tierFeatures: Map<Tier, string[]> | Record<Tier, string[] | undefined>
+): string[] {
+  if (profile.tier === "expired") return [];
+  if (profile.domain_access != null) return profile.domain_access;
+  if (tierFeatures instanceof Map) {
+    return tierFeatures.get(profile.tier) ?? [];
+  }
+  return tierFeatures[profile.tier] ?? [];
+}
+
+export function canAccessDomain(domains: string[], domainId: string): boolean {
+  return domains.includes(domainId);
+}

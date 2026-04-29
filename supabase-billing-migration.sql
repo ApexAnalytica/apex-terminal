@@ -178,6 +178,29 @@ insert into public.tier_features (tier, domain_ids, description) values
   ('expired',      '{}', 'No access — upgrade wall')
 on conflict (tier) do nothing;
 
+-- 8a. Phase 2 seed: populate tier_features.domain_ids with the
+-- current public domain set. Only updates rows still at the empty
+-- default ('{}') so admin overrides are preserved on re-run. The
+-- canonical list lives in src/components/DomainSelector.tsx —
+-- update both when a new public domain ships.
+update public.tier_features
+set domain_ids = array[
+      'energy-systems',
+      'manufacturing',
+      'supply-chain',
+      'financial-contagion',
+      'sovereign-risk',
+      'infrastructure',
+      'defense-isr',
+      'macro-labor',
+      'macro-inflation',
+      't1d-beta-cell',
+      't1d-vx880'
+    ],
+    updated_at = now()
+where tier in ('trial','multi_domain','enterprise','trusted')
+  and (domain_ids = '{}' or domain_ids is null);
+
 -- 9. Phase 3 cron helper: flip lapsed trials to 'expired'. -----
 -- Idempotent. Safe to invoke on a schedule. Returns the number of
 -- rows transitioned so cron logs are useful. Uses current_period_end

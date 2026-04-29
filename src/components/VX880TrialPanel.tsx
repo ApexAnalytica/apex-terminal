@@ -201,6 +201,155 @@ function CpeptideChart({
 
 // ─── Main panel ──────────────────────────────────────────────────────
 
+// ─── Trial-design presets ────────────────────────────────────────────
+//
+// Each preset is one "trial-design question" — a short label, a one-line
+// rationale, and the set of co-firing shocks to inject at trial-mechanism
+// nodes before running the interdiction solver. Adding a preset is a
+// single object; the UI auto-renders the chip strip below.
+//
+// All shocks use `targetNodes` to scope injection — the category broadcast
+// would saturate every science-category node and collapse the solver's
+// marginal-reduction signal (see PR #108).
+type VX880Preset = {
+  id: string;
+  label: string;
+  rationale: string;
+  shocks: CausalShock[];
+};
+
+const VX880_PRESETS: VX880Preset[] = [
+  {
+    id: "graft_protect",
+    label: "PROTECT GRAFT β-MASS",
+    rationale:
+      "Combined graft-attack: IBMIR + autoimmune recurrence + alloimmune rejection. Solver finds the 3 best edge cuts to absorb the assault.",
+    shocks: [
+      {
+        id: "vx880_preset_ibmir",
+        name: "IBMIR peri-infusion strike",
+        severity: 0.85,
+        category: "health",
+        description:
+          "Instant blood-mediated inflammatory reaction destroys a fraction of infused islets within hours.",
+        targetNodes: ["vx880_ibmir"],
+      },
+      {
+        id: "vx880_preset_autoimmune",
+        name: "Autoimmune recurrence",
+        severity: 0.7,
+        category: "health",
+        description:
+          "Memory T-cell reactivation against islet antigens; documented in 20-40% of recipients over 5yr.",
+        targetNodes: ["vx880_autoimmune_recur"],
+      },
+      {
+        id: "vx880_preset_alloimmune",
+        name: "Alloimmune rejection",
+        severity: 0.7,
+        category: "health",
+        description:
+          "Donor-cell-line HLA mismatch drives graft loss, accelerated by inadequate immunosuppression.",
+        targetNodes: ["vx880_alloimmune_reject"],
+      },
+    ],
+  },
+  {
+    id: "ibmir_only",
+    label: "PREVENT IBMIR ONLY",
+    rationale:
+      "Single peri-infusion shock at the IBMIR node — isolates which upstream cuts buy the most graft survival in the first 72h.",
+    shocks: [
+      {
+        id: "vx880_preset_ibmir_solo",
+        name: "IBMIR peri-infusion strike (solo)",
+        severity: 0.9,
+        category: "health",
+        description:
+          "Instant blood-mediated inflammatory reaction in isolation — no chronic immune component.",
+        targetNodes: ["vx880_ibmir"],
+      },
+    ],
+  },
+  {
+    id: "immunosuppression_optimize",
+    label: "OPTIMIZE IMMUNOSUPPRESSION",
+    rationale:
+      "Pairs alloimmune rejection pressure with IS-toxicity load — surfaces cuts that decouple graft survival from chronic IS exposure.",
+    shocks: [
+      {
+        id: "vx880_preset_allo_chronic",
+        name: "Chronic alloimmune attrition",
+        severity: 0.65,
+        category: "health",
+        description:
+          "Sub-clinical donor-HLA recognition under standard tac+MMF—slow graft attrition over 5yr.",
+        targetNodes: ["vx880_alloimmune_reject"],
+      },
+      {
+        id: "vx880_preset_is_toxicity",
+        name: "Immunosuppression toxicity load",
+        severity: 0.6,
+        category: "health",
+        description:
+          "Tac/MMF nephrotoxicity + opportunistic infection burden — the cost of preventing rejection.",
+        targetNodes: ["vx880_is_toxicity"],
+      },
+    ],
+  },
+  {
+    id: "hla_mismatch",
+    label: "REDUCE HLA MISMATCH",
+    rationale:
+      "Upstream HLA-risk shock cascades into both autoimmune recurrence and allo rejection — tests whether donor-matching policy beats downstream cuts.",
+    shocks: [
+      {
+        id: "vx880_preset_hla",
+        name: "HLA mismatch burden",
+        severity: 0.75,
+        category: "health",
+        description:
+          "High DR/DQ mismatch between donor cell line and recipient — elevates both autoimmune and allo arms.",
+        targetNodes: ["vx880_hla_risk"],
+      },
+      {
+        id: "vx880_preset_aab",
+        name: "Autoantibody load",
+        severity: 0.55,
+        category: "health",
+        description:
+          "Pre-existing GAD/IA-2/ZnT8 titers prime memory T-cell expansion against the graft.",
+        targetNodes: ["vx880_autoantibody_load"],
+      },
+    ],
+  },
+];
+
+// ─── Counterfactual node-ablation toggles ────────────────────────────
+//
+// Lets the user knock out individual mechanism nodes independently of the
+// preset. Toggling re-routes through the existing ablation pipeline so the
+// MC fan + counterfactual HR react in place. Order matches the demo flow:
+// peri-infusion → chronic immune → IS overhead.
+const VX880_MECHANISM_NODES: { id: string; label: string; hint: string }[] = [
+  { id: "vx880_ibmir", label: "IBMIR", hint: "peri-infusion (hours)" },
+  {
+    id: "vx880_autoimmune_recur",
+    label: "AUTOIMMUNE RECUR.",
+    hint: "memory T-cell (years)",
+  },
+  {
+    id: "vx880_alloimmune_reject",
+    label: "ALLO REJECTION",
+    hint: "HLA-driven (chronic)",
+  },
+  {
+    id: "vx880_is_toxicity",
+    label: "IS TOXICITY",
+    hint: "tac/MMF burden",
+  },
+];
+
 export default function VX880TrialPanel() {
   const graphData = useApexStore((s) => s.graphData);
   const severedEdges = useApexStore((s) => s.severedEdges);
@@ -209,6 +358,8 @@ export default function VX880TrialPanel() {
     (s) => s.setLastInterdictionResult,
   );
   const lastInterdictionResult = useApexStore((s) => s.lastInterdictionResult);
+  const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
 
   // Only render when the VX-880 flagship subgraph is loaded.
   const hasVx880 = useMemo(
@@ -305,58 +456,28 @@ export default function VX880TrialPanel() {
     };
   }, [analysis, lastInterdictionResult]);
 
-  // ── "Protect graft β-mass" preset chip ──
-  // One-click demo path that (i) seeds a combined graft-attack shock
-  // on the VX-880 subgraph, (ii) runs the edge-cut interdiction solver
-  // against it, and (iii) publishes the result to the store so the MC
-  // fan chart and the counterfactual HR block above both update.
-  const runGraftProtectPreset = useCallback(() => {
-    if (!hasVx880) return;
-    // Inject three co-firing shocks at the canonical graft-attack entry
-    // points (IBMIR, autoimmune recurrence, alloimmune rejection) instead
-    // of broadcasting a category-level health shock across every science
-    // node. The tight target list keeps the baseline cascade asymmetric
-    // enough for the solver's marginal-reduction step to discriminate
-    // cuts — otherwise every edge looks equally good and the solver bails
-    // with "no candidate cuts".
-    const shocks: CausalShock[] = [
-      {
-        id: "vx880_preset_ibmir",
-        name: "IBMIR peri-infusion strike",
-        severity: 0.85,
-        category: "health",
-        description:
-          "Instant blood-mediated inflammatory reaction destroys a fraction of infused islets within hours.",
-        targetNodes: ["vx880_ibmir"],
-      },
-      {
-        id: "vx880_preset_autoimmune",
-        name: "Autoimmune recurrence",
-        severity: 0.7,
-        category: "health",
-        description:
-          "Memory T-cell reactivation against islet antigens; documented in 20-40% of recipients over 5yr.",
-        targetNodes: ["vx880_autoimmune_recur"],
-      },
-      {
-        id: "vx880_preset_alloimmune",
-        name: "Alloimmune rejection",
-        severity: 0.7,
-        category: "health",
-        description:
-          "Donor-cell-line HLA mismatch drives graft loss, accelerated by inadequate immunosuppression.",
-        targetNodes: ["vx880_alloimmune_reject"],
-      },
-    ];
-    const result = solveInterdiction(
-      graphData,
-      shocks,
-      severedEdges,
-      3,
-      "edge",
-    );
-    setLastInterdictionResult(result);
-  }, [hasVx880, graphData, severedEdges, setLastInterdictionResult]);
+  // ── Trial-design preset runner ──
+  // Each preset (defined in VX880_PRESETS above) seeds its own targeted
+  // shock set on the VX-880 subgraph, runs the edge-cut interdiction
+  // solver against it, and publishes the result to the store so the MC
+  // fan chart and the counterfactual HR block both update in place.
+  // Targeted shocks (`targetNodes`) are required — see PR #108: a category
+  // broadcast across science-category nodes saturates the cascade and
+  // collapses the solver's marginal-reduction step to "no candidate cuts".
+  const runPreset = useCallback(
+    (preset: VX880Preset) => {
+      if (!hasVx880) return;
+      const result = solveInterdiction(
+        graphData,
+        preset.shocks,
+        severedEdges,
+        3,
+        "edge",
+      );
+      setLastInterdictionResult(result);
+    },
+    [hasVx880, graphData, severedEdges, setLastInterdictionResult],
+  );
 
   if (!hasVx880 || !analysis) return null;
 
@@ -516,19 +637,73 @@ export default function VX880TrialPanel() {
       </div>
 
       {/* ── Preset demo path ─────────────────────────────────────── */}
-      <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-        <button
-          type="button"
-          onClick={runGraftProtectPreset}
-          className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan border border-accent-cyan/40 bg-accent-cyan/5 hover:bg-accent-cyan/15 hover:border-accent-cyan/70 rounded px-2 py-1 transition-colors"
-        >
-          {"\u25B6"} PROTECT GRAFT {"\u03B2"}-MASS
-        </button>
-        <span className="text-[7px] font-mono text-text-muted leading-tight">
-          Seeds a combined graft-attack shock (IBMIR + autoimmune recurrence
-          + alloimmune rejection) and runs 3-cut edge interdiction — the MC
-          forecast below and the counterfactual HR above update in place.
-        </span>
+      <div className="pt-1 border-t border-border/30 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
+            TRIAL-DESIGN PRESETS
+          </span>
+          <span className="text-[7px] font-mono text-text-muted">
+            click to run 3-cut interdiction
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {VX880_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => runPreset(preset)}
+              title={preset.rationale}
+              className="text-left text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan border border-accent-cyan/40 bg-accent-cyan/5 hover:bg-accent-cyan/15 hover:border-accent-cyan/70 rounded px-2 py-1 transition-colors leading-tight"
+            >
+              {"\u25B6"} {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Counterfactual mechanism ablation toggles */}
+      <div className="pt-1 border-t border-border/30 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
+            ABLATE MECHANISM (do-operator)
+          </span>
+          <span className="text-[7px] font-mono text-text-muted">
+            MC fan + HR react in place
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {VX880_MECHANISM_NODES.map((node) => {
+            const isAblated = ablatedNodeIds.includes(node.id);
+            const exists = graphData.nodes.some((n) => n.id === node.id);
+            if (!exists) return null;
+            return (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => toggleAblatedNode(node.id)}
+                className={`text-left text-[8px] font-mono rounded px-2 py-1 border transition-colors leading-tight ${
+                  isAblated
+                    ? "text-accent-green border-accent-green/60 bg-accent-green/10"
+                    : "text-text-muted border-border bg-surface-elevated hover:border-foreground/40 hover:text-foreground"
+                }`}
+              >
+                <span className="inline-block w-3 mr-1">
+                  {isAblated ? "■" : "□"}
+                </span>
+                {node.label}
+                <span className="block text-[7px] text-text-muted/80 ml-4 leading-tight">
+                  {node.hint}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+          Ablating a node removes it (and its incident edges) from the
+          forward simulation — equivalent to a do-operator on that node.
+          Toggle individually to isolate which mechanism dominates the
+          counterfactual HR drop.
+        </div>
       </div>
 
       {/* ── Bridge to the MC forecast below ─────────────────────── */}

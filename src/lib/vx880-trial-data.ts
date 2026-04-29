@@ -181,3 +181,70 @@ export const VX880_LITERATURE_ANCHORS = {
   naturalHistoryInsulinIndepRate:
     "≈ 0% — spontaneous reversal is not part of T1D natural history",
 };
+
+// ─── Cox covariate modifiers (for the do-operator slider surface) ───
+//
+// The fitted Cox β captures "VX-880 vs natural history" averaged over
+// the trial's typical patient/protocol covariates. The slider surface
+// in VX880TrialPanel asks the do-operator question: how does the
+// observed treatment HR shift if the audience changes one of those
+// covariates? We compose multiplicatively on the fitted log-HR:
+//
+//   log_HR = β_treat · interdictionFrac
+//          - δ_hla · (hlaMismatch − hlaBaseline)
+//          - δ_aab · (aabZ        − aabBaseline)
+//          + δ_is  · (isIntensity − isBaseline)
+//
+// Sign convention: HLA mismatch ↑ and autoantibody titer ↑ both attack
+// the graft → HR shrinks toward 1. Tighter immunosuppression → preserves
+// graft β-mass → HR stays closer to the trial-fit value.
+//
+// δ values are literature-anchored, not refit. The trial cohort is too
+// small (n=24, single-covariate model) to identify these in a partial-
+// likelihood refit honestly; using published HR multipliers and citing
+// them in the UI tooltip is the more credible path.
+export const VX880_COVARIATE_MODIFIERS = {
+  hlaMismatch: {
+    label: "HLA mismatch",
+    short: "DR/DQ allele mismatches between donor cell line and recipient",
+    unit: "mismatches",
+    min: 0,
+    max: 6,
+    step: 1,
+    baseline: 3,
+    // Per-mismatch log-HR for graft-loss-driven loss of treatment effect.
+    // Anchor: ~1.3× HR per DR/DQ mismatch in solid-organ allograft loss
+    // registries (Lefaucheur AJT 2018; Wiebe Transplantation 2017).
+    deltaLogHR: 0.26,
+    citation: "Lefaucheur AJT 2018; Wiebe Transplantation 2017 (~1.3× per mismatch)",
+  },
+  autoantibodyZ: {
+    label: "Autoantibody titer",
+    short: "GAD/IA-2/ZnT8 titer relative to trial baseline (z-score)",
+    unit: "σ from baseline",
+    min: -2,
+    max: 3,
+    step: 0.5,
+    baseline: 0,
+    // Per-σ log-HR for autoimmune-recurrence-driven loss of treatment effect.
+    // Anchor: ~2× recurrence rate at high titer (Vendrame Diabetes Care
+    // 2010; Burke Diabetologia 2017) over a 2σ shift.
+    deltaLogHR: 0.35,
+    citation: "Vendrame Diabetes Care 2010; Burke Diabetologia 2017 (~2× at +2σ)",
+  },
+  isIntensity: {
+    label: "Immunosuppression intensity",
+    short: "0 = sub-therapeutic / lapse · 1 = standard tac+MMF · 2 = aggressive ATG induction",
+    unit: "regimen tier",
+    min: 0,
+    max: 2,
+    step: 1,
+    baseline: 1,
+    // Per-tier log-HR for IS-driven preservation of treatment effect.
+    // Anchor: ~halving of graft-loss hazard per induction step (CIBMTR
+    // registry analyses of ATG vs no-induction in haematopoietic and
+    // pancreatic islet transplants).
+    deltaLogHR: 0.69,
+    citation: "CIBMTR registry / Hering Diabetes Care 2016 (~0.5× per induction step)",
+  },
+} as const;

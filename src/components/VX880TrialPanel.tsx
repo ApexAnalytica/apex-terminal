@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { nlmeFit } from "@/lib/estimators/nlme";
 import { coxFit } from "@/lib/estimators/cox";
@@ -9,6 +9,7 @@ import {
   getInsulinIndependenceTte,
   VX880_LITERATURE_ANCHORS,
   VX880_TRIAL_PRIOR_META,
+  VX880_COVARIATE_MODIFIERS,
 } from "@/lib/vx880-trial-data";
 import { solveInterdiction } from "@/lib/interdiction-engine";
 import type { CausalShock } from "@/lib/types";
@@ -361,6 +362,23 @@ export default function VX880TrialPanel() {
   const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
 
+  // Cox-covariate slider state (the do-operator surface). Each slider
+  // shifts the displayed HR multiplicatively via VX880_COVARIATE_MODIFIERS.
+  // Defaults match the trial-cohort baseline so HR equals exp(β) until
+  // the audience moves a knob.
+  const [covariates, setCovariates] = useState({
+    hlaMismatch: VX880_COVARIATE_MODIFIERS.hlaMismatch.baseline,
+    autoantibodyZ: VX880_COVARIATE_MODIFIERS.autoantibodyZ.baseline,
+    isIntensity: VX880_COVARIATE_MODIFIERS.isIntensity.baseline,
+  });
+  const resetCovariates = useCallback(() => {
+    setCovariates({
+      hlaMismatch: VX880_COVARIATE_MODIFIERS.hlaMismatch.baseline,
+      autoantibodyZ: VX880_COVARIATE_MODIFIERS.autoantibodyZ.baseline,
+      isIntensity: VX880_COVARIATE_MODIFIERS.isIntensity.baseline,
+    });
+  }, []);
+
   // Only render when the VX-880 flagship subgraph is loaded.
   const hasVx880 = useMemo(
     () => graphData.nodes.some((n) => n.id.startsWith("vx880_")),
@@ -441,20 +459,60 @@ export default function VX880TrialPanel() {
   // reductionPct = 0%  (no protection)      → HR collapses toward 1.
   const counterfactualHR = useMemo(() => {
     if (!analysis) return null;
-    if (!lastInterdictionResult) return null;
-    const { reductionPct, bestDamage, baselineDamage } = lastInterdictionResult;
-    if (baselineDamage <= 0 || !Number.isFinite(reductionPct)) return null;
-    const frac = Math.max(0, Math.min(1, reductionPct / 100));
-    const effectiveBeta = analysis.cox.beta[0] * frac;
+
+    // Interdiction fraction: solver-reported reduction in cascade damage.
+    // null result → no interdiction yet → full β preserved (frac=1).
+    let frac = 1;
+    let reductionPct: number | null = null;
+    let bestDamage: number | null = null;
+    let baselineDamage: number | null = null;
+    if (lastInterdictionResult) {
+      const r = lastInterdictionResult;
+      if (r.baselineDamage > 0 && Number.isFinite(r.reductionPct)) {
+        frac = Math.max(0, Math.min(1, r.reductionPct / 100));
+        reductionPct = r.reductionPct;
+        bestDamage = r.bestDamage;
+        baselineDamage = r.baselineDamage;
+      }
+    }
+
+    // Covariate adjustment (literature-anchored multiplicative modifiers).
+    // Sign: HLA mismatch ↑ and autoantibody titer ↑ shrink HR toward 1;
+    // tighter immunosuppression ↑ preserves HR. Δ values are 0 at baseline
+    // so this collapses to the trial-fit HR when the sliders are untouched.
+    const cm = VX880_COVARIATE_MODIFIERS;
+    const hlaDelta =
+      -cm.hlaMismatch.deltaLogHR *
+      (covariates.hlaMismatch - cm.hlaMismatch.baseline);
+    const aabDelta =
+      -cm.autoantibodyZ.deltaLogHR *
+      (covariates.autoantibodyZ - cm.autoantibodyZ.baseline);
+    const isDelta =
+      cm.isIntensity.deltaLogHR *
+      (covariates.isIntensity - cm.isIntensity.baseline);
+    const covariateLogHR = hlaDelta + aabDelta + isDelta;
+
+    const effectiveBeta = analysis.cox.beta[0] * frac + covariateLogHR;
     const hr = Math.exp(effectiveBeta);
+
+    const isAtBaseline =
+      frac === 1 &&
+      hlaDelta === 0 &&
+      aabDelta === 0 &&
+      isDelta === 0;
+
     return {
       hr,
       frac,
       reductionPct,
       bestDamage,
       baselineDamage,
+      hlaDelta,
+      aabDelta,
+      isDelta,
+      isAtBaseline,
     };
-  }, [analysis, lastInterdictionResult]);
+  }, [analysis, lastInterdictionResult, covariates]);
 
   // ── Trial-design preset runner ──
   // Each preset (defined in VX880_PRESETS above) seeds its own targeted
@@ -599,14 +657,29 @@ export default function VX880TrialPanel() {
               (95% CI {analysis.hazardRatioLo.toFixed(2)}–
               {analysis.hazardRatioHi.toFixed(2)})
             </span>
-            {counterfactualHR && (
+            {counterfactualHR && !counterfactualHR.isAtBaseline && (
               <span className="text-[10px] font-mono text-accent-cyan ml-auto">
                 {"\u2192"} HR{"\u02E2"}{" "}
                 <span className="text-[13px]">
                   {counterfactualHR.hr.toFixed(2)}
                 </span>
                 <span className="text-[7px] text-text-muted ml-1">
-                  (after interdiction)
+                  (
+                  {counterfactualHR.reductionPct !== null
+                    ? "interdiction"
+                    : ""}
+                  {counterfactualHR.reductionPct !== null &&
+                  (counterfactualHR.hlaDelta !== 0 ||
+                    counterfactualHR.aabDelta !== 0 ||
+                    counterfactualHR.isDelta !== 0)
+                    ? " + "
+                    : ""}
+                  {counterfactualHR.hlaDelta !== 0 ||
+                  counterfactualHR.aabDelta !== 0 ||
+                  counterfactualHR.isDelta !== 0
+                    ? "covariates"
+                    : ""}
+                  )
                 </span>
               </span>
             )}
@@ -621,16 +694,53 @@ export default function VX880TrialPanel() {
             </span>
             .
           </div>
-          {counterfactualHR && (
-            <div className="text-[7px] font-mono text-accent-cyan/80 pt-1 mt-1 border-t border-accent-cyan/20 leading-relaxed">
-              Counterfactual: the current interdiction prevents{" "}
-              <strong>{counterfactualHR.reductionPct.toFixed(0)}%</strong> of
-              cascade damage on the VX-880 subgraph. Treating that as the
-              fraction of β surviving the attack collapses HR from{" "}
-              {analysis.hazardRatio.toFixed(2)} to{" "}
-              <strong>{counterfactualHR.hr.toFixed(2)}</strong> — the
-              treatment effect the graft can still deliver after the
-              solver{"\u2019"}s cuts absorb the upstream assault.
+          {counterfactualHR && !counterfactualHR.isAtBaseline && (
+            <div className="text-[7px] font-mono text-accent-cyan/80 pt-1 mt-1 border-t border-accent-cyan/20 leading-relaxed space-y-0.5">
+              {counterfactualHR.reductionPct !== null && (
+                <div>
+                  Interdiction: the current cuts prevent{" "}
+                  <strong>
+                    {counterfactualHR.reductionPct.toFixed(0)}%
+                  </strong>{" "}
+                  of cascade damage on the VX-880 subgraph — β preserved =
+                  exp(β · {counterfactualHR.frac.toFixed(2)}).
+                </div>
+              )}
+              {(counterfactualHR.hlaDelta !== 0 ||
+                counterfactualHR.aabDelta !== 0 ||
+                counterfactualHR.isDelta !== 0) && (
+                <div>
+                  Covariates: ΔlogHR ={" "}
+                  {counterfactualHR.hlaDelta !== 0 && (
+                    <span>
+                      HLA {counterfactualHR.hlaDelta > 0 ? "+" : ""}
+                      {counterfactualHR.hlaDelta.toFixed(2)}
+                      {(counterfactualHR.aabDelta !== 0 ||
+                        counterfactualHR.isDelta !== 0) && ", "}
+                    </span>
+                  )}
+                  {counterfactualHR.aabDelta !== 0 && (
+                    <span>
+                      aAb {counterfactualHR.aabDelta > 0 ? "+" : ""}
+                      {counterfactualHR.aabDelta.toFixed(2)}
+                      {counterfactualHR.isDelta !== 0 && ", "}
+                    </span>
+                  )}
+                  {counterfactualHR.isDelta !== 0 && (
+                    <span>
+                      IS {counterfactualHR.isDelta > 0 ? "+" : ""}
+                      {counterfactualHR.isDelta.toFixed(2)}
+                    </span>
+                  )}
+                  .
+                </div>
+              )}
+              <div>
+                Combined: HR collapses from{" "}
+                {analysis.hazardRatio.toFixed(2)} to{" "}
+                <strong>{counterfactualHR.hr.toFixed(2)}</strong> — the
+                treatment effect the graft delivers under this counterfactual.
+              </div>
             </div>
           )}
         </div>
@@ -703,6 +813,73 @@ export default function VX880TrialPanel() {
           forward simulation — equivalent to a do-operator on that node.
           Toggle individually to isolate which mechanism dominates the
           counterfactual HR drop.
+        </div>
+      </div>
+
+      {/* Cox-covariate sliders — the do-operator surface on the trial fit */}
+      <div className="pt-1 border-t border-border/30 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
+            COVARIATE SLIDERS (do-operator on Cox β)
+          </span>
+          <button
+            type="button"
+            onClick={resetCovariates}
+            className="text-[7px] font-mono text-text-muted hover:text-foreground transition-colors"
+          >
+            reset
+          </button>
+        </div>
+        {(["hlaMismatch", "autoantibodyZ", "isIntensity"] as const).map(
+          (key) => {
+            const meta = VX880_COVARIATE_MODIFIERS[key];
+            const value = covariates[key];
+            const isAtBaseline = value === meta.baseline;
+            return (
+              <div key={key} className="space-y-0.5" title={meta.citation}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[8px] font-mono text-foreground">
+                    {meta.label}
+                  </span>
+                  <span
+                    className={`text-[8px] font-mono ${
+                      isAtBaseline
+                        ? "text-text-muted"
+                        : "text-accent-cyan"
+                    }`}
+                  >
+                    {value.toFixed(meta.step < 1 ? 1 : 0)} {meta.unit}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={meta.min}
+                  max={meta.max}
+                  step={meta.step}
+                  value={value}
+                  onChange={(e) =>
+                    setCovariates((prev) => ({
+                      ...prev,
+                      [key]: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full h-1 accent-accent-cyan cursor-pointer"
+                />
+                <div className="text-[7px] font-mono text-text-muted/80 leading-tight">
+                  {meta.short}
+                </div>
+              </div>
+            );
+          },
+        )}
+        <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+          Multiplicative shifts on the trial-fit log-HR. Anchors:{" "}
+          <span className="text-text-muted/70">
+            HLA {VX880_COVARIATE_MODIFIERS.hlaMismatch.citation}; aAb{" "}
+            {VX880_COVARIATE_MODIFIERS.autoantibodyZ.citation}; IS{" "}
+            {VX880_COVARIATE_MODIFIERS.isIntensity.citation}
+          </span>
+          . Sliders compose with the interdiction fraction above.
         </div>
       </div>
 

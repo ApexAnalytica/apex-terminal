@@ -485,12 +485,96 @@ function CausalDAG2DInner() {
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
 
-  const onSelectionChange: OnSelectionChangeFunc = useCallback(
-    ({ nodes: selNodes }) => {
-      setSelectedNodes(selNodes.map((n) => n.id));
-    },
-    [setSelectedNodes]
-  );
+  // Hand-rolled shift+drag marquee. We bypass React Flow's built-in
+  // selection (which is unreliable when combined with panOnDrag) and
+  // mirror the pattern the Map view uses — pointer-event listeners on
+  // the canvas, hit-test by DOM bounding rects, write IDs to the store.
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [selectionRect, setSelectionRect] = useState<{
+    x1: number; y1: number; x2: number; y2: number;
+  } | null>(null);
+  const shiftDragRef = useRef(false);
+
+  useEffect(() => {
+    const container = flowWrapperRef.current;
+    if (!container) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!e.shiftKey) return;
+      // Beat RF's pan handler — capture phase + stopPropagation.
+      e.stopPropagation();
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      shiftDragRef.current = true;
+      setSelectionRect({ x1: x, y1: y, x2: x, y2: y });
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!shiftDragRef.current) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setSelectionRect((prev) => (prev ? { ...prev, x2: x, y2: y } : null));
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!shiftDragRef.current) return;
+      shiftDragRef.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+
+      setSelectionRect((rect) => {
+        if (!rect) return null;
+        const containerRect = container.getBoundingClientRect();
+        const minX = Math.min(rect.x1, rect.x2) + containerRect.left;
+        const maxX = Math.max(rect.x1, rect.x2) + containerRect.left;
+        const minY = Math.min(rect.y1, rect.y2) + containerRect.top;
+        const maxY = Math.max(rect.y1, rect.y2) + containerRect.top;
+
+        // Ignore tiny drags
+        if (maxX - minX < 5 && maxY - minY < 5) return null;
+
+        // Hit-test rendered RF nodes by their DOM bounding rects. The
+        // [data-id] attribute is set by React Flow on each .react-flow__node.
+        const nodeEls = container.querySelectorAll<HTMLElement>(
+          ".react-flow__node[data-id]"
+        );
+        const ids: string[] = [];
+        nodeEls.forEach((el) => {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
+            const id = el.getAttribute("data-id");
+            if (id) ids.push(id);
+          }
+        });
+        if (ids.length > 0) setSelectedNodes(ids);
+        return null;
+      });
+    };
+
+    // Use capture phase so we run before RF's listeners.
+    container.addEventListener("pointerdown", onPointerDown, true);
+    container.addEventListener("pointermove", onPointerMove, true);
+    container.addEventListener("pointerup", onPointerUp, true);
+    return () => {
+      container.removeEventListener("pointerdown", onPointerDown, true);
+      container.removeEventListener("pointermove", onPointerMove, true);
+      container.removeEventListener("pointerup", onPointerUp, true);
+    };
+  }, [setSelectedNodes]);
+
+  // RF's onSelectionChange is no longer the source of truth for the
+  // marquee; we keep it disabled so it can't clobber the store with
+  // spurious empty arrays during re-renders.
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(() => {
+    /* intentionally empty — selection driven by the hand-rolled marquee above */
+  }, []);
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
@@ -517,30 +601,43 @@ function CausalDAG2DInner() {
     <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
       <CanvasWatermark />
       <DAGOverlay />
-      <ReactFlow
-        nodes={visibleNodes}
-        edges={visibleEdges}
-        nodeTypes={nodeTypes}
-        onInit={onInit}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onSelectionChange={onSelectionChange}
-        selectionMode={SelectionMode.Partial}
-        selectionKeyCode="Shift"
-        panOnDrag
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        proOptions={{ hideAttribution: true }}
-        minZoom={0.3}
-        maxZoom={2}
-        nodesDraggable={true}
-        nodesConnectable={false}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
-        <Controls showInteractive={false} position="bottom-right" />
-        <FitViewOnVisible visibleKey={visibleKey} isEmpty={visibleNodes.length === 0} />
-      </ReactFlow>
+      <div ref={flowWrapperRef} className="absolute inset-0">
+        <ReactFlow
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          nodeTypes={nodeTypes}
+          onInit={onInit}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onSelectionChange={onSelectionChange}
+          selectionMode={SelectionMode.Partial}
+          selectionKeyCode={null}
+          panOnDrag
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          proOptions={{ hideAttribution: true }}
+          minZoom={0.3}
+          maxZoom={2}
+          nodesDraggable={true}
+          nodesConnectable={false}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
+          <Controls showInteractive={false} position="bottom-right" />
+          <FitViewOnVisible visibleKey={visibleKey} isEmpty={visibleNodes.length === 0} />
+        </ReactFlow>
+        {selectionRect && (
+          <div
+            className="absolute pointer-events-none border border-accent-cyan/80 bg-accent-cyan/10 z-50"
+            style={{
+              left: Math.min(selectionRect.x1, selectionRect.x2),
+              top: Math.min(selectionRect.y1, selectionRect.y2),
+              width: Math.abs(selectionRect.x2 - selectionRect.x1),
+              height: Math.abs(selectionRect.y2 - selectionRect.y1),
+            }}
+          />
+        )}
+      </div>
       {selectedNodesCount > 0 && (
         <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded border border-accent-cyan/40 bg-background/90 backdrop-blur-sm">
           <span className="text-[10px] font-mono text-accent-cyan">

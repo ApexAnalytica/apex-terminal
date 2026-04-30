@@ -46,3 +46,9 @@ next-env.d.ts
 /research/datasets/_cache/
 __pycache__/
 *.pyc
+
+# discovery — raw cohort data and run artefacts NEVER committed.
+# Adapters read source files from /research/datasets/<cohort-id>/raw/;
+# discovery runs land as JSON under /research/runs/. Both local-only.
+/research/datasets/*/raw/
+/research/runs/

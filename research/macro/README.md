@@ -31,10 +31,14 @@ list below.
 9 GCC-internal price-impact edges, 6 macro pass-through edges
 (physical-shock -> US CPI/PPI), and capacity citations for 7 keystone
 facility-engineering edges. Total: 15 graph edges with empirical
-evidence, plus 7 with audit-grade nameplate citations. **Not done in
-this PR**: actually updating `src/lib/graph-data.ts`. Weight/lag/
-confidence updates land in a follow-up (PR-B) once this work is
-reviewed.
+evidence, plus 7 with audit-grade nameplate citations. **Also in
+this PR (was PR-B in the original plan)**: applied those 22 updates
+to `src/lib/graph-data.ts` via the transform rules documented in
+[scripts/build_graph_update.py](scripts/build_graph_update.py).
+The two stages were originally going to be separate PRs but are
+combined here for review velocity; the boundary is clean (research/
+files are the audit trail; `src/lib/graph-data.ts` change is one
+line per affected edge).
 
 The artifact PR-B will consume is `output/edge_fits.json` (per-edge
 empirical evidence rows, keyed by edge ID) plus
@@ -281,11 +285,72 @@ pip install -r research/requirements.txt openpyxl
 # end-to-end (each step is also runnable independently)
 python -m research.macro.validation.event_study_abqaiq    # methodology check
 python -m research.macro.scripts.classify_edges            # rule-based classification
-python -m research.macro.scripts.run_events_x_series       # 34 event-study fits
+python -m research.macro.scripts.run_events_x_series       # 47 event-study fits
 python -m research.macro.scripts.build_edge_fits           # join into per-edge evidence
+python -m research.macro.scripts.build_graph_update        # transform evidence -> update plan
+python -m research.macro.scripts.apply_graph_update        # rewrites src/lib/graph-data.ts
 ```
 
-All outputs land in `research/macro/output/` (gitignored).
+All intermediate outputs land in `research/macro/output/` (gitignored);
+the final step writes 22 single-line edits to
+`src/lib/graph-data.ts` (committed).
+
+## Transform rules (evidence -> graph weights)
+
+The transform from empirical evidence to (weight, lag, confidence)
+is documented in
+[scripts/build_graph_update.py](scripts/build_graph_update.py).
+Summary:
+
+  - **Capacity-cited edges** (7 edges): weight, lag, confidence come
+    directly from the primary source in
+    [citations/capacity_citations.json](citations/capacity_citations.json).
+    No statistical interpretation — the citation is the empirical
+    content.
+
+  - **Event-study edges with significant evidence** (8 edges):
+
+      `weight = clip(0.3 + 0.6 * min(|CAR| / scale, 1), 0.3, 0.9)`
+
+    where `scale` is the magnitude of a "strong but typical" event
+    for the data frequency (daily commodity 0.15, monthly commodity
+    0.40, monthly macro 0.05). `lag` is mapped from the observed
+    offset onto graph epochs (1, 2, or 3). `confidence = 0.85`
+    when n_estimation >= 27, else 0.75.
+
+  - **Event-study edges with null evidence** (CI overlapping zero,
+    7 edges): weight floored at min(prior, 0.4), confidence 0.5.
+    The negative finding ("CI does not exclude zero") is itself
+    informative — the prior was likely too high, but we don't drop
+    the edge to zero because absence of evidence is not evidence
+    of absence.
+
+The full per-edge update plan is in
+[output/graph_updates.json](output/graph_updates.json) (regenerated
+on each pipeline run; gitignored). The plan records prior values,
+new values, and the reason for each change so the diff in
+`src/lib/graph-data.ts` is auditable.
+
+### Notable transform calls reviewers may want to push back on
+
+  - **|CAR| ignores sign**. The 2022 fertilizer event drove urea -47%
+    over 4 months (post-spike crash). |CAR| treats this as "strong
+    propagation," yielding weight 0.9 on `qf_qafco_urea_product ->
+    qf_*_fertilizer_market` edges. Defensible as "magnitude of price
+    reaction to a supply shock" but reviewers may prefer
+    sign-aware logic (e.g., positive-CAR-only) for clarity.
+
+  - **Hormuz 2019 -> LNG-Japan -> Maaden food-stress edge**. The
+    LNG-Japan CAR was -21% at +4m (significant) but plausibly reflects
+    the 2019 LNG glut more than the May tanker incidents. Counted as
+    "significant evidence" but the causal attribution is weaker than
+    the bootstrap CI suggests.
+
+  - **CPI energy edges from short crude shocks** drop from prior 0.6
+    to 0.4 with confidence 0.5. The empirical finding is real but
+    the policy implication ("crude attacks don't pass through to
+    monthly CPI") may be too strong if the cascade simulator's epoch
+    semantics aggregate over weeks rather than months.
 
 ## Layout
 
@@ -304,6 +369,8 @@ research/macro/
     classify_edges.py                (rule-based fit-method classifier)
     run_events_x_series.py           (event x series fit harness)
     build_edge_fits.py               (join into per-edge evidence)
+    build_graph_update.py            (transform evidence -> update plan)
+    apply_graph_update.py            (apply plan to src/lib/graph-data.ts)
   citations/
     edge_classification.json         (auto-generated; method per edge)
     edge_event_map.json              (curated; which event/series backs which edge)

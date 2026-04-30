@@ -48,7 +48,10 @@ __pycache__/
 *.pyc
 
 # discovery — raw cohort data and run artefacts NEVER committed.
-# Adapters read source files from /research/datasets/<cohort-id>/raw/;
-# discovery runs land as JSON under /research/runs/. Both local-only.
-/research/datasets/*/raw/
+# Anything in a /research/datasets/<cohort-id>/ subdirectory is treated
+# as local-only data (raw zips, parsed cohort.json, intermediate
+# manifests). The Python loader scripts live at /research/datasets/*.py
+# (top-level), which is NOT gitignored. Discovery runs land as JSON
+# under /research/runs/, also local-only.
+/research/datasets/*/
 /research/runs/

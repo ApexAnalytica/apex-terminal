@@ -7,12 +7,17 @@
 
 import type { DiscoveryAlgorithm } from "./algorithm-interface";
 import { lagCorrelationAlgorithm } from "./algorithms/lag-correlation";
+import { pcmciLinearAlgorithm } from "./algorithms/pcmci-linear";
 
 // Erase the parameter generic so the registry is uniform; param shape
 // is documented per-algorithm via its description string + the source.
 const REGISTRY: Record<string, DiscoveryAlgorithm<Record<string, unknown>>> = {
   [lagCorrelationAlgorithm.id]:
     lagCorrelationAlgorithm as unknown as DiscoveryAlgorithm<
+      Record<string, unknown>
+    >,
+  [pcmciLinearAlgorithm.id]:
+    pcmciLinearAlgorithm as unknown as DiscoveryAlgorithm<
       Record<string, unknown>
     >,
 };

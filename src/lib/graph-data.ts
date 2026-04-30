@@ -2381,6 +2381,21 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+  // ── FX / USD strength (1) ──
+  {
+    id: "ip_dxy",
+    label: "US Dollar Index (DXY)",
+    shortLabel: "DXY",
+    category: "finance",
+    omegaFragility: omega(7.5, 1.0, 1.0, 8.5, 9, 8.0),
+    globalConcentration: "Geometric basket: EUR 57.6%, JPY 13.6%, GBP 11.9%, CAD 9.1%, SEK 4.2%, CHF 3.6%",
+    replacementTime: "real-time (FX market continuous)",
+    physicalConstraint: "Reserve-currency premium gauge; rises with US rate differential and risk-off; transmits to commodity prices (USD-priced) and EM dollar-debt rollover stress; closes the Fed → DXY → import-prices → core CPI → Fed feedback loop",
+    domain: "Macro Impact: Inflation & Policy",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2796,6 +2811,17 @@ const EDGES: CausalEdge[] = [
   { id: "sr_china_gdp__mi_ism_manufacturing", source: "sr_china_gdp", target: "mi_ism_manufacturing", weight: 0.077, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand drives US manufacturing PMI via export channel. Empirical channel: IMF China Iron-Ore (demand proxy) → IMF Industrial Inputs long-run elasticity 0.193, scaled by 0.40." },
   { id: "sr_china_gdp__mi_industrial_production", source: "sr_china_gdp", target: "mi_industrial_production", weight: 0.068, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand → US IP via supply-chain feedback. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.35." },
   { id: "sr_china_gdp__ip_ppi_all_commodities", source: "sr_china_gdp", target: "ip_ppi_all_commodities", weight: 0.106, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China is the marginal commodity demand setter. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.55 (closest direct mapping among P4 edges)." },
+
+  // ─── DXY / USD-strength loop (closes the Fed → DXY → import-price → core CPI feedback) ─
+  // Empirical fits in research/macro/output/dxy_fits.json. Synthetic DXY is a
+  // geometric basket of EUR/JPY/GBP/CAD/SEK/CHF rebuilt monthly from the
+  // datasets/exchange-rates GitHub mirror; matches real-world DXY level to
+  // ~1% in 2026-03. Two channels are ARDL-fit; two are literature-cited
+  // because no EM-FX-pressure panel is reachable from this sandbox.
+  { id: "ip_fed_funds_effective__ip_dxy", source: "ip_fed_funds_effective", target: "ip_dxy", weight: 0.014, lag: 1, type: "directed", confidence: 0.5, isInconsistent: false, physicalMechanism: "Fed funds policy stance moves USD via real-rate differential. Empirical channel: US10y monthly → synthetic DXY long-run multiplier 0.014 [-0.014, 0.042], n=324; CI includes zero so confidence floored at 0.5. DXY responds more to rate-expectation shifts than to spot rates — a refit with breakeven-adjusted real rates is a follow-on." },
+  { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description)." },
+  { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.6, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022): a 1% DXY appreciation maps to ~0.5-0.7% EM FX depreciation in the medium term. Literature-cited; refit pending EM FX panel access." },
+  { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.45, lag: 1, type: "directed", confidence: 0.6, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Literature-cited; refit pending EM reserves panel access." },
 ];
 
 const METADATA: GraphMetadata = {

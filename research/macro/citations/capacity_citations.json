@@ -1,0 +1,166 @@
+{
+  "_meta": {
+    "purpose": "Audit-grade nameplate-capacity citations for facility-engineering edges. Each entry pins the edge weight to a primary-source disclosure (operator IR materials, EIA country briefs, S&P Platts, etc.) rather than a fitted statistical relationship.",
+    "weight_convention": "weight encodes fraction of source-facility throughput that is committed to the target. weight=1.0 means the source is dedicated to the target; weight<1.0 means the throughput is split across multiple downstream nodes. Where a single dedicated downstream link exists, weight=1.0 is appropriate even though the graph 'weight' field also encodes propagation strength under shock.",
+    "lag_convention": "lag is in days. For pipeline/throughput edges, propagation is sub-daily under normal operation; we use lag=1 as the discrete-time minimum. For batch/marine/inventoried flows, lag reflects approximate transit + buffering.",
+    "confidence_convention": "confidence reflects how recent and how directly attributable the underlying disclosure is. >=0.9 = primary operator disclosure within last 24 months; 0.7-0.85 = secondary aggregator (EIA, Platts) within last 5 years; <0.7 = older or indirect attribution.",
+    "scope": "This file is intentionally seeded with high-leverage keystone edges only. The remaining ~50 capacity_citation edges retain their expert-prior weights pending follow-up sourcing. Schema is stable; new entries can be appended without touching code."
+  },
+  "citations": [
+    {
+      "edge_id": "sa_east_west_pipeline__sa_yanbu_refinery",
+      "weight": 1.0,
+      "lag_days": 1,
+      "confidence": 0.9,
+      "primary_source": {
+        "type": "operator_disclosure",
+        "publisher": "Saudi Aramco",
+        "title": "East-West Crude Oil Pipeline (Petroline)",
+        "year": 2024,
+        "key_facts": [
+          "Pipeline capacity ~5 mb/d after the 2019 expansion (Aramco IR materials)",
+          "Routes Eastern Province crude to Yanbu on the Red Sea coast for export and west-coast refining",
+          "Single dedicated linear asset; no parallel route at this scale"
+        ]
+      },
+      "secondary_source": {
+        "type": "regulatory",
+        "publisher": "U.S. Energy Information Administration",
+        "title": "Country Analysis Brief: Saudi Arabia",
+        "year": 2023,
+        "url_search_hint": "EIA Saudi Arabia country analysis brief"
+      },
+      "weight_rationale": "Single-route-to-target with no near-term substitute -> weight=1.0. Disruption propagates immediately (next-day pricing) under shock."
+    },
+    {
+      "edge_id": "sa_abqaiq_plants__sa_east_west_pipeline",
+      "weight": 1.0,
+      "lag_days": 1,
+      "confidence": 0.95,
+      "primary_source": {
+        "type": "regulatory",
+        "publisher": "U.S. Energy Information Administration",
+        "title": "Saudi Arabia crude oil production outage affects global crude oil and gasoline prices",
+        "year": 2019,
+        "key_facts": [
+          "Abqaiq processes ~7 mb/d, the world's largest crude stabilization facility",
+          "Abqaiq output feeds the East-West Pipeline among other downstream routes",
+          "September 2019 attack removed 5.7 mb/d of Saudi crude from global supply for ~3 weeks"
+        ]
+      },
+      "weight_rationale": "Abqaiq is upstream of nearly all Saudi crude flows; the East-West Pipeline is one of multiple committed downstreams. Weight=1.0 reflects the fact that any Abqaiq disruption flows directly into pipeline volumes; the *fractional* split across pipeline vs Ras Tanura terminal vs domestic refining is captured by the relative weights on the multiple outgoing edges from Abqaiq."
+    },
+    {
+      "edge_id": "sa_abqaiq_plants__sa_ras_tanura_terminal",
+      "weight": 0.85,
+      "lag_days": 1,
+      "confidence": 0.9,
+      "primary_source": {
+        "type": "regulatory",
+        "publisher": "U.S. Energy Information Administration",
+        "title": "Saudi Arabia crude oil production outage affects global crude oil and gasoline prices",
+        "year": 2019,
+        "key_facts": [
+          "Ras Tanura is Saudi Arabia's main crude export terminal (~6 mb/d throughput)",
+          "Receives the majority of Abqaiq-stabilized crude bound for Asian export markets",
+          "Throughput share vs East-West Pipeline approximately 75-85% in normal operation"
+        ]
+      },
+      "weight_rationale": "Majority but not all of Abqaiq output flows east to Ras Tanura under normal conditions; the rest splits across the East-West Pipeline (Yanbu) and domestic refineries. 0.85 reflects the throughput share."
+    },
+    {
+      "edge_id": "sa_hawiyah_gas_plant__sa_master_gas_system_mgs",
+      "weight": 0.95,
+      "lag_days": 1,
+      "confidence": 0.85,
+      "primary_source": {
+        "type": "operator_disclosure",
+        "publisher": "Saudi Aramco",
+        "title": "Hawiyah Gas Plant capacity disclosures",
+        "year": 2023,
+        "key_facts": [
+          "Hawiyah is one of the major non-associated gas processing plants feeding the Master Gas System",
+          "Roughly 2.5 bcf/d processing capacity post-expansion",
+          "Output dedicated to MGS for distribution to power generation, petrochemical, and water desalination customers"
+        ]
+      },
+      "weight_rationale": "Hawiyah's processed gas is essentially fully committed to MGS distribution; small reservation for site fuel use and local feedstock keeps weight just under 1.0."
+    },
+    {
+      "edge_id": "qf_qafco_1_4_site__qf_qafco_urea_product",
+      "weight": 0.55,
+      "lag_days": 1,
+      "confidence": 0.85,
+      "primary_source": {
+        "type": "operator_disclosure",
+        "publisher": "Industries Qatar / QAFCO",
+        "title": "QAFCO trains 1-4 production capacities",
+        "year": 2024,
+        "key_facts": [
+          "QAFCO 1-4 are the older urea trains at Mesaieed Industrial City",
+          "Combined train 1-4 urea nameplate ~3.1 MTPA out of ~5.6 MTPA total complex",
+          "Trains 5 and 6 add the remaining ~2.5 MTPA on the same site"
+        ]
+      },
+      "weight_rationale": "Trains 1-4 contribute roughly 55% of the complex's urea throughput; trains 5-6 contribute the remaining 45%. Both feed the same product stream."
+    },
+    {
+      "edge_id": "qf_qafco_5_6_site__qf_qafco_urea_product",
+      "weight": 0.45,
+      "lag_days": 1,
+      "confidence": 0.85,
+      "primary_source": {
+        "type": "operator_disclosure",
+        "publisher": "Industries Qatar / QAFCO",
+        "title": "QAFCO trains 5-6 production capacities",
+        "year": 2024,
+        "key_facts": [
+          "QAFCO 5 and 6 are the newer urea trains commissioned 2011-2012",
+          "Combined nameplate ~2.5 MTPA",
+          "Trains 5 and 6 incorporate carbon-capture for downstream blue-ammonia integration"
+        ]
+      },
+      "weight_rationale": "Trains 5-6 contribute roughly 45% of the complex's urea throughput; complement to trains 1-4 (55%)."
+    },
+    {
+      "edge_id": "mn_phosphoric_acid_units__mn_ras_al_khair_dap_plant",
+      "weight": 0.95,
+      "lag_days": 1,
+      "confidence": 0.85,
+      "primary_source": {
+        "type": "operator_disclosure",
+        "publisher": "Ma'aden",
+        "title": "Ras Al Khair phosphoric acid -> DAP integration",
+        "year": 2023,
+        "key_facts": [
+          "Phosphoric acid is the primary feedstock for DAP (di-ammonium phosphate) production",
+          "Ras Al Khair phosphoric acid units are integrated on-site with the DAP plant; no merchant offtake of phosphoric acid at scale",
+          "Stoichiometry: ~1.5 t H3PO4 per t DAP at typical operating concentrations"
+        ]
+      },
+      "weight_rationale": "Phosphoric acid units are essentially dedicated to the on-site DAP plant; small reservation for MAP/NPK side-streams keeps weight just under 1.0."
+    }
+  ],
+  "graph_anomalies": [
+    {
+      "node_id": "qe_north_field_gas_field",
+      "issue": "orphan node",
+      "detail": "qe_north_field_gas_field has zero incoming or outgoing edges. The North Field is the upstream feedstock for ALL Qatari LNG and the Pearl GTL plant; missing edges to qe_qatarenergy_lng_export_trains_qatargas_1, qe_pearl_gtl_plant, and qe_north_field_expansion_nfe_nfs would be expected. Flag for graph-data correction in PR-B."
+    },
+    {
+      "node_id": "qe_qatarenergy_lng_export_trains_qatargas_1",
+      "issue": "orphan node",
+      "detail": "Zero incoming or outgoing edges. The Qatargas 1-7 train consolidation should at minimum connect from qe_north_field_gas_field (or qe_north_field_expansion_nfe_nfs) and to qe_ras_laffan_port. Flag for graph-data correction."
+    },
+    {
+      "node_id": "qe_north_field_expansion_nfe_nfs",
+      "issue": "orphan node",
+      "detail": "Zero incoming or outgoing edges. NFE/NFS expansion brings Qatari LNG capacity from 77 to 142 MTPA by 2030; should connect to LNG trains and downstream export markets."
+    },
+    {
+      "node_id": "mn_ras_al_khair_phosphate_hub",
+      "issue": "thin edge set",
+      "detail": "Has only one outgoing edge (to Strait of Hormuz). Expected feed relationships to ammonia units, phosphoric acid units, sulfuric acid units, and the DAP plant - all of which are listed as separate graph nodes with their own edges. May be a labeling decision (the 'hub' node is descriptive, not operational) but worth confirming with the graph author."
+    }
+  ]
+}

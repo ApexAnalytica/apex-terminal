@@ -1,25 +1,66 @@
 # Manifold — Macro / GCC-Energy Edge-Weight Research
 
-Empirical backing for the edge weights in `claire_graph_data.json` — the
-GCC energy + petrochem causal graph (Saudi Aramco, Ma'aden, QatarEnergy,
-QAFCO; 65 nodes, 69 edges).
+Empirical backing for the edge weights on the GCC energy + petrochem
+nodes of the live causal graph in `src/lib/graph-data.ts` — Saudi
+Aramco, Ma'aden, QatarEnergy, and QAFCO clusters.
 
 This subdirectory mirrors the layout of `research/` (T1D estimators) and
 follows the same workflow: implement and validate in Python here, then
 port the resulting fits into TypeScript engines / graph data once the
 team reviews the methodology and numbers.
 
+## A note on the source graph file
+
+The classifier and edge-event map in this PR read
+`claire_graph_data.json` (65 nodes, 69 edges of GCC-energy / petrochem
+content). That file turns out to be an unreferenced legacy export — the
+live graph used by the application is `src/lib/graph-data.ts`
+(318 edges, 167 nodes including macro pillars added in #47, #56, #115).
+
+The good news: every node ID and edge ID we touch in this PR (9 mapped
+event-study edges, 7 capacity-cited edges) is preserved verbatim in
+`graph-data.ts`. The empirical evidence applies as-is when PR-B
+consumes it. We kept reading from `claire_graph_data.json` only because
+its smaller surface made the per-edge audit cleaner; switching the
+classifier to read `graph-data.ts` is mechanical and on the follow-up
+list below.
+
 ## Scope of this PR (PR-A)
 
-**Done in this PR**: methodology, fit pipeline, event-study fits for the
-9 highest-leverage price-impact edges, and capacity citations for 7
-keystone facility-engineering edges. **Not done in this PR**: actually
-updating `claire_graph_data.json`. Weight/lag/confidence updates land in
-a follow-up (PR-B) once this work is reviewed.
+**Done in this PR**: methodology, fit pipeline, event-study fits for
+9 highest-leverage GCC-internal price-impact edges, and capacity
+citations for 7 keystone facility-engineering edges. **Not done in this
+PR**: actually updating `src/lib/graph-data.ts`. Weight/lag/confidence
+updates land in a follow-up (PR-B) once this work is reviewed.
 
 The artifact PR-B will consume is `output/edge_fits.json` (per-edge
-empirical evidence rows) plus `citations/capacity_citations.json`
-(audit-grade nameplate citations).
+empirical evidence rows, keyed by edge ID) plus
+`citations/capacity_citations.json` (audit-grade nameplate citations).
+PR-B reads the live graph file by edge ID, applies the evidence, and
+leaves any edge without evidence untouched.
+
+## High-leverage follow-up: macro pass-through edges
+
+PR #115 added 20 cross-domain edges into the macro module
+(`ip_cpi_energy`, `ip_cpi_food`, `ip_ppi_all_commodities`,
+`mi_industrial_production`, etc.) — physical-shock to inflation
+pass-through. Approximately 7 of those edges are directly supportable
+by the event-study evidence already produced in this PR:
+
+  - `sa_ras_tanura_terminal -> ip_cpi_energy` (Brent via Abqaiq 2019)
+  - `sa_abqaiq_plants -> ip_cpi_energy` (Brent via Abqaiq 2019)
+  - `qf_strait_of_hormuz -> ip_cpi_energy` (Brent via Hormuz 2019)
+  - `qe_north_field_gas_field -> ip_cpi_energy` (LNG-Japan / natgas via Ras Laffan 2026)
+  - `qe_ras_laffan_port -> ip_ppi_energy` (Brent / natgas via Ras Laffan 2026)
+  - `qf_global_food_prices -> ip_cpi_food` (wheat via 2022 fertilizer)
+  - `mn_global_food_price_stress -> ip_cpi_food` (DAP / wheat via Ma'aden ramp + 2022)
+  - `sc_fertilizer_price_index -> ip_ppi_all_commodities` (urea / DAP via 2022)
+
+Mapping these in `edge_event_map.json` and re-running
+`build_edge_fits.py` would extend the empirical evidence table to
+~16 edges total. Best done as a separate focused PR to keep the
+methodology review and the macro-edge mapping reviewable
+independently.
 
 ## Why three fit methods, not one
 
@@ -197,10 +238,14 @@ that reviewers should know:
    edges is straightforward but mechanical; better as a follow-up data
    task than as part of this methodology PR.
 
-6. **Graph anomalies surfaced during citation work** (orphan Qatar
-   nodes with zero edges, thin edge set on Ras Al Khair phosphate hub)
-   are recorded in `capacity_citations.json` under `graph_anomalies`
-   for PR-B to address.
+6. **Earlier draft of this PR claimed graph anomalies** (orphan Qatar
+   nodes with zero edges) based on inspection of
+   `claire_graph_data.json`. That claim was wrong. The live graph
+   (`src/lib/graph-data.ts`) wires those Qatar nodes properly — North
+   Field gas field has 6 outgoing edges, the LNG trains chain is
+   intact, etc. The `graph_anomalies` block remains in
+   `capacity_citations.json` for the historical record but each entry
+   notes that the anomaly was an artifact of reading the wrong file.
 
 ## Reproducing the results
 

@@ -1,5 +1,14 @@
 """Classify each graph edge into one of three empirical-fit methods.
 
+NOTE on source file: this script reads ``claire_graph_data.json``, which
+is a 65-node / 69-edge subset (the GCC-energy / petrochem cluster) of
+the live application graph at ``src/lib/graph-data.ts`` (318 edges, 167
+nodes). All node and edge IDs we touch are preserved verbatim across
+both files, so the per-edge evidence we produce here keys cleanly into
+the live graph when consumed by PR-B. See ``../README.md`` for the
+follow-up plan to extend the classifier to the full live graph.
+
+
 Methods
 -------
 

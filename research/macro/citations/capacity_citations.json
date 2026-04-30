@@ -141,26 +141,29 @@
       "weight_rationale": "Phosphoric acid units are essentially dedicated to the on-site DAP plant; small reservation for MAP/NPK side-streams keeps weight just under 1.0."
     }
   ],
-  "graph_anomalies": [
-    {
-      "node_id": "qe_north_field_gas_field",
-      "issue": "orphan node",
-      "detail": "qe_north_field_gas_field has zero incoming or outgoing edges. The North Field is the upstream feedstock for ALL Qatari LNG and the Pearl GTL plant; missing edges to qe_qatarenergy_lng_export_trains_qatargas_1, qe_pearl_gtl_plant, and qe_north_field_expansion_nfe_nfs would be expected. Flag for graph-data correction in PR-B."
-    },
-    {
-      "node_id": "qe_qatarenergy_lng_export_trains_qatargas_1",
-      "issue": "orphan node",
-      "detail": "Zero incoming or outgoing edges. The Qatargas 1-7 train consolidation should at minimum connect from qe_north_field_gas_field (or qe_north_field_expansion_nfe_nfs) and to qe_ras_laffan_port. Flag for graph-data correction."
-    },
-    {
-      "node_id": "qe_north_field_expansion_nfe_nfs",
-      "issue": "orphan node",
-      "detail": "Zero incoming or outgoing edges. NFE/NFS expansion brings Qatari LNG capacity from 77 to 142 MTPA by 2030; should connect to LNG trains and downstream export markets."
-    },
-    {
-      "node_id": "mn_ras_al_khair_phosphate_hub",
-      "issue": "thin edge set",
-      "detail": "Has only one outgoing edge (to Strait of Hormuz). Expected feed relationships to ammonia units, phosphoric acid units, sulfuric acid units, and the DAP plant - all of which are listed as separate graph nodes with their own edges. May be a labeling decision (the 'hub' node is descriptive, not operational) but worth confirming with the graph author."
-    }
-  ]
+  "graph_anomalies_RETRACTED": {
+    "_meta": "Earlier draft of this PR claimed these as orphan/thin-edge anomalies based on inspection of claire_graph_data.json. Verification against the live graph (src/lib/graph-data.ts) shows the anomalies do not exist in the graph the application actually uses. Kept here for the historical record; reviewers should disregard.",
+    "former_entries": [
+      {
+        "node_id": "qe_north_field_gas_field",
+        "former_claim": "orphan node",
+        "actual_state_in_live_graph": "Has 6 outgoing edges (to ras_laffan_industrial_city, pearl_gtl_plant, oryx_gtl_plant, barzan_gas_plant, umm_said_mesaieed_refinery, plus indirect via qf_north_field_gas) - fully connected."
+      },
+      {
+        "node_id": "qe_qatarenergy_lng_export_trains_qatargas_1",
+        "former_claim": "orphan node",
+        "actual_state_in_live_graph": "Connected via qe_ras_laffan_industrial_city_rlic upstream and qe_ras_laffan_port downstream."
+      },
+      {
+        "node_id": "qe_north_field_expansion_nfe_nfs",
+        "former_claim": "orphan node",
+        "actual_state_in_live_graph": "Verify in graph-data.ts before treating this as a real follow-up; the wider Qatar wiring exists, so any remaining gap is a smaller question than originally stated."
+      },
+      {
+        "node_id": "mn_ras_al_khair_phosphate_hub",
+        "former_claim": "thin edge set",
+        "actual_state_in_live_graph": "Verify in graph-data.ts before treating this as a real follow-up."
+      }
+    ]
+  }
 }

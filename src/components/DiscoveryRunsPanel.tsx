@@ -18,25 +18,32 @@ import type { DiscoveryRun } from "@/lib/discovery";
 // Tomorrow: same component swaps to `/api/discovery/runs/<id>` once
 // the API layer lands. The data shape is identical.
 
-const SAMPLE_RUN_URL = "/discovery-runs/d1namo-lag-correlation-v0-1-0.json";
+const SAMPLE_RUN_URLS = [
+  "/discovery-runs/d1namo-lag-correlation-v0-1-0.json",
+  "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
+];
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; run: DiscoveryRun }
+  | { kind: "ready"; runs: DiscoveryRun[] }
   | { kind: "error"; message: string };
 
 export default function DiscoveryRunsPanel() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(SAMPLE_RUN_URL)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((run: DiscoveryRun) => {
-        if (!cancelled) setState({ kind: "ready", run });
+    Promise.all(
+      SAMPLE_RUN_URLS.map((url) =>
+        fetch(url).then((r) => {
+          if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+          return r.json() as Promise<DiscoveryRun>;
+        }),
+      ),
+    )
+      .then((runs) => {
+        if (!cancelled) setState({ kind: "ready", runs });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -54,14 +61,39 @@ export default function DiscoveryRunsPanel() {
   return (
     <div className="p-4 space-y-3">
       <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-        Edges learned from a real observational cohort, separate from the
-        curated CausalGraph above. Today: one D1NAMO sample run; tomorrow:
-        live results from <code>/api/discovery/runs/&lt;id&gt;</code>.
+        Edges learned from a real observational cohort (D1NAMO, Dubosson
+        2018), separate from the curated CausalGraph above. Each tab below
+        is a different algorithm run on the same cohort — comparing them
+        is how we tell signal from artefact.
       </div>
 
       {state.kind === "loading" && <LoadingTile />}
       {state.kind === "error" && <ErrorTile message={state.message} />}
-      {state.kind === "ready" && <RunTile run={state.run} />}
+      {state.kind === "ready" && (
+        <>
+          {/* Algorithm tabs */}
+          <div className="flex gap-1.5">
+            {state.runs.map((r, i) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setActiveIdx(i)}
+                className={`flex-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded px-2 py-1 border transition-colors ${
+                  i === activeIdx
+                    ? "text-[#40c4ff] border-[#40c4ff]/60 bg-[#40c4ff]/10"
+                    : "text-text-muted border-border bg-surface-elevated hover:border-foreground/40 hover:text-foreground"
+                }`}
+              >
+                {r.algorithm.id} v{r.algorithm.version}
+                <span className="block text-[7px] font-mono mt-0.5">
+                  {r.result.edges.length} edges
+                </span>
+              </button>
+            ))}
+          </div>
+          <RunTile run={state.runs[activeIdx]} />
+        </>
+      )}
     </div>
   );
 }
@@ -190,10 +222,22 @@ function RunTile({ run }: { run: DiscoveryRun }) {
       {run.algorithm.id === "lag-correlation" && (
         <div className="text-[7px] font-mono text-accent-amber/70 leading-relaxed border border-accent-amber/20 bg-accent-amber/5 rounded px-1.5 py-1">
           <strong>v0 algorithm.</strong> Pearson correlation with BH-FDR —
-          not PCMCI+. No conditioning sets, so common causes inflate
-          edges; direction is temporal precedence only. The output shape
-          is identical to PCMCI+ output, so swapping the algorithm is a
-          one-file change later.
+          no conditioning sets, so common causes inflate edges and
+          direction is temporal precedence only. Compare against the
+          pcmci-linear tab to see which of these edges survive proper
+          conditioning.
+        </div>
+      )}
+      {run.algorithm.id === "pcmci-linear" && (
+        <div className="text-[7px] font-mono text-accent-cyan/70 leading-relaxed border border-accent-cyan/20 bg-accent-cyan/5 rounded px-1.5 py-1">
+          <strong>PCMCI (linear-Gaussian, lagged-only).</strong> Runge
+          (2018) — PC-stable phase prunes candidate parents under
+          conditioning; MCI phase tests momentary conditional
+          independence. Linear-Gaussian only (no nonparametric CI tests
+          yet). On the 9-subject D1NAMO cohort the lag-correlation
+          edges fail the conditioning test → likely autocorrelation
+          artefacts. A larger cohort or relaxed FDR may surface real
+          residual signal.
         </div>
       )}
     </div>

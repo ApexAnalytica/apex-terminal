@@ -39,8 +39,9 @@ This session does **not** care about graph data, engines, canvas rendering, or p
 ### Text size toggle
 - `src/components/TextSizeToggle.tsx`, `src/hooks/useTextSize.ts`
 - S/M/L segmented control persisted to `localStorage["manifold:text-size"]`
-- Applied via CSS `zoom` on `<html>` (the app uses ~700 fixed px text classes so root font-size won't propagate)
+- Sets `data-text-size` on `<html>`. CSS in `src/app/globals.css` defines a `--text-mult` variable per state and overrides each text utility actually used in the codebase (every `text-[Npx]` plus the standard `text-xs/sm/base/lg/xl/2xl/3xl`) with `font-size: calc(<original> * var(--text-mult))`. When adding a new `text-[Npx]` size, add a matching override line.
 - Pre-paint inline script in `src/app/layout.tsx` prevents flash-of-wrong-size
+- This *only* scales text — layout, canvas, and icons are not affected. (Earlier implementation used `zoom` on `<html>`, which scaled everything; replaced because it was a UX bug.)
 
 ### Feedback widget
 - `src/components/FeedbackWidget.tsx`

@@ -96,3 +96,66 @@ export function effectiveDomainAccess(
 export function canAccessDomain(domains: string[], domainId: string): boolean {
   return domains.includes(domainId);
 }
+
+// Marketing copy for the public /pricing page and the upgrade-wall.
+// Single source of truth so /pricing, /expired, and any future
+// upsell surfaces stay in sync. Prices are annual per-seat USD.
+export interface PricingPlan {
+  tier: Tier;
+  name: string;
+  priceLabel: string;
+  cadence: string;
+  blurb: string;
+  features: string[];
+  ctaLabel: string;
+  highlight?: boolean;
+}
+
+export const PRICING_PLANS: PricingPlan[] = [
+  {
+    tier: "analyst",
+    name: "Analyst",
+    priceLabel: "$24,000",
+    cadence: "per seat / year",
+    blurb: "One domain. Full criticality readouts.",
+    features: [
+      "Single domain workspace",
+      "Full Ω-fragility scoring",
+      "Pearl intervention engine",
+      "Tarski formal verification",
+      "Email support",
+    ],
+    ctaLabel: "Contact sales",
+  },
+  {
+    tier: "multi_domain",
+    name: "Multi-Domain",
+    priceLabel: "$48,000",
+    cadence: "per seat / year",
+    blurb: "All public domains. Live feeds. Estimator outputs.",
+    features: [
+      "All public risk domains",
+      "Cross-domain causal bridges",
+      "Estimator outputs (BOCPD, Cox, NLME, transfer entropy)",
+      "Live data feeds",
+      "Priority support",
+    ],
+    ctaLabel: "Contact sales",
+    highlight: true,
+  },
+  {
+    tier: "enterprise",
+    name: "Enterprise",
+    priceLabel: "$150,000+",
+    cadence: "custom / year",
+    blurb: "Custom subgraphs. On-demand estimator runs. SLA.",
+    features: [
+      "Everything in Multi-Domain",
+      "Custom subgraphs and domain models",
+      "On-demand estimator runs",
+      "Dedicated solutions engineer",
+      "Contractual SLA",
+    ],
+    ctaLabel: "Talk to founders",
+  },
+];

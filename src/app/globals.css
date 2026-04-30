@@ -55,10 +55,35 @@ body {
 
 /* User-adjustable text size. Applied via data attribute on <html> set by
  * useTextSize + a blocking inline script in RootLayout to avoid FOUC.
- * The app's UI uses fixed px sizes (700+ occurrences), so zoom is the only
- * viable knob — root font-size would be a no-op. */
-html[data-text-size="sm"] { zoom: 0.9; }
-html[data-text-size="lg"] { zoom: 1.15; }
+ * The app's UI uses 700+ fixed-px text classes (text-[Npx]), so root
+ * font-size won't propagate. We instead define a multiplier variable and
+ * override each text utility actually used in the codebase. When adding a
+ * new text-[Npx] size, add a matching override here.
+ */
+html { --text-mult: 1; }
+html[data-text-size="sm"] { --text-mult: 0.9; }
+html[data-text-size="lg"] { --text-mult: 1.15; }
+
+.text-\[6px\]  { font-size: calc(6px  * var(--text-mult)); }
+.text-\[7px\]  { font-size: calc(7px  * var(--text-mult)); }
+.text-\[8px\]  { font-size: calc(8px  * var(--text-mult)); }
+.text-\[9px\]  { font-size: calc(9px  * var(--text-mult)); }
+.text-\[10px\] { font-size: calc(10px * var(--text-mult)); }
+.text-\[11px\] { font-size: calc(11px * var(--text-mult)); }
+.text-\[12px\] { font-size: calc(12px * var(--text-mult)); }
+.text-\[13px\] { font-size: calc(13px * var(--text-mult)); }
+.text-\[14px\] { font-size: calc(14px * var(--text-mult)); }
+.text-\[15px\] { font-size: calc(15px * var(--text-mult)); }
+.text-\[22px\] { font-size: calc(22px * var(--text-mult)); }
+.text-\[28px\] { font-size: calc(28px * var(--text-mult)); }
+
+.text-xs  { font-size: calc(0.75rem  * var(--text-mult)); }
+.text-sm  { font-size: calc(0.875rem * var(--text-mult)); }
+.text-base{ font-size: calc(1rem     * var(--text-mult)); }
+.text-lg  { font-size: calc(1.125rem * var(--text-mult)); }
+.text-xl  { font-size: calc(1.25rem  * var(--text-mult)); }
+.text-2xl { font-size: calc(1.5rem   * var(--text-mult)); }
+.text-3xl { font-size: calc(1.875rem * var(--text-mult)); }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {

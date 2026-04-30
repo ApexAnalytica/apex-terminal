@@ -11,9 +11,16 @@ const nextConfig: NextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256],
   },
 
-  // Inline critical CSS to cut render-blocking stylesheets
+  // Inline critical CSS to cut render-blocking stylesheets.
+  // turbopackUseSystemTlsCerts: Next 16's default Turbopack builder
+  // hits a TLS-cert resolution bug when fetching Google Fonts during
+  // production build, causing Vercel deploys to fail with
+  // "Failed to fetch `<font>` from Google Fonts" on every PR. Setting
+  // this flag points Turbopack at the system CA bundle and resolves
+  // the fetch. See PR #129 / commit history of #127 #128 for context.
   experimental: {
     optimizeCss: true,
+    turbopackUseSystemTlsCerts: true,
   },
 };
 

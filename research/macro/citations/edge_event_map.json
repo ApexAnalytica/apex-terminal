@@ -83,6 +83,59 @@
          "target_series": "liquefied_natural_gas_japan", "horizon": "short",
          "rationale": "LNG-Japan benchmark captures the Asia-bound shipping-route fragility around Hormuz; food impact is a downstream story but LNG/gas cost is the mechanism."}
       ]
+    },
+
+    {
+      "edge_id": "sa_ras_tanura_terminal__ip_cpi_energy",
+      "_section": "macro_pass_through",
+      "_section_note": "Edges below target ip_*/mi_* macro nodes added by graph PR #115. They live in src/lib/graph-data.ts (NOT in claire_graph_data.json). Evidence is measured directly on the FRED CPI/PPI series rather than on the upstream commodity benchmark.",
+      "supporting_events": [
+        {"event_id": "evt_abqaiq_khurais_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Direct measurement of CPI-energy response to a Saudi crude shock. Discrete events with rapid recovery (Abqaiq was restored in ~3 weeks) tend to show small monthly CPI pass-through; the empirical CAR documents that effect rather than assuming a larger one."}
+      ]
+    },
+    {
+      "edge_id": "sa_abqaiq_plants__ip_cpi_energy",
+      "supporting_events": [
+        {"event_id": "evt_abqaiq_khurais_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Same evidence as Ras Tanura -> CPI energy. Abqaiq is upstream of Ras Tanura; the monthly CPI response is the same observation."}
+      ]
+    },
+    {
+      "edge_id": "qf_strait_of_hormuz__ip_cpi_energy",
+      "supporting_events": [
+        {"event_id": "evt_hormuz_tanker_incidents_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Hormuz 2019 incidents added a tanker risk premium without a sustained crude-supply hit; CPI-energy response is small, which the CAR captures."}
+      ]
+    },
+    {
+      "edge_id": "qf_global_food_prices__ip_cpi_food",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short",
+         "rationale": "2022 fertilizer + Russia-Ukraine event is the cleanest natural experiment for global food prices propagating into US CPI food. Significant +3.6%/+4m response."}
+      ]
+    },
+    {
+      "edge_id": "mn_global_food_price_stress__ip_cpi_food",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short"},
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short",
+         "rationale": "Cross-checks magnitude of food-stress -> CPI-food via a phosphate-side event; smaller signal as expected since DAP is a narrower input than the full 2022 fertilizer wave."}
+      ]
+    },
+    {
+      "edge_id": "sc_fertilizer_price_index__ip_ppi_all_commodities",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_ppi_all_commodities", "horizon": "short",
+         "rationale": "2022 fertilizer event is the most direct test: fertilizer-price index spikes feeding into broad PPI all-commodities. Significant +10.9%/+4m response."}
+      ]
     }
   ]
 }

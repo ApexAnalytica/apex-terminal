@@ -124,10 +124,50 @@ def main() -> None:
         method_counts[method] += 1
         rows.append({**entry, "fit_method": method, **ev})
 
-    # Add edges from edge_event_map that are not in classification
-    # (sanity: there shouldn't be any, but flag it).
+    # Edges in edge_event_map that are not in classification.
+    # Two cases:
+    #   1. macro pass-through edges that live in src/lib/graph-data.ts
+    #      but not in claire_graph_data.json (the classifier source).
+    #      These are real graph edges; surface them with their evidence.
+    #   2. genuinely orphaned mapping entries (typos, stale refs).
+    #      Reported as a warning.
+    # We treat any edge_id starting with the live-graph macro/sovereign/
+    # supply-chain prefixes as case 1; the rest as case 2.
     classified_ids = {e["edge_id"] for e in classification["edges"]}
-    orphans = [eid for eid in edge_event_map if eid not in classified_ids]
+    LIVE_GRAPH_ONLY_PREFIXES = ("ip_", "mi_", "sc_", "ic_", "sr_", "fc_")
+    orphans: list[str] = []
+    for eid in edge_event_map:
+        if eid in classified_ids:
+            continue
+        # Synthesize an edge entry for the live-graph mapping
+        target = eid.split("__", 1)[1] if "__" in eid else ""
+        if target.startswith(LIVE_GRAPH_ONLY_PREFIXES):
+            map_entry = edge_event_map[eid]
+            ev = _evidence_for_edge(eid, edge_event_map, events_idx)
+            method = "event_study" if ev["evidence"] else "expert_prior"
+            if ev["evidence"]:
+                evidence_counts["with_evidence"] += 1
+            else:
+                evidence_counts["without_evidence"] += 1
+            method_counts[method] += 1
+            source = eid.split("__", 1)[0] if "__" in eid else ""
+            rows.append({
+                "edge_id": eid,
+                "source": source,
+                "target": target,
+                "source_label": source,
+                "target_label": target,
+                "source_category": None,
+                "target_category": None,
+                "current_weight": None,
+                "current_lag": None,
+                "current_confidence": None,
+                "fit_method": method,
+                "live_graph_only": True,
+                **ev,
+            })
+        else:
+            orphans.append(eid)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({

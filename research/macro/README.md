@@ -28,10 +28,13 @@ list below.
 ## Scope of this PR (PR-A)
 
 **Done in this PR**: methodology, fit pipeline, event-study fits for
-9 highest-leverage GCC-internal price-impact edges, and capacity
-citations for 7 keystone facility-engineering edges. **Not done in this
-PR**: actually updating `src/lib/graph-data.ts`. Weight/lag/confidence
-updates land in a follow-up (PR-B) once this work is reviewed.
+9 GCC-internal price-impact edges, 6 macro pass-through edges
+(physical-shock -> US CPI/PPI), and capacity citations for 7 keystone
+facility-engineering edges. Total: 15 graph edges with empirical
+evidence, plus 7 with audit-grade nameplate citations. **Not done in
+this PR**: actually updating `src/lib/graph-data.ts`. Weight/lag/
+confidence updates land in a follow-up (PR-B) once this work is
+reviewed.
 
 The artifact PR-B will consume is `output/edge_fits.json` (per-edge
 empirical evidence rows, keyed by edge ID) plus
@@ -39,28 +42,45 @@ empirical evidence rows, keyed by edge ID) plus
 PR-B reads the live graph file by edge ID, applies the evidence, and
 leaves any edge without evidence untouched.
 
-## High-leverage follow-up: macro pass-through edges
+## Macro pass-through edges (added in this PR)
 
-PR #115 added 20 cross-domain edges into the macro module
-(`ip_cpi_energy`, `ip_cpi_food`, `ip_ppi_all_commodities`,
-`mi_industrial_production`, etc.) — physical-shock to inflation
-pass-through. Approximately 7 of those edges are directly supportable
-by the event-study evidence already produced in this PR:
+Graph PR #115 introduced 20 cross-domain edges into the macro module
+(`ip_cpi_energy`, `ip_cpi_food`, `ip_ppi_all_commodities`, etc.) —
+physical-shock to US inflation pass-through. We pulled FRED CPI/PPI
+series and ran the same event-study estimator directly on those
+indices, producing empirical evidence for 6 of those edges:
 
-  - `sa_ras_tanura_terminal -> ip_cpi_energy` (Brent via Abqaiq 2019)
-  - `sa_abqaiq_plants -> ip_cpi_energy` (Brent via Abqaiq 2019)
-  - `qf_strait_of_hormuz -> ip_cpi_energy` (Brent via Hormuz 2019)
-  - `qe_north_field_gas_field -> ip_cpi_energy` (LNG-Japan / natgas via Ras Laffan 2026)
-  - `qe_ras_laffan_port -> ip_ppi_energy` (Brent / natgas via Ras Laffan 2026)
-  - `qf_global_food_prices -> ip_cpi_food` (wheat via 2022 fertilizer)
-  - `mn_global_food_price_stress -> ip_cpi_food` (DAP / wheat via Ma'aden ramp + 2022)
-  - `sc_fertilizer_price_index -> ip_ppi_all_commodities` (urea / DAP via 2022)
+  - `sa_ras_tanura_terminal -> ip_cpi_energy` (CPI energy via Abqaiq 2019)
+  - `sa_abqaiq_plants -> ip_cpi_energy` (CPI energy via Abqaiq 2019)
+  - `qf_strait_of_hormuz -> ip_cpi_energy` (CPI energy via Hormuz 2019)
+  - `qf_global_food_prices -> ip_cpi_food` (CPI food via 2022 fertilizer)
+  - `mn_global_food_price_stress -> ip_cpi_food` (CPI food via 2022 + Ma'aden ramp)
+  - `sc_fertilizer_price_index -> ip_ppi_all_commodities` (PPI via 2022 fertilizer)
 
-Mapping these in `edge_event_map.json` and re-running
-`build_edge_fits.py` would extend the empirical evidence table to
-~16 edges total. Best done as a separate focused PR to keep the
-methodology review and the macro-edge mapping reviewable
-independently.
+Two LNG-related pass-through edges (`qe_north_field_gas_field`,
+`qe_ras_laffan_port` -> energy CPI/PPI) would be supportable by the
+2026-03 Ras Laffan event, but FRED's monthly data ends 2026-03-31
+so there is no post-event window. Re-runnable after the next FRED
+release.
+
+### Methodological finding
+
+The pass-through results split cleanly along event duration:
+
+  - **Discrete crude attacks** (Abqaiq 2019, Hormuz 2019) -> CPI
+    energy: small CARs near zero, bootstrap CI overlaps zero. Real
+    finding: a 3-week supply hit gets averaged out of the monthly
+    CPI print and does not produce a sustained pass-through.
+  - **Sustained regime shifts** (2022 fertilizer / Russia-Ukraine)
+    -> CPI food, CPI goods, PPI all commodities: significant
+    positive CARs at +4 months, all CI excluding zero. Slow-moving
+    aggregates respond materially to persistent shocks.
+
+This is consistent with macro-credit-channel intuition but
+quantifies the asymmetry directly. The implication for graph
+weights: the energy CPI edges from short-event sources may be
+overweighted in the current expert prior; the food/PPI edges from
+sustained-shock sources are well-calibrated.
 
 ## Why three fit methods, not one
 
@@ -68,7 +88,7 @@ A single statistical method does not fit all 69 edges:
 
 | method | applies to | n edges | how the weight is empirically grounded |
 |---|---|---|---|
-| `event_study` | source -> price-sensitive target where a recorded disruption event exists | 9 | observed cumulative abnormal return (CAR) on the relevant Pink Sheet / EIA price series in a window around the event |
+| `event_study` | source -> price-sensitive or macro target where a recorded disruption event exists | 15 | observed CAR on the relevant Pink Sheet / EIA / FRED series in a window around the event |
 | `capacity_citation` | facility -> facility throughput edges | 53 | published nameplate capacity from a primary source (operator IR, EIA country brief, S&P Platts) |
 | `expert_prior` | edges where neither method is feasible | 7 | retained domain prior; flagged for follow-up data acquisition |
 
@@ -82,6 +102,7 @@ and is overridden by the hand-curated mapping in
 |---|---|---|---|
 | Brent, WTI, Henry Hub natgas | EIA via `github.com/datasets` mirrors | daily | 1986/1987/1997 -> present |
 | Urea, DAP, phosphate rock, wheat, maize, rice, LNG-Japan, EU/US natgas | World Bank Pink Sheet (CMO Historical Data Monthly) | monthly | 1960 -> 2024-12 |
+| US CPI energy/food/goods, PPI energy/all-commodities, IndProd, manuf. employment | FRED (`fredgraph.csv?id=...`, no API key) | monthly | 1913-1957 -> 2026-03 |
 | Disruption events (Abqaiq 2019, Hormuz 2019, Qatar blockade 2017-21, Ma'aden ramp delay, Ras Laffan 2026, fertilizer restrictions 2022) | `public/datasets/claire/disruption_events.json` (already in repo) | event log | 6 events |
 
 Loaders cache to `datasets/_cache/` (gitignored). Re-runs are
@@ -176,7 +197,7 @@ Run with: `research/.venv/bin/python -m research.macro.validation.event_study_ab
 
 ## Headline empirical results
 
-The 6 disruption events x relevant commodity series produce 34
+The 6 disruption events x relevant commodity / FRED series produce 47
 event-study rows in [output/events_x_series.json](output/events_x_series.json).
 The cleanest signals (significant CI excluding zero, sign matching the
 expected mechanism):
@@ -192,6 +213,9 @@ expected mechanism):
 | Ras Laffan LNG 2026 | Brent | daily | +36% @ +6d, peak +57% @ +19d | [+24%, +47%] | 100 |
 | Ras Laffan LNG 2026 | WTI | daily | +38% @ +6d, peak +47% @ +18d | [+27%, +48%] | 100 |
 | Hormuz tankers 2019 | LNG-Japan | monthly | -21% @ +4m | [-35%, -5%] | 27 |
+| **Fertilizer restrictions 2022** | **US CPI food (FRED)** | **macro/monthly** | **+3.6% @ +4m** | **[+1.3%, +5.4%]** | **27** |
+| **Fertilizer restrictions 2022** | **US CPI goods (FRED)** | **macro/monthly** | **+4.0% @ +4m** | **[+0.5%, +9.1%]** | **27** |
+| **Fertilizer restrictions 2022** | **US PPI all commodities (FRED)** | **macro/monthly** | **+10.9% @ +4m** | **[+2.2%, +22.2%]** | **27** |
 
 (Magnitudes are log returns; for crude/gas the ~5-15% range is large.
 The Ras Laffan 2026 daily CARs are notable — the recent event drove the
@@ -273,6 +297,7 @@ research/macro/
   datasets/
     commodity_prices.py              (Brent, WTI, Henry Hub daily)
     pinksheet.py                     (World Bank monthly commodities)
+    fred.py                          (FRED CPI/PPI/IndProd monthly)
   validation/
     event_study_abqaiq.py            (textbook validation)
   scripts/

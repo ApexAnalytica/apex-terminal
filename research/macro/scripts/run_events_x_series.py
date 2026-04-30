@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from research.macro.datasets import commodity_prices, pinksheet
+from research.macro.datasets import commodity_prices, fred, pinksheet
 from research.macro.estimators.event_study import event_study
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -80,6 +80,29 @@ DAILY_SERIES_BY_EVENT = {
     "evt_maaden_waad_al_shamal_ramp_delay": ["brent"],
     "evt_ras_laffan_lng_outage_2026": ["brent", "wti", "natgas"],
     "evt_fertilizer_export_restrictions_2022": ["brent", "wti", "natgas"],
+}
+
+# FRED macro series for pass-through edges added in graph PR #115.
+# Empty lists mean no usable macro evidence: events near the end of
+# FRED's coverage (Ras Laffan 2026-03 vs FRED end 2026-03-31) leave
+# no post-event window for a monthly study.
+MACRO_SERIES_BY_EVENT: dict[str, list[str]] = {
+    "evt_abqaiq_khurais_2019": [
+        "ip_cpi_energy", "ip_ppi_energy", "ip_ppi_all_commodities",
+    ],
+    "evt_hormuz_tanker_incidents_2019": [
+        "ip_cpi_energy", "ip_ppi_energy", "ip_ppi_all_commodities",
+    ],
+    "evt_qatar_blockade_2017_2021": [
+        "ip_cpi_energy", "ip_ppi_energy",
+    ],
+    "evt_maaden_waad_al_shamal_ramp_delay": [
+        "ip_cpi_food", "ip_ppi_all_commodities",
+    ],
+    "evt_ras_laffan_lng_outage_2026": [],
+    "evt_fertilizer_export_restrictions_2022": [
+        "ip_cpi_food", "ip_cpi_goods", "ip_ppi_all_commodities",
+    ],
 }
 
 
@@ -167,6 +190,39 @@ def main() -> None:
                 row = dict(event_id=evid, frequency="monthly", series=s,
                            note=f"failed: {e}")
                 print(f"  monthly {s:<24} ERR: {e}")
+            rows.append(row)
+
+        # macro (FRED CPI/PPI/IP/etc., monthly frequency)
+        for node_id in MACRO_SERIES_BY_EVENT.get(evid, []):
+            try:
+                series = fred.load_node(node_id)
+                res = event_study(
+                    series, evdate, estimation_window=MONTHLY_EST,
+                    event_window=MONTHLY_EVT, n_boot=2000, block_len=3, rng=rng,
+                )
+                row = dict(
+                    event_id=evid, frequency="macro", series=node_id,
+                    fred_id=fred.NODE_TO_FRED[node_id],
+                    car_immediate=res.car_immediate,
+                    car_short=res.car_short, short_offset=res.short_offset,
+                    car_peak=res.car_peak, peak_offset=res.peak_offset,
+                    ci_low_short=res.boot_ci_low_short,
+                    ci_high_short=res.boot_ci_high_short,
+                    ci_low_peak=res.boot_ci_low,
+                    ci_high_peak=res.boot_ci_high,
+                    patell_t=res.patell_t,
+                    significant_short=_significant(res.boot_ci_low_short, res.boot_ci_high_short),
+                    significant_peak=_significant(res.boot_ci_low, res.boot_ci_high),
+                    n_estimation=res.n_estimation,
+                    note=None,
+                )
+                print(f"  macro   {node_id:<28} short={res.car_short:+.4f}@{res.short_offset}m "
+                      f"CI=[{res.boot_ci_low_short:+.4f},{res.boot_ci_high_short:+.4f}]  "
+                      f"peak={res.car_peak:+.4f}@{res.peak_offset}m")
+            except Exception as e:
+                row = dict(event_id=evid, frequency="macro", series=node_id,
+                           note=f"failed: {e}")
+                print(f"  macro   {node_id:<28} ERR: {e}")
             rows.append(row)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

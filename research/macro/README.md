@@ -58,7 +58,42 @@ model — there is no obvious benchmark factor for commodity prices
 analogous to a stock-market index. The estimation-window mean and
 variance of log returns serve as the null distribution.
 
-Two test statistics:
+### Why constant-mean rather than market model
+
+This is the most likely place for reviewer pushback, so the reasoning
+explicitly: market-model variance reduction would matter for *small*
+effects where signal is borderline, but most of the events here move
+prices well outside any plausible "normal" envelope (Abqaiq +12% on
+day 0, Ras Laffan 2026 +36% over six trading days, Ma'aden ramp +52%
+on monthly urea over four months) — variance reduction is not the
+binding constraint. Where the marginal events sit (Hormuz tankers,
+2022 fertilizer monthly), the noise comes from regime shifts and
+partial anticipation, not from missing benchmark covariance.
+
+The market-model alternative also doesn't *resolve* a methodology
+choice; it *opens* a benchmark-selection one, with no clean answer for
+any of our target series:
+
+- **Crude (Brent / WTI)**: SPX, DXY, oil-services equity, Bloomberg
+  Commodity Index — each gives a different answer, and crude is so
+  large in any commodity index that the "benchmark" is largely the
+  asset itself.
+- **Fertilizer (urea / DAP)**: the only available index covering these
+  is the Pink Sheet food-and-beverage index, which *contains* urea and
+  DAP. Regressing the asset on an index that includes itself is
+  econometrically broken.
+- **Natural gas / LNG**: candidates (coal, power-gen index, oil)
+  reflect substitution effects that are themselves the object of
+  study, not a clean benchmark.
+
+If a customer pushes back with a specific benchmark request — say,
+"use Bloomberg Commodity Index ex-energy for the crude edges" — the
+estimator generalizes cleanly (replace the constant `mu` with the
+fitted regression on the benchmark return). Building it pre-emptively
+without that signal would mean picking the benchmark on a guess, which
+just relocates the methodology debate.
+
+### Test statistics
 
 - **Patell standardized t** (parametric) at the peak-|magnitude| offset.
 - **Moving-block bootstrap** percentile CI on CAR, which preserves the

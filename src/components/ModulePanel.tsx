@@ -23,6 +23,7 @@ import {
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
+import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
@@ -87,6 +88,7 @@ export default function ModulePanel() {
           <>
             <CascadeHeader />
             <TrinityPanel />
+            <DiscoveryRunsPanel />
           </>
         )}
 

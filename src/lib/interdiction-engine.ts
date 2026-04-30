@@ -3,7 +3,7 @@ import {
   CausalShock,
   EpochSnapshot,
 } from "./types";
-import { simulateCascade, mapShocksToNodes } from "./cascade-simulator";
+import { simulateCascade } from "./cascade-simulator";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -53,18 +53,10 @@ export interface InterdictionCandidate {
  *                  high-fragility targets; cuts that protect one critical
  *                  chokepoint show up here even if the mean barely moves)
  *   (3) critical — bonus when the Ω-buffer breaches threshold.
- *
- * Shock-source nodes (the nodes that receive the initial injection) are
- * excluded from BOTH the spread and hot-node calculations. Their
- * intensity is an *input* to the cascade, not a downstream consequence —
- * no edge severance can change it. Including them dominates the hot-node
- * term (source intensity ~1.0 × high ΩF) and drowns out per-cut deltas in
- * the propagation, which is the actual signal the solver needs.
  */
 function computeDamage(
   epochs: EpochSnapshot[],
   baseOmegaMap: Map<string, number>,
-  shockSourceIds: Set<string>,
 ): number {
   if (epochs.length === 0) return 0;
 
@@ -75,7 +67,6 @@ function computeDamage(
     let total = 0;
     let count = 0;
     for (const [id, state] of Object.entries(snap.nodeStates)) {
-      if (shockSourceIds.has(id)) continue;
       total += state.shockIntensity;
       count++;
       const baseOmega = baseOmegaMap.get(id) ?? 5;
@@ -127,25 +118,9 @@ export function solveInterdiction(
     baseOmegaMap.set(node.id, node.omegaFragility.composite);
   }
 
-  // Identify shock-source nodes (the ones that receive the initial
-  // injection). computeDamage skips these so the per-cut signal is
-  // dominated by downstream propagation rather than the invariant
-  // source state. Mirrors the same shock→node mapping the simulator
-  // uses, so no chance of drift.
-  //
-  // Edge case: if the shock saturates the entire graph (every node is
-  // a source — happens on tightly-scoped subgraphs like VX-880 where
-  // the whole graph is one category and the shock category broadcasts
-  // to it), excluding everyone zeros the score. Fall back to scoring
-  // all nodes in that case so baseline damage is still meaningful.
-  const allSourceIds = new Set(mapShocksToNodes(graph, shocks).keys());
-  const shockSourceIds = allSourceIds.size < graph.nodes.length
-    ? allSourceIds
-    : new Set<string>();
-
   // Baseline: no interventions
   const baselineEpochs = simulateCascade(graph, shocks, severedEdges);
-  const baselineDamage = computeDamage(baselineEpochs, baseOmegaMap, shockSourceIds);
+  const baselineDamage = computeDamage(baselineEpochs, baseOmegaMap);
 
   const interventions: InterdictionCandidate[] = [];
   const removedEdgeIds = new Set(severedEdges);
@@ -210,7 +185,7 @@ export function solveInterdiction(
       }
 
       const epochs = simulateCascade(testGraph, shocks, testSevered);
-      const damage = computeDamage(epochs, baseOmegaMap, shockSourceIds);
+      const damage = computeDamage(epochs, baseOmegaMap);
 
       if (damage < bestDamage) {
         bestDamage = damage;

@@ -75,6 +75,17 @@ Three squashed commits introducing the first live API feeds:
 - Stale chips render at `opacity-50` to de-emphasize unfetched feeds.
 - OFAC route: if parser returns 0 jurisdictions on 200 OK (Treasury redirect / maintenance), serve mock-fallback so the engine path still exercises rather than going stale.
 
+### Per-card live-data rows + scalable display layer *(latest material change)*
+- Standalone `<LiveFeedStatus />` component **deleted**. Live data now surfaces per-node, where it belongs.
+- Each `RiskPropagationFlow` card (the "ΩF TIME SERIES" cards) renders one row per `node.liveData[]` entry between the domain-badge row and the sparkline. Card without live data → renders nothing.
+- Global feed summary inlined in the `ΩF TIME SERIES` header (right-aligned): counts distinct feed `kind`s by mode (`live | mock-fallback | mock`), so "is anything flowing?" is answered at a glance without scanning every card.
+- New shared display module `src/lib/feeds/display.ts`:
+  - `feedModeFromSource`, `timeAgoLabel`, `feedDotClass` — utility helpers.
+  - `KIND_FORMATTERS` registry: per-`kind` formatter producing `{shortLabel, primaryValue, qualifier}`. Throughput → "EIA · 18.50 mb/d · 88%". Sanctions → "OFAC · Iran · 4 prog". Generic fallback for unknown kinds → "value unit · ratio%".
+  - `summarizeLiveFeeds(nodes)` → mode counts.
+- **Adding a new feed now requires zero card changes.** New feed writes a new `kind` to `liveData[]` via the proxy → cards iterate and render the entry automatically. Optionally add a `KIND_FORMATTERS` entry for nicer display; otherwise generic fallback handles it.
+- 12 new tests in `feeds-display.test.ts` cover the formatter registry, mode parser, summary aggregation. 459/459 total.
+
 ## Architectural decisions
 
 ### `liveData` shape
@@ -108,13 +119,14 @@ Engine-side only: `applyHormuzLiveData` / `applyOfacLiveData` append `TemporalEv
 ```
 src/lib/types.ts                              LiveDataPoint, getLiveSignal/upsertLiveSignal helpers, ProofTrace.detail
 src/lib/tarski-data.ts                        AXIOM_LIBRARY (32), runTarskiValidation, A-04/R-01/R-02 with liveData branches
+src/lib/feeds/display.ts                      Shared display helpers — feedModeFromSource, KIND_FORMATTERS, summarizeLiveFeeds, feedDotClass
 src/lib/feeds/eia-hormuz.ts                   EIA URL builder, parser, mock; HORMUZ_CAPACITY_MBD = 21
 src/lib/feeds/ofac-sdn.ts                     OFAC pipe-CSV parser, PROGRAM_PREFIX_TO_COUNTRY, mock
 src/lib/snapshots/tarski-validator.ts         THIN snapshot validator (5 axioms) — deferred cleanup
 src/stores/useApexStore.ts                    applyHormuzLiveData, applyOfacLiveData, appendFeedEvent helper
 src/hooks/useHormuzFeed.ts                    5-min poll, geopolitical-only gate
 src/hooks/useOfacFeed.ts                      30-min poll, geopolitical-only gate
-src/components/LiveFeedStatus.tsx             Chip strip (bottom-left of DAG canvas)
+src/components/RiskPropagationFlow.tsx        Per-card live-data rows + global feed summary in header
 src/app/api/feeds/eia/hormuz/route.ts         EIA proxy
 src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensive fallback
 ```
@@ -125,10 +137,10 @@ src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensi
 - `src/lib/__tests__/feeds/ofac-sdn.test.ts` — 10 (URL constant, programToCountry, CSV parser, mock)
 - `src/lib/__tests__/tarski-a04-livedata.test.ts` — 4 (A-04 liveData branch + structural fallback)
 - `src/lib/__tests__/tarski-r01-r02-livedata.test.ts` — 7 (R-01/R-02 liveData + static branches)
-- `src/lib/__tests__/live-feed-status.test.ts` — 10 (feedModeFromSource, timeAgoLabel)
+- `src/lib/__tests__/feeds-display.test.ts` — 18 (feedModeFromSource, timeAgoLabel, formatLiveSignal, KIND_FORMATTERS registry, summarizeLiveFeeds, shortLabelFromSource)
 - `src/lib/__tests__/store-feed-events.test.ts` — 7 (TemporalEvent emission, dedup)
 
-**45 new tests** total. Project total: 375 / 375 passing.
+**53 tests** total from this session. Project total: 459 / 459 passing.
 
 ## Env vars (operator)
 

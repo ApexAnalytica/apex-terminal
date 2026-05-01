@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Real fs/os/path access — happy-dom externalizes Node built-ins and breaks
+// these in Vercel's build env. Override globally-defaulted browser environment
+// for this file only.
 import { describe, it, expect } from "vitest";
 import * as fs from "fs/promises";
 import * as os from "os";

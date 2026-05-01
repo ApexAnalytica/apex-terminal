@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Tests Next.js server-side API routes which import Node built-ins (crypto).
+// happy-dom externalizes those as browser stubs and the route module fails to
+// load in Vercel's build env.
 import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/discovery/run/route";

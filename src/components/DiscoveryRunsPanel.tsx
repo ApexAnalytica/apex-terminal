@@ -21,6 +21,7 @@ import type { DiscoveryRun } from "@/lib/discovery";
 const SAMPLE_RUN_URLS = [
   "/discovery-runs/d1namo-lag-correlation-v0-1-0.json",
   "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
+  "/discovery-runs/d1namo-bocpd-hypo-calibration-v0-1-0.json",
 ];
 
 type LoadState =
@@ -118,6 +119,7 @@ function ErrorTile({ message }: { message: string }) {
 
 function RunTile({ run }: { run: DiscoveryRun }) {
   const r = run.result;
+  const isCalibration = run.algorithm.id === "bocpd-hypo-calibration";
   const sortedEdges = useMemo(
     () =>
       [...r.edges].sort(
@@ -131,7 +133,7 @@ function RunTile({ run }: { run: DiscoveryRun }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-[#40c4ff]">
-          DISCOVERY RUN
+          {isCalibration ? "CALIBRATION RUN" : "DISCOVERY RUN"}
         </span>
         <span
           className={`text-[7px] font-mono ${
@@ -148,15 +150,30 @@ function RunTile({ run }: { run: DiscoveryRun }) {
       <div className="grid grid-cols-2 gap-1.5">
         <Stat label="ALGORITHM" value={`${run.algorithm.id} v${run.algorithm.version}`} />
         <Stat label="COHORT" value={run.cohortId} />
-        <Stat label="EDGES" value={String(r.edges.length)} />
-        <Stat
-          label="VARIABLES"
-          value={String(r.variables.length)}
-        />
+        {isCalibration ? (
+          <>
+            <Stat
+              label="N PAIRS"
+              value={String(r.diagnostics?.nPairs ?? 0)}
+            />
+            <Stat
+              label="SUBJECTS"
+              value={String(r.diagnostics?.nSubjects ?? 0)}
+            />
+          </>
+        ) : (
+          <>
+            <Stat label="EDGES" value={String(r.edges.length)} />
+            <Stat
+              label="VARIABLES"
+              value={String(r.variables.length)}
+            />
+          </>
+        )}
       </div>
 
-      {/* Diagnostics */}
-      {r.diagnostics && (
+      {/* Diagnostics — discovery flavour */}
+      {!isCalibration && r.diagnostics && (
         <div className="text-[7px] font-mono text-text-muted leading-relaxed border-l-2 border-[#40c4ff]/30 pl-2">
           {typeof r.diagnostics.nSubjectsUsed === "number" && (
             <>
@@ -174,49 +191,56 @@ function RunTile({ run }: { run: DiscoveryRun }) {
         </div>
       )}
 
-      {/* Edges */}
-      <div className="space-y-1.5">
-        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground pt-1">
-          DISCOVERED EDGES
-        </div>
-        {sortedEdges.length === 0 ? (
-          <div className="text-[8px] font-mono text-text-muted">
-            No edges passed the FDR threshold.
+      {/* Calibration metrics — only when this run is a calibration */}
+      {isCalibration && r.diagnostics && (
+        <CalibrationBlock diagnostics={r.diagnostics} />
+      )}
+
+      {/* Edges — only for discovery runs */}
+      {!isCalibration && (
+        <div className="space-y-1.5">
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground pt-1">
+            DISCOVERED EDGES
           </div>
-        ) : (
-          <ul className="space-y-1">
-            {sortedEdges.map((edge, i) => (
-              <li
-                key={i}
-                className="text-[8px] font-mono text-foreground p-1.5 rounded border border-border bg-surface-elevated"
-                title={edge.evidence}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate">
-                    <span className="text-accent-cyan">{edge.source}</span>
-                    <span className="text-text-muted mx-1">{"→"}</span>
-                    <span className="text-accent-amber">{edge.target}</span>
-                    {typeof edge.lag === "number" && edge.lag > 0 && (
-                      <span className="text-text-muted ml-2">
-                        (+{edge.lag}s)
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-[7px] text-text-muted shrink-0">
-                    r={edge.strength.toFixed(3)}
-                    {typeof edge.pValue === "number" && (
-                      <>
-                        {" "}
-                        · p={edge.pValue.toExponential(1)}
-                      </>
-                    )}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+          {sortedEdges.length === 0 ? (
+            <div className="text-[8px] font-mono text-text-muted">
+              No edges passed the FDR threshold.
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {sortedEdges.map((edge, i) => (
+                <li
+                  key={i}
+                  className="text-[8px] font-mono text-foreground p-1.5 rounded border border-border bg-surface-elevated"
+                  title={edge.evidence}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      <span className="text-accent-cyan">{edge.source}</span>
+                      <span className="text-text-muted mx-1">{"→"}</span>
+                      <span className="text-accent-amber">{edge.target}</span>
+                      {typeof edge.lag === "number" && edge.lag > 0 && (
+                        <span className="text-text-muted ml-2">
+                          (+{edge.lag}s)
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[7px] text-text-muted shrink-0">
+                      r={edge.strength.toFixed(3)}
+                      {typeof edge.pValue === "number" && (
+                        <>
+                          {" "}
+                          · p={edge.pValue.toExponential(1)}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Algorithm caveat — honest framing carries through to the UI */}
       {run.algorithm.id === "lag-correlation" && (
@@ -240,6 +264,18 @@ function RunTile({ run }: { run: DiscoveryRun }) {
           residual signal.
         </div>
       )}
+      {run.algorithm.id === "bocpd-hypo-calibration" && (
+        <div className="text-[7px] font-mono text-accent-amber/80 leading-relaxed border border-accent-amber/20 bg-accent-amber/5 rounded px-1.5 py-1">
+          <strong>BOCPD vs hypoglycemia, 30-min horizon.</strong> The
+          methodology the Joslin proposal commits to, executed on the
+          public D1NAMO cohort. AUROC measures discrimination; ECE
+          measures calibration loss. A platform whose discrimination is
+          high but calibration poor needs post-hoc re-calibration
+          (Platt / isotonic) before the raw scores can drive clinical
+          interpretation — exactly the question the Phase-1 deliverable
+          on Joslin data is meant to answer at scale.
+        </div>
+      )}
     </div>
   );
 }
@@ -250,6 +286,92 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[7px] font-mono text-text-muted">{label}</div>
       <div className="text-[9px] font-mono text-foreground truncate" title={value}>
         {value}
+      </div>
+    </div>
+  );
+}
+
+// ─── Calibration metrics + reliability diagram ───────────────────────
+
+interface ReliabilityBin {
+  binLow: number;
+  binHigh: number;
+  predictedMean: number;
+  observedRate: number;
+  count: number;
+}
+
+function CalibrationBlock({
+  diagnostics,
+}: {
+  diagnostics: Record<string, unknown>;
+}) {
+  const auroc = typeof diagnostics.auroc === "number" ? diagnostics.auroc : null;
+  const brier =
+    typeof diagnostics.brierScore === "number" ? diagnostics.brierScore : null;
+  const ece = typeof diagnostics.ece === "number" ? diagnostics.ece : null;
+  const baseRate =
+    typeof diagnostics.baseRate === "number" ? diagnostics.baseRate : null;
+  const bins = Array.isArray(diagnostics.reliabilityBins)
+    ? (diagnostics.reliabilityBins as ReliabilityBin[])
+    : [];
+  const maxCount = bins.reduce((m, b) => Math.max(m, b.count), 0);
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-4 gap-1.5">
+        <Stat label="AUROC" value={auroc !== null ? auroc.toFixed(3) : "—"} />
+        <Stat label="BRIER" value={brier !== null ? brier.toFixed(3) : "—"} />
+        <Stat label="ECE" value={ece !== null ? ece.toFixed(3) : "—"} />
+        <Stat
+          label="BASE RATE"
+          value={baseRate !== null ? `${(baseRate * 100).toFixed(1)}%` : "—"}
+        />
+      </div>
+
+      {/* Reliability diagram */}
+      <div className="space-y-1">
+        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground pt-1">
+          RELIABILITY DIAGRAM
+        </div>
+        <div className="text-[7px] font-mono text-text-muted">
+          Each row: predicted bin (left) → observed event rate (cyan bar)
+          vs predicted mean (amber tick). Perfect calibration would put
+          the tick exactly on the bar's right edge.
+        </div>
+        <ul className="space-y-0.5">
+          {bins.map((b, i) => (
+            <li
+              key={i}
+              className="text-[7px] font-mono text-foreground flex items-center gap-2"
+            >
+              <span className="text-text-muted shrink-0 w-12">
+                [{b.binLow.toFixed(1)}–{b.binHigh.toFixed(1)})
+              </span>
+              <span className="text-text-muted shrink-0 w-10">
+                n={b.count}
+              </span>
+              <div className="flex-1 relative h-3 bg-surface-elevated rounded">
+                <div
+                  className="absolute left-0 top-0 bottom-0 bg-accent-cyan/40 rounded-l"
+                  style={{
+                    width: `${Math.min(100, b.observedRate * 100)}%`,
+                  }}
+                />
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-accent-amber"
+                  style={{
+                    left: `${Math.min(100, b.predictedMean * 100)}%`,
+                  }}
+                />
+              </div>
+              <span className="text-text-muted shrink-0 w-16 text-right">
+                obs={b.observedRate.toFixed(2)}
+                {maxCount > 0 && b.count === 0 && " (empty)"}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

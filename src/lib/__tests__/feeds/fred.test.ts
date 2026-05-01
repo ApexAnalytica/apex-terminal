@@ -66,6 +66,16 @@ describe("mockFredFeed", () => {
     const ids = FRED_SERIES.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it("includes the Phase 4 expansion series (Labor Force, EmRatio, GDP QoQ, PPI, Forward Inflation, Wheat)", () => {
+    const ids = new Set(FRED_SERIES.map((s) => s.id));
+    expect(ids.has("CIVPART")).toBe(true);
+    expect(ids.has("EMRATIO")).toBe(true);
+    expect(ids.has("A191RL1Q225SBEA")).toBe(true);
+    expect(ids.has("PPIACO")).toBe(true);
+    expect(ids.has("T5YIFR")).toBe(true);
+    expect(ids.has("PWHEAMTUSDM")).toBe(true);
+  });
 });
 
 describe("fredProvider.matchPayload", () => {

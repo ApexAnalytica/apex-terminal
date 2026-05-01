@@ -2,7 +2,7 @@
 
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
-> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput) and R-01 / R-02 (sanctions) as of PR #142 / #145.
+> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 6 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov) covering ~36 graph nodes including the T1D side.
 
 ## Scope summary (in)
 
@@ -140,13 +140,16 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | Phase | Provider(s) | Nodes | Status |
 |---|---|---|---|
 | 1 | Registry refactor (no new feeds) | 0 | **shipped (#149)** |
-| 2 | FRED (Federal Reserve Economic Data) | 18 macro/financial series (Fed Funds Effective/Target, SOFR, U-3 / U-6 unemployment, INDPRO, PAYEMS/MANEMP, JOLTS openings/quits/layoffs, building permits, 30Y mortgage, CPI YoY / Core CPI YoY, 5Y/10Y breakeven inflation, Case-Shiller YoY) | **shipped** |
-| 3 | World Bank | ~15 sovereign / governance nodes | not started |
-| 4 | USGS critical minerals | ~10 Saudi/global mining nodes | not started |
-| 5 | BLS labor stats | ~10 labor/employment nodes | not started |
-| 6 | NOAA storm tracks | ~5 conflict-zone proxies | not started |
-| 7 | OpenFDA / ClinicalTrials.gov | T1D coverage | not started |
-| 8 | FAO / OECD food prices | Supply Chain Food Security domain | not started |
+| 2 | FRED — initial batch | 18 macro/financial series (Fed Funds Effective/Target, SOFR, U-3 / U-6 unemployment, INDPRO, PAYEMS/MANEMP, JOLTS openings/quits/layoffs, building permits, 30Y mortgage, CPI YoY / Core CPI YoY, 5Y/10Y breakeven inflation, Case-Shiller YoY) | **shipped (#150)** |
+| 3 | World Bank — country indicators | 5 series: China + Brazil Real GDP, China + Brazil Employment-to-Population, Global CPI Inflation YoY. Keyless. | **shipped (#151)** |
+| 4a | FRED expansion | 7 more series: Labor Force Participation, Employment-Population Ratio, GDP QoQ Annualized, PPI All Commodities, PPI Final Demand Energy, 5Y5Y Forward Inflation Expectation, Global Wheat Price | **shipped (#152)** |
+| 4b | OpenFDA — adverse events | 2 T1D drug nodes: Teplizumab, Insulin Glargine. Free, FAERS counts in last 12-month window. **First T1D-side feed.** | **shipped (#152)** |
+| 5 | ClinicalTrials.gov — trial counts | 2 T1D therapy nodes: Teplizumab + VX-880 (with stem-cell-derived β-cell replacement label match). Free, JSON v2 API. Total + recruiting subset surfaced. | **shipped** |
+| 6 | USGS critical minerals | Phosphate / potash / sulfur — needs Excel-scraping (no JSON API) | blocked: needs scraper |
+| 7 | BLS labor stats | ~10 labor/employment nodes | not started |
+| 8 | NOAA storm tracks | ~5 conflict-zone proxies | not started |
+| 9 | World Bank Pink Sheet | Commodity prices (wheat, fertilizer, phosphate, urea, ammonia) — needs CSV scraper | blocked: needs scraper |
+| 10 | EIA expansion | Saudi crude production, US refinery utilization, Henry Hub natural gas | not started |
 
 **Honest scoping notes:**
 - Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.

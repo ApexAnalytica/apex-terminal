@@ -10,6 +10,7 @@
  * provider on its declared cadence, and dispatches updates through the
  * generic `applyFeedBatch` store action.
  */
+import { clinicalTrialsProvider } from "./providers/clinical-trials";
 import { eiaHormuzProvider } from "./providers/eia-hormuz";
 import { fredProvider } from "./providers/fred";
 import { ofacSdnProvider } from "./providers/ofac-sdn";
@@ -23,4 +24,5 @@ export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   fredProvider,
   worldBankProvider,
   openFdaProvider,
+  clinicalTrialsProvider,
 ];

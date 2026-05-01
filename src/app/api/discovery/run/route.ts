@@ -23,7 +23,7 @@
 // change.
 
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "crypto";
 import { getAlgorithm } from "@/lib/discovery/algorithm-registry";
 import {
   CohortValidationError,

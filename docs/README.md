@@ -15,6 +15,7 @@ This `docs/` folder is the canonical reference for how those pieces fit together
 |---|---|---|
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Top-down system topology, request flow, runtime components, hosting model. | You want the 30-minute overview. |
 | [`AUTH.md`](./AUTH.md) | Supabase auth, `profiles` table, RLS, trial vs trusted access, middleware logic, admin runbook. | You are onboarding a user, debugging a redirect loop, or rotating keys. |
+| [`BILLING.md`](./BILLING.md) | Pricing page, request-access form, leads pipeline, admin billing console, tier enum + domain gating, marketing-site integration patterns. | You are integrating with the marketing site, processing a sale, or chasing a renewal. |
 | [`DATA_MODEL.md`](./DATA_MODEL.md) | The causal graphs (`MAIN_GRAPH`, `ATHENA_GRAPH`, `BRIDGE_EDGES`), domain selector, in-memory store. | You are adding a new domain, node, or cross-domain edge. |
 | [`ENGINES.md`](./ENGINES.md) | The four causal-inference modules (Spirtes, Tarski, Pearl, Pareto) plus the Omega, Cascade, Intervention, Ablation, and Monte-Carlo engines. | You are touching simulation, scoring, or interpretation logic. |
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Vercel project, custom domain, environment variables, CLI deploy + alias pattern, runbook for common failures. | You are shipping a release or recovering from an incident. |

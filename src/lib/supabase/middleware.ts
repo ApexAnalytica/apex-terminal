@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isExpired, type Tier } from "@/lib/billing";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -32,7 +33,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Public routes — no auth required
-  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth"];
+  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||
@@ -52,12 +53,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check access type and trial expiry
+  // Load tier + period bounds from profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("access_type, trial_expires_at")
+    .select("tier, current_period_end")
     .eq("id", user.id)
-    .single();
+    .single<{ tier: Tier; current_period_end: string | null }>();
 
   if (!profile) {
     // No profile row — redirect to login
@@ -80,19 +81,10 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Trusted users — always allowed
-  if (profile.access_type === "trusted") {
-    return supabaseResponse;
-  }
-
-  // Trial users — check expiry
-  if (profile.access_type === "trial") {
-    const expiresAt = new Date(profile.trial_expires_at);
-    if (expiresAt <= new Date()) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/expired";
-      return NextResponse.redirect(url);
-    }
+  if (isExpired(profile)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/expired";
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

@@ -93,6 +93,7 @@ export function parseEiaHormuzResponse(raw: unknown): EiaHormuzFeed {
   const throughputMbd = +(totalKbd / 1000 * HORMUZ_TRANSIT_FRACTION).toFixed(3);
 
   return {
+    kind: "throughput",
     value: throughputMbd,
     capacity: HORMUZ_CAPACITY_MBD,
     unit: "mb/d",
@@ -113,6 +114,7 @@ export function parseEiaHormuzResponse(raw: unknown): EiaHormuzFeed {
 export function mockEiaHormuzFeed(): EiaHormuzFeed {
   const observedAt = new Date().toISOString();
   return {
+    kind: "throughput",
     value: 18.5,
     capacity: HORMUZ_CAPACITY_MBD,
     unit: "mb/d",

@@ -11,6 +11,7 @@ import {
   EpochSnapshot,
   TimelineId,
   LiveDataPoint,
+  upsertLiveSignal,
 } from "@/lib/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
@@ -79,6 +80,13 @@ interface ApexState {
   /** Apply a live-feed measurement to chokepoint nodes (label match);
    *  reruns Tarski validation when truthFilter === "verified". */
   applyHormuzLiveData: (point: LiveDataPoint) => void;
+  /** Apply OFAC sanctions program data to nodes whose jurisdiction matches a
+   *  sanctioned country; reruns Tarski validation when truthFilter === "verified". */
+  applyOfacLiveData: (
+    jurisdictions: Record<string, { country: string; programs: string[]; entryCount: number }>,
+    fetchedAt: string,
+    source: string,
+  ) => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -325,12 +333,70 @@ export const useApexStore = create<ApexState>((set, get) => ({
       let touched = false;
       const nextNodes = s.graphData.nodes.map((n) => {
         if (!isChokepoint(n.label)) return n;
-        const existing = n.liveData;
+        const existing = n.liveData?.find((p) => p.kind === point.kind);
         if (existing && existing.observedAt === point.observedAt && existing.value === point.value) {
           return n; // identical reading — preserve reference for memo stability
         }
         touched = true;
-        return { ...n, liveData: point };
+        return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
+      });
+      if (!touched) return s;
+      const nextGraph = { ...s.graphData, nodes: nextNodes };
+      if (s.truthFilter === "verified") {
+        const cleanGraph = clearTarskiFlags(nextGraph);
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { graphData: flaggedGraph, tarskiReport: report };
+      }
+      return { graphData: nextGraph };
+    }),
+  applyOfacLiveData: (jurisdictions, fetchedAt, source) =>
+    set((s) => {
+      // Match a node to a sanctioned jurisdiction by scanning its label, domain,
+      // globalConcentration, and physicalConstraint strings for country names.
+      // This is intentionally string-heuristic because the existing data model
+      // does not carry an explicit `jurisdiction` field on nodes.
+      const codeByKeyword: Record<string, string> = {
+        iran: "IR", russia: "RU", russian: "RU", "north korea": "KP", dprk: "KP",
+        syria: "SY", cuba: "CU", venezuela: "VE", belarus: "BY", myanmar: "MM",
+        burma: "MM", zimbabwe: "ZW", sudan: "SD", lebanon: "LB", somalia: "SO",
+      };
+      const findJurisdictionCode = (n: typeof s.graphData.nodes[number]): string | null => {
+        const haystack = `${n.label} ${n.domain} ${n.globalConcentration} ${n.physicalConstraint ?? ""}`.toLowerCase();
+        for (const [keyword, code] of Object.entries(codeByKeyword)) {
+          if (haystack.includes(keyword) && jurisdictions[code]?.entryCount) return code;
+        }
+        return null;
+      };
+      let touched = false;
+      const nextNodes = s.graphData.nodes.map((n) => {
+        const code = findJurisdictionCode(n);
+        if (!code) {
+          // Drop a stale sanctions signal if this node no longer matches a sanctioned jurisdiction.
+          if (n.liveData?.some((p) => p.kind === "sanctions")) {
+            touched = true;
+            return { ...n, liveData: n.liveData.filter((p) => p.kind !== "sanctions") };
+          }
+          return n;
+        }
+        const j = jurisdictions[code];
+        const point: LiveDataPoint = {
+          kind: "sanctions",
+          value: j.programs.length,
+          capacity: 1,
+          unit: "programs",
+          observedAt: fetchedAt,
+          source: `${source} — ${j.country}: ${j.programs.join(", ")}`,
+        };
+        const existing = n.liveData?.find((p) => p.kind === "sanctions");
+        if (existing && existing.observedAt === point.observedAt && existing.source === point.source) {
+          return n;
+        }
+        touched = true;
+        return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
       });
       if (!touched) return s;
       const nextGraph = { ...s.graphData, nodes: nextNodes };

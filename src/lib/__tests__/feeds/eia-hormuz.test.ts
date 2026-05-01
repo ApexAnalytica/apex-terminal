@@ -79,12 +79,13 @@ describe("parseEiaHormuzResponse", () => {
 });
 
 describe("mockEiaHormuzFeed", () => {
-  it("returns a value below capacity but above the 0.9 saturation threshold", () => {
+  it("returns a value below capacity but above the 0.85 saturation threshold", () => {
     const feed = mockEiaHormuzFeed();
     const ratio = feed.value / feed.capacity;
     expect(ratio).toBeGreaterThan(0.85);
     expect(ratio).toBeLessThan(1);
     expect(feed.source).toContain("mock");
+    expect(feed.kind).toBe("throughput");
   });
 
   it("breakdown sums to within rounding of the headline value (before transit-fraction scaling)", () => {

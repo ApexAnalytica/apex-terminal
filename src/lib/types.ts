@@ -111,6 +111,8 @@ export type NodeCategory =
 export type EdgeType = "directed" | "confounded" | "temporal";
 
 export interface LiveDataPoint {
+  /** discriminator — multiple feeds can attach distinct signals to one node */
+  kind: "throughput" | "sanctions" | string;
   /** observed quantity in the unit below (e.g. mb/d for Hormuz) */
   value: number;
   /** physical / regulatory ceiling against which value is compared */
@@ -140,8 +142,22 @@ export interface CausalNode {
   isConsequence?: boolean; // spawned by link break tool
   consequenceOf?: string; // edge ID that spawned this node
   datasetColor?: string; // color from imported dataset
-  /** Live API-fed measurement, set by feed hooks; absence = no live source attached */
-  liveData?: LiveDataPoint;
+  /** Live API-fed measurements; multiple feeds can co-attach distinct kinds. */
+  liveData?: LiveDataPoint[];
+}
+
+/** Pull a single live signal of a given kind from a node. */
+export function getLiveSignal(node: CausalNode, kind: string): LiveDataPoint | undefined {
+  return node.liveData?.find((p) => p.kind === kind);
+}
+
+/** Upsert a live signal into a node's liveData array (immutable; returns new array). */
+export function upsertLiveSignal(
+  existing: LiveDataPoint[] | undefined,
+  point: LiveDataPoint,
+): LiveDataPoint[] {
+  const without = (existing ?? []).filter((p) => p.kind !== point.kind);
+  return [...without, point];
 }
 
 export interface CausalEdge {

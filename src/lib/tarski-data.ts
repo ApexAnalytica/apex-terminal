@@ -1,4 +1,4 @@
-import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode } from "./types";
+import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode, getLiveSignal } from "./types";
 import type { SystemStateSnapshot } from "./snapshots/types";
 import type { TarskiViolation } from "./snapshots/types";
 
@@ -540,8 +540,9 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
 
     let violation = false;
     let detail: string | undefined;
-    if (cp.liveData) {
-      const { value, capacity, unit, source } = cp.liveData;
+    const throughput = getLiveSignal(cp, "throughput");
+    if (throughput) {
+      const { value, capacity, unit, source } = throughput;
       const ratio = capacity > 0 ? value / capacity : 0;
       if (ratio > A04_LIVE_THRESHOLD) {
         violation = true;
@@ -592,25 +593,63 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   }
 
   // ── R-01: Jurisdictional Concentration ──
-  // High-weight edges connected to nodes with jurisdictional hazard ≥ 8
+  // High-weight edges connected to nodes with elevated jurisdictional hazard.
+  // Live-sanctions branch: an OFAC-active jurisdiction (via useOfacFeed) elevates
+  // J regardless of the static hazard score on that endpoint. Static fallback
+  // remains `max(J) ≥ 8` so demos without a live feed attached still flag.
   if (isEnabled("R-01")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
-    if (sourceNode && targetNode) {
-      const maxJ = Math.max(
-        sourceNode.omegaFragility.jurisdictionalHazard,
-        targetNode.omegaFragility.jurisdictionalHazard
-      );
-      if (maxJ >= 8 && edge.weight >= 0.7) {
-        inconsistentEdgeIds.add(edge.id);
-        proofTraces.push({
-          edgeId: edge.id,
-          violatedAxioms: ["R-01"],
-          verdict: "FLAGGED",
-          solverUsed: "Z3",
-          checkTimeMs: Math.round(Math.random() * 10 + 5),
-        });
-      }
+    if (!sourceNode || !targetNode) continue;
+    if (edge.weight < 0.7) continue;
+    const sourceSanctions = getLiveSignal(sourceNode, "sanctions");
+    const targetSanctions = getLiveSignal(targetNode, "sanctions");
+    const liveHit = sourceSanctions ?? targetSanctions;
+    const maxJ = Math.max(
+      sourceNode.omegaFragility.jurisdictionalHazard,
+      targetNode.omegaFragility.jurisdictionalHazard,
+    );
+    const elevated = liveHit !== undefined || maxJ >= 8;
+    if (!elevated) continue;
+    inconsistentEdgeIds.add(edge.id);
+    const detail = liveHit
+      ? `${liveHit.source} (${liveHit.value} active program${liveHit.value === 1 ? "" : "s"})`
+      : `static J=${maxJ.toFixed(1)} ≥ 8`;
+    proofTraces.push({
+      edgeId: edge.id,
+      violatedAxioms: ["R-01"],
+      verdict: "FLAGGED",
+      solverUsed: "Z3",
+      checkTimeMs: Math.round(Math.random() * 10 + 5),
+      detail,
+    });
+  }
+
+  // ── R-02: Force Majeure Exposure ──
+  // Nodes in conflict-adjacent jurisdictions with high restoration latency may
+  // face contract suspension. Live-sanctions presence is a strong proxy for
+  // "conflict-adjacent"; static fallback uses J ≥ 7 ∧ R ≥ 7.
+  if (isEnabled("R-02")) for (const node of graph.nodes) {
+    const highRestoration = node.omegaFragility.restorationLatency >= 7;
+    if (!highRestoration) continue;
+    const sanctions = getLiveSignal(node, "sanctions");
+    const staticConflict = node.omegaFragility.jurisdictionalHazard >= 7;
+    if (!sanctions && !staticConflict) continue;
+    restrictedNodeIds.add(node.id);
+    const detail = sanctions
+      ? `${node.label}: ${sanctions.source}; restoration latency ${node.omegaFragility.restorationLatency.toFixed(1)} ≥ 7`
+      : `${node.label}: J=${node.omegaFragility.jurisdictionalHazard.toFixed(1)}, R=${node.omegaFragility.restorationLatency.toFixed(1)} (no live sanctions data)`;
+    const outEdges = outboundEdges.get(node.id) || [];
+    for (const e of outEdges) {
+      inconsistentEdgeIds.add(e.id);
+      proofTraces.push({
+        edgeId: e.id,
+        violatedAxioms: ["R-02"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail,
+      });
     }
   }
 

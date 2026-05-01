@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
 import { useHormuzFeed } from "@/hooks/useHormuzFeed";
+import { useOfacFeed } from "@/hooks/useOfacFeed";
 import HeaderBar from "@/components/HeaderBar";
 import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
@@ -47,8 +48,10 @@ export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
 
   // Live EIA Persian Gulf production feed → A-04 chokepoint axiom.
-  // No-op when no geopolitical domains are selected.
+  // Live OFAC SDN sanctions feed → R-01 jurisdictional concentration + R-02 force majeure.
+  // Both no-op when no geopolitical domains are selected.
   useHormuzFeed();
+  useOfacFeed();
 
   // Protect graph data from console extraction — import dynamically so the
   // 2,920-line graph-data module isn't on the critical-path bundle (item #6).

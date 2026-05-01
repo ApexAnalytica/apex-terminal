@@ -4,6 +4,7 @@ import { makeNode, makeEdge, makeGraph } from "./fixtures/graph-fixtures";
 import type { LiveDataPoint } from "@/lib/types";
 
 const livePoint = (value: number, capacity = 21): LiveDataPoint => ({
+  kind: "throughput",
   value,
   capacity,
   unit: "mb/d",
@@ -11,7 +12,7 @@ const livePoint = (value: number, capacity = 21): LiveDataPoint => ({
   source: "test",
 });
 
-const buildHormuzGraph = (chokepointPatch: Partial<{ liveData: LiveDataPoint }>) =>
+const buildHormuzGraph = (chokepointPatch: Partial<{ liveData: LiveDataPoint[] }>) =>
   makeGraph(
     [
       makeNode({ id: "prod", label: "Persian Gulf Producer", domain: "Saudi Aramco Energy" }),
@@ -31,14 +32,14 @@ const buildHormuzGraph = (chokepointPatch: Partial<{ liveData: LiveDataPoint }>)
 
 describe("A-04 Chokepoint Throughput Ceiling — liveData branch", () => {
   it("does NOT flag when liveData ratio is below the 0.9 saturation threshold", () => {
-    const graph = buildHormuzGraph({ liveData: livePoint(15) }); // 15/21 ≈ 0.71
+    const graph = buildHormuzGraph({ liveData: [livePoint(15)] }); // 15/21 ≈ 0.71
     const report = runTarskiValidation(graph, new Set(["A-04"]));
     expect(report.totalViolations).toBe(0);
     expect(report.restrictedNodeIds.has("hormuz")).toBe(false);
   });
 
   it("flags when liveData ratio exceeds 0.9", () => {
-    const graph = buildHormuzGraph({ liveData: livePoint(20) }); // 20/21 ≈ 0.95
+    const graph = buildHormuzGraph({ liveData: [livePoint(20)] }); // 20/21 ≈ 0.95
     const report = runTarskiValidation(graph, new Set(["A-04"]));
     expect(report.restrictedNodeIds.has("hormuz")).toBe(true);
     expect(report.inconsistentEdgeIds.size).toBeGreaterThan(0);
@@ -51,7 +52,7 @@ describe("A-04 Chokepoint Throughput Ceiling — liveData branch", () => {
   it("liveData branch supersedes the structural fallback", () => {
     // With low edge weights but liveData over capacity, must flag.
     // (Without liveData, the same low-weight graph would NOT flag.)
-    const graph = buildHormuzGraph({ liveData: livePoint(20) });
+    const graph = buildHormuzGraph({ liveData: [livePoint(20)] });
     expect(graph.edges.every((e) => e.weight === 0.5)).toBe(true);
     const sumWeights = graph.edges.reduce((s, e) => s + e.weight, 0);
     expect(sumWeights).toBeLessThan(3.0); // structural threshold not met

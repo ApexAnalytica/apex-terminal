@@ -1,0 +1,154 @@
+{
+  "id": "4aeb2075-9505-4f42-aa1d-f2d8e18211c2",
+  "cohortId": "d1namo-2018",
+  "cohortSourceHash": "89db2ac2dc915929514bae3eae06dcff3e3870d21b5ff4531f80d09eadb7101d",
+  "algorithm": {
+    "id": "bocpd-hypo-calibration",
+    "version": "0.1.0"
+  },
+  "params": {
+    "cgmVariableId": "cgm_glucose_mgdl",
+    "hypoThresholdMgdl": 70,
+    "predictionHorizonMin": 30,
+    "gridSeconds": 300,
+    "bocpdHazard": 0.01,
+    "minPointsPerSubject": 50,
+    "nReliabilityBins": 10
+  },
+  "startedAt": "2026-05-01T02:03:19.077Z",
+  "completedAt": "2026-05-01T02:03:19.523Z",
+  "status": "succeeded",
+  "result": {
+    "variables": [
+      "cgm_glucose_mgdl"
+    ],
+    "edges": [],
+    "diagnostics": {
+      "auroc": 0.6792995172265707,
+      "brierScore": 0.18304746426400867,
+      "ece": 0.17447828871796645,
+      "baseRate": 0.11987002045974245,
+      "nPairs": 8309,
+      "nSubjects": 9,
+      "reliabilityBins": [
+        {
+          "binLow": 0,
+          "binHigh": 0.1,
+          "predictedMean": 0.013000840601088061,
+          "observedRate": 0.10299985222402837,
+          "count": 6767
+        },
+        {
+          "binLow": 0.1,
+          "binHigh": 0.2,
+          "predictedMean": 0.14299297823506782,
+          "observedRate": 0.1511627906976744,
+          "count": 172
+        },
+        {
+          "binLow": 0.2,
+          "binHigh": 0.3,
+          "predictedMean": 0.25147831096719414,
+          "observedRate": 0.1588785046728972,
+          "count": 107
+        },
+        {
+          "binLow": 0.3,
+          "binHigh": 0.4,
+          "predictedMean": 0.349254724651797,
+          "observedRate": 0.2073170731707317,
+          "count": 82
+        },
+        {
+          "binLow": 0.4,
+          "binHigh": 0.5,
+          "predictedMean": 0.4500347804322715,
+          "observedRate": 0.16129032258064516,
+          "count": 62
+        },
+        {
+          "binLow": 0.5,
+          "binHigh": 0.6,
+          "predictedMean": 0.5506616211649041,
+          "observedRate": 0.22950819672131148,
+          "count": 61
+        },
+        {
+          "binLow": 0.6,
+          "binHigh": 0.7,
+          "predictedMean": 0.6501470715779964,
+          "observedRate": 0.19607843137254902,
+          "count": 51
+        },
+        {
+          "binLow": 0.7,
+          "binHigh": 0.8,
+          "predictedMean": 0.7500852644460941,
+          "observedRate": 0.26744186046511625,
+          "count": 86
+        },
+        {
+          "binLow": 0.8,
+          "binHigh": 0.9,
+          "predictedMean": 0.8522127122352604,
+          "observedRate": 0.17525773195876287,
+          "count": 97
+        },
+        {
+          "binLow": 0.9,
+          "binHigh": 1,
+          "predictedMean": 0.9890079285304834,
+          "observedRate": 0.20024271844660194,
+          "count": 824
+        }
+      ],
+      "perSubject": [
+        {
+          "id": "d1namo-001",
+          "nPairs": 1406,
+          "nEvents": 137
+        },
+        {
+          "id": "d1namo-002",
+          "nPairs": 1049,
+          "nEvents": 202
+        },
+        {
+          "id": "d1namo-003",
+          "nPairs": 176,
+          "nEvents": 0
+        },
+        {
+          "id": "d1namo-004",
+          "nPairs": 962,
+          "nEvents": 82
+        },
+        {
+          "id": "d1namo-005",
+          "nPairs": 902,
+          "nEvents": 8
+        },
+        {
+          "id": "d1namo-006",
+          "nPairs": 1273,
+          "nEvents": 15
+        },
+        {
+          "id": "d1namo-007",
+          "nPairs": 1048,
+          "nEvents": 0
+        },
+        {
+          "id": "d1namo-008",
+          "nPairs": 1133,
+          "nEvents": 232
+        },
+        {
+          "id": "d1namo-009",
+          "nPairs": 360,
+          "nEvents": 320
+        }
+      ]
+    }
+  }
+}

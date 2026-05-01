@@ -5,6 +5,8 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
+import { useHormuzFeed } from "@/hooks/useHormuzFeed";
+import { useOfacFeed } from "@/hooks/useOfacFeed";
 import HeaderBar from "@/components/HeaderBar";
 import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
@@ -17,6 +19,7 @@ import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
+import LiveFeedStatus from "@/components/LiveFeedStatus";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -44,6 +47,12 @@ const CausalDAGMap = dynamic(() => import("@/components/CausalDAGMap"), {
 
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
+
+  // Live EIA Persian Gulf production feed → A-04 chokepoint axiom.
+  // Live OFAC SDN sanctions feed → R-01 jurisdictional concentration + R-02 force majeure.
+  // Both no-op when no geopolitical domains are selected.
+  useHormuzFeed();
+  useOfacFeed();
 
   // Protect graph data from console extraction — import dynamically so the
   // 2,920-line graph-data module isn't on the critical-path bundle (item #6).
@@ -122,6 +131,9 @@ export default function Home() {
                 <CausalDAGMap />
               </div>
             )}
+            {/* Live-feed status chips (top-right, only visible in geopolitical sessions) */}
+            <LiveFeedStatus />
+
             {/* Client deployment CTA */}
             <Link
               href="/client"

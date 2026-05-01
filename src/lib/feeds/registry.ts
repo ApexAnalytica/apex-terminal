@@ -13,10 +13,12 @@
 import { eiaHormuzProvider } from "./providers/eia-hormuz";
 import { fredProvider } from "./providers/fred";
 import { ofacSdnProvider } from "./providers/ofac-sdn";
+import { worldBankProvider } from "./providers/world-bank";
 import type { FeedProvider } from "./providers/types";
 
 export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   eiaHormuzProvider,
   ofacSdnProvider,
   fredProvider,
+  worldBankProvider,
 ];

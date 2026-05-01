@@ -67,6 +67,11 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "PPIFGS", label: "PPI Final Demand Goods", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 145, mockValue: 138 },
   { id: "T5YIFR", label: "5Y5Y Forward Inflation Expectation", labelPatterns: ["5y5y forward inflation expectation"], unit: "%", capacity: 4, mockValue: 2.3 },
   { id: "PWHEAMTUSDM", label: "Global Wheat Price (Soft Red Winter)", labelPatterns: ["global wheat price"], unit: "$/T", capacity: 400, mockValue: 230 },
+  // EM FX stress series — daily FRED publication, scaled to local-per-USD.
+  // Capacity = "stressed" threshold; ratio shows depreciation pressure.
+  { id: "DEXTUUS", label: "Turkish Lira / USD", labelPatterns: ["turkey fx stress"], unit: "TRY/$", capacity: 35, mockValue: 32.4 },
+  { id: "DEXSFUS", label: "South African Rand / USD", labelPatterns: ["south africa fx stress"], unit: "ZAR/$", capacity: 22, mockValue: 18.3 },
+  { id: "DEXBZUS", label: "Brazilian Real / USD", labelPatterns: ["brazil fx stress"], unit: "BRL/$", capacity: 6, mockValue: 5.05 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and

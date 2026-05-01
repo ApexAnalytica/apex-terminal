@@ -19,7 +19,6 @@ import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
-import LiveFeedStatus from "@/components/LiveFeedStatus";
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
@@ -131,9 +130,6 @@ export default function Home() {
                 <CausalDAGMap />
               </div>
             )}
-            {/* Live-feed status chips (top-right, only visible in geopolitical sessions) */}
-            <LiveFeedStatus />
-
             {/* Client deployment CTA */}
             <Link
               href="/client"

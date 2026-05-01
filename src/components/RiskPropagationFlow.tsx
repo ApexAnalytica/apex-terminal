@@ -8,6 +8,13 @@ import { getDomainColor, buildRiskCards } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
+import {
+  feedDotClass,
+  feedModeFromSource,
+  formatLiveSignal,
+  summarizeLiveFeeds,
+  timeAgoLabel,
+} from "@/lib/feeds/display";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -182,6 +189,19 @@ export default function RiskPropagationFlow() {
     return map;
   }, [temporalData, displayNodes]);
 
+  // Per-card lookup of the underlying CausalNode (for liveData[]).
+  const nodeById = useMemo(
+    () => new Map(activeGraph.nodes.map((n) => [n.id, n])),
+    [activeGraph],
+  );
+
+  // Global feed summary for the header — counts distinct feed `kind`s by mode.
+  const feedSummary = useMemo(() => {
+    const counts = summarizeLiveFeeds(activeGraph.nodes);
+    const total = counts.live + counts.mock + counts["mock-fallback"];
+    return total > 0 ? counts : null;
+  }, [activeGraph]);
+
   // Find which history index corresponds to current timeline position
   const currentHistoryIdx = useMemo(() => {
     if (isLive || !temporalData) return null;
@@ -228,6 +248,20 @@ export default function RiskPropagationFlow() {
               ? "ΩF TIME SERIES — SELECTED NODE"
               : "ΩF TIME SERIES — TOP RISK NODES"}
         </span>
+        {feedSummary && (
+          <span className="ml-auto flex items-center gap-2 text-[8px] font-mono text-text-muted">
+            <span className="tracking-[0.15em]">FEEDS</span>
+            {(["live", "mock-fallback", "mock"] as const).map((mode) =>
+              feedSummary[mode] > 0 ? (
+                <span key={mode} className="flex items-center gap-1">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${feedDotClass(mode)}`} />
+                  <span className="tabular-nums">{feedSummary[mode]}</span>
+                  <span className="text-text-muted/60">{mode === "mock-fallback" ? "fallback" : mode}</span>
+                </span>
+              ) : null,
+            )}
+          </span>
+        )}
       </button>
 
       {/* Collapsible content */}
@@ -345,6 +379,44 @@ export default function RiskPropagationFlow() {
                         </div>
                       )}
                     </div>
+
+                    {/* Live-data rows — one per `liveData[]` entry. Card without
+                        any live signal renders nothing here. */}
+                    {(() => {
+                      const node = nodeById.get(card.nodeId);
+                      const live = node?.liveData;
+                      if (!live || live.length === 0) return null;
+                      return (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {live.map((point) => {
+                            const formatted = formatLiveSignal(point);
+                            const mode = feedModeFromSource(point.source, point.observedAt);
+                            return (
+                              <div
+                                key={point.kind}
+                                className="flex items-center gap-1.5 text-[7px] font-mono text-text-muted"
+                                title={point.source}
+                              >
+                                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                  {mode === "live" && (
+                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${feedDotClass(mode)} opacity-60`} />
+                                  )}
+                                  <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${feedDotClass(mode)}`} />
+                                </span>
+                                <span className="text-foreground/70 shrink-0">{formatted.shortLabel}</span>
+                                <span className="text-foreground tabular-nums truncate">{formatted.primaryValue}</span>
+                                {formatted.qualifier && (
+                                  <span className="text-text-muted/80 shrink-0 tabular-nums">· {formatted.qualifier}</span>
+                                )}
+                                <span className="ml-auto text-text-muted/70 shrink-0 tabular-nums">
+                                  {timeAgoLabel(point.observedAt)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
 
                     {/* Time series chart */}
                     <div

@@ -47,8 +47,37 @@ import { mergeGraphs } from "@/lib/import/merge";
 import { EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
-import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
+import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
 import { generateTemporalData } from "@/lib/temporal-data";
+
+/** Cap on how many feed-emitted events we retain in temporalData.events.
+ *  Events are de-duped by id, so monthly/weekly upstream cadences mean this
+ *  cap is rarely hit in practice. */
+const FEED_EVENT_CAP = 200;
+
+/** Append a TemporalEvent to the existing temporalData. Returns null if no
+ *  graph (and thus no temporal store) is loaded yet, so callers can spread
+ *  the result conditionally without overwriting state with null. */
+function appendFeedEvent(
+  current: TemporalDataset | null,
+  event: TemporalEvent,
+): TemporalDataset | null {
+  if (!current) return null;
+  // De-dupe by id so retries / cache hits don't spam the timeline.
+  if (current.events.some((e) => e.id === event.id)) return null;
+  const events = [...current.events, event];
+  // Retain only the most recent FEED_EVENT_CAP non-template events.
+  // Static template events are kept as-is; live ones get a unique id prefix.
+  const trimmed = events.length > FEED_EVENT_CAP * 2
+    ? events.slice(-FEED_EVENT_CAP * 2)
+    : events;
+  // Range may need to extend if a live event lands outside the existing
+  // window (e.g. a fresh "now" event after only historical events).
+  const eventMs = event.date.getTime();
+  const rangeEnd = eventMs > current.rangeEnd.getTime() ? event.date : current.rangeEnd;
+  const rangeStart = eventMs < current.rangeStart.getTime() ? event.date : current.rangeStart;
+  return { ...current, events: trimmed, rangeStart, rangeEnd };
+}
 import { loadRealTemporalData } from "@/lib/real-timeseries";
 
 interface ApexState {
@@ -331,6 +360,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
         return l.includes("strait of hormuz") || l.includes("chokepoint");
       };
       let touched = false;
+      const affectedNodeIds: string[] = [];
       const nextNodes = s.graphData.nodes.map((n) => {
         if (!isChokepoint(n.label)) return n;
         const existing = n.liveData?.find((p) => p.kind === point.kind);
@@ -338,10 +368,20 @@ export const useApexStore = create<ApexState>((set, get) => ({
           return n; // identical reading — preserve reference for memo stability
         }
         touched = true;
+        affectedNodeIds.push(n.id);
         return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
       });
       if (!touched) return s;
       const nextGraph = { ...s.graphData, nodes: nextNodes };
+      const nextTemporal = appendFeedEvent(s.temporalData, {
+        id: `eia-hormuz-${point.observedAt}`,
+        date: new Date(point.observedAt),
+        label: `EIA · Hormuz throughput refresh`,
+        description: `${point.value.toFixed(2)} ${point.unit} (${(point.value / point.capacity * 100).toFixed(0)}% of ${point.capacity} ${point.unit} capacity) — ${point.source}`,
+        affectedNodeIds,
+        severity: Math.min(1, point.value / point.capacity),
+      });
+      const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
       if (s.truthFilter === "verified") {
         const cleanGraph = clearTarskiFlags(nextGraph);
         const report = runTarskiValidation(
@@ -349,9 +389,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
           s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-        return { graphData: flaggedGraph, tarskiReport: report };
+        return { ...base, graphData: flaggedGraph, tarskiReport: report };
       }
-      return { graphData: nextGraph };
+      return { ...base, graphData: nextGraph };
     }),
   applyOfacLiveData: (jurisdictions, fetchedAt, source) =>
     set((s) => {
@@ -372,6 +412,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
         return null;
       };
       let touched = false;
+      const affectedNodeIds: string[] = [];
       const nextNodes = s.graphData.nodes.map((n) => {
         const code = findJurisdictionCode(n);
         if (!code) {
@@ -396,10 +437,23 @@ export const useApexStore = create<ApexState>((set, get) => ({
           return n;
         }
         touched = true;
+        affectedNodeIds.push(n.id);
         return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
       });
       if (!touched) return s;
       const nextGraph = { ...s.graphData, nodes: nextNodes };
+      const totalPrograms = Object.values(jurisdictions).reduce(
+        (sum, j) => sum + j.programs.length, 0,
+      );
+      const nextTemporal = appendFeedEvent(s.temporalData, {
+        id: `ofac-sdn-${fetchedAt}`,
+        date: new Date(fetchedAt),
+        label: `OFAC · SDN refresh`,
+        description: `${affectedNodeIds.length} node${affectedNodeIds.length === 1 ? "" : "s"} matched · ${totalPrograms} active programs across ${Object.keys(jurisdictions).length} jurisdictions — ${source}`,
+        affectedNodeIds,
+        severity: Math.min(1, affectedNodeIds.length / 5), // 5+ matches = max severity bar
+      });
+      const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
       if (s.truthFilter === "verified") {
         const cleanGraph = clearTarskiFlags(nextGraph);
         const report = runTarskiValidation(
@@ -407,9 +461,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
           s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-        return { graphData: flaggedGraph, tarskiReport: report };
+        return { ...base, graphData: flaggedGraph, tarskiReport: report };
       }
-      return { graphData: nextGraph };
+      return { ...base, graphData: nextGraph };
     }),
   setTruthFilter: (f) =>
     set((s) => {

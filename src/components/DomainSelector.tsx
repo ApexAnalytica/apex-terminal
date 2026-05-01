@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import { useUserAccess } from "@/hooks/useUserAccess";
 import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
 import { ATHENA_GRAPH, BRIDGE_EDGES } from "@/lib/athena-graph-data";
 import { T1D_GRAPH } from "@/lib/t1d-graph-data";
@@ -314,6 +315,20 @@ export default function DomainSelector() {
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
 
+  // Tier-based domain access. While `access` is loading we leave
+  // everything unlocked to avoid a visual flash; the API-level gate
+  // is the authoritative check. Once loaded, any domain not in the
+  // user's effective access is rendered locked + non-clickable.
+  const { access } = useUserAccess();
+  const lockedIds = useMemo(() => {
+    if (!access) return new Set<string>();
+    return new Set(
+      DOMAIN_CARDS
+        .filter((d) => !access.domains.includes(d.id))
+        .map((d) => d.id)
+    );
+  }, [access]);
+
   // Cards visible for the active persona (filtered by domain group)
   const allowedGroups = PERSONA_GROUPS[activePersona];
   const visibleGroups = DOMAIN_GROUPS
@@ -336,6 +351,8 @@ export default function DomainSelector() {
 
   const toggleDomain = useCallback(
     (id: string) => {
+      // Defense-in-depth — UI also disables onClick for locked cards.
+      if (lockedIds.has(id)) return;
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
@@ -354,7 +371,7 @@ export default function DomainSelector() {
         return [...prev, id];
       });
     },
-    [localMulti, activePersona]
+    [localMulti, activePersona, lockedIds]
   );
 
   const switchMode = useCallback(
@@ -516,12 +533,19 @@ export default function DomainSelector() {
                   <div className="grid gap-1.5">
                     {group.domains.map((domain) => {
                       const isSelected = localSelected.includes(domain.id);
-                      const isDisabled = !domain.hasData;
+                      const isComingSoon = !domain.hasData;
+                      const isLocked = lockedIds.has(domain.id);
+                      const isDisabled = isComingSoon || isLocked;
 
                       return (
                         <button
                           key={domain.id}
                           onClick={() => !isDisabled && toggleDomain(domain.id)}
+                          title={
+                            isLocked
+                              ? `Not included in your ${access?.tier ?? ""} tier — contact sales to upgrade`
+                              : undefined
+                          }
                           className="flex items-center gap-3 px-4 py-2.5 rounded border transition-all text-left"
                           style={{
                             borderColor: isSelected ? domain.color : "var(--border)",
@@ -542,9 +566,14 @@ export default function DomainSelector() {
                               style={{ color: isSelected ? domain.color : domain.hasData ? "var(--foreground)" : "var(--text-muted)" }}
                             >
                               {domain.label.toUpperCase()}
-                              {!domain.hasData && (
+                              {isComingSoon && (
                                 <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
                                   COMING SOON
+                                </span>
+                              )}
+                              {isLocked && !isComingSoon && (
+                                <span className="text-[7px] px-1.5 py-0.5 rounded border border-accent-amber/40 text-accent-amber bg-accent-amber/10 tracking-wider">
+                                  UPGRADE
                                 </span>
                               )}
                             </div>

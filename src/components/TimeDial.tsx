@@ -140,6 +140,7 @@ export default function TimeDial() {
     stepEpoch,
     setActiveTimeline,
     branchFromCurrentEpoch,
+    setTimelineDragging,
   } = useApexStore();
 
   const trackRef = useRef<HTMLDivElement>(null);
@@ -303,10 +304,14 @@ export default function TimeDial() {
 
       // Normal drag = scrub
       setIsDragging(true);
+      // Tell the TimeSeriesOverlay to pin its tooltip to the dial position
+      // while we drag, so the smaller curves show their values next to the
+      // playhead instead of just an unlabeled line.
+      setTimelineDragging(true);
       setTimelineSelection(null); // Clear selection on normal click
       handleTrackScrub(e.clientX);
     },
-    [handleTrackScrub, replayActive, pixelToTimestamp, setTimelineSelection],
+    [handleTrackScrub, replayActive, pixelToTimestamp, setTimelineSelection, setTimelineDragging],
   );
 
   const handlePointerMove = useCallback(
@@ -329,7 +334,8 @@ export default function TimeDial() {
     setIsDragging(false);
     setIsRangeSelecting(false);
     setRangeAnchor(null);
-  }, []);
+    setTimelineDragging(false);
+  }, [setTimelineDragging]);
 
   // Criticality display for cascade mode
   let critLabel = "STABLE";

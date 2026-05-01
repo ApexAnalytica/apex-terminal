@@ -96,6 +96,7 @@ export default function TimeSeriesOverlay() {
   const timelineRange = useApexStore((s) => s.timelineRange);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
+  const timelineDragging = useApexStore((s) => s.timelineDragging);
 
   const [hoverX, setHoverX] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -265,21 +266,41 @@ export default function TimeSeriesOverlay() {
     [xStart, xEnd, yMin, yMax, plotInset],
   );
 
-  // Get hovered values
-  const hoverValues = useMemo(() => {
-    if (hoverX === null) return null;
+  // Resolve which x to anchor the tooltip to. Hover wins when the cursor is
+  // over the chart; otherwise — if the user is dragging the dial below — pin
+  // to the dial position so the same value pop-up appears next to the smaller
+  // lines instead of just an unlabeled vertical playhead.
+  const tooltipAnchor = useMemo<
+    { x: number; source: "hover" | "drag" } | null
+  >(() => {
+    if (hoverX !== null) return { x: hoverX, source: "hover" };
+    if (timelineDragging) {
+      const xRange = xEnd - xStart || 1;
+      const plotW = chartW - plotInset.left - plotInset.right;
+      const x = plotInset.left + ((timelinePosition - xStart) / xRange) * plotW;
+      // Clamp inside the plot region; if the dial is outside the visible
+      // window (e.g. mid-zoom transition), just don't show a tooltip.
+      if (x < plotInset.left || x > chartW - plotInset.right) return null;
+      return { x, source: "drag" };
+    }
+    return null;
+  }, [hoverX, timelineDragging, timelinePosition, xStart, xEnd, plotInset, chartW]);
+
+  // Get values at the anchored x — same logic for hover and drag.
+  const tooltipValues = useMemo(() => {
+    if (!tooltipAnchor) return null;
     const xRange = xEnd - xStart || 1;
     const ts =
       xStart +
-      ((hoverX - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
+      ((tooltipAnchor.x - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
         xRange;
     const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
     for (const curve of curves) {
       const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
       let omega: number;
       if (isSparse) {
-        // Hold-forward: return the last published value at or before hoverTs.
-        // If hoverTs is before the first point, return the first point's value.
+        // Hold-forward: return the last published value at or before ts.
+        // If ts is before the first point, return the first point's value.
         let held = curve.history[0].omegaComposite;
         for (const h of curve.history) {
           if (h.timestamp <= ts) held = h.omegaComposite;
@@ -304,7 +325,7 @@ export default function TimeSeriesOverlay() {
       });
     }
     return { ts, values };
-  }, [hoverX, curves, xStart, xEnd, plotInset, chartW]);
+  }, [tooltipAnchor, curves, xStart, xEnd, plotInset, chartW]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -517,24 +538,28 @@ export default function TimeSeriesOverlay() {
                   );
                 })()}
 
-                {/* Hover crosshair + intersection dots */}
-                {hoverX !== null && (
+                {/* Crosshair + per-curve intersection dots. The dashed white
+                    line is suppressed during dial-drag because the cyan
+                    timelinePosition playhead above already marks that x. */}
+                {tooltipAnchor && tooltipValues && (
                   <g>
-                    <line
-                      x1={hoverX}
-                      y1={PAD.top}
-                      x2={hoverX}
-                      y2={CHART_HEIGHT - PAD.bottom}
-                      stroke="rgba(255,255,255,0.3)"
-                      strokeWidth={1}
-                      strokeDasharray="3 3"
-                    />
-                    {hoverValues?.values.map((v) => {
-                      const { y } = toSvg(hoverValues.ts, v.omega, chartW);
+                    {tooltipAnchor.source === "hover" && (
+                      <line
+                        x1={tooltipAnchor.x}
+                        y1={PAD.top}
+                        x2={tooltipAnchor.x}
+                        y2={CHART_HEIGHT - PAD.bottom}
+                        stroke="rgba(255,255,255,0.3)"
+                        strokeWidth={1}
+                        strokeDasharray="3 3"
+                      />
+                    )}
+                    {tooltipValues.values.map((v) => {
+                      const { y } = toSvg(tooltipValues.ts, v.omega, chartW);
                       return (
                         <g key={v.nodeId}>
-                          <circle cx={hoverX} cy={y} r={4} fill={v.color} opacity={0.25} />
-                          <circle cx={hoverX} cy={y} r={2} fill={v.color} />
+                          <circle cx={tooltipAnchor.x} cy={y} r={4} fill={v.color} opacity={0.25} />
+                          <circle cx={tooltipAnchor.x} cy={y} r={2} fill={v.color} />
                         </g>
                       );
                     })}
@@ -559,29 +584,31 @@ export default function TimeSeriesOverlay() {
                 </span>
               </div>
 
-              {/* Hover tooltip — anchors next to the crosshair inside the
-                  chart wrapper (which is position: relative). Flips to the
-                  left of the cursor when near the right edge. */}
-              {hoverValues && hoverX !== null && (() => {
-                const flipLeft = hoverX > chartW * 0.7;
+              {/* Tooltip — anchors next to the crosshair (hover) or the dial
+                  playhead (drag). Inside the chart wrapper, which is
+                  position: relative. Flips to the left of the cursor when
+                  near the right edge. */}
+              {tooltipValues && tooltipAnchor && (() => {
+                const anchorX = tooltipAnchor.x;
+                const flipLeft = anchorX > chartW * 0.7;
                 return (
                 <div
                   className="absolute z-20 pointer-events-none"
                   style={{
-                    left: flipLeft ? undefined : `${hoverX + 12}px`,
-                    right: flipLeft ? `${chartW - hoverX + 12}px` : undefined,
+                    left: flipLeft ? undefined : `${anchorX + 12}px`,
+                    right: flipLeft ? `${chartW - anchorX + 12}px` : undefined,
                     top: "-4px",
                   }}
                 >
                   <div className="bg-surface-elevated border border-border rounded px-2 py-1.5 shadow-lg">
                     <div className="text-[7px] font-mono text-text-muted mb-1">
-                      {new Date(hoverValues.ts).toLocaleDateString("en-US", {
+                      {new Date(tooltipValues.ts).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
                       })}
                     </div>
-                    {hoverValues.values.map((v) => (
+                    {tooltipValues.values.map((v) => (
                       <div key={v.nodeId} className="flex items-center gap-2 text-[8px] font-mono">
                         <span
                           className="w-2 h-2 rounded-full flex-shrink-0"

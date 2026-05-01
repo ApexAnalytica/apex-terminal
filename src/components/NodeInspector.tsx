@@ -16,6 +16,133 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
+const PILLAR_SHORT: Record<PillarKey, string> = {
+  irreplaceability: "I",
+  restorationLatency: "R",
+  jurisdictionalHazard: "J",
+  cascadeLoad: "C",
+  tailDepth: "T",
+};
+
+const RADAR_SIZE = 220;
+const RADAR_CX = RADAR_SIZE / 2;
+const RADAR_CY = RADAR_SIZE / 2;
+const RADAR_R = RADAR_SIZE * 0.34;
+const RADAR_LABEL_R = RADAR_R * 1.42;
+
+function PillarRadar({
+  axes,
+  composite,
+}: {
+  axes: { key: PillarKey; value: number }[];
+  composite: number;
+}) {
+  if (axes.length === 0) return null;
+  const angles = axes.map((_, i) => ((i * 360) / axes.length) * (Math.PI / 180));
+  const vertex = (angle: number, dist: number) => ({
+    x: RADAR_CX + dist * Math.sin(angle),
+    y: RADAR_CY - dist * Math.cos(angle),
+  });
+  const valuePts = axes.map((a, i) => vertex(angles[i], RADAR_R * Math.max(0, Math.min(1, a.value / 10))));
+  const valuePath = valuePts.map((p) => `${p.x},${p.y}`).join(" ");
+  const rings = [0.2, 0.4, 0.6, 0.8, 1.0].map((scale) =>
+    angles.map((a) => vertex(a, RADAR_R * scale)).map((p) => `${p.x},${p.y}`).join(" "),
+  );
+  const accent = "#00e5ff";
+  const compositeColor = getBarColor(composite);
+  return (
+    <svg
+      width={RADAR_SIZE}
+      height={RADAR_SIZE}
+      viewBox={`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`}
+      className="mx-auto block"
+    >
+      {rings.map((points, i) => (
+        <polygon
+          key={i}
+          points={points}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={1}
+        />
+      ))}
+      {angles.map((a, i) => {
+        const end = vertex(a, RADAR_R);
+        return (
+          <line
+            key={i}
+            x1={RADAR_CX}
+            y1={RADAR_CY}
+            x2={end.x}
+            y2={end.y}
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth={1}
+          />
+        );
+      })}
+      <polygon
+        points={valuePath}
+        fill="rgba(0,229,255,0.15)"
+        stroke={accent}
+        strokeWidth={1.5}
+        style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.35))" }}
+      />
+      {axes.map((a, i) => (
+        <circle
+          key={a.key}
+          cx={valuePts[i].x}
+          cy={valuePts[i].y}
+          r={3}
+          fill={getBarColor(a.value)}
+        />
+      ))}
+      <text
+        x={RADAR_CX}
+        y={RADAR_CY - 4}
+        textAnchor="middle"
+        style={{ fontSize: 8, fill: "var(--text-muted)" }}
+        className="font-mono tracking-widest"
+      >
+        ΩF
+      </text>
+      <text
+        x={RADAR_CX}
+        y={RADAR_CY + 12}
+        textAnchor="middle"
+        style={{ fontSize: 18, fill: compositeColor, fontWeight: 700 }}
+        className="font-mono"
+      >
+        {composite.toFixed(2)}
+      </text>
+      {axes.map((a, i) => {
+        const lp = vertex(angles[i], RADAR_LABEL_R);
+        return (
+          <g key={a.key}>
+            <text
+              x={lp.x}
+              y={lp.y - 1}
+              textAnchor="middle"
+              style={{ fontSize: 11, fill: accent, fontWeight: 700 }}
+              className="font-mono"
+            >
+              {PILLAR_SHORT[a.key]}
+            </text>
+            <text
+              x={lp.x}
+              y={lp.y + 10}
+              textAnchor="middle"
+              style={{ fontSize: 8, fill: getBarColor(a.value) }}
+              className="font-mono"
+            >
+              {a.value.toFixed(1)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 // Descriptions + methodology now live on the DomainProfile so T1D / geopolitical
 // / future verticals each carry their own vocabulary without branching here.
 
@@ -247,23 +374,19 @@ export default function NodeInspector() {
               )}
             </div>
 
-            {/* Omega Composite */}
+            {/* \u03A9F Pentagon \u2014 radar plot of all five pillars with composite at the
+                center. Replaces the gauge-bar stack; the pillar legend below
+                keeps click-to-expand affordance for description / formula. */}
             <div>
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="text-[28px] font-bold font-mono"
-                  style={{ color: getBarColor(node.omegaFragility.composite) }}
+              <PillarRadar axes={axes} composite={node.omegaFragility.composite} />
+              <div className="flex justify-center mt-1">
+                <button
+                  onClick={() => setShowMethodology((v) => !v)}
+                  className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors tracking-wider"
                 >
-                  {"\u03A9"} {node.omegaFragility.composite.toFixed(1)}
-                </span>
-                <span className="text-[10px] text-text-muted font-mono">/ 10.0</span>
+                  {showMethodology ? "▾ HIDE METHODOLOGY" : `▸ HOW IS ${profile.pillarLabels.composite} COMPUTED?`}
+                </button>
               </div>
-              <button
-                onClick={() => setShowMethodology((v) => !v)}
-                className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors mt-0.5 tracking-wider"
-              >
-                {showMethodology ? "▾ HIDE METHODOLOGY" : `▸ HOW IS ${profile.pillarLabels.composite} COMPUTED?`}
-              </button>
               <AnimatePresence>
                 {showMethodology && (
                   <motion.div
@@ -281,37 +404,31 @@ export default function NodeInspector() {
               </AnimatePresence>
             </div>
 
-            {/* 5-axis bars with expandable descriptions */}
-            <div className="space-y-2">
+            {/* Pillar legend — letter + label + value, click to expand description */}
+            <div className="space-y-1">
               {axes.map((axis) => {
                 const desc = pillarDetails[axis.key];
                 const isExpanded = expandedPillar === axis.key;
                 return (
                   <div key={axis.key}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <button
-                        onClick={() => setExpandedPillar(isExpanded ? null : axis.key)}
-                        className="text-[8px] text-text-muted font-mono hover:text-accent-cyan transition-colors text-left flex items-center gap-1"
-                      >
-                        <span className="text-[7px] opacity-50">{isExpanded ? "▾" : "▸"}</span>
-                        {axis.label}
-                      </button>
+                    <button
+                      onClick={() => setExpandedPillar(isExpanded ? null : axis.key)}
+                      className="w-full flex items-center justify-between gap-2 hover:bg-white/[0.03] rounded px-1.5 py-1 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[8px] opacity-50 flex-shrink-0">{isExpanded ? "▾" : "▸"}</span>
+                        <span className="text-[9px] font-mono font-bold text-accent-cyan flex-shrink-0 w-3 text-center">
+                          {PILLAR_SHORT[axis.key]}
+                        </span>
+                        <span className="text-[8px] text-text-muted font-mono truncate">{axis.label}</span>
+                      </div>
                       <span
-                        className="text-[9px] font-mono font-bold"
+                        className="text-[9px] font-mono font-bold flex-shrink-0"
                         style={{ color: getBarColor(axis.value) }}
                       >
                         {axis.value.toFixed(1)}
                       </span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${(axis.value / 10) * 100}%`,
-                          backgroundColor: getBarColor(axis.value),
-                        }}
-                      />
-                    </div>
+                    </button>
                     <AnimatePresence>
                       {isExpanded && desc && (
                         <motion.div
@@ -321,7 +438,7 @@ export default function NodeInspector() {
                           transition={{ duration: 0.15 }}
                           className="overflow-hidden"
                         >
-                          <div className="mt-1 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
+                          <div className="mt-1 ml-6 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
                             <div className="text-[8px] font-mono text-foreground/90 leading-relaxed">
                               {desc.short}
                             </div>

@@ -181,3 +181,124 @@ export const VX880_LITERATURE_ANCHORS = {
   naturalHistoryInsulinIndepRate:
     "≈ 0% — spontaneous reversal is not part of T1D natural history",
 };
+
+// ─── Cox covariate modifiers (for the do-operator slider surface) ───
+//
+// The fitted Cox β captures "VX-880 vs natural history" averaged over
+// the trial's typical patient/protocol covariates. The slider surface
+// in VX880TrialPanel asks the do-operator question: how does the
+// observed treatment HR shift if the audience changes one of those
+// covariates? We compose multiplicatively on the fitted log-HR:
+//
+//   log_HR = β_treat · interdictionFrac + computeCovariateLogHR(covariates)
+//
+// where the covariate term is:
+//
+//   - δ_hla · (hlaMismatch  − baseline)
+//   - δ_aab · (autoantibody − baseline)
+//   + δ_is  · (isIntensity  − baseline)
+//
+// Sign convention: HLA mismatch ↑ and autoantibody titer ↑ both attack
+// the graft → HR shrinks toward 1. Tighter immunosuppression → preserves
+// graft β-mass → HR stays closer to the trial-fit value.
+//
+// PROVENANCE NOTE — IMPORTANT FOR INSTITUTIONAL VIEWERS
+// =====================================================
+// The δ values below are **illustrative, not citation-grade**. They are
+// order-of-magnitude estimates rounded for clean math, anchored in the
+// neighbourhood of the cited papers but not lifted from a specific
+// table cell. The trial cohort here (n=24, single-covariate model) is
+// too small to identify these multipliers in a partial-likelihood
+// refit honestly, so the slider surface is a configurable scaffold
+// rather than a published model. A collaborator wanting a defensible
+// covariate model would replace these δ values with refit values from
+// their own cohort or with table values pulled directly from the cited
+// papers.
+//
+// The slider's job is to make the do-operator question concrete and
+// compositional with the interdiction surface, not to publish a CDE.
+export type CovariateProvenance = "illustrative" | "citation-grade";
+
+export interface CovariateState {
+  hlaMismatch: number;
+  autoantibodyZ: number;
+  isIntensity: number;
+}
+
+export const VX880_COVARIATE_MODIFIERS = {
+  hlaMismatch: {
+    label: "HLA mismatch",
+    short: "DR/DQ allele mismatches between donor cell line and recipient",
+    unit: "mismatches",
+    min: 0,
+    max: 6,
+    step: 1,
+    baseline: 3,
+    // Per-mismatch log-HR for graft-loss-driven loss of treatment effect.
+    deltaLogHR: 0.26,
+    citation:
+      "Anchor neighbourhood: ~1.3× HR per DR/DQ mismatch in solid-organ allograft loss registries (Lefaucheur, Wiebe, etc.)",
+    provenance: "illustrative" as CovariateProvenance,
+  },
+  autoantibodyZ: {
+    label: "Autoantibody titer",
+    short: "GAD/IA-2/ZnT8 titer relative to trial baseline (z-score)",
+    unit: "σ from baseline",
+    min: -2,
+    max: 3,
+    step: 0.5,
+    baseline: 0,
+    // Per-σ log-HR for autoimmune-recurrence-driven loss of treatment effect.
+    deltaLogHR: 0.35,
+    citation:
+      "Anchor neighbourhood: ~2× recurrence rate at high titer (Vendrame, Burke, et al.) over a 2σ shift",
+    provenance: "illustrative" as CovariateProvenance,
+  },
+  isIntensity: {
+    label: "Immunosuppression intensity",
+    short: "0 = sub-therapeutic / lapse · 1 = standard tac+MMF · 2 = aggressive ATG induction",
+    unit: "regimen tier",
+    min: 0,
+    max: 2,
+    step: 1,
+    baseline: 1,
+    // Per-tier log-HR for IS-driven preservation of treatment effect.
+    deltaLogHR: 0.69,
+    citation:
+      "Anchor neighbourhood: ~0.5× graft-loss hazard per induction step (CIBMTR registry / Hering Diabetes Care 2016 family)",
+    provenance: "illustrative" as CovariateProvenance,
+  },
+} as const;
+
+/**
+ * Default covariate state — every slider sits at its trial-cohort
+ * baseline so the panel reads "untouched = trial-fit HR" until the
+ * audience moves a knob.
+ */
+export const VX880_COVARIATE_BASELINE: CovariateState = {
+  hlaMismatch: VX880_COVARIATE_MODIFIERS.hlaMismatch.baseline,
+  autoantibodyZ: VX880_COVARIATE_MODIFIERS.autoantibodyZ.baseline,
+  isIntensity: VX880_COVARIATE_MODIFIERS.isIntensity.baseline,
+};
+
+/**
+ * Compose the slider state into a log-HR delta. Used by both the
+ * VX880TrialPanel HR readout and the trialPrior published to the MC
+ * engine — keeps the displayed HR and the survival fan in lock-step
+ * when the audience drags a slider.
+ *
+ * Returns 0 when every covariate is at baseline.
+ */
+export function computeCovariateLogHR(covariates: CovariateState): number {
+  const cm = VX880_COVARIATE_MODIFIERS;
+  const hla =
+    -cm.hlaMismatch.deltaLogHR *
+    (covariates.hlaMismatch - cm.hlaMismatch.baseline);
+  const aab =
+    -cm.autoantibodyZ.deltaLogHR *
+    (covariates.autoantibodyZ - cm.autoantibodyZ.baseline);
+  const is =
+    cm.isIntensity.deltaLogHR *
+    (covariates.isIntensity - cm.isIntensity.baseline);
+  return hla + aab + is;
+}

@@ -23,6 +23,7 @@ import {
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
+import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
@@ -87,6 +88,7 @@ export default function ModulePanel() {
           <>
             <CascadeHeader />
             <TrinityPanel />
+            <DiscoveryRunsPanel />
           </>
         )}
 
@@ -820,11 +822,17 @@ function ParetoPanel({
 
   // Mean omegaComposite trajectory across the scoped nodes, normalized 0–1.
   // Single source of truth shared with the bottom ΩF TIME SERIES cards.
+  //
+  // Histories are filtered to length ≥ 5 before the min-clip — a single node
+  // with one entry would otherwise collapse the trajectory to T=1 and starve
+  // every live estimator (CSD's AR(1) fit needs n≥5). 5 matches the smallest
+  // n at which any criticality model can produce a non-degenerate result.
   const scopedOmegaSeries = useMemo<number[]>(() => {
     if (!temporalData || scopedNodeIds.length === 0) return [];
+    const MIN_USEFUL_HISTORY = 5;
     const histories = scopedNodeIds
       .map((id) => temporalData.nodes.get(id)?.history ?? [])
-      .filter((h) => h.length > 0);
+      .filter((h) => h.length >= MIN_USEFUL_HISTORY);
     if (histories.length === 0) return [];
     const T = Math.min(...histories.map((h) => h.length));
     const series: number[] = [];
@@ -1096,19 +1104,23 @@ function ParetoPanel({
     const edgeCount = graphData.edges.filter((e) => !e.isSevered).length;
     const nodeCount = graphData.nodes.length;
 
-    if (csdData.modelSeries) {
-      inputs.push({
-        key: "csd",
-        observed: csdData.observedSeries ?? csdData.timeSeries,
-        modelSeries: csdData.modelSeries,
-        freeParams: 2, // α and μ
-        gate: csdRegimeGate({
-          observed: csdData.observedSeries ?? csdData.timeSeries,
-          lambdaMax: csdData.lambdaMax,
-        }),
-        sufficiency: trajectorySufficiency(csdData.sampleSize, edgeCount),
-      });
-    }
+    // Always push live estimators into the relevance batch — even when the
+    // trajectory is too thin to fit. The sub-score helpers handle insufficient
+    // data internally (F → 0 with "need ≥5", E → 0 with "Insufficient data"),
+    // so the breakdown UI renders consistently across all three tabs and the
+    // user sees *why* a model can't score rather than a silent fallback.
+    const csdObserved = csdData.observedSeries ?? csdData.timeSeries ?? [];
+    inputs.push({
+      key: "csd",
+      observed: csdObserved,
+      modelSeries: csdData.modelSeries ?? [],
+      freeParams: 2, // α and μ
+      gate: csdRegimeGate({
+        observed: csdObserved,
+        lambdaMax: csdData.lambdaMax,
+      }),
+      sufficiency: trajectorySufficiency(csdData.sampleSize, edgeCount),
+    });
 
     if (phData.modelSeries) {
       inputs.push({
@@ -1125,19 +1137,19 @@ function ParetoPanel({
       });
     }
 
-    if (lpplsData.observedSeries && lpplsData.observedSeries.length > 0) {
-      inputs.push({
-        key: "lppls",
-        observed: lpplsData.observedSeries,
-        modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
-        freeParams: 3, // ω, m, tc
-        gate: lpplsRegimeGate({
-          observed: lpplsData.observedSeries,
-          modelSeries: lpplsData.modelSeries.slice(0, lpplsData.observedSeries.length),
-        }),
-        sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
-      });
-    }
+    const lpplsObserved = lpplsData.observedSeries ?? lpplsData.timeSeries ?? [];
+    const lpplsModel = lpplsData.modelSeries.slice(0, Math.max(lpplsObserved.length, 1));
+    inputs.push({
+      key: "lppls",
+      observed: lpplsObserved,
+      modelSeries: lpplsModel,
+      freeParams: 3, // ω, m, tc
+      gate: lpplsRegimeGate({
+        observed: lpplsObserved,
+        modelSeries: lpplsModel,
+      }),
+      sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
+    });
 
     const result = computeRelevanceBatch(inputs, {
       previous: prevCompositesRef.current,
@@ -2387,6 +2399,10 @@ function CriticalityCard({
   const isEmpty = !!emptyState;
   const headlineLabel = relevance ? "rel" : "conf";
   const sectionLabel = relevance ? "MODEL RELEVANCE" : "MODEL CONFIDENCE";
+  // Subsection collapse state — breakdown open by default (it's the headline
+  // justification), methodology closed (long prose, mostly read-once).
+  const [breakdownOpen, setBreakdownOpen] = useState(true);
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
   return (
     <div
       className="border rounded overflow-hidden transition-all duration-300"
@@ -2520,10 +2536,18 @@ function CriticalityCard({
                 </div>
               </div>
 
-              {/* Relevance / confidence gauge */}
+              {/* Relevance / confidence gauge — header carries the formula
+                  so the headline % visibly ties to the four sub-scores below. */}
               <div>
-                <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-                  {sectionLabel}
+                <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+                  <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                    {sectionLabel}
+                  </span>
+                  {relevance && (
+                    <span className="text-[8px] font-mono text-text-muted/60">
+                      = S · G · (0.6·F + 0.4·E)
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-border rounded overflow-hidden">
@@ -2548,72 +2572,103 @@ function CriticalityCard({
                 </div>
               </div>
 
-              {/* F · E · G · S breakdown — only when a relevance computation
-                  is available. Headline = S · G · (0.6·F + 0.4·E), EMA-smoothed. */}
+              {/* F · E · G · S breakdown — collapsible, open by default.
+                  Always rendered when a relevance computation exists; rows
+                  showing 0% with an "insufficient" detail tell the user
+                  *why* a model can't score (data gap, not a bug). */}
               {relevance && (
                 <div>
-                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-                    RELEVANCE BREAKDOWN
-                  </div>
-                  <div className="space-y-1">
-                    {([
-                      { code: "F", label: "FIT", sub: relevance.F },
-                      { code: "E", label: "EVIDENCE", sub: relevance.E },
-                      { code: "G", label: "REGIME", sub: relevance.G },
-                      { code: "S", label: "SUFFICIENCY", sub: relevance.S },
-                    ] as const).map(({ code, label, sub }) => {
-                      const pct = Math.round(sub.score * 100);
-                      const barColor = pct >= 70 ? "#00e676" : pct >= 40 ? "#ffab00" : "#ff5252";
-                      return (
-                        <div key={code} className="flex items-center gap-2">
-                          <div className="w-3 text-[9px] font-[family-name:var(--font-michroma)] text-text-muted">
-                            {code}
-                          </div>
-                          <div className="w-14 text-[7px] font-mono text-text-muted/80 tracking-wider">
-                            {label}
-                          </div>
-                          <div className="flex-1 h-1 bg-border rounded overflow-hidden">
-                            <div className="h-full rounded transition-all duration-500" style={{
-                              width: `${pct}%`,
-                              backgroundColor: barColor,
-                              opacity: 0.8,
-                            }} />
-                          </div>
-                          <div className="w-8 text-right text-[9px] font-mono tabular-nums" style={{ color: barColor }}>
-                            {pct}%
-                          </div>
-                          <div className="flex-[2] min-w-0 text-[8px] font-mono text-text-muted/80 truncate" title={sub.detail}>
-                            {sub.detail}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
-                    composite = S · G · (0.6·F + 0.4·E) ={" "}
-                    {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) ={" "}
-                    {relevance.rawComposite.toFixed(2)}
-                    {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
-                      <> → smoothed {relevance.composite.toFixed(2)}</>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => setBreakdownOpen((v) => !v)}
+                    className="w-full flex items-center justify-between mb-1 hover:brightness-125 transition-all"
+                  >
+                    <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                      RELEVANCE BREAKDOWN
+                    </span>
+                    <span
+                      className="text-[10px] text-text-muted transition-transform duration-200"
+                      style={{ transform: breakdownOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                    >
+                      {"▼"}
+                    </span>
+                  </button>
+                  {breakdownOpen && (
+                    <>
+                      <div className="space-y-1">
+                        {([
+                          { code: "F", label: "FIT", role: "×0.6", sub: relevance.F },
+                          { code: "E", label: "EVIDENCE", role: "×0.4", sub: relevance.E },
+                          { code: "G", label: "REGIME", role: "gate", sub: relevance.G },
+                          { code: "S", label: "SUFFICIENCY", role: "gate", sub: relevance.S },
+                        ] as const).map(({ code, label, role, sub }) => {
+                          const pct = Math.round(sub.score * 100);
+                          const barColor = pct >= 70 ? "#00e676" : pct >= 40 ? "#ffab00" : "#ff5252";
+                          return (
+                            <div key={code} className="flex items-center gap-2">
+                              <div className="w-3 text-[9px] font-[family-name:var(--font-michroma)] text-text-muted">
+                                {code}
+                              </div>
+                              <div className="w-14 text-[7px] font-mono text-text-muted/80 tracking-wider">
+                                {label}
+                              </div>
+                              <div className="w-8 text-[7px] font-mono text-text-muted/50 tracking-wider">
+                                {role}
+                              </div>
+                              <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+                                <div className="h-full rounded transition-all duration-500" style={{
+                                  width: `${pct}%`,
+                                  backgroundColor: barColor,
+                                  opacity: 0.8,
+                                }} />
+                              </div>
+                              <div className="w-8 text-right text-[9px] font-mono tabular-nums" style={{ color: barColor }}>
+                                {pct}%
+                              </div>
+                              <div className="flex-[2] min-w-0 text-[8px] font-mono text-text-muted/80 truncate" title={sub.detail}>
+                                {sub.detail}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
+                        {confPct}% = {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) = {relevance.rawComposite.toFixed(2)}
+                        {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
+                          <> → smoothed {relevance.composite.toFixed(2)}</>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </>
           )}
 
-          {/* Methodology explanation */}
+          {/* Methodology explanation — collapsible, closed by default. */}
           <div>
-            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-              METHODOLOGY
-            </div>
-            <div className="space-y-1.5">
-              {methodology.map((line, i) => (
-                <div key={i} className="text-[9px] font-mono text-text-muted leading-relaxed">
-                  {line}
-                </div>
-              ))}
-            </div>
+            <button
+              onClick={() => setMethodologyOpen((v) => !v)}
+              className="w-full flex items-center justify-between mb-1 hover:brightness-125 transition-all"
+            >
+              <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                METHODOLOGY
+              </span>
+              <span
+                className="text-[10px] text-text-muted transition-transform duration-200"
+                style={{ transform: methodologyOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+              >
+                {"▼"}
+              </span>
+            </button>
+            {methodologyOpen && (
+              <div className="space-y-1.5">
+                {methodology.map((line, i) => (
+                  <div key={i} className="text-[9px] font-mono text-text-muted leading-relaxed">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Formula */}

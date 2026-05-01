@@ -26,7 +26,10 @@ export default function TrialSignupPage() {
       options: {
         data: {
           org_name: orgName || null,
-          access_type: "trial",
+          // Browser-supplied tier is intentionally ignored by the
+          // handle_new_user trigger (forced to 'trial'). Sent for
+          // forward-compat / observability only.
+          tier: "trial",
         },
       },
     });

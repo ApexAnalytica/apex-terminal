@@ -52,5 +52,9 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "vite": "8.0.0",
+    "rolldown": "1.0.0-rc.9"
   }
 }

@@ -285,8 +285,12 @@ const PROFILES_BY_DOMAIN_ID: Record<string, DomainProfile> = {
   "infrastructure": GEOPOLITICAL_PROFILE,
   "defense-isr": GEOPOLITICAL_PROFILE,
   "frontier-science": GEOPOLITICAL_PROFILE,
+  // Macro Impact sub-domains (geopolitical-profile vocabulary applies)
+  "macro-labor": GEOPOLITICAL_PROFILE,
+  "macro-inflation": GEOPOLITICAL_PROFILE,
   // Life sciences
   "t1d-beta-cell": T1D_PROFILE,
+  "t1d-vx880": T1D_PROFILE,
 };
 
 export function resolveDomainProfile(

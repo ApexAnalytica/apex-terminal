@@ -32,14 +32,26 @@ Owns the engine that discovers causal structure from data. Runs three discovery 
 - `src/lib/graph-data.ts`, `src/lib/athena-graph-data.ts` — graph data this engine reads. (Owned by data sessions; SPIRTES is a consumer.)
 - TODO: identify the SPIRTES-specific engine module (if any) vs. logic spread across `copilot-engine.ts` / `omega-engine.ts` and consolidate.
 
+## Notes on current state (verify in session)
+
+- All four panels (DCD/PCMCI+/FCI + StructuralMetrics) currently render **precomputed** discovery tags from `src/lib/graph-data.ts` (`discoverySource: "DCD" | "PCMCI+" | "FCI" | "merged"` on each `CausalNode`, `lag` on edges, `isConfounded` on nodes). The panels do layout + temporal-window deltas, not real algorithm execution.
+- "Spirtes-live" — running real DCD/PCMCI+/FCI on rolling windows — is a phase-2 effort that hasn't started. Needs separate scoping (in-browser library vs server-side with streamed results).
+- Network metrics (eigenvector centrality, betweenness, clustering, density, community structure, spectral stability) computed live in StructuralMetrics from the current `graphData`.
+
+## Cross-references to TARSKI live-feed work
+
+The TARSKI session has shipped two live API feeds (EIA Persian Gulf throughput, OFAC SDN sanctions) that mutate `CausalNode.liveData[]` and feed the validator. Spirtes panels read the same `graphData`, so any live mutation surfaces on the discovery panels too — but Spirtes has no algorithm-side response to live data yet (no recompute on tick). See `docs/sessions/tarski.md` for the feed-proxy pattern; reusing it for any Spirtes-driven live signal is straightforward.
+
 ## Likely upcoming themes
 
+- Phase-2 Spirtes-live: real algorithm runs on rolling windows.
 - Hardening of latent-confounder detection (FCI) for production graphs.
 - Confidence/uncertainty surfacing in the right panel.
-- TODO: fill in as the session ships work.
+- Wiring network metrics → ΩF pillar **C** (systemic cascade load) — verify present and quantitatively sane.
 
 ## How to start a task
 
 1. Confirm in-scope (structure discovery algorithms, their outputs, the structure API route).
 2. Coordinate with TARSKI when discovered edges affect verification.
 3. Coordinate with Rendering when changing how edge types are encoded visually.
+4. **Update this file** at the end of every material change.

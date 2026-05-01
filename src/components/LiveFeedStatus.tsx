@@ -85,7 +85,7 @@ export default function LiveFeedStatus() {
   if (!geopoliticalActive || rows.length === 0) return null;
 
   return (
-    <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 max-w-[300px]">
+    <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 max-w-[260px]">
       <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-[0.2em] text-text-muted px-1">
         LIVE FEEDS
       </div>
@@ -111,9 +111,13 @@ function FeedChip({ row }: { row: FeedRow }) {
     stale: "stale",
   }[row.mode];
 
+  // Stale chips render at lower opacity so a not-yet-fetched feed doesn't
+  // visually compete with an actively-flowing one.
+  const staleOpacity = row.mode === "stale" ? "opacity-50" : "";
+
   return (
     <div
-      className="group flex flex-col gap-0.5 px-2.5 py-1.5 rounded border border-border bg-surface-elevated/85 backdrop-blur-sm hover:border-accent-cyan/40 transition-colors cursor-default"
+      className={`group flex flex-col gap-0.5 px-2 py-1 rounded border border-border bg-surface-elevated/85 backdrop-blur-sm hover:border-accent-cyan/40 transition-colors cursor-default ${staleOpacity}`}
       title={row.source ?? ""}
     >
       <div className="flex items-center justify-between gap-2">

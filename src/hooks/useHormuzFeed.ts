@@ -9,24 +9,20 @@ const ENDPOINT = "/api/feeds/eia/hormuz";
 
 /**
  * Polls /api/feeds/eia/hormuz on an interval and applies the result to
- * chokepoint nodes via the store. Only active when the user has at least one
- * geopolitical-domain selection — no point hitting EIA in T1D mode.
+ * chokepoint nodes via the store. Profile-agnostic: the feed fires whenever
+ * a graph is loaded, and the store action self-gates by matching node
+ * labels against "strait of hormuz" / "chokepoint" — sessions whose graphs
+ * contain no chokepoint nodes simply receive nothing, no waste in the UI.
  *
  * The proxy itself caches upstream EIA responses for 6 hours; this 5-minute
  * cadence is just so a freshly-loaded tab doesn't sit on stale data.
  */
 export function useHormuzFeed() {
   const applyHormuzLiveData = useApexStore((s) => s.applyHormuzLiveData);
-  const selectedDomains = useApexStore((s) => s.selectedDomains);
-
-  // Match the same domain heuristic the rest of the app uses: any domain id
-  // that doesn't look T1D-flavored counts as geopolitical-relevant.
-  const geopoliticalActive = selectedDomains.some(
-    (d) => !d.toLowerCase().includes("t1d") && !d.toLowerCase().includes("vx880"),
-  );
+  const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
 
   useEffect(() => {
-    if (!geopoliticalActive) return;
+    if (!hasGraph) return;
     const controller = new AbortController();
     let cancelled = false;
 
@@ -50,5 +46,5 @@ export function useHormuzFeed() {
       controller.abort();
       clearInterval(id);
     };
-  }, [geopoliticalActive, applyHormuzLiveData]);
+  }, [hasGraph, applyHormuzLiveData]);
 }

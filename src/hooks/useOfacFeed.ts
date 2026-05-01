@@ -9,22 +9,21 @@ const ENDPOINT = "/api/feeds/ofac/sdn";
 
 /**
  * Polls /api/feeds/ofac/sdn on an interval and applies the result to nodes
- * whose jurisdiction matches a sanctioned country. Server proxy caches
- * upstream for 24h; this client cadence is just so a freshly-loaded tab
- * doesn't sit on stale data.
+ * whose jurisdiction matches a sanctioned country. Profile-agnostic: the
+ * feed fires whenever a graph is loaded, and the store action self-gates by
+ * scanning node label/domain/concentration/constraint strings for
+ * sanctioned-country keywords — sessions whose graphs contain no such
+ * matches simply receive nothing, no waste in the UI.
  *
- * Gated to geopolitical sessions — sanctions data is irrelevant to T1D.
+ * Server proxy caches upstream for 24h; this client cadence is just so a
+ * freshly-loaded tab doesn't sit on stale data.
  */
 export function useOfacFeed() {
   const applyOfacLiveData = useApexStore((s) => s.applyOfacLiveData);
-  const selectedDomains = useApexStore((s) => s.selectedDomains);
-
-  const geopoliticalActive = selectedDomains.some(
-    (d) => !d.toLowerCase().includes("t1d") && !d.toLowerCase().includes("vx880"),
-  );
+  const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
 
   useEffect(() => {
-    if (!geopoliticalActive) return;
+    if (!hasGraph) return;
     const controller = new AbortController();
     let cancelled = false;
 
@@ -47,5 +46,5 @@ export function useOfacFeed() {
       controller.abort();
       clearInterval(id);
     };
-  }, [geopoliticalActive, applyOfacLiveData]);
+  }, [hasGraph, applyOfacLiveData]);
 }

@@ -75,7 +75,7 @@ Three squashed commits introducing the first live API feeds:
 - Stale chips render at `opacity-50` to de-emphasize unfetched feeds.
 - OFAC route: if parser returns 0 jurisdictions on 200 OK (Treasury redirect / maintenance), serve mock-fallback so the engine path still exercises rather than going stale.
 
-### Per-card live-data rows + scalable display layer *(latest material change)*
+### Per-card live-data rows + scalable display layer
 - Standalone `<LiveFeedStatus />` component **deleted**. Live data now surfaces per-node, where it belongs.
 - Each `RiskPropagationFlow` card (the "ΩF TIME SERIES" cards) renders one row per `node.liveData[]` entry between the domain-badge row and the sparkline. Card without live data → renders nothing.
 - Global feed summary inlined in the `ΩF TIME SERIES` header (right-aligned): counts distinct feed `kind`s by mode (`live | mock-fallback | mock`), so "is anything flowing?" is answered at a glance without scanning every card.
@@ -84,7 +84,12 @@ Three squashed commits introducing the first live API feeds:
   - `KIND_FORMATTERS` registry: per-`kind` formatter producing `{shortLabel, primaryValue, qualifier}`. Throughput → "EIA · 18.50 mb/d · 88%". Sanctions → "OFAC · Iran · 4 prog". Generic fallback for unknown kinds → "value unit · ratio%".
   - `summarizeLiveFeeds(nodes)` → mode counts.
 - **Adding a new feed now requires zero card changes.** New feed writes a new `kind` to `liveData[]` via the proxy → cards iterate and render the entry automatically. Optionally add a `KIND_FORMATTERS` entry for nicer display; otherwise generic fallback handles it.
-- 12 new tests in `feeds-display.test.ts` cover the formatter registry, mode parser, summary aggregation. 459/459 total.
+
+### Profile-agnostic polling *(latest material change)*
+- Both `useHormuzFeed` and `useOfacFeed` now gate on `graphData.nodes.length > 0` instead of "selectedDomains looks geopolitical".
+- Justification: the cards layer, store actions, and display registry are all profile-agnostic. The hooks were the only place hardcoding "geopolitical" — a contradiction with the rest of the design.
+- Each feed self-gates via the store action's node-matching: EIA matches "strait of hormuz"/"chokepoint" labels (no T1D node has those), OFAC matches sanctioned-country keywords (same). Sessions with no matches receive nothing — no waste in the UI, no special-casing per profile.
+- A future cross-profile feed (T1D ADA targets, CGM streams, USGS minerals affecting either profile, etc.) plugs in identically — no profile gates to add or update.
 
 ## Architectural decisions
 

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import TrustedInviteCard from "./TrustedInviteCard";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +86,17 @@ export default async function AdminLandingPage() {
     },
   ];
 
+  // Build the absolute signup URL from the incoming request so it
+  // works on prod, preview deploys, and localhost without hardcoding.
+  const headersList = await headers();
+  const host =
+    headersList.get("host") ?? "manifold.apexanalytica.co";
+  const proto =
+    headersList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") ? "http" : "https");
+  const signupUrl = `${proto}://${host}/trusted-signup`;
+  const inviteCode = process.env.TRUSTED_INVITE_CODE ?? null;
+
   return (
     <div className="min-h-screen bg-background text-foreground p-6 font-mono">
       <div className="max-w-5xl mx-auto">
@@ -144,6 +157,13 @@ export default async function AdminLandingPage() {
               </div>
             </Link>
           ))}
+        </div>
+
+        <div className="mt-6">
+          <TrustedInviteCard
+            signupUrl={signupUrl}
+            inviteCode={inviteCode}
+          />
         </div>
 
         <div className="mt-10 text-[9px] text-text-muted/70 leading-relaxed border-t border-border/60 pt-4">

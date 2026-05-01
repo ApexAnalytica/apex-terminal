@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import TextSizeToggle from "./TextSizeToggle";
+import CategoryFilterDropdown from "./CategoryFilterDropdown";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "./DomainSelector";
 import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
@@ -92,6 +93,14 @@ export default function HeaderBar() {
                 {selectedDomains.length > 1 ? "MULTI" : "SINGLE"}
               </span>
             </button>
+            <div className="h-8 w-px bg-border hidden md:block" />
+          </>
+        )}
+
+        {/* Category filter (replaces the old DATA LAYERS section in DomainSelector) */}
+        {selectedDomains.length > 0 && (
+          <>
+            <CategoryFilterDropdown />
             <div className="h-8 w-px bg-border hidden md:block" />
           </>
         )}

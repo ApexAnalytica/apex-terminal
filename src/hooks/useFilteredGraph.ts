@@ -46,7 +46,6 @@ export function useFilteredGraph(): CausalGraph {
   const baseGraphData = useApexStore((s) => s.graphData);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
   const visibleCategories = useApexStore((s) => s.visibleCategories);
-  const visibleDiscoverySources = useApexStore((s) => s.visibleDiscoverySources);
   const { graph: temporalGraph, isTemporalActive } = useTemporalGraph();
 
   // Use temporal graph when available and scrubbed; fall back to base
@@ -64,23 +63,24 @@ export function useFilteredGraph(): CausalGraph {
         if (mapped) mapped.forEach((d) => allowedDomains.add(d));
       }
 
-      // Always include cross-domain connectors (Geopolitical, Energy Grid)
-      // if any of their upstream/downstream domains are selected
-      const crossDomainNodes = ["Geopolitical", "Energy Grid"];
-      for (const cd of crossDomainNodes) {
-        if (!allowedDomains.has(cd)) {
-          const hasCrossEdge = edges.some((e) => {
-            const srcNode = nodes.find((n) => n.id === e.source);
-            const tgtNode = nodes.find((n) => n.id === e.target);
-            if (!srcNode || !tgtNode) return false;
-            return (
-              (srcNode.domain === cd && allowedDomains.has(tgtNode.domain)) ||
-              (tgtNode.domain === cd && allowedDomains.has(srcNode.domain))
-            );
-          });
-          if (hasCrossEdge) allowedDomains.add(cd);
-        }
+      // Auto-include any domain that bridges to a selected domain via at least
+      // one edge — keeps cross-domain cascade paths intact instead of pruning
+      // bridge nodes and making the cascade signal appear to teleport. The
+      // previous hardcoded list (Geopolitical, Energy Grid) only covered
+      // main-graph bridges and silently broke paths through new datasets
+      // (Athena ISR, T1D, VX-880).
+      const nodeDomainById = new Map(nodes.map((n) => [n.id, n.domain]));
+      const bridgedDomains = new Set<string>();
+      for (const e of edges) {
+        const srcDomain = nodeDomainById.get(e.source);
+        const tgtDomain = nodeDomainById.get(e.target);
+        if (!srcDomain || !tgtDomain || srcDomain === tgtDomain) continue;
+        const srcIn = allowedDomains.has(srcDomain);
+        const tgtIn = allowedDomains.has(tgtDomain);
+        if (srcIn && !tgtIn) bridgedDomains.add(tgtDomain);
+        else if (tgtIn && !srcIn) bridgedDomains.add(srcDomain);
       }
+      bridgedDomains.forEach((d) => allowedDomains.add(d));
 
       nodes = nodes.filter((n) => allowedDomains.has(n.domain));
     }
@@ -88,11 +88,6 @@ export function useFilteredGraph(): CausalGraph {
     // Filter by node category (empty set = show all)
     if (visibleCategories.size > 0) {
       nodes = nodes.filter((n) => visibleCategories.has(n.category));
-    }
-
-    // Filter by discovery source (empty set = show all)
-    if (visibleDiscoverySources.size > 0) {
-      nodes = nodes.filter((n) => visibleDiscoverySources.has(n.discoverySource));
     }
 
     // Rebuild edges to match remaining nodes
@@ -112,5 +107,5 @@ export function useFilteredGraph(): CausalGraph {
             : 0,
       },
     };
-  }, [graphData, selectedDomains, visibleCategories, visibleDiscoverySources]);
+  }, [graphData, selectedDomains, visibleCategories]);
 }

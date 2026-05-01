@@ -10,9 +10,9 @@ import {
   CausalGraph,
   EpochSnapshot,
   TimelineId,
-  LiveDataPoint,
   upsertLiveSignal,
 } from "@/lib/types";
+import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
@@ -106,16 +106,15 @@ interface ApexState {
   enabledAxioms: Set<string>;
   setEnabledAxioms: (axioms: Set<string>) => void;
   runTarskiWithAxioms: () => void;
-  /** Apply a live-feed measurement to chokepoint nodes (label match);
-   *  reruns Tarski validation when truthFilter === "verified". */
-  applyHormuzLiveData: (point: LiveDataPoint) => void;
-  /** Apply OFAC sanctions program data to nodes whose jurisdiction matches a
-   *  sanctioned country; reruns Tarski validation when truthFilter === "verified". */
-  applyOfacLiveData: (
-    jurisdictions: Record<string, { country: string; programs: string[]; entryCount: number }>,
-    fetchedAt: string,
-    source: string,
-  ) => void;
+  /**
+   * Apply a generic feed-provider dispatch batch:
+   *  - Upserts the new `liveData` point on each `nodeId` in `updates`.
+   *  - Drops any existing signals of `signalKinds` from nodes NOT in `updates`
+   *    (so e.g. an OFAC tick that no longer matches Iran lifts the stale flag).
+   *  - Appends a `TemporalEvent` if `event` is provided (deduped by id).
+   *  - Re-runs Tarski validation when `truthFilter === "verified"`.
+   */
+  applyFeedBatch: (batch: FeedDispatchBatch) => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -356,108 +355,52 @@ export const useApexStore = create<ApexState>((set, get) => ({
       const flaggedGraph = applyTarskiFlags(cleanGraph, report);
       return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
     }),
-  applyHormuzLiveData: (point) =>
+  applyFeedBatch: (batch) =>
     set((s) => {
-      // Match the same label predicate A-04 uses so the live measurement lands
-      // on every chokepoint node A-04 already inspects.
-      const isChokepoint = (label: string) => {
-        const l = label.toLowerCase();
-        return l.includes("strait of hormuz") || l.includes("chokepoint");
-      };
+      const { signalKinds, updates, event } = batch;
+      const updateMap = new Map(updates.map((u) => [u.nodeId, u.point]));
+      const kindSet = new Set(signalKinds);
       let touched = false;
-      const affectedNodeIds: string[] = [];
+
       const nextNodes = s.graphData.nodes.map((n) => {
-        if (!isChokepoint(n.label)) return n;
-        const existing = n.liveData?.find((p) => p.kind === point.kind);
-        if (existing && existing.observedAt === point.observedAt && existing.value === point.value) {
-          return n; // identical reading — preserve reference for memo stability
-        }
-        touched = true;
-        affectedNodeIds.push(n.id);
-        return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
-      });
-      if (!touched) return s;
-      const nextGraph = { ...s.graphData, nodes: nextNodes };
-      const nextTemporal = appendFeedEvent(s.temporalData, {
-        id: `eia-hormuz-${point.observedAt}`,
-        date: new Date(point.observedAt),
-        label: `EIA · Hormuz throughput refresh`,
-        description: `${point.value.toFixed(2)} ${point.unit} (${(point.value / point.capacity * 100).toFixed(0)}% of ${point.capacity} ${point.unit} capacity) — ${point.source}`,
-        affectedNodeIds,
-        severity: Math.min(1, point.value / point.capacity),
-      });
-      const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
-      if (s.truthFilter === "verified") {
-        const cleanGraph = clearTarskiFlags(nextGraph);
-        const report = runTarskiValidation(
-          cleanGraph,
-          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
-        );
-        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-        return { ...base, graphData: flaggedGraph, tarskiReport: report };
-      }
-      return { ...base, graphData: nextGraph };
-    }),
-  applyOfacLiveData: (jurisdictions, fetchedAt, source) =>
-    set((s) => {
-      // Match a node to a sanctioned jurisdiction by scanning its label, domain,
-      // globalConcentration, and physicalConstraint strings for country names.
-      // This is intentionally string-heuristic because the existing data model
-      // does not carry an explicit `jurisdiction` field on nodes.
-      const codeByKeyword: Record<string, string> = {
-        iran: "IR", russia: "RU", russian: "RU", "north korea": "KP", dprk: "KP",
-        syria: "SY", cuba: "CU", venezuela: "VE", belarus: "BY", myanmar: "MM",
-        burma: "MM", zimbabwe: "ZW", sudan: "SD", lebanon: "LB", somalia: "SO",
-      };
-      const findJurisdictionCode = (n: typeof s.graphData.nodes[number]): string | null => {
-        const haystack = `${n.label} ${n.domain} ${n.globalConcentration} ${n.physicalConstraint ?? ""}`.toLowerCase();
-        for (const [keyword, code] of Object.entries(codeByKeyword)) {
-          if (haystack.includes(keyword) && jurisdictions[code]?.entryCount) return code;
-        }
-        return null;
-      };
-      let touched = false;
-      const affectedNodeIds: string[] = [];
-      const nextNodes = s.graphData.nodes.map((n) => {
-        const code = findJurisdictionCode(n);
-        if (!code) {
-          // Drop a stale sanctions signal if this node no longer matches a sanctioned jurisdiction.
-          if (n.liveData?.some((p) => p.kind === "sanctions")) {
-            touched = true;
-            return { ...n, liveData: n.liveData.filter((p) => p.kind !== "sanctions") };
+        const incoming = updateMap.get(n.id);
+        if (incoming) {
+          const existing = n.liveData?.find((p) => p.kind === incoming.kind);
+          if (
+            existing &&
+            existing.observedAt === incoming.observedAt &&
+            existing.value === incoming.value &&
+            existing.source === incoming.source
+          ) {
+            return n; // identical reading — preserve reference for memo stability
           }
-          return n;
+          touched = true;
+          return { ...n, liveData: upsertLiveSignal(n.liveData, incoming) };
         }
-        const j = jurisdictions[code];
-        const point: LiveDataPoint = {
-          kind: "sanctions",
-          value: j.programs.length,
-          capacity: 1,
-          unit: "programs",
-          observedAt: fetchedAt,
-          source: `${source} — ${j.country}: ${j.programs.join(", ")}`,
-        };
-        const existing = n.liveData?.find((p) => p.kind === "sanctions");
-        if (existing && existing.observedAt === point.observedAt && existing.source === point.source) {
-          return n;
+        // No incoming update for this node — drop any signals this batch is
+        // authoritative for (cleanup of stale signals, e.g. when a sanctioned
+        // jurisdiction lifts and the node no longer matches).
+        if (n.liveData?.some((p) => kindSet.has(p.kind))) {
+          touched = true;
+          return { ...n, liveData: n.liveData.filter((p) => !kindSet.has(p.kind)) };
         }
-        touched = true;
-        affectedNodeIds.push(n.id);
-        return { ...n, liveData: upsertLiveSignal(n.liveData, point) };
+        return n;
       });
+
       if (!touched) return s;
       const nextGraph = { ...s.graphData, nodes: nextNodes };
-      const totalPrograms = Object.values(jurisdictions).reduce(
-        (sum, j) => sum + j.programs.length, 0,
-      );
-      const nextTemporal = appendFeedEvent(s.temporalData, {
-        id: `ofac-sdn-${fetchedAt}`,
-        date: new Date(fetchedAt),
-        label: `OFAC · SDN refresh`,
-        description: `${affectedNodeIds.length} node${affectedNodeIds.length === 1 ? "" : "s"} matched · ${totalPrograms} active programs across ${Object.keys(jurisdictions).length} jurisdictions — ${source}`,
-        affectedNodeIds,
-        severity: Math.min(1, affectedNodeIds.length / 5), // 5+ matches = max severity bar
-      });
+
+      const nextTemporal = event
+        ? appendFeedEvent(s.temporalData, {
+            id: event.id,
+            date: new Date(event.observedAt),
+            label: event.label,
+            description: event.description,
+            affectedNodeIds: event.affectedNodeIds,
+            severity: event.severity,
+          })
+        : null;
+
       const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
       if (s.truthFilter === "verified") {
         const cleanGraph = clearTarskiFlags(nextGraph);

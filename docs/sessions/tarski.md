@@ -85,11 +85,71 @@ Three squashed commits introducing the first live API feeds:
   - `summarizeLiveFeeds(nodes)` → mode counts.
 - **Adding a new feed now requires zero card changes.** New feed writes a new `kind` to `liveData[]` via the proxy → cards iterate and render the entry automatically. Optionally add a `KIND_FORMATTERS` entry for nicer display; otherwise generic fallback handles it.
 
-### Profile-agnostic polling *(latest material change)*
+### Profile-agnostic polling
 - Both `useHormuzFeed` and `useOfacFeed` now gate on `graphData.nodes.length > 0` instead of "selectedDomains looks geopolitical".
 - Justification: the cards layer, store actions, and display registry are all profile-agnostic. The hooks were the only place hardcoding "geopolitical" — a contradiction with the rest of the design.
 - Each feed self-gates via the store action's node-matching: EIA matches "strait of hormuz"/"chokepoint" labels (no T1D node has those), OFAC matches sanctioned-country keywords (same). Sessions with no matches receive nothing — no waste in the UI, no special-casing per profile.
 - A future cross-profile feed (T1D ADA targets, CGM streams, USGS minerals affecting either profile, etc.) plugs in identically — no profile gates to add or update.
+
+### Phase 1 — Provider registry refactor *(latest material change)*
+
+**Why:** The "one hook + one route + one store action per feed" pattern doesn't scale. The "Live coverage program" goal (every node on a real feed, ~167 nodes today) would explode into ~700 files. This refactor introduces the registry pattern so adding a new feed = one provider file + one server route + one registry entry, regardless of how many nodes the provider covers.
+
+**New shape:**
+
+```
+src/lib/feeds/
+  providers/
+    types.ts             FeedProvider interface, FeedDispatchBatch, FeedDispatchEvent
+    eia-hormuz.ts        EIA provider (matchPayload + cadence + label)
+    ofac-sdn.ts          OFAC provider
+  registry.ts            FEED_PROVIDERS list — single source of registered providers
+  display.ts             (existing — KIND_FORMATTERS + utilities)
+  eia-hormuz.ts          (existing — server-side URL builder + parser + mock, used by route)
+  ofac-sdn.ts            (existing — same)
+
+src/hooks/
+  useFeedRegistry.ts     Single generic hook — iterates registry, polls each provider
+                         on its cadence, dispatches batches to the store
+
+src/stores/useApexStore.ts
+  applyFeedBatch         Single generic action: upserts liveData[] from updates,
+                         drops stale signals of `signalKinds` from non-matching nodes,
+                         emits TemporalEvent if event provided, reruns Tarski validation
+                         if VERIFIED mode is active
+```
+
+**Removed:**
+- `src/hooks/useHormuzFeed.ts` (deleted)
+- `src/hooks/useOfacFeed.ts` (deleted)
+- `applyHormuzLiveData` and `applyOfacLiveData` actions (replaced by `applyFeedBatch`)
+
+**Adding a new feed now requires:**
+1. New `src/lib/feeds/providers/<name>.ts` implementing `FeedProvider` (matchPayload + cadence + label).
+2. New `src/app/api/feeds/<path>/route.ts` matching the provider's `endpoint` (existing pattern).
+3. One line added to `src/lib/feeds/registry.ts`.
+4. (Optional) one entry in `KIND_FORMATTERS` (`src/lib/feeds/display.ts`) for nicer display.
+
+**Adding more nodes to coverage of an existing provider:**
+- Extend that provider's `matchPayload` to recognise more nodes. Zero other changes.
+
+### Live coverage program — sequenced roadmap
+
+A multi-PR program of work to migrate the graph from snapshot data → live feeds, one provider at a time.
+
+| Phase | Provider(s) | Nodes | Status |
+|---|---|---|---|
+| 1 | Registry refactor (no new feeds) | 0 | **shipped** |
+| 2 | FRED (Federal Reserve Economic Data) | ~10-15 macro/financial nodes (Fed Funds Effective, Fed Funds Target, CPI, Unemployment, Industrial Production, Currency Contagion, etc.) | not started |
+| 3 | World Bank | ~15 sovereign / governance nodes | not started |
+| 4 | USGS critical minerals | ~10 Saudi/global mining nodes | not started |
+| 5 | BLS labor stats | ~10 labor/employment nodes | not started |
+| 6 | NOAA storm tracks | ~5 conflict-zone proxies | not started |
+
+**Honest scoping notes:**
+- Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.
+- Polling load grows with coverage. Each provider declares its cadence; per-provider server-side caching keeps upstream calls bounded.
+- A `mode` field on registry entries (live | modeled | static) is a likely Phase 2.5 addition so the UI can distinguish empirical from inferred.
 
 ## Architectural decisions
 
@@ -125,8 +185,13 @@ Engine-side only: `applyHormuzLiveData` / `applyOfacLiveData` append `TemporalEv
 src/lib/types.ts                              LiveDataPoint, getLiveSignal/upsertLiveSignal helpers, ProofTrace.detail
 src/lib/tarski-data.ts                        AXIOM_LIBRARY (32), runTarskiValidation, A-04/R-01/R-02 with liveData branches
 src/lib/feeds/display.ts                      Shared display helpers — feedModeFromSource, KIND_FORMATTERS, summarizeLiveFeeds, feedDotClass
-src/lib/feeds/eia-hormuz.ts                   EIA URL builder, parser, mock; HORMUZ_CAPACITY_MBD = 21
-src/lib/feeds/ofac-sdn.ts                     OFAC pipe-CSV parser, PROGRAM_PREFIX_TO_COUNTRY, mock
+src/lib/feeds/eia-hormuz.ts                   EIA URL builder, parser, mock (server-side); HORMUZ_CAPACITY_MBD = 21
+src/lib/feeds/ofac-sdn.ts                     OFAC pipe-CSV parser, PROGRAM_PREFIX_TO_COUNTRY, mock (server-side)
+src/lib/feeds/providers/types.ts              FeedProvider interface, FeedDispatchBatch, FeedDispatchEvent
+src/lib/feeds/providers/eia-hormuz.ts         EIA provider — matchPayload + cadence + label
+src/lib/feeds/providers/ofac-sdn.ts           OFAC provider — matchPayload + jurisdiction inference
+src/lib/feeds/registry.ts                     FEED_PROVIDERS — single source of registered providers
+src/hooks/useFeedRegistry.ts                  Single generic poll hook (replaces useHormuzFeed + useOfacFeed)
 src/lib/snapshots/tarski-validator.ts         THIN snapshot validator (5 axioms) — deferred cleanup
 src/stores/useApexStore.ts                    applyHormuzLiveData, applyOfacLiveData, appendFeedEvent helper
 src/hooks/useHormuzFeed.ts                    5-min poll, geopolitical-only gate

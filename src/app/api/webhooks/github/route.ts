@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import crypto from "node:crypto";
+import crypto from "crypto";
 
 const service = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

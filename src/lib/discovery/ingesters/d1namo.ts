@@ -13,8 +13,8 @@
 // already opaque numeric (`d1namo-001` … `d1namo-009`) — there is no
 // PHI to strip. The adapter still hard-asserts containsPHI=false.
 
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import * as fs from "fs/promises";
+import * as path from "path";
 import type { CohortIngester, IngestOptions } from "../ingester-interface";
 import type { Cohort, Measurement, Subject, Variable } from "../cohort-types";
 

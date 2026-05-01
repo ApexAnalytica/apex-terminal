@@ -58,6 +58,16 @@ export function shortLabelFromSource(source: string): string {
   return first || "feed";
 }
 
+/** Tight units that are pre-fixed/post-fixed without a space, e.g. "5.25%". */
+const TIGHT_UNITS = new Set(["%", "K", "M", "B", "$", "°C", "°F", ""]);
+
+function formatValueWithUnit(value: number, unit: string): string {
+  const v = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+  if (!unit) return v;
+  if (TIGHT_UNITS.has(unit)) return `${v}${unit}`;
+  return `${v} ${unit}`;
+}
+
 const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal> = {
   throughput: (p) => {
     const ratio = p.capacity > 0 ? p.value / p.capacity : 0;
@@ -75,6 +85,16 @@ const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal>
       shortLabel: shortLabelFromSource(p.source),
       primaryValue: country,
       qualifier: `${p.value} prog`,
+    };
+  },
+  /** Generic macro/financial indicator. Renders "5.25%", "1430K", "102.4"
+   *  with smart unit spacing; qualifier shown when capacity is meaningful. */
+  indicator: (p) => {
+    const ratio = p.capacity > 0 ? p.value / p.capacity : 0;
+    return {
+      shortLabel: shortLabelFromSource(p.source),
+      primaryValue: formatValueWithUnit(p.value, p.unit),
+      qualifier: ratio > 0 && ratio < 2 ? `${(ratio * 100).toFixed(0)}%` : undefined,
     };
   },
 };

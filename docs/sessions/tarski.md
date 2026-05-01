@@ -139,12 +139,14 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 
 | Phase | Provider(s) | Nodes | Status |
 |---|---|---|---|
-| 1 | Registry refactor (no new feeds) | 0 | **shipped** |
-| 2 | FRED (Federal Reserve Economic Data) | ~10-15 macro/financial nodes (Fed Funds Effective, Fed Funds Target, CPI, Unemployment, Industrial Production, Currency Contagion, etc.) | not started |
+| 1 | Registry refactor (no new feeds) | 0 | **shipped (#149)** |
+| 2 | FRED (Federal Reserve Economic Data) | 18 macro/financial series (Fed Funds Effective/Target, SOFR, U-3 / U-6 unemployment, INDPRO, PAYEMS/MANEMP, JOLTS openings/quits/layoffs, building permits, 30Y mortgage, CPI YoY / Core CPI YoY, 5Y/10Y breakeven inflation, Case-Shiller YoY) | **shipped** |
 | 3 | World Bank | ~15 sovereign / governance nodes | not started |
 | 4 | USGS critical minerals | ~10 Saudi/global mining nodes | not started |
 | 5 | BLS labor stats | ~10 labor/employment nodes | not started |
 | 6 | NOAA storm tracks | ~5 conflict-zone proxies | not started |
+| 7 | OpenFDA / ClinicalTrials.gov | T1D coverage | not started |
+| 8 | FAO / OECD food prices | Supply Chain Food Security domain | not started |
 
 **Honest scoping notes:**
 - Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.
@@ -187,9 +189,11 @@ src/lib/tarski-data.ts                        AXIOM_LIBRARY (32), runTarskiValid
 src/lib/feeds/display.ts                      Shared display helpers — feedModeFromSource, KIND_FORMATTERS, summarizeLiveFeeds, feedDotClass
 src/lib/feeds/eia-hormuz.ts                   EIA URL builder, parser, mock (server-side); HORMUZ_CAPACITY_MBD = 21
 src/lib/feeds/ofac-sdn.ts                     OFAC pipe-CSV parser, PROGRAM_PREFIX_TO_COUNTRY, mock (server-side)
+src/lib/feeds/fred.ts                         FRED v1 URL builder, parser, mock; FRED_SERIES list (18 macro series)
 src/lib/feeds/providers/types.ts              FeedProvider interface, FeedDispatchBatch, FeedDispatchEvent
 src/lib/feeds/providers/eia-hormuz.ts         EIA provider — matchPayload + cadence + label
 src/lib/feeds/providers/ofac-sdn.ts           OFAC provider — matchPayload + jurisdiction inference
+src/lib/feeds/providers/fred.ts               FRED provider — series→node label-pattern matching
 src/lib/feeds/registry.ts                     FEED_PROVIDERS — single source of registered providers
 src/hooks/useFeedRegistry.ts                  Single generic poll hook (replaces useHormuzFeed + useOfacFeed)
 src/lib/snapshots/tarski-validator.ts         THIN snapshot validator (5 axioms) — deferred cleanup

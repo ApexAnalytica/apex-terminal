@@ -48,6 +48,7 @@ The application expects the following variables. Every single one must be set in
 | `ANTHROPIC_API_KEY` | ❌ | same | Anthropic provider key. Either provider can be the active one. |
 | `EIA_API_KEY` | ❌ | `src/app/api/feeds/eia/hormuz/route.ts` | US EIA v2 key for Persian Gulf crude production feed (Tarski A-04 chokepoint axiom). Optional: when unset, the route serves deterministic mock data tagged `(mock)` in its `source` field. Register at https://www.eia.gov/opendata/register.php. |
 | `OFAC_SDN_URL` | ❌ | `src/app/api/feeds/ofac/sdn/route.ts` | Override for the upstream OFAC SDN.csv URL (default: Treasury's canonical pipe-delimited file). Optional: no key needed because OFAC publishes the list publicly. When the upstream is unreachable, the route returns deterministic mock data tagged `(mock)` so the engine path still exercises. Drives R-01 (Jurisdictional Concentration) and R-02 (Force Majeure Exposure). |
+| `FRED_API_KEY` | ❌ | `src/app/api/feeds/fred/series/route.ts` | Free Federal Reserve Economic Data API key (instant registration at https://fred.stlouisfed.org/docs/api/api_key.html). Drives 18 macro/financial nodes (Fed Funds, CPI, Unemployment, JOLTS, mortgage rates, Case-Shiller, etc.). When unset, the route returns deterministic mock data per series tagged `(mock — FRED_API_KEY unset)`. |
 
 ### 2.1 Local development
 

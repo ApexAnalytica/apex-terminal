@@ -42,6 +42,21 @@ export async function GET() {
     }
     const csv = await upstreamRes.text();
     const feed = parseOfacSdnCsv(csv);
+    // Defensive zero-entry fallback: Treasury has occasionally returned an
+    // HTML redirect page or an empty CSV under maintenance. If we got 200 OK
+    // but no jurisdictions parsed out, treat it as a parse failure and serve
+    // mock so the engine path still exercises rather than going stale.
+    if (Object.keys(feed.jurisdictions).length === 0) {
+      const mock = mockOfacSdnFeed();
+      cache = { feed: mock, expiresAt: now + 60 * 60 * 1000 };
+      return NextResponse.json(mock, {
+        headers: {
+          "x-feed-cache": "miss",
+          "x-feed-mode": "mock-fallback",
+          "x-feed-error": `parsed-zero-jurisdictions (csv-len=${csv.length})`,
+        },
+      });
+    }
     cache = { feed, expiresAt: now + CACHE_TTL_MS };
     return NextResponse.json(feed, {
       headers: { "x-feed-cache": "miss", "x-feed-mode": "live" },

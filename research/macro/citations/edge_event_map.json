@@ -1,0 +1,141 @@
+{
+  "_meta": {
+    "purpose": "Hand-curated mapping from graph edges to the (event_id, target_series, horizon) tuple whose CAR provides empirical evidence for that edge.",
+    "horizon_choice": "Use 'short' for slow-price-discovery edges (fertilizer, food, monthly data) where later peaks contaminate with unrelated trends. Use 'peak' for fast-discovery edges (daily crude/gas on a discrete shock).",
+    "asset_id_mapping": "Disruption-event asset IDs do not match graph node IDs (independent authoring). The mapping below resolves that.",
+    "edges_not_listed": "Edges absent from this file are either capacity_citation (see capacity_citations.json) or expert_prior (no events available). Run scripts/classify_edges.py for the full classification."
+  },
+  "edge_to_fit": [
+    {
+      "edge_id": "sa_east_west_pipeline__sa_yanbu_refinery",
+      "comment": "facility-engineering edge; covered by capacity_citation",
+      "applies": false
+    },
+    {
+      "edge_id": "qf_qafco_urea_product__qf_global_food_prices",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "wheat_us_srw", "horizon": "short",
+         "rationale": "Best available natural experiment for urea-supply -> food-price transmission; short horizon avoids the post-peak demand-destruction crash."},
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "monthly",
+         "target_series": "urea", "horizon": "short",
+         "rationale": "Cross-checks magnitude of Middle East urea-supply shocks via the cleanest single-source ramp-delay event."}
+      ]
+    },
+    {
+      "edge_id": "qf_qafco_urea_product__qf_india_fertilizer_market",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "urea", "horizon": "short",
+         "rationale": "Pink Sheet urea (FOB Middle East) is the global benchmark off which India FOB prices are quoted, so urea CAR is the right proxy regardless of which country market the edge points to."}
+      ]
+    },
+    {
+      "edge_id": "qf_qafco_urea_product__qf_brazil_fertilizer_market",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "urea", "horizon": "short"}
+      ]
+    },
+    {
+      "edge_id": "qf_qafco_urea_product__qf_australia_fertilizer_market",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "urea", "horizon": "short"}
+      ]
+    },
+    {
+      "edge_id": "qf_qafco_urea_product__qf_usa_fertilizer_market",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "urea", "horizon": "short"}
+      ]
+    },
+    {
+      "edge_id": "mn_ras_al_khair_dap_plant__mn_global_food_price_stress",
+      "supporting_events": [
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "monthly",
+         "target_series": "dap", "horizon": "short",
+         "rationale": "Ma'aden ramp delay is the closest natural experiment for Saudi DAP -> global food stress."},
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "monthly",
+         "target_series": "wheat_us_srw", "horizon": "short"}
+      ]
+    },
+    {
+      "edge_id": "mn_ma_aden_phosphate_business__mn_global_food_price_stress",
+      "supporting_events": [
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "monthly",
+         "target_series": "dap", "horizon": "short"}
+      ]
+    },
+    {
+      "edge_id": "mn_phosphate_3_mega_project__mn_global_food_price_stress",
+      "supporting_events": [
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "monthly",
+         "target_series": "dap", "horizon": "short",
+         "rationale": "Phosphate-3 expansion is methodologically analogous to Wa'ad Al Shamal ramp; same DAP price response is the relevant prior."}
+      ]
+    },
+    {
+      "edge_id": "mn_strait_of_hormuz__mn_global_food_price_stress",
+      "supporting_events": [
+        {"event_id": "evt_hormuz_tanker_incidents_2019", "frequency": "monthly",
+         "target_series": "liquefied_natural_gas_japan", "horizon": "short",
+         "rationale": "LNG-Japan benchmark captures the Asia-bound shipping-route fragility around Hormuz; food impact is a downstream story but LNG/gas cost is the mechanism."}
+      ]
+    },
+
+    {
+      "edge_id": "sa_ras_tanura_terminal__ip_cpi_energy",
+      "_section": "macro_pass_through",
+      "_section_note": "Edges below target ip_*/mi_* macro nodes added by graph PR #115. They live in src/lib/graph-data.ts (NOT in claire_graph_data.json). Evidence is measured directly on the FRED CPI/PPI series rather than on the upstream commodity benchmark.",
+      "supporting_events": [
+        {"event_id": "evt_abqaiq_khurais_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Direct measurement of CPI-energy response to a Saudi crude shock. Discrete events with rapid recovery (Abqaiq was restored in ~3 weeks) tend to show small monthly CPI pass-through; the empirical CAR documents that effect rather than assuming a larger one."}
+      ]
+    },
+    {
+      "edge_id": "sa_abqaiq_plants__ip_cpi_energy",
+      "supporting_events": [
+        {"event_id": "evt_abqaiq_khurais_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Same evidence as Ras Tanura -> CPI energy. Abqaiq is upstream of Ras Tanura; the monthly CPI response is the same observation."}
+      ]
+    },
+    {
+      "edge_id": "qf_strait_of_hormuz__ip_cpi_energy",
+      "supporting_events": [
+        {"event_id": "evt_hormuz_tanker_incidents_2019", "frequency": "macro",
+         "target_series": "ip_cpi_energy", "horizon": "short",
+         "rationale": "Hormuz 2019 incidents added a tanker risk premium without a sustained crude-supply hit; CPI-energy response is small, which the CAR captures."}
+      ]
+    },
+    {
+      "edge_id": "qf_global_food_prices__ip_cpi_food",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short",
+         "rationale": "2022 fertilizer + Russia-Ukraine event is the cleanest natural experiment for global food prices propagating into US CPI food. Significant +3.6%/+4m response."}
+      ]
+    },
+    {
+      "edge_id": "mn_global_food_price_stress__ip_cpi_food",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short"},
+        {"event_id": "evt_maaden_waad_al_shamal_ramp_delay", "frequency": "macro",
+         "target_series": "ip_cpi_food", "horizon": "short",
+         "rationale": "Cross-checks magnitude of food-stress -> CPI-food via a phosphate-side event; smaller signal as expected since DAP is a narrower input than the full 2022 fertilizer wave."}
+      ]
+    },
+    {
+      "edge_id": "sc_fertilizer_price_index__ip_ppi_all_commodities",
+      "supporting_events": [
+        {"event_id": "evt_fertilizer_export_restrictions_2022", "frequency": "macro",
+         "target_series": "ip_ppi_all_commodities", "horizon": "short",
+         "rationale": "2022 fertilizer event is the most direct test: fertilizer-price index spikes feeding into broad PPI all-commodities. Significant +10.9%/+4m response."}
+      ]
+    }
+  ]
+}

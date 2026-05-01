@@ -1,0 +1,400 @@
+# Manifold — Macro / GCC-Energy Edge-Weight Research
+
+Empirical backing for the edge weights on the GCC energy + petrochem
+nodes of the live causal graph in `src/lib/graph-data.ts` — Saudi
+Aramco, Ma'aden, QatarEnergy, and QAFCO clusters.
+
+This subdirectory mirrors the layout of `research/` (T1D estimators) and
+follows the same workflow: implement and validate in Python here, then
+port the resulting fits into TypeScript engines / graph data once the
+team reviews the methodology and numbers.
+
+## A note on the source graph file
+
+The classifier and edge-event map in this PR read
+`claire_graph_data.json` (65 nodes, 69 edges of GCC-energy / petrochem
+content). That file turns out to be an unreferenced legacy export — the
+live graph used by the application is `src/lib/graph-data.ts`
+(318 edges, 167 nodes including macro pillars added in #47, #56, #115).
+
+The good news: every node ID and edge ID we touch in this PR (9 mapped
+event-study edges, 7 capacity-cited edges) is preserved verbatim in
+`graph-data.ts`. The empirical evidence applies as-is when PR-B
+consumes it. We kept reading from `claire_graph_data.json` only because
+its smaller surface made the per-edge audit cleaner; switching the
+classifier to read `graph-data.ts` is mechanical and on the follow-up
+list below.
+
+## Scope of this PR (PR-A)
+
+**Done in this PR**: methodology, fit pipeline, event-study fits for
+9 GCC-internal price-impact edges, 6 macro pass-through edges
+(physical-shock -> US CPI/PPI), and capacity citations for 7 keystone
+facility-engineering edges. Total: 15 graph edges with empirical
+evidence, plus 7 with audit-grade nameplate citations. **Also in
+this PR (was PR-B in the original plan)**: applied those 22 updates
+to `src/lib/graph-data.ts` via the transform rules documented in
+[scripts/build_graph_update.py](scripts/build_graph_update.py).
+The two stages were originally going to be separate PRs but are
+combined here for review velocity; the boundary is clean (research/
+files are the audit trail; `src/lib/graph-data.ts` change is one
+line per affected edge).
+
+The artifact PR-B will consume is `output/edge_fits.json` (per-edge
+empirical evidence rows, keyed by edge ID) plus
+`citations/capacity_citations.json` (audit-grade nameplate citations).
+PR-B reads the live graph file by edge ID, applies the evidence, and
+leaves any edge without evidence untouched.
+
+## Macro pass-through edges (added in this PR)
+
+Graph PR #115 introduced 20 cross-domain edges into the macro module
+(`ip_cpi_energy`, `ip_cpi_food`, `ip_ppi_all_commodities`, etc.) —
+physical-shock to US inflation pass-through. We pulled FRED CPI/PPI
+series and ran the same event-study estimator directly on those
+indices, producing empirical evidence for 6 of those edges:
+
+  - `sa_ras_tanura_terminal -> ip_cpi_energy` (CPI energy via Abqaiq 2019)
+  - `sa_abqaiq_plants -> ip_cpi_energy` (CPI energy via Abqaiq 2019)
+  - `qf_strait_of_hormuz -> ip_cpi_energy` (CPI energy via Hormuz 2019)
+  - `qf_global_food_prices -> ip_cpi_food` (CPI food via 2022 fertilizer)
+  - `mn_global_food_price_stress -> ip_cpi_food` (CPI food via 2022 + Ma'aden ramp)
+  - `sc_fertilizer_price_index -> ip_ppi_all_commodities` (PPI via 2022 fertilizer)
+
+Two LNG-related pass-through edges (`qe_north_field_gas_field`,
+`qe_ras_laffan_port` -> energy CPI/PPI) would be supportable by the
+2026-03 Ras Laffan event, but FRED's monthly data ends 2026-03-31
+so there is no post-event window. Re-runnable after the next FRED
+release.
+
+### Methodological finding
+
+The pass-through results split cleanly along event duration:
+
+  - **Discrete crude attacks** (Abqaiq 2019, Hormuz 2019) -> CPI
+    energy: small CARs near zero, bootstrap CI overlaps zero. Real
+    finding: a 3-week supply hit gets averaged out of the monthly
+    CPI print and does not produce a sustained pass-through.
+  - **Sustained regime shifts** (2022 fertilizer / Russia-Ukraine)
+    -> CPI food, CPI goods, PPI all commodities: significant
+    positive CARs at +4 months, all CI excluding zero. Slow-moving
+    aggregates respond materially to persistent shocks.
+
+This is consistent with macro-credit-channel intuition but
+quantifies the asymmetry directly. The implication for graph
+weights: the energy CPI edges from short-event sources may be
+overweighted in the current expert prior; the food/PPI edges from
+sustained-shock sources are well-calibrated.
+
+## Why three fit methods, not one
+
+A single statistical method does not fit all 69 edges:
+
+| method | applies to | n edges | how the weight is empirically grounded |
+|---|---|---|---|
+| `event_study` | source -> price-sensitive or macro target where a recorded disruption event exists | 15 | observed CAR on the relevant Pink Sheet / EIA / FRED series in a window around the event |
+| `capacity_citation` | facility -> facility throughput edges | 53 | published nameplate capacity from a primary source (operator IR, EIA country brief, S&P Platts) |
+| `expert_prior` | edges where neither method is feasible | 7 | retained domain prior; flagged for follow-up data acquisition |
+
+The classifier is in [scripts/classify_edges.py](scripts/classify_edges.py)
+and is overridden by the hand-curated mapping in
+[citations/edge_event_map.json](citations/edge_event_map.json).
+
+## Data — all free, no API keys
+
+| series | source | frequency | range |
+|---|---|---|---|
+| Brent, WTI, Henry Hub natgas | EIA via `github.com/datasets` mirrors | daily | 1986/1987/1997 -> present |
+| Urea, DAP, phosphate rock, wheat, maize, rice, LNG-Japan, EU/US natgas | World Bank Pink Sheet (CMO Historical Data Monthly) | monthly | 1960 -> 2024-12 |
+| US CPI energy/food/goods, PPI energy/all-commodities, IndProd, manuf. employment | FRED (`fredgraph.csv?id=...`, no API key) | monthly | 1913-1957 -> 2026-03 |
+| Disruption events (Abqaiq 2019, Hormuz 2019, Qatar blockade 2017-21, Ma'aden ramp delay, Ras Laffan 2026, fertilizer restrictions 2022) | `public/datasets/claire/disruption_events.json` (already in repo) | event log | 6 events |
+
+Loaders cache to `datasets/_cache/` (gitignored). Re-runs are
+network-free.
+
+## Estimator: event study (constant-mean abnormal returns)
+
+[estimators/event_study.py](estimators/event_study.py)
+
+Reference: MacKinlay (1997), "Event Studies in Economics and Finance,"
+*Journal of Economic Literature* 35(1).
+
+We use a **constant-mean** normal-returns model rather than the market
+model — there is no obvious benchmark factor for commodity prices
+analogous to a stock-market index. The estimation-window mean and
+variance of log returns serve as the null distribution.
+
+### Why constant-mean rather than market model
+
+This is the most likely place for reviewer pushback, so the reasoning
+explicitly: market-model variance reduction would matter for *small*
+effects where signal is borderline, but most of the events here move
+prices well outside any plausible "normal" envelope (Abqaiq +12% on
+day 0, Ras Laffan 2026 +36% over six trading days, Ma'aden ramp +52%
+on monthly urea over four months) — variance reduction is not the
+binding constraint. Where the marginal events sit (Hormuz tankers,
+2022 fertilizer monthly), the noise comes from regime shifts and
+partial anticipation, not from missing benchmark covariance.
+
+The market-model alternative also doesn't *resolve* a methodology
+choice; it *opens* a benchmark-selection one, with no clean answer for
+any of our target series:
+
+- **Crude (Brent / WTI)**: SPX, DXY, oil-services equity, Bloomberg
+  Commodity Index — each gives a different answer, and crude is so
+  large in any commodity index that the "benchmark" is largely the
+  asset itself.
+- **Fertilizer (urea / DAP)**: the only available index covering these
+  is the Pink Sheet food-and-beverage index, which *contains* urea and
+  DAP. Regressing the asset on an index that includes itself is
+  econometrically broken.
+- **Natural gas / LNG**: candidates (coal, power-gen index, oil)
+  reflect substitution effects that are themselves the object of
+  study, not a clean benchmark.
+
+If a customer pushes back with a specific benchmark request — say,
+"use Bloomberg Commodity Index ex-energy for the crude edges" — the
+estimator generalizes cleanly (replace the constant `mu` with the
+fitted regression on the benchmark return). Building it pre-emptively
+without that signal would mean picking the benchmark on a guess, which
+just relocates the methodology debate.
+
+### Test statistics
+
+- **Patell standardized t** (parametric) at the peak-|magnitude| offset.
+- **Moving-block bootstrap** percentile CI on CAR, which preserves the
+  volatility clustering present in the estimation window. Block length 5
+  trading days for daily series, 3 months for monthly. Results
+  insensitive in the [3, 10] / [2, 4] ranges.
+
+Each call returns CARs at three horizons: `immediate` (offset 0),
+`short` (~1/3 into the post-event window), and `peak` (absolute peak
+within the window). Reporting all three matters because of a real
+methodological pitfall: **for slow-price-discovery series (fertilizer,
+food, monthly data) the absolute-peak CAR often picks up an unrelated
+later trend** — e.g., the Abqaiq 2019 monthly Brent CAR_peak at month +7
+catches the COVID-2020 demand crash, not the Abqaiq event itself.
+Consumers should use `short` for slow markets and `immediate` or
+`short` for fast markets; `peak` is informational only.
+
+## Validation
+
+[validation/event_study_abqaiq.py](validation/event_study_abqaiq.py) —
+the textbook case. The 2019-09-14 Abqaiq-Khurais attack removed
+~5.7 mb/d of Saudi crude (~5% of global supply); Brent gapped up ~15%
+on 2019-09-16, the largest single-day jump since 1991.
+
+Acceptance criteria (all must pass):
+
+```
+[PASS]  brent CAR & sig: CAR_peak=+0.1182  lag= 0d  CI=[+0.0432, +0.2441]  patell_t=+2.23
+[PASS]    wti CAR & sig: CAR_peak=+0.1160  lag= 0d  CI=[+0.0111, +0.2325]  patell_t=+2.08
+       day-0 ARs: brent=+0.1120 wti=+0.1425 natgas=+0.0545
+[PASS] brent day-0 > natgas day-0
+[PASS] wti day-0 > natgas day-0
+```
+
+Brent log-CAR of +0.118 corresponds to a ~12.5% simple price move on
+day 0; matches the contemporaneous market reaction documented by EIA.
+
+Run with: `research/.venv/bin/python -m research.macro.validation.event_study_abqaiq`
+
+## Headline empirical results
+
+The 6 disruption events x relevant commodity / FRED series produce 47
+event-study rows in [output/events_x_series.json](output/events_x_series.json).
+The cleanest signals (significant CI excluding zero, sign matching the
+expected mechanism):
+
+| Event | Series | Frequency | CAR_short | CI 95% | n_est |
+|---|---|---|---|---|---|
+| Abqaiq 2019 | Brent | daily | +11.8% @ 0d (peak=immediate) | [+4.3%, +24.4%] | 100 |
+| Abqaiq 2019 | WTI | daily | +11.6% @ 0d | [+1.1%, +23.3%] | 100 |
+| Ma'aden ramp delay 2017 | Urea | monthly | +52% @ +4m | [+14%, +94%] | 27 |
+| Ma'aden ramp delay 2017 | DAP | monthly | +16% @ +4m, peaks at +39% @ +12m | overlaps zero short / [+9%, +84%] peak | 27 |
+| Fertilizer restrictions 2022 | Urea | monthly | -47% @ +4m (post-spike crash) | [-92%, -3%] | 27 |
+| Fertilizer restrictions 2022 | Brent | daily | +21% @ +6d, peak +28% @ +8d | [+9%, +39%] | 100 |
+| Ras Laffan LNG 2026 | Brent | daily | +36% @ +6d, peak +57% @ +19d | [+24%, +47%] | 100 |
+| Ras Laffan LNG 2026 | WTI | daily | +38% @ +6d, peak +47% @ +18d | [+27%, +48%] | 100 |
+| Hormuz tankers 2019 | LNG-Japan | monthly | -21% @ +4m | [-35%, -5%] | 27 |
+| **Fertilizer restrictions 2022** | **US CPI food (FRED)** | **macro/monthly** | **+3.6% @ +4m** | **[+1.3%, +5.4%]** | **27** |
+| **Fertilizer restrictions 2022** | **US CPI goods (FRED)** | **macro/monthly** | **+4.0% @ +4m** | **[+0.5%, +9.1%]** | **27** |
+| **Fertilizer restrictions 2022** | **US PPI all commodities (FRED)** | **macro/monthly** | **+10.9% @ +4m** | **[+2.2%, +22.2%]** | **27** |
+
+(Magnitudes are log returns; for crude/gas the ~5-15% range is large.
+The Ras Laffan 2026 daily CARs are notable — the recent event drove the
+biggest crude move in the dataset since the 2022 invasion.)
+
+The full per-edge mapping with which event/series/horizon backs which
+graph edge lives in [output/edge_fits.json](output/edge_fits.json).
+
+## Honest caveats
+
+These are not "the model is rough"-style hedges; these are scope limits
+that reviewers should know:
+
+1. **Three of the six events are regime shifts**, not discrete events:
+   Qatar blockade (3.5 years), Ma'aden ramp (2.5 years), fertilizer
+   restrictions (10 months). Classical event-study methodology assumes
+   discrete unanticipated shocks. We use the start date and report the
+   same CARs, but a proper treatment would also report a pre-vs-during
+   regime mean shift. Follow-up: implement structural-break tests
+   (Bai-Perron / quasi-likelihood-ratio) and report alongside CAR.
+
+2. **The 2022 fertilizer event is partially anticipated.** Pre-event
+   urea was already elevated from the late-2021 European gas crisis;
+   the estimation-window variance is therefore inflated and the
+   "abnormal" return looks small relative to the run-up. This is
+   why several 2022 monthly CARs come back negative — the event
+   marks the *peak* and the post-event period reverts.
+
+3. **Pink Sheet ends 2024-12.** The 2026 Ras Laffan LNG outage
+   (started 2026-03-04) only has daily-frequency studies; monthly
+   fertilizer/LNG response is not yet observable in the cached data.
+   Re-run after the next Pink Sheet release.
+
+4. **n_supporting_events is small** for most edges (1-2 events).
+   Bootstrap CIs come from the estimation-window vol (n_est = 100 daily
+   or 27 monthly), so significance is meaningful even at n_event=1.
+   But cross-event aggregation (`evidence_summary.mean_abs_car`) at
+   n=1 is not a real average — read it as the single observation.
+
+5. **Capacity-citation seed is intentionally small (7 of 53 edges).**
+   The schema in
+   [citations/capacity_citations.json](citations/capacity_citations.json)
+   is stable and additive. Filling out the remaining 46 facility-engineering
+   edges is straightforward but mechanical; better as a follow-up data
+   task than as part of this methodology PR.
+
+6. **Earlier draft of this PR claimed graph anomalies** (orphan Qatar
+   nodes with zero edges) based on inspection of
+   `claire_graph_data.json`. That claim was wrong. The live graph
+   (`src/lib/graph-data.ts`) wires those Qatar nodes properly — North
+   Field gas field has 6 outgoing edges, the LNG trains chain is
+   intact, etc. The `graph_anomalies` block remains in
+   `capacity_citations.json` for the historical record but each entry
+   notes that the anomaly was an artifact of reading the wrong file.
+
+## Reproducing the results
+
+```bash
+python3 -m venv research/.venv
+source research/.venv/bin/activate
+pip install -r research/requirements.txt openpyxl
+
+# end-to-end (each step is also runnable independently)
+python -m research.macro.validation.event_study_abqaiq    # methodology check
+python -m research.macro.scripts.classify_edges            # rule-based classification
+python -m research.macro.scripts.run_events_x_series       # 47 event-study fits
+python -m research.macro.scripts.build_edge_fits           # join into per-edge evidence
+python -m research.macro.scripts.build_graph_update        # transform evidence -> update plan
+python -m research.macro.scripts.apply_graph_update        # rewrites src/lib/graph-data.ts
+```
+
+All intermediate outputs land in `research/macro/output/` (gitignored);
+the final step writes 22 single-line edits to
+`src/lib/graph-data.ts` (committed).
+
+## Transform rules (evidence -> graph weights)
+
+The transform from empirical evidence to (weight, lag, confidence)
+is documented in
+[scripts/build_graph_update.py](scripts/build_graph_update.py).
+Summary:
+
+  - **Capacity-cited edges** (7 edges): weight, lag, confidence come
+    directly from the primary source in
+    [citations/capacity_citations.json](citations/capacity_citations.json).
+    No statistical interpretation — the citation is the empirical
+    content.
+
+  - **Event-study edges with significant evidence** (8 edges):
+
+      `weight = clip(0.3 + 0.6 * min(|CAR| / scale, 1), 0.3, 0.9)`
+
+    where `scale` is the magnitude of a "strong but typical" event
+    for the data frequency (daily commodity 0.15, monthly commodity
+    0.40, monthly macro 0.05). `lag` is mapped from the observed
+    offset onto graph epochs (1, 2, or 3). `confidence = 0.85`
+    when n_estimation >= 27, else 0.75.
+
+  - **Event-study edges with null evidence** (CI overlapping zero,
+    7 edges): weight floored at min(prior, 0.4), confidence 0.5.
+    The negative finding ("CI does not exclude zero") is itself
+    informative — the prior was likely too high, but we don't drop
+    the edge to zero because absence of evidence is not evidence
+    of absence.
+
+The full per-edge update plan is in
+[output/graph_updates.json](output/graph_updates.json) (regenerated
+on each pipeline run; gitignored). The plan records prior values,
+new values, and the reason for each change so the diff in
+`src/lib/graph-data.ts` is auditable.
+
+### Notable transform calls reviewers may want to push back on
+
+  - **|CAR| ignores sign**. The 2022 fertilizer event drove urea -47%
+    over 4 months (post-spike crash). |CAR| treats this as "strong
+    propagation," yielding weight 0.9 on `qf_qafco_urea_product ->
+    qf_*_fertilizer_market` edges. Defensible as "magnitude of price
+    reaction to a supply shock" but reviewers may prefer
+    sign-aware logic (e.g., positive-CAR-only) for clarity.
+
+  - **Hormuz 2019 -> LNG-Japan -> Maaden food-stress edge**. The
+    LNG-Japan CAR was -21% at +4m (significant) but plausibly reflects
+    the 2019 LNG glut more than the May tanker incidents. Counted as
+    "significant evidence" but the causal attribution is weaker than
+    the bootstrap CI suggests.
+
+  - **CPI energy edges from short crude shocks** drop from prior 0.6
+    to 0.4 with confidence 0.5. The empirical finding is real but
+    the policy implication ("crude attacks don't pass through to
+    monthly CPI") may be too strong if the cascade simulator's epoch
+    semantics aggregate over weeks rather than months.
+
+## Layout
+
+```
+research/macro/
+  README.md                          (this file)
+  estimators/
+    event_study.py                   (constant-mean CAR + block-bootstrap CI)
+  datasets/
+    commodity_prices.py              (Brent, WTI, Henry Hub daily)
+    pinksheet.py                     (World Bank monthly commodities)
+    fred.py                          (FRED CPI/PPI/IndProd monthly)
+  validation/
+    event_study_abqaiq.py            (textbook validation)
+  scripts/
+    classify_edges.py                (rule-based fit-method classifier)
+    run_events_x_series.py           (event x series fit harness)
+    build_edge_fits.py               (join into per-edge evidence)
+    build_graph_update.py            (transform evidence -> update plan)
+    apply_graph_update.py            (apply plan to src/lib/graph-data.ts)
+  citations/
+    edge_classification.json         (auto-generated; method per edge)
+    edge_event_map.json              (curated; which event/series backs which edge)
+    capacity_citations.json          (curated; primary-source nameplate citations)
+  output/                            (gitignored)
+    events_x_series.json
+    edge_fits.json
+```
+
+## Path to PR-B
+
+PR-B reads `output/edge_fits.json` and `citations/capacity_citations.json`
+and updates `claire_graph_data.json` with three changes per touched edge:
+
+- `weight`: from capacity citation (where applicable) or empirical
+  CAR magnitude transformed to a [0,1] strength scale (transformation
+  to be agreed in PR-B).
+- `lag`: from `offset` field for event-study edges (kept in source-data
+  units — days for daily, months for monthly), or `lag_days` from
+  capacity citation.
+- `confidence`: explicit function of (CI excludes zero) AND (estimation
+  n) for event-study edges, or `confidence` field for capacity
+  citations. Specific function to be agreed in PR-B.
+
+The `physicalMechanism` text on each edge is left intact; the citation
+schema lets us optionally add a `provenance` pointer next to it
+without touching the existing copy.

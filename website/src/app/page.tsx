@@ -1,7 +1,6 @@
 import Link from "next/link";
 import HeroGraph from "@/components/HeroGraph";
 import EngineFlow from "@/components/visuals/EngineFlow";
-import OmegaRadar from "@/components/visuals/OmegaRadar";
 import { Section } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
@@ -14,13 +13,6 @@ const PILLARS = [
   { letter: "J", name: "JURISDICTIONAL HAZARD", value: 7.8, color: "text-accent-red",    border: "border-accent-red/30",    bg: "bg-accent-red",    raw: "var(--accent-red)",    desc: "Geopolitical and regulatory exposure — sanctions, conflict zones, export controls." },
   { letter: "C", name: "CASCADE LOAD",          value: 7.2, color: "text-accent-purple", border: "border-accent-purple/30", bg: "bg-accent-purple", raw: "var(--accent-purple)", desc: "How much of the downstream system depends on the node. The blast radius if it breaks." },
   { letter: "T", name: "TAIL DEPTH",            value: 4.6, color: "text-accent-amber",  border: "border-accent-amber/30",  bg: "bg-accent-amber",  raw: "var(--accent-amber)",  desc: "How bad the bad case really is, beyond what VaR or historical data would suggest." },
-];
-
-const ENGINES = [
-  { name: "SPIRTES", role: "STRUCTURE",      color: "text-accent-cyan",   border: "border-accent-cyan/30",   dot: "bg-accent-cyan",   desc: "Discovers the causal topology of a system from observational data — who depends on whom." },
-  { name: "TARSKI",  role: "VERIFICATION",   color: "text-accent-amber",  border: "border-accent-amber/30",  dot: "bg-accent-amber",  desc: "Formally verifies geopolitical and structural claims so the graph is grounded, not assumed." },
-  { name: "PEARL",   role: "COUNTERFACTUAL", color: "text-accent-purple", border: "border-accent-purple/30", dot: "bg-accent-purple", desc: "Asks the what-if questions: substitution paths, recovery times, alternate suppliers." },
-  { name: "PARETO",  role: "SIMULATION",     color: "text-accent-orange", border: "border-accent-orange/30", dot: "bg-accent-orange", desc: "Runs cascade simulations and computes the tail statistics that drive systemic risk." },
 ];
 
 const CAPABILITIES = [
@@ -128,37 +120,11 @@ export default function Home() {
         <TerminalHeader label="// ENGINES" path="manifold.engines" right="04 CORES" />
 
         {/* Pipeline strip */}
-        <div className="relative bg-surface/60 border border-border rounded-lg overflow-hidden mb-3">
+        <div className="relative bg-surface/60 border border-border rounded-lg overflow-hidden">
           <div className="absolute inset-0 grid-bg opacity-25 pointer-events-none" aria-hidden />
           <div className="relative w-full aspect-[1100/360] max-h-[360px]">
             <EngineFlow />
           </div>
-        </div>
-
-        {/* Engine tiles */}
-        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
-          {ENGINES.map((e) => (
-            <div
-              key={e.name}
-              className={`relative bg-surface border ${e.border} rounded-lg p-5 hover:bg-surface-elevated transition-colors`}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <span className={`relative flex h-2 w-2`}>
-                  <span className={`absolute inline-flex h-full w-full rounded-full ${e.dot} opacity-50 pulse-ring`} />
-                  <span className={`relative inline-flex h-2 w-2 rounded-full ${e.dot}`} />
-                </span>
-                <span className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] ${e.color}`}>
-                  {e.role}
-                </span>
-              </div>
-              <div className={`font-[family-name:var(--font-michroma)] text-2xl tracking-[0.1em] ${e.color} mb-3`}>
-                {e.name}
-              </div>
-              <p className="font-mono text-sm text-text-muted leading-relaxed">
-                {e.desc}
-              </p>
-            </div>
-          ))}
         </div>
 
         <div className="mt-4 flex justify-end">
@@ -172,81 +138,54 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ───────── // FRAGILITY ───────── */}
-      <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// FRAGILITY" path="manifold.omega_f" right="ΩF · 05 PILLARS" />
-
-        {/* 5 pillar tiles */}
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-3">
-          {PILLARS.map((p) => (
-            <PillarTile key={p.letter} {...p} />
-          ))}
-        </div>
-
-        {/* Radar + formula row */}
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
-          <div className="relative bg-surface/60 border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-mono text-[10px] tracking-wider text-text-muted/70">SAMPLE PROFILE</span>
-              <span className="font-mono text-[10px] text-accent-cyan/80">ΩF 7.42</span>
-            </div>
-            <div className="aspect-square w-full max-w-sm mx-auto">
-              <OmegaRadar />
-            </div>
-          </div>
-
-          <div className="grid gap-3">
-            <FormulaTile />
-            <div className="grid grid-cols-2 gap-3">
-              <SystemRollupTile
-                symbol="ΩSF"
-                label="System Fragility"
-                value="7.42"
-                sub="throughput-weighted"
-                color="text-accent-cyan"
-                border="border-accent-cyan/30"
-                desc="How fragile the system is overall, weighted by what flows through each node. Catches fragility hidden in high-volume chokepoints."
-              />
-              <SystemRollupTile
-                symbol="ΩSX"
-                label="System Exposure"
-                value="6.18"
-                sub="exposure-weighted"
-                color="text-accent-amber"
-                border="border-accent-amber/30"
-                desc="How fragile the system is when you weight by what's actually at risk — sanctions, capital, geographic concentration."
-              />
-            </div>
-            <Link
-              href="/framework"
-              className="self-end font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-amber/70 hover:text-accent-amber inline-flex items-center gap-2"
-            >
-              <span>READ THE FULL FRAMEWORK</span>
-              <span>›</span>
-            </Link>
-          </div>
-        </div>
-      </Section>
-
       {/* ───────── // SAMPLE READOUT ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader label="// READOUT" path="manifold.node[0x7A3E]" right="LIVE · MANUFACTURING" />
 
-        <div className="mb-6 max-w-3xl space-y-3">
+        <div className="mb-6 max-w-2xl">
           <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.04em] text-foreground leading-snug">
-            Click any node. This is the readout.
+            Click any node. This is what you see.
           </h3>
-          <p className="font-mono text-sm md:text-base text-text-muted leading-relaxed">
-            Sample shown: <span className="text-accent-cyan">TSMC Arizona-1</span>.
-            One number tells you how fragile the node is — its composite{" "}
-            <span className="text-accent-cyan">ΩF score</span>. The five pillars
-            below tell you <em>why</em> it&apos;s fragile. The trajectory tells
-            you whether it&apos;s getting worse. The downstream impact tells
-            you what falls if this node falls.
-          </p>
         </div>
 
         <NodeReadout />
+      </Section>
+
+      {/* ───────── // FORMULA ───────── */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader label="// FORMULA" path="manifold.omega_f" right="HOW THE SCORE WORKS" />
+
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
+          <FormulaTile />
+          <SystemRollupTile
+            symbol="ΩSF"
+            label="System Fragility"
+            value="7.42"
+            sub="throughput-weighted"
+            color="text-accent-cyan"
+            border="border-accent-cyan/30"
+            desc="How fragile the system is overall, weighted by what flows through each node. Catches fragility hidden in high-volume chokepoints."
+          />
+          <SystemRollupTile
+            symbol="ΩSX"
+            label="System Exposure"
+            value="6.18"
+            sub="exposure-weighted"
+            color="text-accent-amber"
+            border="border-accent-amber/30"
+            desc="How fragile the system is when you weight by what's actually at risk — sanctions, capital, geographic concentration."
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Link
+            href="/framework"
+            className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-amber/70 hover:text-accent-amber inline-flex items-center gap-2"
+          >
+            <span>READ THE FULL FRAMEWORK</span>
+            <span>›</span>
+          </Link>
+        </div>
       </Section>
 
       {/* ───────── // DOMAINS ───────── */}
@@ -386,47 +325,6 @@ function CapabilityTile({
       <p className="text-xs font-mono text-text-muted leading-snug">
         {body}
       </p>
-    </div>
-  );
-}
-
-function PillarTile({
-  letter,
-  name,
-  value,
-  color,
-  border,
-  raw,
-  desc,
-}: {
-  letter: string;
-  name: string;
-  value: number;
-  color: string;
-  border: string;
-  bg?: string;
-  raw: string;
-  desc?: string;
-}) {
-  return (
-    <div className={`relative bg-surface border ${border} rounded-lg p-4 hover:bg-surface-elevated transition-colors flex flex-col`}>
-      <div className="flex items-baseline justify-between mb-3">
-        <span className={`font-[family-name:var(--font-michroma)] text-3xl ${color} leading-none`}>
-          {letter}
-        </span>
-        <span className="font-mono text-[10px] text-foreground/90">{value.toFixed(1)}</span>
-      </div>
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.2em] text-foreground mb-2 leading-snug">
-        {name}
-      </div>
-      <div className="h-1 w-full bg-surface-elevated border border-border rounded-full overflow-hidden mb-3">
-        <div className="h-full" style={{ width: `${value * 10}%`, background: raw, opacity: 0.85 }} />
-      </div>
-      {desc && (
-        <p className="text-[10px] font-mono text-text-muted leading-snug">
-          {desc}
-        </p>
-      )}
     </div>
   );
 }

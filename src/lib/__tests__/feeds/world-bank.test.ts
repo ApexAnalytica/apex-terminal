@@ -13,7 +13,7 @@ describe("buildWbSeriesUrl", () => {
     const url = buildWbSeriesUrl("CHN", "NY.GDP.MKTP.KD");
     expect(url).toContain("api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.KD");
     expect(url).toContain("format=json");
-    expect(url).toContain("mrnev=1");
+    expect(url).toContain("per_page=20");
   });
 });
 
@@ -46,6 +46,24 @@ describe("parseWbSeriesResponse", () => {
     const obs = parseWbSeriesResponse(raw, config);
     expect(obs!.observedAt.startsWith("2023")).toBe(true);
     expect(obs!.value).toBeCloseTo(17, 0);
+  });
+
+  it("hydrates a history array from a multi-year response (chronological order)", () => {
+    const raw = [
+      {},
+      [
+        { date: "2024", value: 17800000000000 },
+        { date: "2023", value: 17500000000000 },
+        { date: "2022", value: 17000000000000 },
+      ],
+    ];
+    const obs = parseWbSeriesResponse(raw, config);
+    expect(obs!.value).toBeCloseTo(17.8, 1);
+    expect(obs!.history).toHaveLength(2);
+    // Chronological: oldest first
+    expect(obs!.history![0].observedAt.startsWith("2022")).toBe(true);
+    expect(obs!.history![0].value).toBeCloseTo(17, 0);
+    expect(obs!.history![1].observedAt.startsWith("2023")).toBe(true);
   });
 
   it("returns null when the tuple shape is wrong", () => {

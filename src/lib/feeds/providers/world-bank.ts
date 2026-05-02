@@ -46,6 +46,7 @@ export const worldBankProvider: FeedProvider<WorldBankFeed> = {
         unit: obs.unit,
         observedAt: obs.observedAt,
         source: obs.source,
+        history: obs.history,
       };
       updates.push({ nodeId: node.id, point });
       affectedNodeIds.push(node.id);

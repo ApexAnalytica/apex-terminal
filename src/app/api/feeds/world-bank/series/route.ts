@@ -25,7 +25,7 @@ export async function GET() {
   const results = await Promise.allSettled(
     WB_SERIES.map(async (config) => {
       const url = baseOverride
-        ? `${baseOverride}/country/${config.country}/indicator/${config.indicator}?format=json&per_page=5&mrnev=1`
+        ? `${baseOverride}/country/${config.country}/indicator/${config.indicator}?format=json&per_page=20`
         : buildWbSeriesUrl(config.country, config.indicator);
       const res = await fetch(url, {
         cache: "no-store",

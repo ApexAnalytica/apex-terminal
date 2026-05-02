@@ -86,6 +86,10 @@ export interface FredObservation {
   observedAt: string;
   /** Display source string ("FRED · DFF (period 2025-04)"). */
   source: string;
+  /** Past observations (older first), parsed from the same upstream response.
+   *  Lets the per-card sparkline draw a curve on the FIRST tick instead of
+   *  showing "LIVE — building" until the second tick rolls in. */
+  history?: Array<{ value: number; observedAt: string }>;
 }
 
 export interface FredFeed {
@@ -93,7 +97,10 @@ export interface FredFeed {
   fetchedAt: string;
 }
 
-/** Build a single-series FRED URL. */
+/** Build a single-series FRED URL. Requests the last 24 observations
+ *  (sort_order=desc) so the parser can hydrate a history array on the
+ *  first tick — the per-card sparkline draws a curve immediately rather
+ *  than waiting for the second tick. */
 export function buildFredSeriesUrl(seriesId: string, apiKey: string, units?: string): string {
   const base = "https://api.stlouisfed.org/fred/series/observations";
   const params = new URLSearchParams();
@@ -101,7 +108,7 @@ export function buildFredSeriesUrl(seriesId: string, apiKey: string, units?: str
   params.set("api_key", apiKey);
   params.set("file_type", "json");
   params.set("sort_order", "desc");
-  params.set("limit", "1");
+  params.set("limit", "24");
   if (units) params.set("units", units);
   return `${base}?${params.toString()}`;
 }
@@ -110,26 +117,48 @@ interface FredApiResponse {
   observations?: Array<{ date: string; value: string }>;
 }
 
-/** Parse a single FRED observation response into a numeric value + observedAt.
- *  FRED uses "." for missing values and returns numbers as strings. */
+/** Parse FRED observations into a current value + history array. FRED uses
+ *  "." for missing values and returns numbers as strings. Returns null
+ *  when there are zero usable observations.
+ *
+ *  Response order is sort_order=desc, so observations[0] is the latest.
+ *  History is built from observations[1..] in chronological order (older
+ *  first) so the sparkline plots left-to-right. */
 export function parseFredSeriesResponse(
   raw: unknown,
   config: FredSeriesConfig,
 ): FredObservation | null {
   const env = raw as FredApiResponse;
-  const obs = env?.observations?.[0];
-  if (!obs) return null;
-  if (obs.value === "." || obs.value == null) return null;
-  const value = parseFloat(obs.value);
-  if (!Number.isFinite(value)) return null;
+  const all = env?.observations ?? [];
+  // Parse each row, dropping missing-value sentinels and non-finite parses.
+  const parsed: Array<{ value: number; observedAt: string; date: string }> = [];
+  for (const o of all) {
+    if (o.value === "." || o.value == null) continue;
+    const v = parseFloat(o.value);
+    if (!Number.isFinite(v)) continue;
+    parsed.push({
+      value: roundTo(v, 4),
+      observedAt: new Date(`${o.date}T00:00:00Z`).toISOString(),
+      date: o.date,
+    });
+  }
+  if (parsed.length === 0) return null;
+  // Latest is parsed[0] (sort_order=desc); history is the rest reversed
+  // so chronological order is preserved on the sparkline.
+  const latest = parsed[0];
+  const history = parsed
+    .slice(1)
+    .reverse()
+    .map((p) => ({ value: p.value, observedAt: p.observedAt }));
   return {
     seriesId: config.id,
     label: config.label,
-    value: roundTo(value, 4),
+    value: latest.value,
     unit: config.unit,
     capacity: config.capacity,
-    observedAt: new Date(`${obs.date}T00:00:00Z`).toISOString(),
-    source: `FRED · ${config.id} (period ${obs.date})`,
+    observedAt: latest.observedAt,
+    source: `FRED · ${config.id} (period ${latest.date})`,
+    history: history.length > 0 ? history : undefined,
   };
 }
 

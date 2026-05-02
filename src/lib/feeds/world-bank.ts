@@ -96,6 +96,9 @@ export interface WbObservation {
   capacity: number;
   observedAt: string;
   source: string;
+  /** Past observations from the same WB response (older first), so the
+   *  per-card sparkline can plot a multi-year curve on the first tick. */
+  history?: Array<{ value: number; observedAt: string }>;
 }
 
 export interface WorldBankFeed {
@@ -103,14 +106,15 @@ export interface WorldBankFeed {
   fetchedAt: string;
 }
 
-/** Build a WB v2 URL for a single (country, indicator) tuple, requesting the
- *  most recent non-null observation. */
+/** Build a WB v2 URL for a single (country, indicator) tuple. Requests the
+ *  last 20 observations so the parser can build a multi-year history
+ *  array (the per-card sparkline draws a curve on the first tick rather
+ *  than waiting for cross-year ticks). */
 export function buildWbSeriesUrl(country: string, indicator: string): string {
   const base = "https://api.worldbank.org/v2";
   const params = new URLSearchParams();
   params.set("format", "json");
-  params.set("per_page", "5"); // most recent → first non-null
-  params.set("mrnev", "1"); // "most recent non-empty value"
+  params.set("per_page", "20");
   return `${base}/country/${country}/indicator/${indicator}?${params.toString()}`;
 }
 
@@ -120,9 +124,10 @@ interface WbApiResponse {
   1?: Array<{ date: string; value: number | null }>;
 }
 
-/** Parse a single WB observation array into a numeric value + observedAt.
- *  WB returns the array tuple [meta, observations]; we want the first
- *  non-null observation in the second slot. */
+/** Parse a WB observation array into a current value + history array.
+ *  WB returns the tuple [meta, observations]; the second element holds
+ *  per-year rows (newest first). Drop rows where `value` is null, scale,
+ *  and split into latest + history (chronological). */
 export function parseWbSeriesResponse(
   raw: unknown,
   config: WbSeriesConfig,
@@ -130,19 +135,32 @@ export function parseWbSeriesResponse(
   if (!Array.isArray(raw) || raw.length < 2) return null;
   const observations = (raw as WbApiResponse)[1];
   if (!Array.isArray(observations)) return null;
-  const obs = observations.find((o) => o.value != null);
-  if (!obs) return null;
-  if (typeof obs.value !== "number" || !Number.isFinite(obs.value)) return null;
-  const scaled = obs.value / config.scale;
+  const points: Array<{ value: number; observedAt: string; date: string }> = [];
+  for (const o of observations) {
+    if (typeof o.value !== "number" || !Number.isFinite(o.value)) continue;
+    points.push({
+      value: roundTo(o.value / config.scale, 2),
+      observedAt: new Date(`${o.date}-01-01T00:00:00Z`).toISOString(),
+      date: o.date,
+    });
+  }
+  if (points.length === 0) return null;
+  // WB returns newest first.
+  const latest = points[0];
+  const history = points
+    .slice(1)
+    .reverse()
+    .map((p) => ({ value: p.value, observedAt: p.observedAt }));
   return {
     country: config.country,
     indicator: config.indicator,
     label: config.label,
-    value: roundTo(scaled, 2),
+    value: latest.value,
     unit: config.unit,
     capacity: config.capacity,
-    observedAt: new Date(`${obs.date}-01-01T00:00:00Z`).toISOString(),
-    source: `World Bank · ${config.country}/${config.indicator} (period ${obs.date})`,
+    observedAt: latest.observedAt,
+    source: `World Bank · ${config.country}/${config.indicator} (period ${latest.date})`,
+    history: history.length > 0 ? history : undefined,
   };
 }
 

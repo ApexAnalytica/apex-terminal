@@ -46,6 +46,9 @@ export const fredProvider: FeedProvider<FredFeed> = {
         unit: obs.unit,
         observedAt: obs.observedAt,
         source: obs.source,
+        // Pass the parsed historical observations through so the sparkline
+        // can draw a curve on the first tick.
+        history: obs.history,
       };
       updates.push({ nodeId: node.id, point });
       affectedNodeIds.push(node.id);

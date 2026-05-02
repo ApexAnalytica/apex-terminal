@@ -14,6 +14,7 @@ import {
   csdRegimeGate,
   lpplsRegimeGate,
   phRegimeGate,
+  spatialConsistency,
   trajectorySufficiency,
   topologySufficiency,
   type ModelRelevanceInput,
@@ -1160,9 +1161,44 @@ function ParetoPanel({
       sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
     });
 
+    // M — spatial consistency. Computed once across all models from the
+    // live T1D adjacency (binary, symmetric, row-normalised) and per-node
+    // ΩF composite values. Same Moran kernel the standalone Moran card
+    // already uses, so the breakdown row matches the card by construction.
+    const t1dValues: number[] = T1D_NODE_IDS.map((nid) => {
+      const gn = graphData.nodes.find((nd) => nd.id === nid);
+      return gn?.omegaFragility.composite ?? 0;
+    });
+    const t1dAdjacency: number[][] = (() => {
+      const n = T1D_NODE_IDS.length;
+      const W: number[][] = Array.from({ length: n }, () =>
+        new Array(n).fill(0),
+      );
+      const idxOf = (nid: string) => T1D_NODE_IDS.indexOf(nid);
+      for (const e of graphData.edges) {
+        if (e.isSevered) continue;
+        const si = idxOf(e.source);
+        const ti = idxOf(e.target);
+        if (si >= 0 && ti >= 0) {
+          W[si][ti] = 1;
+          W[ti][si] = 1;
+        }
+      }
+      // Row-normalise.
+      return W.map((row) => {
+        const rs = row.reduce((a, b) => a + b, 0);
+        return rs > 0 ? row.map((v) => v / rs) : row;
+      });
+    })();
+    const consistency = spatialConsistency(
+      { values: t1dValues, adjacency: t1dAdjacency },
+      moransI,
+    );
+
     const result = bootstrapRelevanceBatch(inputs, {
       previous: prevCompositesRef.current,
       bootstrap: { samples: 200, level: 0.9 },
+      consistency,
     });
     // Persist composites for the next render's EMA seed.
     for (const [key, breakdown] of result) {
@@ -2585,7 +2621,7 @@ function CriticalityCard({
                   </span>
                   {relevance && (
                     <span className="text-[8px] font-mono text-text-muted/60">
-                      = S · G · (0.6·F + 0.4·E)
+                      = S · G · M · (0.6·F + 0.4·E)
                     </span>
                   )}
                 </div>
@@ -2640,6 +2676,7 @@ function CriticalityCard({
                           { code: "E", label: "EVIDENCE", role: "×0.4", sub: relevance.E },
                           { code: "G", label: "REGIME", role: "gate", sub: relevance.G },
                           { code: "S", label: "SUFFICIENCY", role: "gate", sub: relevance.S },
+                          { code: "M", label: "CONSISTENCY", role: "gate", sub: relevance.M },
                         ] as const).map(({ code, label, role, sub }) => {
                           const pct = Math.round(sub.score * 100);
                           const barColor = pct >= 70 ? "#00e676" : pct >= 40 ? "#ffab00" : "#ff5252";
@@ -2672,7 +2709,7 @@ function CriticalityCard({
                         })}
                       </div>
                       <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
-                        {confPct}% = {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) = {relevance.rawComposite.toFixed(2)}
+                        {confPct}% = {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · {relevance.M.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) = {relevance.rawComposite.toFixed(2)}
                         {relevance.compositeCi && ciLowPct !== undefined && ciHighPct !== undefined && (
                           <> · {Math.round(relevance.compositeCi.level * 100)}% CI [{ciLowPct}%–{ciHighPct}%]</>
                         )}

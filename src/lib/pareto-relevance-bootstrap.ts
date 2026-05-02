@@ -180,6 +180,7 @@ export function bootstrapRelevance(
   opts: {
     fitWeight?: number;
     bootstrap?: BootstrapOptions;
+    consistency?: SubScore;
   } = {},
 ): BootstrapBreakdown {
   const fitWeight = opts.fitWeight ?? C.FIT_WEIGHT;
@@ -188,14 +189,18 @@ export function bootstrapRelevance(
   const E = m.evidence;
   const G = m.gate;
   const S = m.sufficiency;
+  const M: SubScore = opts.consistency ?? {
+    score: 1,
+    detail: "no consistency input; M neutral.",
+  };
 
   const pointQuality = fitWeight * fit.point.score + (1 - fitWeight) * E.score;
-  const rawComposite = clamp01(S.score * G.score * pointQuality);
+  const rawComposite = clamp01(S.score * G.score * M.score * pointQuality);
 
-  // Propagate F samples through the composite formula. E/G/S held fixed.
+  // Propagate F samples through the composite formula. E/G/S/M held fixed.
   const compositeSamples = fit.samples.map((fSample) => {
     const q = fitWeight * fSample + (1 - fitWeight) * E.score;
-    return clamp01(S.score * G.score * q);
+    return clamp01(S.score * G.score * M.score * q);
   });
   const compositeCi = quantileBounds(
     compositeSamples,
@@ -207,6 +212,7 @@ export function bootstrapRelevance(
     E,
     G,
     S,
+    M,
     composite: rawComposite,
     rawComposite,
     fCi: fit.ci,
@@ -238,6 +244,10 @@ export function bootstrapRelevanceBatch(
   const emaAlpha = options.emaAlpha ?? C.EMA_ALPHA;
   const previous = toMap(options.previous);
   const bootOpts = options.bootstrap ?? {};
+  const M: SubScore = options.consistency ?? {
+    score: 1,
+    detail: "no consistency input; M neutral.",
+  };
 
   const evidence = akaikeEvidenceWeights(inputs);
   const out = new Map<string, RelevanceBreakdown>();
@@ -251,7 +261,7 @@ export function bootstrapRelevanceBatch(
     const F = fit.point;
 
     const quality = fitWeight * F.score + (1 - fitWeight) * E.score;
-    const rawComposite = clamp01(S.score * G.score * quality);
+    const rawComposite = clamp01(S.score * G.score * M.score * quality);
 
     const prev = previous.get(m.key);
     const composite =
@@ -259,10 +269,12 @@ export function bootstrapRelevanceBatch(
         ? clamp01((1 - emaAlpha) * prev + emaAlpha * rawComposite)
         : rawComposite;
 
-    // Propagate F samples through the composite formula. E/G/S held fixed.
+    // Propagate F samples through the composite formula.
+    // E/G/S/M held fixed at point estimates — see pareto-relevance.ts header
+    // for the rationale on why F is the only stochastic ingredient.
     const compositeSamples = fit.samples.map((fSample) => {
       const q = fitWeight * fSample + (1 - fitWeight) * E.score;
-      return clamp01(S.score * G.score * q);
+      return clamp01(S.score * G.score * M.score * q);
     });
     const compositeCi = quantileBounds(compositeSamples, fit.ci.level);
 
@@ -271,6 +283,7 @@ export function bootstrapRelevanceBatch(
       E,
       G,
       S,
+      M,
       composite,
       rawComposite,
       compositeCi,

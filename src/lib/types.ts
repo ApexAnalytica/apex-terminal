@@ -118,6 +118,17 @@ export interface LiveDataHistoryEntry {
 export interface LiveDataPoint {
   /** discriminator — multiple feeds can attach distinct signals to one node */
   kind: "throughput" | "sanctions" | string;
+  /**
+   * Provider id that wrote this signal. Critical for cleanup: when a
+   * provider's batch dispatches, only signals it itself wrote should be
+   * candidates for stale-signal removal. Without this, providers that
+   * share a `kind` (e.g. multiple providers all using "indicator") would
+   * clobber each other on every poll cycle.
+   *
+   * Optional only for backwards compatibility with hand-built test data;
+   * all real provider emissions populate this field.
+   */
+  providerId?: string;
   /** observed quantity in the unit below (e.g. mb/d for Hormuz) */
   value: number;
   /** physical / regulatory ceiling against which value is compared */

@@ -1,12 +1,12 @@
 """Run all macro validations in sequence."""
 import sys
 
-from . import ardl_synthetic, dxy_construction, event_study_synthetic
+from . import ardl_synthetic, dxy_construction, event_study_synthetic, oos_channel_fits
 
 
 def main() -> None:
     failures = 0
-    for mod in (ardl_synthetic, event_study_synthetic, dxy_construction):
+    for mod in (ardl_synthetic, event_study_synthetic, dxy_construction, oos_channel_fits):
         try:
             mod.main()
         except SystemExit as exc:

@@ -15,7 +15,7 @@ describe("buildFredSeriesUrl", () => {
     expect(url).toContain("series_id=DFF");
     expect(url).toContain("api_key=test-key");
     expect(url).toContain("file_type=json");
-    expect(url).toContain("limit=1");
+    expect(url).toContain("limit=24");
     expect(url).toContain("sort_order=desc");
   });
 
@@ -37,6 +37,40 @@ describe("parseFredSeriesResponse", () => {
     expect(obs!.capacity).toBe(6);
     expect(obs!.observedAt.startsWith("2025-04-15")).toBe(true);
     expect(obs!.source).toBe("FRED · DFF (period 2025-04-15)");
+    // Single observation → no history
+    expect(obs!.history).toBeUndefined();
+  });
+
+  it("hydrates a history array from a multi-observation response (chronological order)", () => {
+    // FRED returns sort_order=desc, so newest first
+    const raw = {
+      observations: [
+        { date: "2025-04-15", value: "5.33" },
+        { date: "2025-03-15", value: "5.30" },
+        { date: "2025-02-15", value: "5.27" },
+      ],
+    };
+    const obs = parseFredSeriesResponse(raw, config);
+    expect(obs!.value).toBe(5.33); // latest is current
+    expect(obs!.history).toHaveLength(2);
+    // History is chronological (oldest first)
+    expect(obs!.history![0].value).toBe(5.27);
+    expect(obs!.history![0].observedAt.startsWith("2025-02-15")).toBe(true);
+    expect(obs!.history![1].value).toBe(5.30);
+    expect(obs!.history![1].observedAt.startsWith("2025-03-15")).toBe(true);
+  });
+
+  it("skips '.' missing-value sentinels in the history range", () => {
+    const raw = {
+      observations: [
+        { date: "2025-04-15", value: "5.33" },
+        { date: "2025-03-15", value: "." },
+        { date: "2025-02-15", value: "5.27" },
+      ],
+    };
+    const obs = parseFredSeriesResponse(raw, config);
+    expect(obs!.history).toHaveLength(1);
+    expect(obs!.history![0].value).toBe(5.27);
   });
 
   it("returns null for missing-value sentinel '.'", () => {

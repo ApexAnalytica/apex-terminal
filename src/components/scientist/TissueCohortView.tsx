@@ -9,6 +9,7 @@ import {
   type NpodStratum,
 } from "@/lib/discovery/fixtures/npod-synthetic-cohort";
 import type { Cohort, Subject } from "@/lib/discovery/cohort-types";
+import CapabilityBadge from "../CapabilityBadge";
 
 // ─── TissueCohortView ────────────────────────────────────────────────
 //
@@ -181,9 +182,12 @@ export default function TissueCohortView() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
-          TISSUE COHORT — DISEASE-STAGE STRATA
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
+            TISSUE COHORT — DISEASE-STAGE STRATA
+          </span>
+          <CapabilityBadge capability="live-synthetic" />
+        </div>
         <button
           type="button"
           onClick={() => setShowFormulas((v) => !v)}

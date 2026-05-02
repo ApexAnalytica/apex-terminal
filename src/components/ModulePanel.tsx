@@ -24,6 +24,7 @@ import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
+import TissueCohortView from "./scientist/TissueCohortView";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
@@ -33,6 +34,13 @@ import VX880TrialPanel from "./VX880TrialPanel";
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
   const setInterventionMode = useApexStore((s) => s.setInterventionMode);
+  // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
+  // domain is loaded, so it doesn't pollute non-life-sciences flows.
+  const selectedDomainsForView = useApexStore((s) => s.selectedDomains);
+  const isT1DDomain = useMemo(
+    () => resolveDomainProfile(selectedDomainsForView).id === "t1d",
+    [selectedDomainsForView],
+  );
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const isWide = expandedChart !== null;
 
@@ -89,6 +97,7 @@ export default function ModulePanel() {
             <CascadeHeader />
             <TrinityPanel />
             <DiscoveryRunsPanel />
+            {isT1DDomain && <TissueCohortView />}
           </>
         )}
 

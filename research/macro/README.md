@@ -145,9 +145,11 @@ First fit run downloads ~6 small CSVs (≈3 MB total) into
 
 ## Validation suite
 
-Each estimator has a synthetic-data validation that generates a series
-with known parameters and asserts recovery within tolerance. Mirrors
-`research/validation/` (T1D side).
+Two layers: synthetic-data correctness (does the estimator recover
+known parameters?) and out-of-sample stability (does the channel
+hold on a holdout?).
+
+### Synthetic-data correctness
 
 | suite                          | cases | tolerance                              |
 |--------------------------------|-------|----------------------------------------|
@@ -158,9 +160,34 @@ with known parameters and asserts recovery within tolerance. Mirrors
 The event-study suite caught a real bug in the original
 implementation: inclusive `.loc[:event_date]` slicing on the pre
 window double-counted the event-day return when the source series had
-an observation exactly at ``event_date`` (daily data). Fixed in this
-PR; the existing monthly fits were unaffected because Brent / DXY
-log-changes don't land on the event day.
+an observation exactly at ``event_date`` (daily data). Fixed in
+PR #165; the existing monthly fits were unaffected because Brent /
+DXY log-changes don't land on the event day.
+
+### Out-of-sample stability
+
+For each channel fit we split 80/20 in time, fit ARDL on train,
+forecast one-step-ahead on test using the train coefficients, and
+report OOS R², RMSE, and whether |β_train − β_test| > 0.5·|β_train|
+(structural break flag).
+
+| channel                          | β_train | β_test  | drift | OOS R²  | break? |
+|----------------------------------|--------:|--------:|------:|--------:|:------:|
+| P1: Brent → IMF Fuel Energy      |  +0.756 |  +0.778 |   3%  | **+0.970** | stable |
+| P2: Wheat → IMF Food Index       |  +0.180 |  +0.192 |   7%  |  +0.550 | stable |
+| P3: Indust Inputs → All Comm.    |  +0.669 |  +0.618 |   8%  |  +0.272 | stable |
+| P4: China Iron-Ore → Indust In.  |  +0.146 |  +0.199 |  36%  |  +0.391 | stable |
+| DXY: US10y → DXY                 |  +0.001 |  +0.076 | 6155% |  +0.210 | **BREAK** |
+| DXY: DXY → All Commodity         |  −0.689 |  −0.988 |  43%  |  +0.215 | stable |
+
+Findings: the **Brent → Fuel Energy channel is exceptionally stable**
+(OOS R² 0.97). All commodity channels hold across train/test. The
+**US10y → DXY channel shows a structural break** — confirming the
+finding called out in PR #134 that it should be refit with breakeven-
+adjusted real rates rather than nominal yields. The DXY → All
+Commodity channel strengthened in the test period (−0.689 → −0.988)
+which is consistent with the post-2014 commodity cycle but stays
+within tolerance.
 
 ## Channel-fit summary
 

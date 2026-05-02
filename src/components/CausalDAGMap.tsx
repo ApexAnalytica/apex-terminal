@@ -227,7 +227,9 @@ function CausalDAGMapInner() {
         !(selectedSet.has(edge.source) && selectedSet.has(edge.target))
       ) return;
 
-      // Curved line via midpoint offset
+      // Curved line via midpoint offset (MapLibre renders LineStrings as
+      // straight segments between vertices, so we sample the quadratic
+      // bezier into BEZIER_SAMPLES+1 points to approximate a smooth curve).
       const midLng = (source[0] + target[0]) / 2;
       const midLat = (source[1] + target[1]) / 2;
       const dx = target[0] - source[0];
@@ -241,6 +243,23 @@ function CausalDAGMapInner() {
         const curveAmount = Math.min(dist * 0.15, 3);
         perpLng = midLng + (-dy / dist) * curveAmount;
         perpLat = midLat + (dx / dist) * curveAmount;
+      }
+
+      // Sample the quadratic bezier (source, control, target) into a
+      // dense polyline so the rendered line and the particle path
+      // (which lerps along this same array) are visually identical.
+      const BEZIER_SAMPLES = 24;
+      const coordinates: [number, number][] = [];
+      if (dist <= 0.0001) {
+        coordinates.push(source, target);
+      } else {
+        for (let i = 0; i <= BEZIER_SAMPLES; i++) {
+          const t = i / BEZIER_SAMPLES;
+          const u = 1 - t;
+          const lng = u * u * source[0] + 2 * u * t * perpLng + t * t * target[0];
+          const lat = u * u * source[1] + 2 * u * t * perpLat + t * t * target[1];
+          coordinates.push([lng, lat]);
+        }
       }
 
       // Edge color — matches 3D exactly. Severed gets a distinct slate color
@@ -265,7 +284,7 @@ function CausalDAGMapInner() {
         type: "Feature",
         geometry: {
           type: "LineString",
-          coordinates: [source, [perpLng, perpLat], target],
+          coordinates,
         },
         properties: {
           id: edge.id,
@@ -291,14 +310,29 @@ function CausalDAGMapInner() {
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection]);
 
   // Extract temporal edge paths directly from the solid edge GeoJSON features
-  // so particles follow the exact same curves as the rendered lines
+  // so particles follow the exact same sampled bezier polyline as the
+  // rendered line. Pre-compute cumulative arc length per vertex so we can
+  // lerp by distance (not by raw vertex index, which would skew speed
+  // through curvature) and so per-frame advance can be a constant in
+  // degrees rather than a fixed phase fraction.
   const temporalEdgePaths = useMemo(() => {
     return solidEdgeGeoJSON.features
       .filter((f) => f.properties?.type === "temporal" && (f.properties?.opacity ?? 1) > 0.1)
-      .map((f) => ({
-        id: f.properties!.id as string,
-        points: f.geometry.coordinates as [number, number][],
-      }));
+      .map((f) => {
+        const points = f.geometry.coordinates as [number, number][];
+        const cumDist: number[] = [0];
+        for (let i = 1; i < points.length; i++) {
+          const dx = points[i][0] - points[i - 1][0];
+          const dy = points[i][1] - points[i - 1][1];
+          cumDist.push(cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy));
+        }
+        return {
+          id: f.properties!.id as string,
+          points,
+          cumDist,
+          totalLen: cumDist[cumDist.length - 1] ?? 0,
+        };
+      });
   }, [solidEdgeGeoJSON]);
 
   // Animated particle GeoJSON — updated every frame via requestAnimationFrame
@@ -309,40 +343,59 @@ function CausalDAGMapInner() {
   const particlePhases = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    if (temporalEdgePaths.length === 0) {
-      setParticleGeoJSON({ type: "FeatureCollection", features: [] });
-      return;
-    }
-
-    // Initialize random phases
+    // Initialize random phases for any new edges
     temporalEdgePaths.forEach(({ id }) => {
       if (!particlePhases.current.has(id)) {
         particlePhases.current.set(id, Math.random());
       }
     });
 
-    let animFrameId: number;
+    // Constant geographic-degrees-per-frame so every orb moves at the same
+    // visual speed across the map regardless of edge length. At zoom ~2,
+    // 1° ≈ 12 px, so this is roughly 36 px/s at 60 fps.
+    const SPEED_DEG_PER_FRAME = 0.05;
+
+    let animFrameId: number | null = null;
     const animate = () => {
+      // No temporal edges → emit one empty frame and stop the loop until
+      // the next dependency change. Avoids a 60fps idle loop and keeps
+      // setState inside the rAF callback (out of the effect body).
+      if (temporalEdgePaths.length === 0) {
+        setParticleGeoJSON({ type: "FeatureCollection", features: [] });
+        animFrameId = null;
+        return;
+      }
+
       const features: Feature<Point>[] = [];
 
       for (const edge of temporalEdgePaths) {
         let phase = particlePhases.current.get(edge.id) ?? 0;
-        phase = (phase + 0.003) % 1;
+        // Per-edge dPhase is normalized so the absolute degrees-per-frame
+        // stays constant; long edges advance their phase fraction more
+        // slowly, short edges more quickly — net result: same px/s.
+        const dPhase = edge.totalLen > 0 ? SPEED_DEG_PER_FRAME / edge.totalLen : 0;
+        phase = (phase + dPhase) % 1;
         particlePhases.current.set(edge.id, phase);
 
-        // 2 particles per edge, staggered
+        // 2 particles per edge, staggered by half the edge length.
         for (let p = 0; p < 2; p++) {
           const t = (phase + p * 0.5) % 1;
-          const oneMinusT = 1 - t;
-          // Quadratic bezier in geographic coordinates
-          const lng =
-            oneMinusT * oneMinusT * edge.points[0][0] +
-            2 * oneMinusT * t * edge.points[1][0] +
-            t * t * edge.points[2][0];
-          const lat =
-            oneMinusT * oneMinusT * edge.points[0][1] +
-            2 * oneMinusT * t * edge.points[1][1] +
-            t * t * edge.points[2][1];
+          const targetDist = t * edge.totalLen;
+          // Find the polyline segment containing targetDist. Linear scan
+          // is fine for ~25 segments; binary search is overkill here.
+          let i = 0;
+          while (
+            i < edge.cumDist.length - 2 &&
+            edge.cumDist[i + 1] < targetDist
+          ) {
+            i++;
+          }
+          const segLen = edge.cumDist[i + 1] - edge.cumDist[i];
+          const localT = segLen > 0 ? (targetDist - edge.cumDist[i]) / segLen : 0;
+          const a = edge.points[i];
+          const b = edge.points[i + 1];
+          const lng = a[0] + (b[0] - a[0]) * localT;
+          const lat = a[1] + (b[1] - a[1]) * localT;
 
           features.push({
             type: "Feature",
@@ -357,7 +410,9 @@ function CausalDAGMapInner() {
     };
 
     animFrameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animFrameId);
+    return () => {
+      if (animFrameId !== null) cancelAnimationFrame(animFrameId);
+    };
   }, [temporalEdgePaths]);
 
   // Click handler — handles both node and edge clicks

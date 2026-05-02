@@ -50,7 +50,15 @@
 html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-mono), 'Courier New', monospace;
+  font-family: var(--font-geist-mono), 'Courier New', monospace;
+}
+
+/* Expose design-system font tokens as globally cascadable CSS vars so
+   they resolve inside SVG presentation attributes (e.g. <text font-family>).
+   Tailwind v4's `@theme inline` does NOT emit these at :root. */
+body {
+  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-michroma);
 }
 
 /* Scrollbar styling matches platform */

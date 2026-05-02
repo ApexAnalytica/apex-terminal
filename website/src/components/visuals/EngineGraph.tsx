@@ -140,7 +140,7 @@ export default function EngineGraph() {
       ))}
 
       {/* Legend bottom */}
-      <text x={W / 2} y={H - 8} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9" fill="var(--text-muted)">
+      <text x={W / 2} y={H - 8} textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="9" fill="var(--text-muted)">
         SAMPLE TOPOLOGY · 8 NODES · 11 EDGES
       </text>
     </svg>

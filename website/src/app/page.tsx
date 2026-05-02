@@ -22,13 +22,13 @@ const CAPABILITIES = [
 ];
 
 const DOMAINS = [
-  { label: "MANUFACTURING",  text: "text-accent-cyan",    border: "border-accent-cyan/25",    dot: "bg-accent-cyan",    sub: "Foundries · fabs · advanced materials" },
-  { label: "INFRASTRUCTURE", text: "text-accent-purple",  border: "border-accent-purple/25",  dot: "bg-accent-purple",  sub: "Power · water · ports · telecom · rail" },
-  { label: "ECONOMIC",       text: "text-accent-amber",   border: "border-accent-amber/25",   dot: "bg-accent-amber",   sub: "Trade flows · sectoral GDP · exposure" },
-  { label: "FINANCE",        text: "text-accent-orange",  border: "border-accent-orange/25",  dot: "bg-accent-orange",  sub: "Banks · settlement · sovereign credit" },
-  { label: "ENERGY",         text: "text-accent-green",   border: "border-accent-green/25",   dot: "bg-accent-green",   sub: "Grid · oil · gas · transition tech" },
-  { label: "GEOPOLITICAL",   text: "text-accent-red",     border: "border-accent-red/25",     dot: "bg-accent-red",     sub: "Sanctions · conflict · export controls" },
-  { label: "SCIENCE",        text: "text-accent-magenta", border: "border-accent-magenta/25", dot: "bg-accent-magenta", sub: "Research infra · instrumentation · talent" },
+  { label: "MANUFACTURING",  slug: "manufacturing",  text: "text-accent-cyan",    border: "border-accent-cyan/25",    dot: "bg-accent-cyan",    sub: "Foundries · fabs · advanced materials" },
+  { label: "INFRASTRUCTURE", slug: "infrastructure", text: "text-accent-purple",  border: "border-accent-purple/25",  dot: "bg-accent-purple",  sub: "Power · water · ports · telecom · rail" },
+  { label: "ECONOMIC",       slug: "economic",       text: "text-accent-amber",   border: "border-accent-amber/25",   dot: "bg-accent-amber",   sub: "Trade flows · sectoral GDP · exposure" },
+  { label: "FINANCE",        slug: "finance",        text: "text-accent-orange",  border: "border-accent-orange/25",  dot: "bg-accent-orange",  sub: "Banks · settlement · sovereign credit" },
+  { label: "ENERGY",         slug: "energy",         text: "text-accent-green",   border: "border-accent-green/25",   dot: "bg-accent-green",   sub: "Grid · oil · gas · transition tech" },
+  { label: "GEOPOLITICAL",   slug: "geopolitical",   text: "text-accent-red",     border: "border-accent-red/25",     dot: "bg-accent-red",     sub: "Sanctions · conflict · export controls" },
+  { label: "SCIENCE",        slug: "science",        text: "text-accent-magenta", border: "border-accent-magenta/25", dot: "bg-accent-magenta", sub: "Research infra · instrumentation · talent" },
 ];
 
 /* ───────── page ───────── */
@@ -189,21 +189,22 @@ export default function Home() {
       </Section>
 
       {/* ───────── // DOMAINS ───────── */}
-      <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="07 CONFIGURED" />
+      <Section id="domains" className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="07 CONFIGURED · CLICK TO EXPLORE" />
 
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
           {DOMAINS.map((d) => (
-            <div
+            <Link
               key={d.label}
-              className={`relative bg-surface border ${d.border} rounded-lg p-4 hover:bg-surface-elevated transition-colors`}
+              href={`/domains/${d.slug}`}
+              className={`group relative bg-surface border ${d.border} rounded-lg p-4 hover:bg-surface-elevated transition-colors block`}
             >
               <div className="flex items-center justify-between mb-3">
                 <span className={`relative flex h-1.5 w-1.5`}>
                   <span className={`absolute inline-flex h-full w-full rounded-full ${d.dot} opacity-50 pulse-ring`} />
                   <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${d.dot}`} />
                 </span>
-                <span className="font-mono text-[10px] text-text-muted/60 tracking-wider">DOM</span>
+                <span className={`font-mono text-[10px] text-text-muted/60 tracking-wider group-hover:${d.text} transition-colors`}>›</span>
               </div>
               <div className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.2em] ${d.text} mb-2`}>
                 {d.label}
@@ -211,7 +212,7 @@ export default function Home() {
               <p className="text-[10px] font-mono text-text-muted leading-snug">
                 {d.sub}
               </p>
-            </div>
+            </Link>
           ))}
         </div>
       </Section>

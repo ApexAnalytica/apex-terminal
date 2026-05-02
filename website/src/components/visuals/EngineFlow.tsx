@@ -70,7 +70,7 @@ export default function EngineFlow() {
         textAnchor="middle" fontFamily="var(--font-michroma)" fontSize="10"
         letterSpacing="2.5" fill="var(--foreground)">DATA</text>
       <text x={dataX + dataW / 2} y={dataY + 38}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="9"
         fill="var(--text-muted)">feeds + topology</text>
 
       {/* Arrow data → graph */}
@@ -91,10 +91,10 @@ export default function EngineFlow() {
           fill="var(--accent-cyan)" opacity={0.9}>{p}</text>
       ))}
       <text x={graphX + graphW / 2} y={graphY + 70}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="9"
         fill="var(--text-muted)">5 pillars · per-node ΩF</text>
       <text x={graphX + graphW / 2} y={graphY + 88}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="8"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="8"
         fill="var(--text-muted)" opacity={0.7}>computed at import</text>
 
       {/* ─── Center: 4 engine pills (parallel) ─── */}
@@ -159,13 +159,13 @@ export default function EngineFlow() {
             >{e.name}</text>
             <text
               x={PILL_X + 18} y={y + 40}
-              fontFamily="var(--font-mono)" fontSize="9"
+              fontFamily="var(--font-geist-mono)" fontSize="9"
               fill="var(--text-muted)" opacity={0.85}
             >{e.role}</text>
             <text
               x={PILL_X + PILL_W - 12} y={y + 40}
               textAnchor="end"
-              fontFamily="var(--font-mono)" fontSize="8"
+              fontFamily="var(--font-geist-mono)" fontSize="8"
               fill="var(--text-muted)" opacity={0.6}
             >{e.sub}</text>
           </g>
@@ -179,13 +179,13 @@ export default function EngineFlow() {
         textAnchor="middle" fontFamily="var(--font-michroma)" fontSize="10"
         letterSpacing="2.5" fill="var(--accent-cyan)">Ω OUTPUTS</text>
       <text x={outX + outW / 2} y={outY + 44}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="11"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="11"
         fill="var(--foreground)">Ω buffer · status · alert</text>
       <text x={outX + outW / 2} y={outY + 62}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="11"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="11"
         fill="var(--foreground)">cascade replay · MC forecast</text>
       <text x={outX + outW / 2} y={outY + 82}
-        textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9"
+        textAnchor="middle" fontFamily="var(--font-geist-mono)" fontSize="9"
         fill="var(--text-muted)" opacity={0.7}>ΩSF · ΩSX · contagion radius</text>
 
       {/* Header strip: "PARALLEL" indicator */}

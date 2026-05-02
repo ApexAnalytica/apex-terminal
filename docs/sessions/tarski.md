@@ -180,7 +180,13 @@ These need a **derivation provider**: a `FeedProvider` whose `matchPayload` read
 
 ### C. Composites with no defensible free source
 
-If any composite ends up in this category after a real search, the right move is to **delete the node from the graph data** (data-session ownership) rather than keep it as a synthetic placeholder. The principle: a node that can't be measured shouldn't be on the map.
+If a composite ends up in this category after a real search, the rule is: **keep the node visible but blank** — no synthetic value, no live data, no qualifier. The empty slot itself is the signal that real data is still needed for that node, so future-you (or future Claude) can come back to it. Do **not** delete the node — deletion erases the TODO; blanking preserves it.
+
+The principle, restated: a node we can't measure shows nothing rather than something fake. Synthetic-as-placeholder is rejected, but the slot remains as a known-incomplete marker.
+
+The card render already does the right thing here: a node with no `liveData[]` simply doesn't render any live rows. The card still shows up (with its label, domain badge, and Ω score) but the live block is absent. That's the "blank" state — already implemented, just needs a corresponding entry in the registry to mark the node as "data needed" rather than left ambiguous.
+
+**Future enhancement:** add an explicit `dataStatus: "live" | "modeled" | "blank-needs-data"` field on `CausalNode` (or a parallel registry) so blank nodes are visually distinguished from "no provider has matched yet" nodes. Both look identical today; the distinction matters for the program's tracking. Flag for a small follow-up PR when needed.
 
 ### Status of the goal as of last update
 
@@ -189,7 +195,7 @@ If any composite ends up in this category after a real search, the right move is
 | Synthetic composites with a clear path to real data | 4 (all of them — A is derivation, B is new providers) |
 | Synthetic composites with no defensible source (target: 0) | 0 — none of the 4 are in category C |
 
-**Implication:** the goal is reachable. No node is condemned to stay synthetic. Each remaining composite has a concrete next step.
+**Implication:** the goal is reachable. No node is condemned to stay synthetic. Each remaining composite has a concrete next step. If any future node hits category C, it stays in the graph but blank — preserving the TODO rather than erasing it.
 
 ### Next phases against this goal
 

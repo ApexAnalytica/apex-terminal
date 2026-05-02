@@ -1,224 +1,39 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react";
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import {
+  TOUR_STEPS,
+  FIRST_RUN_IDS,
+  DEEP_DIVE_TRACKS,
+  STEP_PADDING,
+  DEFAULT_PADDING,
+  resolveCopy,
+  trackForPersona,
+  type TourStep,
+  type DeepDiveTrack,
+} from "@/lib/tour-steps";
 
-interface TourStep {
-  id: string;
-  targetSelector: string | null;
-  /** Optional extra element to highlight + arrow to, for steps where two
-   *  parts of the UI are being described at once (e.g. tabs + panel). */
-  secondaryTargetSelector?: string;
-  title: string;
-  description: string;
-  tooltipPosition: "top" | "bottom" | "left" | "right" | "center";
-  onEnter?: () => void;
-}
+// ─── Constants ──────────────────────────────────────────────────────────
 
-const TOUR_STEPS: TourStep[] = [
-  {
-    id: "welcome-and-domain",
-    targetSelector: '[data-tour="domain-selector-modal"]',
-    title: "WELCOME \u2014 PICK A DOMAIN",
-    description:
-      "Welcome to APEX Analytica MANIFOLD \u2014 a causal-inference platform for discovering, verifying, and stress-testing networks across sectors. Everything starts with a persona. Pick one of the five pills at the top of this modal: FINANCIAL (markets, credit, sovereign), MACRO (growth, inflation, policy), GEOPOLITICAL (energy, infrastructure, defense), SCIENTIST (life sciences, including Type-1 Diabetes \u03B2-cell dynamics), or CROSS-DOMAIN. Each persona narrows the visible domain cards; pick a card, confirm, and the tour continues on the platform. CROSS-DOMAIN is the only persona that lets you multi-select across dataset families. You can relaunch this tour anytime from the \u201C?\u201D in the top-right.",
-    tooltipPosition: "right",
-  },
-  {
-    id: "module-tabs",
-    targetSelector: '[data-tour="module-tabs"]',
-    secondaryTargetSelector: '[data-tour="module-panel"]',
-    title: "FOUR ANALYSIS ENGINES",
-    description:
-      "The four engine tabs drive the right-hand panel. SPIRTES discovers causal structure from data. TARSKI verifies edges against physical, regulatory, and heuristic constraints. PEARL runs do-calculus interventions and network interdiction. PARETO monitors tail risk and criticality horizons. Switching tabs updates the right panel \u2014 the graph stays put.",
-    tooltipPosition: "bottom",
-  },
-  {
-    id: "dag-canvas",
-    targetSelector: '[data-tour="dag-canvas"]',
-    title: "CAUSAL NETWORK CANVAS",
-    description:
-      "The center canvas renders your causal DAG. Node size and color intensity encode \u03A9-Fragility \u2014 hotter means more systemic risk. Solid arrows are directed causal edges; dashed lines are confounded or latent relationships. In 3D: drag to orbit, scroll to zoom. Click any node to open the inspector on the right. Shift+drag for box-select when you need a subgraph.",
-    tooltipPosition: "top",
-  },
-  {
-    id: "view-modes",
-    targetSelector: '[data-tour="dag-canvas"]',
-    title: "3D / 2D / MAP VIEWS",
-    description:
-      "Top-right of the canvas: three view-mode buttons. 3D (WebGL force-directed, the default), 2D (flat React Flow layout with animated causal flow), and MAP (geographic projection on MapLibre for domains with real-world coordinates, e.g. energy infrastructure). All three stay mounted to preserve WebGL context; you can flip between them without losing state.",
-    tooltipPosition: "top",
-  },
-  {
-    id: "node-inspection",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "NODE INSPECTOR & \u03A9 PILLARS",
-    description:
-      "Click any node to open the Node Inspector in the right panel. The centerpiece is a \u03A9-Fragility radar pentagon \u2014 composite score (0\u201310) at the center, with each vertex labeled by pillar letter (I/R/J/C/T) and value: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, Tail Depth. Click any vertex letter to drop in that pillar\u2019s explanation, detail, and formula inline; click again or hit \u00D7 to dismiss. The methodology toggle below explains how the composite is computed. Connected edges are listed further down with causal mechanisms.",
-    tooltipPosition: "left",
-  },
-  {
-    id: "spirtes-deep",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "SPIRTES \u2014 STRUCTURE DISCOVERY",
-    description:
-      "SPIRTES runs three causal-discovery algorithms in parallel. DCD/NOTEARS for nonlinear structure, PCMCI+ for time-lagged effects across T-2/T-1/T-0 columns, and FCI for hidden-confounder detection (dashed edges with \u2018?\u2019 markers mean a latent common cause). The cascade header shows spectral radius \u03BBmax \u2014 below 1.0 the network is contractive and stable.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
-  },
-  {
-    id: "tarski-deep",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "TARSKI \u2014 CONSTRAINT VERIFICATION",
-    description:
-      "TARSKI audits every edge against domain-aware axioms in three tiers: PHYSICAL (immutable laws), REGULATORY (sanctions, export controls, treaties), and HEURISTIC (anomaly flags). Constraints are auto-ranked by relevance to your active domains. Toggle any axiom, hit VERIFY, and the canvas recolors \u2014 violating edges turn red, with clickable proof traces explaining which constraint failed.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("tarski"),
-  },
-  {
-    id: "pearl-interventions",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "PEARL \u2014 DO-CALCULUS & ABLATIONS",
-    description:
-      "PEARL implements structural interventions. Select a do(X) target to isolate a node from its causes. Use SEVER to cut individual edges (they go amber \u2014 functionally removed but physically possible) or ABLATE to delete nodes/edges entirely. Run an intervention cascade and the Time Dial gains a second timeline so you can compare baseline vs. counterfactual outcomes side-by-side.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("pearl"),
-  },
-  {
-    id: "pearl-interdiction",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "CASCADE DEFENSE \u2014 AUTO-INTERDICTION",
-    description:
-      "Below the manual tools: CASCADE DEFENSE runs minimax optimization to find the cheapest set of edges whose removal maximally reduces downstream cascade damage. When an attacker-defender min-cut is solvable, you get explicit SEVER / ABLATE buttons per recommended cut. When it isn\u2019t, the panel falls back to a structural-vulnerability ranking of the next most brittle edges. Results auto-trigger a Monte Carlo forecast so you can see the expected damage distribution before committing.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("pearl"),
-  },
-  {
-    id: "pareto-deep",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "PARETO \u2014 CRITICALITY HORIZONS",
-    description:
-      "PARETO tracks a domain-tuned set of criticality estimators, each with its own T-N countdown, confidence, and assessment. For geopolitical/financial domains: CSD (Critical Slowing Down via \u03BBmax \u2192 1), Persistent Homology (topological fragility), and LPPLS (Sornette log-periodic crash model). For Life Sciences / T1D: BOCPD changepoints, Cox proportional hazards, transfer entropy, NLME C-peptide decay, Moran\u2019s I, and HTE meta-analysis \u2014 estimators calibrated to biological time-to-event signals rather than market crashes. Each card exposes observed vs. model signal, formula, methodology, and current assessment.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
-  },
-  {
-    id: "pareto-charts",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "INTERACTIVE CRITICALITY CHARTS",
-    description:
-      "Expand any criticality card to see its temporal chart \u2014 observed values as a solid line, model fit dashed. Hover for exact values. Click \u201C\u25C0 expand panel\u201D to widen the right panel for a more legible chart, including the residual. Each card exposes its model confidence, methodology, formula, and live assessment in one place.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
-  },
-  {
-    id: "pareto-shocks",
-    targetSelector: '[data-tour="module-panel"]',
-    title: "SHOCK INJECTION & TOP CRITICAL NODES",
-    description:
-      "Under the criticality cards: the \u03A9-Fragility Assessment summarizes the buffer state \u2014 NOMINAL, ELEVATED, CRITICAL, or OMEGA_BREACH. The top critical nodes are ranked by \u03A9-score; click one to select it in the graph. The Scenario Injector loads preset shocks calibrated for your active domain (Strait of Hormuz closure, Abqaiq attack, LNG train outage, insulin supply-chain disruption, etc.) and each one depletes the buffer according to its severity.",
-    tooltipPosition: "left",
-    onEnter: () => useApexStore.getState().setActiveModule("pareto"),
-  },
-  {
-    id: "cd-omega",
-    targetSelector: '[data-tour="cd-omega"]',
-    title: "CD\u03A9 DOOMSDAY MONITOR",
-    description:
-      "The Causal-Distance-Omega monitor sits in the header, always on. The segmented bar shows buffer depletion (green \u2192 amber \u2192 red). It reports time-to-failure (T-Nd), regime classification (STABLE, MELT_UP, CRASH, PHASE_TRANSITION, STAGNATION), Dragon-King probability, and active-shock count. The bar flashes when the system enters OMEGA_BREACH \u2014 no matter which engine tab you\u2019re on.",
-    tooltipPosition: "bottom",
-  },
-  {
-    id: "system-copilot",
-    targetSelector: '[data-tour="system-copilot"]',
-    title: "AI SYSTEM COPILOT",
-    description:
-      "The left panel is your AI copilot. It has full context of the graph, active shocks, engine outputs, and recent interventions. Type questions, request explanations, or ask for analysis in plain language \u2014 the copilot responds with graph-grounded reasoning rather than generic prose. It also powers the click-to-speak behavior in the Node Inspector.",
-    tooltipPosition: "right",
-  },
-  {
-    id: "voice-features",
-    targetSelector: '[data-tour="system-copilot"]',
-    title: "VOICE I/O — SPEAKER & MIC",
-    description:
-      "Turn on the speaker icon and the copilot reads every response aloud in a Jarvis-style voice. Turn on the microphone and you can dictate queries instead of typing \u2014 useful when you\u2019re reading off a second screen or running Manifold from across the room.",
-    tooltipPosition: "right",
-  },
-  {
-    id: "compute-button",
-    targetSelector: '[data-tour="action-buttons"]',
-    title: "COMPUTE WITH CLAUDE",
-    description:
-      "COMPUTE WITH CLAUDE generates a full System State Snapshot \u2014 a structured digest of nodes, edges, engine outputs, and criticality metrics. Claude does the heavy computation; the copilot uses that snapshot as context for follow-up questions. If no Claude key is configured, a local snapshot is computed from graph structure instead. Snapshot status appears as a badge in the copilot header.",
-    tooltipPosition: "right",
-  },
-  {
-    id: "time-dial",
-    targetSelector: '[data-tour="risk-flow"]',
-    title: "TIME DIAL & CASCADE REPLAY",
-    description:
-      "The timeline scrubber at the bottom controls cascade replay. After injecting shocks or running an intervention, drag the dial to scrub epochs \u2014 watch nodes activate, edges propagate, and the \u03A9-buffer deplete step-by-step. When a counterfactual exists, the dial gains two timelines: BASELINE vs. INTERVENTION. Use arrow keys for fine control, or let it auto-play.",
-    tooltipPosition: "top",
-  },
-  {
-    id: "risk-flow",
-    targetSelector: '[data-tour="risk-flow"]',
-    title: "RISK PROPAGATION CARDS",
-    description:
-      "The horizontal card strip above the time dial shows per-node vulnerability scores in real time, color-coded by severity. Click any card to select that node and open its inspector. During cascade replay the cards update every epoch so you can watch which nodes light up first and how the shock spreads.",
-    tooltipPosition: "top",
-  },
-  {
-    id: "text-size-toggle",
-    targetSelector: '[data-tour="text-size-toggle"]',
-    title: "TEXT SIZE (S / M / L)",
-    description:
-      "Some analysts run Manifold on large displays or from a distance. Use the S / M / L toggle in the header to scale the readable text up or down. Layout, canvas, and icons stay put \u2014 only typography rescales, so dense panels stay legible without the graph reflowing. Your choice persists across sessions and is applied before the page renders so there\u2019s no flash.",
-    tooltipPosition: "bottom",
-  },
-  {
-    id: "import-button",
-    targetSelector: '[data-tour="import-button"]',
-    title: "IMPORT YOUR OWN DATA",
-    description:
-      "Bring your own graph. IMPORT accepts CSV, JSON, or adjacency matrices; the platform auto-detects format and maps columns into the \u03A9-Fragility framework. All four engines \u2014 discovery, verification, counterfactual, criticality \u2014 work on imported graphs exactly as they do on built-in domains. Multiple datasets can coexist and merge via cross-domain edges.",
-    tooltipPosition: "bottom",
-  },
-  {
-    id: "feedback-widget",
-    targetSelector: '[data-tour="feedback-widget"]',
-    title: "FEEDBACK & FEATURE REQUESTS",
-    description:
-      "The floating pill in the bottom-right corner is your direct line to the team. File bugs, request features, or ask for new datasets \u2014 each category routes into our triage pipeline and becomes a tracked GitHub issue. If a feature request is approved it can be auto-implemented and shipped back to you as a PR. Use it liberally.",
-    tooltipPosition: "left",
-  },
-  {
-    id: "finish",
-    targetSelector: null,
-    title: "YOU\u2019RE READY",
-    description:
-      "You\u2019ve seen every major feature. Typical flow: pick a domain \u2192 explore nodes \u2192 run SPIRTES or TARSKI \u2192 inject a shock or run PEARL interdiction \u2192 watch the cascade on the time dial \u2192 monitor PARETO horizons. The \u201C?\u201D button in the top-right replays this tour at any time. If something feels missing or off, use the feedback widget \u2014 it goes straight to us.",
-    tooltipPosition: "center",
-  },
-];
-
-const DEFAULT_PADDING = 8;
 const GAP = 16;
-
-// Step-specific padding overrides. The welcome-and-domain cutout sits on the
-// domain-selector modal, which already has its own bg-black/70 backdrop-blur
-// shell — any extra padding around the cutout exposes that blurred dim and
-// makes the modal look washed out. Zero padding here keeps the cutout flush
-// with the modal body.
-const STEP_PADDING: Record<string, number> = {
-  "welcome-and-domain": 0,
-};
-
-// Bump this whenever the tour content changes substantially enough that
-// already-onboarded users should see it again. Currently unused — the
-// first-visit auto-launch only triggers when nothing has been stored yet.
 const TOUR_STORAGE_KEY = "manifold:tour-seen";
+const TOOLTIP_WIDTH = 320; // w-80
+const VIEWPORT_MARGIN = 12;
+
+// Escalating-hint thresholds. After ESCALATE_1 ms with no interaction, the
+// cutout starts a slow pulse. After ESCALATE_2 ms it pulses faster + stronger
+// and the tooltip's hint goes bold. No skip button — the user can still bail
+// from the whole tour via SKIP TOUR / Esc.
+const ESCALATE_1_MS = 8000;
+const ESCALATE_2_MS = 15000;
+
+// After predicate flips true, hold the success state briefly so the user
+// sees the "you did it" feedback before the step changes.
+const SUCCESS_HOLD_MS = 400;
+
+// ─── Geometry helpers ───────────────────────────────────────────────────
 
 interface CutoutRect {
   x: number;
@@ -226,9 +41,6 @@ interface CutoutRect {
   width: number;
   height: number;
 }
-
-const TOOLTIP_WIDTH = 320; // w-80
-const VIEWPORT_MARGIN = 12;
 
 function computeArrow(
   cutout: CutoutRect | null,
@@ -267,9 +79,6 @@ function computeArrow(
   }
 }
 
-/** Auto-pick an arrow from the tooltip to an arbitrary cutout, choosing the
- *  tooltip edge / cutout edge that minimizes the crossing. Used for secondary
- *  highlights, which aren't aligned with the step's tooltipPosition. */
 function autoArrow(
   cutout: CutoutRect | null,
   tooltipTop: number,
@@ -311,11 +120,11 @@ function autoArrow(
 function computeTooltipPosition(
   cutout: CutoutRect | null,
   position: TourStep["tooltipPosition"],
-  tooltipHeight: number
+  tooltipHeight: number,
 ): { top: number; left: number } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const th = tooltipHeight || 200; // fallback estimate before first measure
+  const th = tooltipHeight || 200;
 
   if (!cutout || position === "center") {
     return {
@@ -346,12 +155,15 @@ function computeTooltipPosition(
       break;
   }
 
-  // Clamp to viewport
   top = Math.max(VIEWPORT_MARGIN, Math.min(top, vh - th - VIEWPORT_MARGIN));
   left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - TOOLTIP_WIDTH - VIEWPORT_MARGIN));
 
   return { top, left };
 }
+
+// ─── Component ──────────────────────────────────────────────────────────
+
+type Mode = "first-run" | "deep-dive-menu" | DeepDiveTrack;
 
 export default function SpotlightTour() {
   const tourActive = useApexStore((s) => s.tourActive);
@@ -361,20 +173,52 @@ export default function SpotlightTour() {
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
   const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const activePersona = useApexStore((s) => s.activePersona);
   const sawDomainSelectorRef = useRef(false);
+
+  // Which step list is active. First-run by default; switches to a deep-dive
+  // track when the user picks one from the menu after the first-run finish.
+  const [mode, setMode] = useState<Mode>("first-run");
 
   const [cutout, setCutout] = useState<CutoutRect | null>(null);
   const [secondaryCutout, setSecondaryCutout] = useState<CutoutRect | null>(null);
+  const [pulseCutout, setPulseCutout] = useState<CutoutRect | null>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [showDomainHint, setShowDomainHint] = useState(false);
+
+  // Escalating-hint state. 0 = idle, 1 = soft pulse, 2 = strong pulse.
+  const [escalation, setEscalation] = useState<0 | 1 | 2>(0);
+  // Brief success state flashed before auto-advancing on a satisfied predicate.
+  const [interactionSatisfied, setInteractionSatisfied] = useState(false);
+
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tooltipHeightRef = useRef(200);
   const preTourModuleRef = useRef<string | null>(null);
 
-  const step = TOUR_STEPS[tourStep];
+  const track = trackForPersona(activePersona);
+
+  // Active step list driven by mode. Memoized so step indices stay stable.
+  const currentSteps = useMemo<TourStep[]>(() => {
+    if (mode === "first-run") return TOUR_STEPS.filter((s) => s.phase === "first-run");
+    if (mode === "deep-dive-menu") return [];
+    return TOUR_STEPS.filter(
+      (s) => s.phase === "deep-dive" && s.deepDiveTrack === mode,
+    );
+  }, [mode]);
+
+  const step = currentSteps[tourStep];
+  const isMenu = mode === "deep-dive-menu";
   const isFirst = tourStep === 0;
-  const isLast = tourStep === TOUR_STEPS.length - 1;
+  const isLast = currentSteps.length > 0 && tourStep === currentSteps.length - 1;
+
+  // Reset escalation + success on every step change.
+  useEffect(() => {
+    setEscalation(0);
+    setInteractionSatisfied(false);
+  }, [step?.id]);
+
+  // ─── Cutout measurement ──────────────────────────────────────────────
 
   const measureTarget = useCallback(() => {
     const pad = step ? STEP_PADDING[step.id] ?? DEFAULT_PADDING : DEFAULT_PADDING;
@@ -392,6 +236,7 @@ export default function SpotlightTour() {
     };
     setCutout(measure(step?.targetSelector ?? null));
     setSecondaryCutout(measure(step?.secondaryTargetSelector));
+    setPulseCutout(measure(step?.awaitInteraction?.pulseSelector ?? null));
     setViewport({ w: window.innerWidth, h: window.innerHeight });
   }, [step]);
 
@@ -399,39 +244,49 @@ export default function SpotlightTour() {
     measureTarget();
   }, [measureTarget]);
 
-  // Save pre-tour module on tour start
+  // Save pre-tour module on tour start so we can restore it on close.
   useEffect(() => {
     if (tourActive) {
       preTourModuleRef.current = useApexStore.getState().activeModule;
     }
   }, [tourActive]);
 
-  // First-visit auto-launch: open the tour exactly once per browser, keyed on
-  // localStorage. Dismissing (SKIP / close / finish) sets the flag so it won't
-  // trigger again. Users can still relaunch manually via the "?" button.
+  // First-visit auto-launch: open the tour exactly once per browser, keyed
+  // on localStorage. Dismissing sets the flag so it won't re-trigger.
   useEffect(() => {
     try {
       const seen = window.localStorage.getItem(TOUR_STORAGE_KEY);
       if (!seen) {
+        setMode("first-run");
         setTourActive(true);
       }
     } catch {
-      // localStorage unavailable (private mode, etc.) — skip auto-launch
+      // localStorage unavailable
     }
-    // Run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Call onEnter when step changes
+  // When the tour is re-opened externally (the "?" button), reset to first-run.
+  // Without this, re-opening after a deep-dive ended in the same session would
+  // start mid-track.
+  const prevActiveRef = useRef(tourActive);
+  useEffect(() => {
+    if (tourActive && !prevActiveRef.current) {
+      setMode("first-run");
+      setTourStep(0);
+    }
+    prevActiveRef.current = tourActive;
+  }, [tourActive, setTourStep]);
+
+  // Run a step's onEnter side effect (e.g. switch active module).
   useEffect(() => {
     if (!tourActive || !step) return;
     step.onEnter?.();
   }, [tourActive, tourStep, step]);
 
-  // Auto-advance the welcome/domain step when the user closes the selector
-  // AFTER picking at least one domain. If they closed it without picking, we
-  // reopen it so the tour stays coherent (without a pick the workspace button
-  // in the header doesn't render either, so there's no recovery path).
+  // Welcome-step gating: auto-advance when the user closes the selector AFTER
+  // picking a domain. If they close without picking, reopen so the tour stays
+  // coherent.
   useEffect(() => {
     if (!tourActive || step?.id !== "welcome-and-domain") {
       sawDomainSelectorRef.current = false;
@@ -458,8 +313,6 @@ export default function SpotlightTour() {
     setDomainSelectorOpen,
   ]);
 
-  // Clear the "pick a domain" hint as soon as the user actually picks one, or
-  // when the tour moves past the welcome step.
   useEffect(() => {
     if (step?.id !== "welcome-and-domain" || selectedDomains.length > 0) {
       setShowDomainHint(false);
@@ -473,17 +326,14 @@ export default function SpotlightTour() {
     return () => window.removeEventListener("resize", updatePositions);
   }, [tourActive, tourStep, updatePositions]);
 
-  // Recompute tooltip position when cutout or step changes
   useLayoutEffect(() => {
     if (!tourActive || !step) return;
-    // Measure tooltip height from ref if available
     if (tooltipRef.current) {
       tooltipHeightRef.current = tooltipRef.current.offsetHeight;
     }
     setTooltipPos(computeTooltipPosition(cutout, step.tooltipPosition, tooltipHeightRef.current));
   }, [tourActive, step, cutout]);
 
-  // Re-clamp after tooltip renders (height may change per step)
   useEffect(() => {
     if (!tourActive || !step || !tooltipRef.current) return;
     const measured = tooltipRef.current.offsetHeight;
@@ -492,6 +342,52 @@ export default function SpotlightTour() {
       setTooltipPos(computeTooltipPosition(cutout, step.tooltipPosition, measured));
     }
   });
+
+  // ─── Interactive-gate subscription ───────────────────────────────────
+
+  const advance = useCallback(() => {
+    if (currentSteps.length === 0) return;
+    if (tourStep < currentSteps.length - 1) {
+      setTourStep(tourStep + 1);
+    }
+  }, [currentSteps, tourStep, setTourStep]);
+
+  // Subscribe to store changes; when the predicate is satisfied, flash success
+  // and advance.
+  useEffect(() => {
+    if (!tourActive || !step?.awaitInteraction) return;
+    const { predicate } = step.awaitInteraction;
+    // Check immediately — the user may have already done it.
+    if (predicate(useApexStore.getState())) {
+      setInteractionSatisfied(true);
+      const t = setTimeout(advance, SUCCESS_HOLD_MS);
+      return () => clearTimeout(t);
+    }
+    let advanceTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useApexStore.subscribe((s) => {
+      if (predicate(s) && !advanceTimer) {
+        setInteractionSatisfied(true);
+        advanceTimer = setTimeout(advance, SUCCESS_HOLD_MS);
+      }
+    });
+    return () => {
+      unsub();
+      if (advanceTimer) clearTimeout(advanceTimer);
+    };
+  }, [tourActive, step, advance]);
+
+  // Escalating-hint timers. Reset on step change; clear on satisfaction.
+  useEffect(() => {
+    if (!tourActive || !step?.awaitInteraction || interactionSatisfied) return;
+    const t1 = setTimeout(() => setEscalation(1), ESCALATE_1_MS);
+    const t2 = setTimeout(() => setEscalation(2), ESCALATE_2_MS);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [tourActive, step?.id, step?.awaitInteraction, interactionSatisfied]);
+
+  // ─── Navigation ──────────────────────────────────────────────────────
 
   const close = useCallback(() => {
     if (preTourModuleRef.current) {
@@ -502,13 +398,21 @@ export default function SpotlightTour() {
     } catch {
       // ignore
     }
+    setMode("first-run");
+    setTourStep(0);
     setTourActive(false);
-  }, [setTourActive]);
+  }, [setTourActive, setTourStep]);
 
   const next = useCallback(() => {
     if (step?.id === "welcome-and-domain" && selectedDomains.length === 0) {
       setShowDomainHint(true);
       if (!domainSelectorOpen) setDomainSelectorOpen(true);
+      return;
+    }
+    if (step?.id === "first-run-finish") {
+      // First-run done → show the deep-dive menu instead of closing.
+      setMode("deep-dive-menu");
+      setTourStep(0);
       return;
     }
     if (isLast) {
@@ -531,38 +435,29 @@ export default function SpotlightTour() {
     if (!isFirst) setTourStep(tourStep - 1);
   }, [isFirst, setTourStep, tourStep]);
 
-  // Keyboard navigation
+  const launchDeepDive = useCallback(
+    (track: DeepDiveTrack) => {
+      setMode(track);
+      setTourStep(0);
+    },
+    [setTourStep],
+  );
+
+  // Keyboard navigation. Disabled on the menu (no step to advance).
   useEffect(() => {
     if (!tourActive) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
-      else if (e.key === "ArrowRight") next();
-      else if (e.key === "ArrowLeft") back();
+      else if (!isMenu && e.key === "ArrowRight") next();
+      else if (!isMenu && e.key === "ArrowLeft") back();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tourActive, close, next, back]);
+  }, [tourActive, close, next, back, isMenu]);
 
-  if (!tourActive || !step) return null;
+  if (!tourActive) return null;
 
-  const arrow = computeArrow(
-    cutout,
-    step.tooltipPosition,
-    tooltipPos.top,
-    tooltipPos.left,
-    tooltipHeightRef.current,
-  );
-  const secondaryArrow = autoArrow(
-    secondaryCutout,
-    tooltipPos.top,
-    tooltipPos.left,
-    tooltipHeightRef.current,
-  );
-
-  // Build a single dim path: outer viewport rect plus a rounded-rect
-  // sub-path per cutout. With fill-rule="evenodd" each inner sub-path
-  // subtracts from the fill, regardless of winding — so the highlighted
-  // element renders at full brightness. No SVG mask, no browser ambiguity.
+  // Build dim path with cutout holes (evenodd subtracts).
   const dimPath = (() => {
     const { w, h } = viewport;
     if (!w || !h) return "";
@@ -571,7 +466,6 @@ export default function SpotlightTour() {
       const r = Math.min(8, c.width / 2, c.height / 2);
       const x2 = c.x + c.width;
       const y2 = c.y + c.height;
-      // Standard CW rounded rect — evenodd subtracts it regardless.
       d += ` M${c.x + r} ${c.y}`;
       d += ` H${x2 - r}`;
       d += ` A${r} ${r} 0 0 1 ${x2} ${c.y + r}`;
@@ -588,16 +482,26 @@ export default function SpotlightTour() {
     return d;
   })();
 
+  const arrow = step
+    ? computeArrow(cutout, step.tooltipPosition, tooltipPos.top, tooltipPos.left, tooltipHeightRef.current)
+    : null;
+  const secondaryArrow = autoArrow(secondaryCutout, tooltipPos.top, tooltipPos.left, tooltipHeightRef.current);
+
+  // The element to pulse when the user is taking too long. Falls back to the
+  // primary cutout if no separate pulse selector was specified.
+  const effectivePulse = pulseCutout ?? cutout;
+  const pulseClass =
+    interactionSatisfied
+      ? "tour-pulse-success"
+      : escalation === 2
+        ? "tour-pulse-strong"
+        : escalation === 1
+          ? "tour-pulse-soft"
+          : "";
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[60]" style={{ pointerEvents: "none" }}>
-        {/* Dim + borders + arrows via a single SVG. The dim is one
-            evenodd-filled path with the viewport as the outer ring and each
-            cutout as a hole — supports any number of cutouts and is
-            unambiguous across browsers (the prior SVG mask had inconsistent
-            behavior in some engines, leaving the cutout looking dim). SVG is
-            pointer-events-none so clicks pass through; the tour only closes
-            via SKIP TOUR / Esc / finishing. */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
             <marker
@@ -612,15 +516,9 @@ export default function SpotlightTour() {
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-cyan, #00e5ff)" />
             </marker>
           </defs>
-          {dimPath && (
-            <path
-              d={dimPath}
-              fillRule="evenodd"
-              fill="rgba(0, 0, 0, 0.78)"
-            />
-          )}
+          {dimPath && <path d={dimPath} fillRule="evenodd" fill="rgba(0, 0, 0, 0.78)" />}
           {/* Primary border */}
-          {cutout && (
+          {cutout && step && (
             <motion.rect
               x={cutout.x}
               y={cutout.y}
@@ -639,7 +537,7 @@ export default function SpotlightTour() {
             />
           )}
           {/* Secondary border */}
-          {secondaryCutout && (
+          {secondaryCutout && step && (
             <motion.rect
               x={secondaryCutout.x}
               y={secondaryCutout.y}
@@ -657,8 +555,24 @@ export default function SpotlightTour() {
               key={`border-secondary-${step.id}`}
             />
           )}
-          {/* Primary arrow */}
-          {arrow && (
+          {/* Pulse overlay — sits on top of the chosen pulse target when the
+              user has stalled. The animation drives a separate rect rather
+              than the primary border so the always-on border doesn't flicker. */}
+          {effectivePulse && pulseClass && (
+            <rect
+              key={`pulse-${step?.id ?? ""}-${pulseClass}`}
+              x={effectivePulse.x - 2}
+              y={effectivePulse.y - 2}
+              width={effectivePulse.width + 4}
+              height={effectivePulse.height + 4}
+              rx={10}
+              fill="none"
+              stroke="var(--accent-cyan, #00e5ff)"
+              strokeWidth={3}
+              className={pulseClass}
+            />
+          )}
+          {arrow && step && (
             <motion.line
               key={`arrow-${step.id}`}
               x1={arrow.from.x}
@@ -675,8 +589,7 @@ export default function SpotlightTour() {
               transition={{ duration: 0.25, delay: 0.1 }}
             />
           )}
-          {/* Secondary arrow */}
-          {secondaryArrow && (
+          {secondaryArrow && step && (
             <motion.line
               key={`arrow-secondary-${step.id}`}
               x1={secondaryArrow.from.x}
@@ -695,73 +608,279 @@ export default function SpotlightTour() {
           )}
         </svg>
 
-        {/* Tooltip card */}
-        <motion.div
-          ref={tooltipRef}
-          key={step.id}
-          className="w-80 rounded-lg border border-border bg-surface-elevated p-4 shadow-2xl"
-          style={{
-            position: "absolute",
-            top: tooltipPos.top,
-            left: tooltipPos.left,
-            zIndex: 61,
-            pointerEvents: "auto",
-          }}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.2 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Step counter */}
-          <div className="text-[9px] font-mono tracking-wider text-text-muted mb-2">
-            {tourStep + 1} OF {TOUR_STEPS.length}
-          </div>
-
-          {/* Title */}
-          <h3 className="font-[family-name:var(--font-michroma)] text-sm tracking-wider text-accent-cyan mb-2">
-            {step.title}
-          </h3>
-
-          {/* Description */}
-          <p className="text-[11px] font-mono leading-relaxed text-text-muted mb-4">
-            {step.description}
-          </p>
-
-          {/* Inline hint when the user tries to advance without picking a domain */}
-          {showDomainHint && (
-            <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[10px] font-mono tracking-wider text-amber-300">
-              Pick a domain in the workspace first — the platform can&apos;t render without one.
-            </div>
-          )}
-
-          {/* Navigation buttons */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={close}
-              className="text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground transition-colors"
-            >
-              SKIP TOUR
-            </button>
-            <div className="flex items-center gap-2">
-              {!isFirst && (
-                <button
-                  onClick={back}
-                  className="px-3 py-1.5 rounded border border-border text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
-                >
-                  BACK
-                </button>
-              )}
-              <button
-                onClick={next}
-                className="px-3 py-1.5 rounded border border-accent-cyan/40 bg-accent-cyan/10 text-[9px] font-mono tracking-wider text-accent-cyan hover:bg-accent-cyan/20 transition-colors"
-              >
-                {isLast ? "FINISH" : "NEXT"}
-              </button>
-            </div>
-          </div>
-        </motion.div>
+        {/* Tooltip card OR deep-dive menu */}
+        {isMenu ? (
+          <DeepDiveMenu
+            onPick={launchDeepDive}
+            onClose={close}
+          />
+        ) : step ? (
+          <TooltipCard
+            step={step}
+            track={track}
+            tourStep={tourStep}
+            totalSteps={currentSteps.length}
+            tooltipPos={tooltipPos}
+            tooltipRef={tooltipRef}
+            isFirst={isFirst}
+            isLast={isLast}
+            mode={mode}
+            interactionSatisfied={interactionSatisfied}
+            escalation={escalation}
+            showDomainHint={showDomainHint}
+            onNext={next}
+            onBack={back}
+            onClose={close}
+            onReturnToMenu={
+              mode === "engines" || mode === "loop" || mode === "customization"
+                ? () => {
+                    setMode("deep-dive-menu");
+                    setTourStep(0);
+                  }
+                : null
+            }
+          />
+        ) : null}
       </div>
     </AnimatePresence>
   );
 }
+
+// ─── Tooltip card ───────────────────────────────────────────────────────
+
+interface TooltipCardProps {
+  step: TourStep;
+  track: ReturnType<typeof trackForPersona>;
+  tourStep: number;
+  totalSteps: number;
+  tooltipPos: { top: number; left: number };
+  tooltipRef: React.RefObject<HTMLDivElement | null>;
+  isFirst: boolean;
+  isLast: boolean;
+  mode: Mode;
+  interactionSatisfied: boolean;
+  escalation: 0 | 1 | 2;
+  showDomainHint: boolean;
+  onNext: () => void;
+  onBack: () => void;
+  onClose: () => void;
+  onReturnToMenu: (() => void) | null;
+}
+
+function TooltipCard({
+  step,
+  track,
+  tourStep,
+  totalSteps,
+  tooltipPos,
+  tooltipRef,
+  isFirst,
+  isLast,
+  mode,
+  interactionSatisfied,
+  escalation,
+  showDomainHint,
+  onNext,
+  onBack,
+  onClose,
+  onReturnToMenu,
+}: TooltipCardProps) {
+  const copy = resolveCopy(step, track);
+  const isFirstRunFinish = step.id === "first-run-finish";
+  const phaseLabel =
+    mode === "first-run"
+      ? "FIRST RUN"
+      : mode === "engines"
+        ? "DEEP DIVE · ENGINES"
+        : mode === "loop"
+          ? "DEEP DIVE · LOOP"
+          : mode === "customization"
+            ? "DEEP DIVE · CUSTOMIZATION"
+            : "";
+
+  return (
+    <motion.div
+      ref={tooltipRef}
+      key={step.id}
+      className="w-80 rounded-lg border border-border bg-surface-elevated p-4 shadow-2xl"
+      style={{
+        position: "absolute",
+        top: tooltipPos.top,
+        left: tooltipPos.left,
+        zIndex: 61,
+        pointerEvents: "auto",
+      }}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="text-[9px] font-mono tracking-wider text-text-muted mb-2 flex items-center justify-between">
+        <span>
+          {phaseLabel} · {tourStep + 1} OF {totalSteps}
+        </span>
+        {onReturnToMenu && (
+          <button
+            onClick={onReturnToMenu}
+            className="text-text-muted hover:text-foreground transition-colors"
+          >
+            ◂ MENU
+          </button>
+        )}
+      </div>
+
+      <h3 className="font-[family-name:var(--font-michroma)] text-sm tracking-wider text-accent-cyan mb-2">
+        {copy.title}
+      </h3>
+
+      <p className="text-[11px] font-mono leading-relaxed text-text-muted mb-3">
+        {copy.description}
+      </p>
+
+      {/* Interactive-gate hint */}
+      {step.awaitInteraction && (
+        <div
+          className={`mb-3 rounded border px-2 py-1.5 text-[10px] font-mono tracking-wider ${
+            interactionSatisfied
+              ? "border-accent-green/50 bg-accent-green/10 text-accent-green"
+              : escalation === 2
+                ? "border-accent-cyan bg-accent-cyan/15 text-accent-cyan font-bold"
+                : escalation === 1
+                  ? "border-accent-cyan/60 bg-accent-cyan/10 text-accent-cyan"
+                  : "border-accent-cyan/30 bg-accent-cyan/5 text-accent-cyan/80"
+          }`}
+        >
+          {interactionSatisfied ? "✓ Got it." : step.awaitInteraction.hint}
+        </div>
+      )}
+
+      {showDomainHint && (
+        <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[10px] font-mono tracking-wider text-amber-300">
+          Pick a domain in the workspace first — the platform can&apos;t render without one.
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onClose}
+          className="text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground transition-colors"
+        >
+          SKIP TOUR
+        </button>
+        <div className="flex items-center gap-2">
+          {!isFirst && (
+            <button
+              onClick={onBack}
+              className="px-3 py-1.5 rounded border border-border text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              BACK
+            </button>
+          )}
+          <button
+            onClick={onNext}
+            disabled={!!step.awaitInteraction && !interactionSatisfied}
+            className="px-3 py-1.5 rounded border border-accent-cyan/40 bg-accent-cyan/10 text-[9px] font-mono tracking-wider text-accent-cyan hover:bg-accent-cyan/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isFirstRunFinish ? "OPEN DEEP DIVE ▸" : isLast ? "FINISH" : "NEXT"}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Deep-dive menu ─────────────────────────────────────────────────────
+
+function DeepDiveMenu({
+  onPick,
+  onClose,
+}: {
+  onPick: (track: DeepDiveTrack) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      key="deep-dive-menu"
+      className="rounded-lg border border-border bg-surface-elevated p-5 shadow-2xl"
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 61,
+        pointerEvents: "auto",
+        width: 380,
+      }}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="text-[9px] font-mono tracking-wider text-text-muted mb-2">
+        DEEP DIVE · OPT-IN
+      </div>
+      <h3 className="font-[family-name:var(--font-michroma)] text-sm tracking-wider text-accent-cyan mb-3">
+        PICK A DEEPER LOOK
+      </h3>
+      <p className="text-[11px] font-mono leading-relaxed text-text-muted mb-4">
+        First run done. Pick a track for a deeper walkthrough, or close out and explore on your own. You can always relaunch this from the “?” in the top-right.
+      </p>
+      <div className="space-y-2 mb-4">
+        {DEEP_DIVE_TRACKS.map((t) => (
+          <FILTERED_TRACK_BUTTON
+            key={t.id}
+            id={t.id}
+            label={t.label}
+            desc={t.desc}
+            onPick={onPick}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-end">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 rounded border border-border text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+        >
+          CLOSE
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// PascalCase wrapper — JSX needs an uppercase identifier.
+function FILTERED_TRACK_BUTTON({
+  id,
+  label,
+  desc,
+  onPick,
+}: {
+  id: DeepDiveTrack;
+  label: string;
+  desc: string;
+  onPick: (track: DeepDiveTrack) => void;
+}) {
+  // Count steps so the button shows "ENGINES (4 steps)".
+  const count = TOUR_STEPS.filter(
+    (s) => s.phase === "deep-dive" && s.deepDiveTrack === id,
+  ).length;
+  return (
+    <button
+      onClick={() => onPick(id)}
+      className="w-full text-left rounded border border-border hover:border-accent-cyan/50 hover:bg-accent-cyan/5 transition-colors px-3 py-2.5"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-mono font-bold text-accent-cyan tracking-wider">
+          {label}
+        </span>
+        <span className="text-[9px] font-mono text-text-muted">{count} STEPS</span>
+      </div>
+      <div className="text-[10px] font-mono text-text-muted mt-0.5">{desc}</div>
+    </button>
+  );
+}
+
+// Suppress unused ID-export warnings if any code wants to reference these
+// without re-importing.
+export { FIRST_RUN_IDS };

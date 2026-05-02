@@ -124,6 +124,18 @@ Audit found four spots where the #72 playbook patterns hadn't been fully applied
 
 **Verification.** `tsc --noEmit` clean; lint clean on changed files; vitest 537/537 pass. (Three pre-existing lint errors at `CausalDAG3D.tsx:86, 91, 306` are unrelated — `posMapRef.current = ...` in render, an `any` cast, and `performance.now()` in `useRef` initializer. Out of scope for this sweep.)
 
+### 2026-05-02 — Cleanup: pre-existing lint errors in CausalDAG3D
+
+Cleared the three pre-existing lint errors flagged in the perf-sweep audit (PR #185 noted them as out of scope):
+
+1. **`react-hooks/refs` at `:86`** — `posMapRef.current = posMap` in render body. Moved into a `useEffect(() => { posMapRef.current = posMap; }, [posMap])`. Render function is now pure; the effect runs after every render so the ref still tracks the latest `posMap` for downstream effects to read.
+2. **`@typescript-eslint/no-explicit-any` at `:91`** — `useRef<any>(null)` for the OrbitControls handle. Typed it as `React.ComponentRef<typeof OrbitControls> | null`, which derives the imperative-handle type directly from the drei component without a separate import.
+3. **`react-hooks/purity` at `:306`** — `useRef(performance.now())` in `FrameMonitor`. Initialized to `0` and set on mount in a `useEffect`. The `useFrame` callback overwrites it on the first rendered frame, so the `0` value is observed for at most one tick.
+
+Also cleared two warnings while the file was open: removed the unused `NodeMetrics` import and the unused `HOME_POS` constant. The remaining `set-state-in-effect` error at the camera-animation `setControlsEnabled(false)` call (line ~161) was suppressed with a single targeted `eslint-disable-next-line` + rationale comment — it's legitimate event-driven external-system sync (toggle OrbitControls during scripted camera animations) and the cascading render is bounded by the `prevSelectionKey` guard. Refactoring it into ref-based imperative mutation would have been higher risk for the animation pipeline.
+
+**Verification.** `tsc --noEmit` clean; lint clean on `CausalDAG3D.tsx`; vitest 567/567 pass.
+
 ### 2026-05-02 — Next up
 
 - TBD — open for direction.

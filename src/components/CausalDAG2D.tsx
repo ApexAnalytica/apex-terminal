@@ -27,16 +27,28 @@ import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
 import type { CausalEdge, EpochSnapshot } from "@/lib/types";
+import {
+  compute2DForceLayout,
+  create2DLiveSimulation,
+  graphSignature,
+  type LiveSimulation,
+  type Position2D,
+} from "@/lib/graph-layout-2d";
 import { AnimatePresence } from "framer-motion";
 
+type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
+
 function CausalNode2D({ data, selected }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, domain, datasetColor, shockIntensity } = data;
+  const { label, category, omegaComposite, isRestricted, domain, datasetColor, shockIntensity, emphasis } = data;
   const color = datasetColor ?? getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
   const shockGlow = shockIntensity ?? 0;
+  const nodeEmphasis: NodeEmphasis = emphasis ?? "none";
+  const isDim = nodeEmphasis === "dim";
+  const isFocus = nodeEmphasis === "focus";
 
-  const selectionGlow = selected
+  const selectionGlow = selected || isFocus
     ? "0 0 12px #00e5ff80, 0 0 24px #00e5ff40"
     : "";
 
@@ -44,9 +56,11 @@ function CausalNode2D({ data, selected }: NodeProps) {
     <motion.div
       className="relative px-5 py-3 rounded border font-mono text-[11px] tracking-wider text-center min-w-[120px]"
       style={{
-        borderColor: selected ? "#00e5ff" : isRestricted ? "#ff1744" : color,
+        borderColor: selected || isFocus ? "#00e5ff" : isRestricted ? "#ff1744" : color,
         backgroundColor: `color-mix(in srgb, ${color} ${Math.round(5 + (omegaComposite / 10) * 15)}%, #0a0b10)`,
         color,
+        opacity: isDim ? 0.18 : 1,
+        transition: "opacity 180ms ease-out",
         boxShadow: [
           selectionGlow,
           shockGlow > 0
@@ -286,61 +300,100 @@ function CausalDAG2DInner() {
 
   const CONTRACTION = 0.18;
 
-  // Stable hash: deterministic position per node ID (won't jump when nodes are filtered)
-  const idHash = useCallback((id: string): number => {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) {
-      h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  // Force-directed layout. Cached positions come from a one-shot offline
+  // simulation per graph signature; live positions are written by the rAF
+  // loop while a node is being dragged. Display falls back to cached when
+  // no live perturbation is in flight. Filter / isolation / replay never
+  // trigger a re-layout.
+  const liveSimRef = useRef<LiveSimulation | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
+  const sig = graphSignature(graphData.nodes, graphData.edges);
+  const [prevSig, setPrevSig] = useState<string>("");
+  const [cachedLayout, setCachedLayout] = useState<Map<string, Position2D>>(
+    () => new Map(),
+  );
+  const [livePositions, setLivePositions] = useState<Map<string, Position2D> | null>(
+    null,
+  );
+  if (sig !== prevSig) {
+    setPrevSig(sig);
+    setCachedLayout(compute2DForceLayout(graphData.nodes, graphData.edges));
+    setLivePositions(null);
+  }
+  const nodePositions = livePositions ?? cachedLayout;
+
+  // Build the live (perturbable) simulation whenever the cached layout swaps.
+  // No setState here — only ref + rAF management.
+  useEffect(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
-    return Math.abs(h);
+    liveSimRef.current = create2DLiveSimulation(
+      graphData.nodes,
+      graphData.edges,
+      cachedLayout,
+    );
+  }, [graphData.nodes, graphData.edges, cachedLayout]);
+
+  // Cleanup any in-flight rAF on unmount.
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
-  const nodes: Node[] = useMemo(() => {
-    // Vertical layout: 5 columns, nodes flow top-to-bottom
-    // Stable positions based on node ID hash — won't jump when filtered
-    const COLS = 5;
-    const COL_W = 220;
-    const ROW_H = 130;
-
-    // Sort nodes by domain then by ID hash for consistent vertical ordering
-    const domainOrder: Record<string, number> = {
-      "Saudi Aramco Energy": 0,
-      "QatarEnergy LNG": 1,
-      "QAFCO Fertilizer": 2,
-      "Ma'aden Phosphate": 3,
+  const startSimLoop = useCallback(() => {
+    if (rafRef.current !== null) return;
+    const tick = () => {
+      const sim = liveSimRef.current;
+      if (!sim) {
+        rafRef.current = null;
+        return;
+      }
+      sim.tick();
+      setLivePositions(sim.positions());
+      if (sim.alpha() > 0.005) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        rafRef.current = null;
+      }
     };
-    const sorted = [...graphData.nodes].sort((a, b) => {
-      const da = domainOrder[a.domain] ?? 4;
-      const db = domainOrder[b.domain] ?? 4;
-      if (da !== db) return da - db;
-      return idHash(a.id) - idHash(b.id);
-    });
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
 
-    // Assign stable column/row positions
-    const positions = new Map<string, { x: number; y: number }>();
-    sorted.forEach((n, i) => {
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
-      // Slight jitter from ID hash for organic feel, but small (±20px)
-      const h = idHash(n.id);
-      const jitterX = ((h % 41) - 20);
-      const jitterY = ((h % 37) - 18);
-      positions.set(n.id, {
-        x: col * COL_W + 50 + jitterX,
-        y: row * ROW_H + 30 + jitterY,
-      });
-    });
+  // Emphasis target: hover wins over selection. Empty when nothing is hovered
+  // or selected — that's the default "no dimming" state.
+  const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
 
+  const emphasisMap = useMemo(() => {
+    const map = new Map<string, NodeEmphasis>();
+    if (!emphasisTarget) return map;
+    const neighbors = new Set<string>();
+    for (const e of graphData.edges) {
+      if (e.source === emphasisTarget) neighbors.add(e.target);
+      if (e.target === emphasisTarget) neighbors.add(e.source);
+    }
+    for (const n of graphData.nodes) {
+      if (n.id === emphasisTarget) map.set(n.id, "focus");
+      else if (neighbors.has(n.id)) map.set(n.id, "neighbor");
+      else map.set(n.id, "dim");
+    }
+    return map;
+  }, [emphasisTarget, graphData.nodes, graphData.edges]);
+
+  const nodes: Node[] = useMemo(() => {
     return graphData.nodes.map((n) => {
-      const base = positions.get(n.id) ?? { x: 0, y: 0 };
-      const omega = n.omegaFragility.composite;
-
-      // Positions are purely structural — no omega-dependent drift.
-      // This prevents position shifts during temporal scrubbing.
+      const base = nodePositions.get(n.id) ?? { id: n.id, x: 0, y: 0 };
       let posX = base.x;
       let posY = base.y;
 
-      // Apply contraction during replay
+      // Replay contraction: pull stressed nodes toward stressed neighbors.
+      // Applied as an offset over the dynamic layout so it doesn't fight drag.
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[n.id];
         if (state && state.shockIntensity > 0.01) {
@@ -348,7 +401,7 @@ function CausalDAG2DInner() {
           for (const edge of graphData.edges) {
             const nbId = edge.source === n.id ? edge.target : edge.target === n.id ? edge.source : null;
             if (!nbId) continue;
-            const nbPos = positions.get(nbId);
+            const nbPos = nodePositions.get(nbId);
             const nbState = currentSnapshot.nodeStates[nbId];
             if (!nbPos) continue;
             const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
@@ -366,6 +419,7 @@ function CausalDAG2DInner() {
         }
       }
 
+      const omega = n.omegaFragility.composite;
       const epochOmega = currentSnapshot?.nodeStates[n.id]?.omegaComposite ?? omega;
       const epochShock = currentSnapshot?.nodeStates[n.id]?.shockIntensity ?? 0;
 
@@ -381,10 +435,11 @@ function CausalDAG2DInner() {
           isRestricted: truthFilter === "verified" && n.isRestricted,
           datasetColor: n.datasetColor,
           shockIntensity: epochShock,
+          emphasis: emphasisMap.get(n.id) ?? "none",
         },
       };
     });
-  }, [graphData, truthFilter, currentSnapshot, idHash]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, emphasisMap]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {
@@ -399,6 +454,8 @@ function CausalDAG2DInner() {
         const isInconsistent = truthFilter === "verified" && e.isInconsistent;
         const propagationSignal = currentSnapshot?.edgeStates[e.id]?.propagationSignal ?? 0;
         const isSelected = selectedEdge?.id === e.id;
+        const inEmphasisScope =
+          !emphasisTarget || e.source === emphasisTarget || e.target === emphasisTarget;
 
         const baseColor = isInconsistent
           ? "#ff1744"
@@ -414,9 +471,10 @@ function CausalDAG2DInner() {
           : baseColor;
 
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
-        const opacity = propagationSignal > 0
+        let opacity = propagationSignal > 0
           ? Math.min(1, baseOpacity + propagationSignal * 0.3)
           : selectedEdge && !isSelected ? 0.15 : baseOpacity;
+        if (!inEmphasisScope) opacity = Math.min(opacity, 0.1);
 
         const baseWidth = 0.5 + e.weight * 1.5;
         const strokeWidth = isSelected
@@ -439,6 +497,7 @@ function CausalDAG2DInner() {
             strokeWidth,
             strokeDasharray: e.type === "confounded" || isInconsistent ? "5,5" : undefined,
             opacity,
+            transition: "opacity 180ms ease-out",
           },
           labelStyle: {
             fill: "#5a5e72",
@@ -451,7 +510,7 @@ function CausalDAG2DInner() {
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot, selectedEdge]
+    [graphData, truthFilter, currentSnapshot, selectedEdge, emphasisTarget]
   );
 
   // Filter edges for isolation mode
@@ -587,7 +646,40 @@ function CausalDAG2DInner() {
   const onPaneClick = useCallback(() => {
     setSelectedEdge(null);
     setSelectedNode(null);
+    setHoveredNodeId(null);
   }, [setSelectedNode]);
+
+  const onNodeMouseEnter: NodeMouseHandler = useCallback((_event, rfNode) => {
+    setHoveredNodeId(rfNode.id);
+  }, []);
+
+  const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
+    setHoveredNodeId(null);
+  }, []);
+
+  const onNodeDragStart: NodeMouseHandler = useCallback(
+    (_event, rfNode) => {
+      const sim = liveSimRef.current;
+      if (!sim) return;
+      sim.pin(rfNode.id, rfNode.position.x, rfNode.position.y);
+      sim.reheat(0.5);
+      startSimLoop();
+    },
+    [startSimLoop],
+  );
+
+  const onNodeDrag: NodeMouseHandler = useCallback((_event, rfNode) => {
+    const sim = liveSimRef.current;
+    if (!sim) return;
+    sim.pin(rfNode.id, rfNode.position.x, rfNode.position.y);
+  }, []);
+
+  const onNodeDragStop: NodeMouseHandler = useCallback((_event, rfNode) => {
+    const sim = liveSimRef.current;
+    if (!sim) return;
+    sim.unpin(rfNode.id);
+    sim.cool();
+  }, []);
 
   // Resolve labels for edge inspector
   const selectedSourceLabel = selectedEdge
@@ -608,6 +700,11 @@ function CausalDAG2DInner() {
           nodeTypes={nodeTypes}
           onInit={onInit}
           onNodeClick={onNodeClick}
+          onNodeMouseEnter={onNodeMouseEnter}
+          onNodeMouseLeave={onNodeMouseLeave}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onSelectionChange={onSelectionChange}

@@ -49,8 +49,12 @@ def event_study(
         raise ValueError(f"event window for {event_id} too sparse: {len(window)} obs")
 
     log_chg = np.log(window.where(window > 0)).diff().dropna()
-    pre = log_chg.loc[:event_date]
-    post = log_chg.loc[event_date:]
+    # Strictly-before pre-window: the event-day return belongs to ``post``
+    # (it captures the day-zero impulse). Including it in pre would
+    # double-count and bias pre_mean upward by a fraction of the event,
+    # mechanically shrinking the abnormal return.
+    pre = log_chg.loc[log_chg.index < event_date]
+    post = log_chg.loc[log_chg.index >= event_date]
     if pre.empty or post.empty:
         raise ValueError(f"event {event_id}: pre or post window empty")
 

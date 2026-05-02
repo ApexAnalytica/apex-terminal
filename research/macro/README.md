@@ -106,15 +106,22 @@ research/macro/
 │   ├── treasury.py
 │   ├── pwt_sovereign.py    annual China + Brazil
 │   ├── statsmodels_macro.py
-│   └── disruption_events.py
+│   ├── disruption_events.py
+│   └── dxy.py              synthetic ICE DXY from FX panel
 ├── estimators/
 │   ├── ardl.py             from-scratch ARDL + HAC SEs
 │   └── event_study.py      pre/post abnormal-return
 ├── fits/
-│   └── edge_fits.py        full pipeline
+│   ├── edge_fits.py        15 cross-domain edges (PR #129)
+│   └── dxy_fits.py         4 DXY edges (PR #134)
+├── validation/             synthetic-data correctness tests
+│   ├── ardl_synthetic.py
+│   ├── event_study_synthetic.py
+│   └── dxy_construction.py
 ├── output/
 │   ├── _cache/             gitignored
-│   └── edge_fits.json      fit results (read by PR-B port)
+│   ├── edge_fits.json      cross-domain fit results
+│   └── dxy_fits.json       DXY edge fit results
 ├── README.md
 └── requirements.txt
 ```
@@ -124,11 +131,36 @@ research/macro/
 ```bash
 # In repo root
 python3 -m pip install -r research/macro/requirements.txt
+
+# Fits
 python3 -m research.macro.fits.edge_fits
+python3 -m research.macro.fits.dxy_fits
+
+# Validation suite (no network needed; runs in <2s)
+python3 -m research.macro.validation
 ```
 
-First run downloads ~6 small CSVs (≈3 MB total) into `output/_cache/`.
-Subsequent runs are offline.
+First fit run downloads ~6 small CSVs (≈3 MB total) into
+`output/_cache/`. Subsequent runs are offline.
+
+## Validation suite
+
+Each estimator has a synthetic-data validation that generates a series
+with known parameters and asserts recovery within tolerance. Mirrors
+`research/validation/` (T1D side).
+
+| suite                          | cases | tolerance                              |
+|--------------------------------|-------|----------------------------------------|
+| ARDL synthetic                 | 5     | ±0.15 on long-run β; CI-contains-0 in zero regime |
+| Event-study synthetic          | 3     | ±2.0 percentage points abnormal return; sign + significance |
+| DXY construction               | 6     | latest in [80, 130]; no NaNs; ≥1999-02 start |
+
+The event-study suite caught a real bug in the original
+implementation: inclusive `.loc[:event_date]` slicing on the pre
+window double-counted the event-day return when the source series had
+an observation exactly at ``event_date`` (daily data). Fixed in this
+PR; the existing monthly fits were unaffected because Brent / DXY
+log-changes don't land on the event day.
 
 ## Channel-fit summary
 

@@ -372,8 +372,13 @@ export const useApexStore = create<ApexState>((set, get) => ({
     }),
   applyFeedBatch: (batch) =>
     set((s) => {
-      const { signalKinds, updates, event } = batch;
-      const updateMap = new Map(updates.map((u) => [u.nodeId, u.point]));
+      const { signalKinds, updates, event, providerId } = batch;
+      // Stamp the providerId onto each emitted point so cleanup later
+      // knows who wrote each signal (prevents cross-provider clobber when
+      // multiple providers share a `kind`, e.g. "indicator").
+      const updateMap = new Map(
+        updates.map((u) => [u.nodeId, { ...u.point, providerId }] as const),
+      );
       const kindSet = new Set(signalKinds);
       let touched = false;
 
@@ -392,12 +397,22 @@ export const useApexStore = create<ApexState>((set, get) => ({
           touched = true;
           return { ...n, liveData: upsertLiveSignal(n.liveData, incoming) };
         }
-        // No incoming update for this node — drop any signals this batch is
-        // authoritative for (cleanup of stale signals, e.g. when a sanctioned
-        // jurisdiction lifts and the node no longer matches).
-        if (n.liveData?.some((p) => kindSet.has(p.kind))) {
+        // No incoming update for this node — drop ONLY signals THIS provider
+        // owns whose kind is in `signalKinds`. Signals written by other
+        // providers (e.g. a different provider's "indicator") survive
+        // untouched. This is the cross-provider cleanup safety net.
+        if (
+          n.liveData?.some(
+            (p) => kindSet.has(p.kind) && p.providerId === providerId,
+          )
+        ) {
           touched = true;
-          return { ...n, liveData: n.liveData.filter((p) => !kindSet.has(p.kind)) };
+          return {
+            ...n,
+            liveData: n.liveData.filter(
+              (p) => !(kindSet.has(p.kind) && p.providerId === providerId),
+            ),
+          };
         }
         return n;
       });

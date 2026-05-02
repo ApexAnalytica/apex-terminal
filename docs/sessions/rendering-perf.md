@@ -113,6 +113,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 **Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 522/522 pass.
 
+### 2026-05-02 — Perf sweep across canvas surfaces (#72 playbook leftovers)
+
+Audit found four spots where the #72 playbook patterns hadn't been fully applied. All low-risk swaps; no behavior change.
+
+1. **`CausalDAG2D.tsx:302–313`** — full-store destructure (`const { truthFilter, replayActive, currentEpoch, ... } = useApexStore()`) replaced with eight per-field selectors. The destructure re-rendered the entire 2D component on every store mutation including timeline scrub ticks (`currentEpoch` / `timelinePosition`) — even when those fields were irrelevant to the rendered output.
+2. **`dag3d/DAGOverlay.tsx`** — added a memoized `nodeById` Map and replaced three `activeGraph.nodes.find(...)` calls (one in `selectedNodes.map()`, two in the ANALYZE-SELECTION button handler). With 20+ selected nodes the previous code was O(N²); now O(1) per lookup.
+3. **`CausalDAG3D.tsx:907–912`** — edge inspector label resolution switched from `graphData.nodes.find(...)` to the existing `nodeById` Map. Same lookup used elsewhere in the file; no reason to re-walk the array per render.
+4. **`CausalDAG3D.tsx:573` (new)** — added a memoized `edgeById` Map alongside `nodeById`. `greyedOutNodes` now resolves severed edges via `edgeById.get(edgeId)` instead of `graphData.edges.find(...)` per cut.
+
+**Verification.** `tsc --noEmit` clean; lint clean on changed files; vitest 537/537 pass. (Three pre-existing lint errors at `CausalDAG3D.tsx:86, 91, 306` are unrelated — `posMapRef.current = ...` in render, an `any` cast, and `performance.now()` in `useRef` initializer. Out of scope for this sweep.)
+
 ### 2026-05-02 — Next up
 
 - TBD — open for direction.

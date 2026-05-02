@@ -572,6 +572,15 @@ export default function CausalDAG3D() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topologyKey]);
 
+  // Same pattern for edges — used by greyedOutNodes to resolve severed
+  // edges in O(1) instead of running graphData.edges.find per cut.
+  const edgeById = useMemo(() => {
+    const m = new Map<string, (typeof graphData.edges)[number]>();
+    for (const e of graphData.edges) m.set(e.id, e);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+
   // Store baseline omega scores (live/initial values) as a reference point.
   // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
   const baselineOmegaRef = useRef<Record<string, number>>({});
@@ -768,10 +777,11 @@ export default function CausalDAG3D() {
   // Compute greyed-out nodes: after a cut, nodes with Ω < 7 that are NOT downstream of cut points and NOT consequence nodes
   const greyedOutNodes = useMemo(() => {
     if (severedEdges.length === 0) return new Set<string>();
-    // Find all cut targets (downstream of severed edges)
+    // Find all cut targets (downstream of severed edges) — O(1) via edgeById
+    // instead of graphData.edges.find per cut.
     const cutTargets = new Set<string>();
     for (const edgeId of severedEdges) {
-      const edge = graphData.edges.find((e) => e.id === edgeId);
+      const edge = edgeById.get(edgeId);
       if (edge) cutTargets.add(edge.target);
     }
     // BFS downstream from cut targets
@@ -797,7 +807,7 @@ export default function CausalDAG3D() {
       }
     }
     return greyed;
-  }, [severedEdges, graphData]);
+  }, [severedEdges, graphData, edgeById]);
 
   // Compute disconnected nodes: find the largest connected component,
   // grey out any node not in it (floating imported clusters)
@@ -903,12 +913,13 @@ export default function CausalDAG3D() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [selectedNode, setSelectedNode, selectedEdge]);
 
-  // Resolve labels for edge inspector
+  // Resolve labels for edge inspector via the existing nodeById Map (O(1))
+  // instead of two Array.find calls per render.
   const selectedEdgeSourceLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    ? nodeById.get(selectedEdge.source)?.label ?? selectedEdge.source
     : "";
   const selectedEdgeTargetLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
   return (

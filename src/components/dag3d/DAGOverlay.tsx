@@ -27,10 +27,18 @@ export default function DAGOverlay() {
   const activeGraph = isLive ? graphData : temporalGraph;
   const meta = activeGraph.metadata;
 
+  // O(1) id → node lookup, used both inside this component and by the
+  // selection / domain-filter handlers below. Replaces O(N²) Array.find
+  // calls that ran inside selectedNodes.map() loops.
+  const nodeById = useMemo(
+    () => new Map(activeGraph.nodes.map((n) => [n.id, n] as const)),
+    [activeGraph.nodes],
+  );
+
   const selectedNodeData = useMemo(() => {
     if (!selectedNode) return null;
-    return activeGraph.nodes.find((n) => n.id === selectedNode) ?? null;
-  }, [selectedNode, activeGraph.nodes]);
+    return nodeById.get(selectedNode) ?? null;
+  }, [selectedNode, nodeById]);
 
   // Domain legend: count nodes per domain
   const domainCounts = useMemo(() => {
@@ -187,7 +195,7 @@ export default function DAGOverlay() {
             </div>
             <div className="flex flex-col gap-0.5 max-h-[120px] overflow-y-auto">
               {selectedNodes.map((nodeId) => {
-                const node = activeGraph.nodes.find((n) => n.id === nodeId);
+                const node = nodeById.get(nodeId);
                 return (
                   <div key={nodeId} className="flex items-center justify-between gap-1 py-0.5">
                     <span className="text-[8px] text-text-muted truncate">{node?.label ?? nodeId}</span>
@@ -219,15 +227,12 @@ export default function DAGOverlay() {
               </button>
               <button
                 onClick={() => {
-                  const nodeLabels = selectedNodes.map((id) => {
-                    const n = activeGraph.nodes.find((node) => node.id === id);
-                    return n ? n.label : id;
-                  });
+                  const nodeLabels = selectedNodes.map((id) => nodeById.get(id)?.label ?? id);
                   const selSet = new Set(selectedNodes);
                   const subEdges = activeGraph.edges.filter((e) => selSet.has(e.source) && selSet.has(e.target));
                   const edgeDescs = subEdges.map((e) => {
-                    const src = activeGraph.nodes.find((n) => n.id === e.source)?.label ?? e.source;
-                    const tgt = activeGraph.nodes.find((n) => n.id === e.target)?.label ?? e.target;
+                    const src = nodeById.get(e.source)?.label ?? e.source;
+                    const tgt = nodeById.get(e.target)?.label ?? e.target;
                     return `${src} → ${tgt} (${e.type}, w=${e.weight}, mechanism: ${e.physicalMechanism || "N/A"})`;
                   });
                   const prompt = `ANALYZE SELECTION: The user has selected ${selectedNodes.length} nodes in the causal DAG. Provide a macro analysis of this subgraph — what are the key causal pathways, systemic risks, and cascading vulnerabilities? How do these nodes interact and what are the implications?\n\nSelected nodes: ${nodeLabels.join(", ")}\n\nEdges within selection (${subEdges.length}):\n${edgeDescs.join("\n")}`;

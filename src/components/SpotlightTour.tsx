@@ -22,7 +22,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="domain-selector-modal"]',
     title: "WELCOME \u2014 PICK A DOMAIN",
     description:
-      "Welcome to APEX Analytica MANIFOLD \u2014 a causal-inference platform for discovering, verifying, and stress-testing networks across sectors. Everything starts here with a domain. Use the selector on the left to pick one or more: Financial, Macro, Geopolitical, Scientist (including Type-1 Diabetes \u03B2-cell dynamics), or Cross-Domain. Pick what fits your analysis, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the \u201C?\u201D in the top-right.",
+      "Welcome to APEX Analytica MANIFOLD \u2014 a causal-inference platform for discovering, verifying, and stress-testing networks across sectors. Everything starts with a persona. Pick one of the five pills at the top of this modal: FINANCIAL (markets, credit, sovereign), MACRO (growth, inflation, policy), GEOPOLITICAL (energy, infrastructure, defense), SCIENTIST (life sciences, including Type-1 Diabetes \u03B2-cell dynamics), or CROSS-DOMAIN. Each persona narrows the visible domain cards; pick a card, confirm, and the tour continues on the platform. CROSS-DOMAIN is the only persona that lets you multi-select across dataset families. You can relaunch this tour anytime from the \u201C?\u201D in the top-right.",
     tooltipPosition: "right",
   },
   {
@@ -55,7 +55,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "NODE INSPECTOR & \u03A9 PILLARS",
     description:
-      "Click any node to open the Node Inspector in the right panel. It shows the node\u2019s \u03A9-Fragility composite score (0\u201310) broken into five pillars: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, and Tail Depth. Each pillar is expandable with a detailed explanation, formula, and physical constraint. Connected edges are listed below with causal mechanisms.",
+      "Click any node to open the Node Inspector in the right panel. The centerpiece is a \u03A9-Fragility radar pentagon \u2014 composite score (0\u201310) at the center, with each vertex labeled by pillar letter (I/R/J/C/T) and value: Irreplaceability, Restoration Latency, Jurisdictional Hazard, Cascade Load, Tail Depth. Click any vertex letter to drop in that pillar\u2019s explanation, detail, and formula inline; click again or hit \u00D7 to dismiss. The methodology toggle below explains how the composite is computed. Connected edges are listed further down with causal mechanisms.",
     tooltipPosition: "left",
   },
   {
@@ -99,7 +99,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     title: "PARETO \u2014 CRITICALITY HORIZONS",
     description:
-      "PARETO tracks three independent criticality signals, each with its own T-N countdown and confidence. CSD (Critical Slowing Down) watches recovery-rate decay via \u03BBmax approaching 1.0. PH (Persistent Homology) sweeps a filtration for topological fragility holes. LPPLS (Log-Periodic Power Law Singularity) fits the Sornette crash model. Each card shows observed vs. model signal, formula, methodology, and current assessment.",
+      "PARETO tracks a domain-tuned set of criticality estimators, each with its own T-N countdown, confidence, and assessment. For geopolitical/financial domains: CSD (Critical Slowing Down via \u03BBmax \u2192 1), Persistent Homology (topological fragility), and LPPLS (Sornette log-periodic crash model). For Life Sciences / T1D: BOCPD changepoints, Cox proportional hazards, transfer entropy, NLME C-peptide decay, Moran\u2019s I, and HTE meta-analysis \u2014 estimators calibrated to biological time-to-event signals rather than market crashes. Each card exposes observed vs. model signal, formula, methodology, and current assessment.",
     tooltipPosition: "left",
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
@@ -140,9 +140,9 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: "voice-features",
     targetSelector: '[data-tour="system-copilot"]',
-    title: "VOICE I/O & CLICK-TO-SPEAK",
+    title: "VOICE I/O — SPEAKER & MIC",
     description:
-      "Turn on the speaker icon and the copilot reads every response aloud in a Jarvis-style voice. Turn on the microphone and you can dictate queries instead of typing. Separately, clicking any explanation text in the Node Inspector, pillar breakdowns, or constraint traces routes that text through the copilot and has it spoken aloud \u2014 useful for hands-free exploration.",
+      "Turn on the speaker icon and the copilot reads every response aloud in a Jarvis-style voice. Turn on the microphone and you can dictate queries instead of typing \u2014 useful when you\u2019re reading off a second screen or running Manifold from across the room.",
     tooltipPosition: "right",
   },
   {
@@ -174,7 +174,7 @@ const TOUR_STEPS: TourStep[] = [
     targetSelector: '[data-tour="text-size-toggle"]',
     title: "TEXT SIZE (S / M / L)",
     description:
-      "Some analysts run Manifold on large displays or from a distance. Use the S / M / L toggle in the header to scale the entire UI up or down. Your choice persists across sessions \u2014 it\u2019s saved in local storage and applied before the page renders so there\u2019s no flash.",
+      "Some analysts run Manifold on large displays or from a distance. Use the S / M / L toggle in the header to scale the readable text up or down. Layout, canvas, and icons stay put \u2014 only typography rescales, so dense panels stay legible without the graph reflowing. Your choice persists across sessions and is applied before the page renders so there\u2019s no flash.",
     tooltipPosition: "bottom",
   },
   {

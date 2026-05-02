@@ -48,6 +48,7 @@ next-env.d.ts
 /research/.venv/
 /research/output/
 /research/datasets/_cache/
+/research/macro/output/_cache/
 __pycache__/
 *.pyc
 

@@ -11,7 +11,6 @@ import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
-  computeRelevanceBatch,
   csdRegimeGate,
   lpplsRegimeGate,
   phRegimeGate,
@@ -20,10 +19,12 @@ import {
   type ModelRelevanceInput,
   type RelevanceBreakdown,
 } from "@/lib/pareto-relevance";
+import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
+import TissueCohortView from "./scientist/TissueCohortView";
 import MonteCarloForecast from "./MonteCarloForecast";
 import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
@@ -33,6 +34,13 @@ import VX880TrialPanel from "./VX880TrialPanel";
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
   const setInterventionMode = useApexStore((s) => s.setInterventionMode);
+  // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
+  // domain is loaded, so it doesn't pollute non-life-sciences flows.
+  const selectedDomainsForView = useApexStore((s) => s.selectedDomains);
+  const isT1DDomain = useMemo(
+    () => resolveDomainProfile(selectedDomainsForView).id === "t1d",
+    [selectedDomainsForView],
+  );
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const isWide = expandedChart !== null;
 
@@ -89,6 +97,7 @@ export default function ModulePanel() {
             <CascadeHeader />
             <TrinityPanel />
             <DiscoveryRunsPanel />
+            {isT1DDomain && <TissueCohortView />}
           </>
         )}
 
@@ -1151,8 +1160,9 @@ function ParetoPanel({
       sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
     });
 
-    const result = computeRelevanceBatch(inputs, {
+    const result = bootstrapRelevanceBatch(inputs, {
       previous: prevCompositesRef.current,
+      bootstrap: { samples: 200, level: 0.9 },
     });
     // Persist composites for the next render's EMA seed.
     for (const [key, breakdown] of result) {
@@ -1303,9 +1313,9 @@ function ParetoPanel({
               modelSeries: undefined,
               shortDesc: meta.shortDesc,
               methodology: meta.methodology,
-              formula: `INSUFFICIENT DATA — need ≥20 points, have ${maxN}` +
+              formula: `INSUFFICIENT DATA on curated graph nodes — need ≥20 points, have ${maxN}` +
                 (bestEntry ? ` (from ${bestEntry.source})` : ""),
-              assessment: `INSUFFICIENT DATA — BOCPD (Adams & MacKay 2007) requires ≥20 observations to estimate a meaningful run-length posterior. All 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points (VX-880 FORWARD-101 has 3 points; TN-10 has 2–3; T1D Index has 5). Maximum available: ${maxN} point(s). Card is shown so the estimator tab is always visible; it will activate automatically once series reach ≥20 points.`,
+              assessment: `INSUFFICIENT DATA on curated graph nodes — BOCPD (Adams & MacKay 2007) requires ≥20 observations on each node to fit the run-length posterior. The 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points each (VX-880 FORWARD-101 has 3; TN-10 has 2–3; T1D Index has 5). Maximum available on this surface: ${maxN} point(s).\n\nNOTE: BOCPD is LIVE elsewhere in the platform — see the SPIRTES module's bocpd-hypo-calibration tab, which runs the same estimator on the D1NAMO public cohort (8,300+ CGM samples across 9 T1D subjects) and reports AUROC 0.679 / Brier 0.183 / ECE 0.175 against ground-truth hypoglycemic events. This Pareto card activates here when one of these curated graph nodes carries ≥20 longitudinal observations.`,
               emptyState: { kind: "awaiting-data" as const, inputs },
             };
           }
@@ -2399,6 +2409,28 @@ function CriticalityCard({
   const isEmpty = !!emptyState;
   const headlineLabel = relevance ? "rel" : "conf";
   const sectionLabel = relevance ? "MODEL RELEVANCE" : "MODEL CONFIDENCE";
+  // Bootstrap CI half-width on the composite (from `bootstrapRelevanceBatch`).
+  // Rendered as `± N%` next to the headline percentage when present, with the
+  // full range visible on hover. Hidden when the half-width rounds to 0%
+  // (degenerate CI for insufficient-data cases).
+  const ciLowPct = relevance?.compositeCi
+    ? Math.round(relevance.compositeCi.low * 100)
+    : undefined;
+  const ciHighPct = relevance?.compositeCi
+    ? Math.round(relevance.compositeCi.high * 100)
+    : undefined;
+  const ciHalfPct =
+    ciLowPct !== undefined && ciHighPct !== undefined
+      ? Math.round((ciHighPct - ciLowPct) / 2)
+      : undefined;
+  const ciTitle =
+    relevance?.compositeCi
+      ? `${Math.round(
+          relevance.compositeCi.level * 100,
+        )}% bootstrap CI: ${ciLowPct}%–${ciHighPct}% (${
+          relevance.compositeCi.level === 0.9 ? "5th–95th" : "quantile"
+        } percentiles, n=200 resamples)`
+      : undefined;
   // Subsection collapse state — breakdown open by default (it's the headline
   // justification), methodology closed (long prose, mostly read-once).
   const [breakdownOpen, setBreakdownOpen] = useState(true);
@@ -2445,12 +2477,20 @@ function CriticalityCard({
                     {emptyState!.kind === "awaiting-data" ? "awaiting data" : "pending port"}
                   </div>
                 ) : (
-                  <div className="text-[7px] font-mono px-1 py-0.5 rounded" style={{
-                    color: confColor,
-                    backgroundColor: `${confColor}15`,
-                    border: `1px solid ${confColor}30`,
-                  }}>
-                    {confPct}% {headlineLabel}
+                  <div
+                    className="text-[7px] font-mono px-1 py-0.5 rounded"
+                    style={{
+                      color: confColor,
+                      backgroundColor: `${confColor}15`,
+                      border: `1px solid ${confColor}30`,
+                    }}
+                    title={ciTitle}
+                  >
+                    {confPct}%
+                    {ciHalfPct !== undefined && ciHalfPct > 0 ? (
+                      <span className="opacity-70"> ± {ciHalfPct}%</span>
+                    ) : null}{" "}
+                    {headlineLabel}
                   </div>
                 )}
               </div>
@@ -2633,6 +2673,9 @@ function CriticalityCard({
                       </div>
                       <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
                         {confPct}% = {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) = {relevance.rawComposite.toFixed(2)}
+                        {relevance.compositeCi && ciLowPct !== undefined && ciHighPct !== undefined && (
+                          <> · {Math.round(relevance.compositeCi.level * 100)}% CI [{ciLowPct}%–{ciHighPct}%]</>
+                        )}
                         {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
                           <> → smoothed {relevance.composite.toFixed(2)}</>
                         )}

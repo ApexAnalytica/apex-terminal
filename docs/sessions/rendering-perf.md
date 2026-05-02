@@ -98,9 +98,24 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 **Lesson.** Sugiyama gives a clean causal-flow read but loses the organic/spatial feel of force-directed. If we revisit 3D layout later, the right approach is probably force-directed seeding + a light rank-influence pass (use rank as a soft y-bias on top of free force layout), not a strict rank assignment.
 
+### 2026-05-02 — Map view orb fixes (orbs on lines, constant speed)
+
+**Two bugs in `CausalDAGMap.tsx`** from prod feedback:
+
+1. **Orbs floating off the lines.** Edge lines were stored as `[source, controlPoint, target]` — three points which MapLibre renders as a kinked 2-segment polyline through the control point. Particles, however, used those same 3 points as a quadratic **bezier** where the control point is *off* the curve. The bezier path bulged away from the kinked line, so orbs visually floated above the edges they were supposed to trace.
+2. **Speed varied with edge length.** `phase += 0.003` per frame for every edge regardless of length, so all particles completed traversal in the same number of frames. Long edges felt fast, short edges felt sluggish.
+
+**Fixes** (single file: `src/components/CausalDAGMap.tsx`):
+- **Sample the bezier into 25 polyline points** when building each edge's `LineString`. MapLibre now renders a near-smooth curve, and the line geometry IS the particle path — they can't drift apart.
+- **Cumulative arc length** per polyline so the particle can interpolate by distance (not by raw vertex index, which would skew through curvature).
+- **Constant degrees-per-frame** velocity (`SPEED_DEG_PER_FRAME = 0.05` ≈ 36 px/s at zoom 2). Per-edge `dPhase = SPEED / totalLen` keeps the phase fraction in `[0, 1]` while absolute speed is constant.
+- While in the file, fixed a pre-existing `set-state-in-effect` lint violation by moving the empty-features clear into the rAF callback (instead of the effect body) and stopping the rAF loop when there are no temporal edges.
+
+**Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 522/522 pass.
+
 ### 2026-05-02 — Next up
 
-- **Map view (`CausalDAGMap.tsx`) orb fixes.** Two issues from prod feedback: (1) animated orbs float independently of the edge lines they should be tracing, and (2) all orbs reach point B in the same time regardless of edge length, so short edges have slow orbs and long edges have fast ones — should be constant px/s instead.
+- TBD — open for direction.
 
 ---
 

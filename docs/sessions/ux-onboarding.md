@@ -12,10 +12,14 @@ This session does **not** care about graph data, engines, canvas rendering, or p
 
 ### First-visit flow
 - Welcome modal + Domain Workspace + auto-launching SpotlightTour
-- Component: `src/components/SpotlightTour.tsx`
+- Component: `src/components/SpotlightTour.tsx` (rendering shell). Step data lives in `src/lib/tour-steps.ts`.
 - Storage flag: `localStorage["manifold:tour-seen"]`
 - Uses `data-tour="..."` anchors throughout the app to attach steps to UI elements
-- Tour currently has 22+ steps covering persona-based domain selector, 3D/2D/MAP views, text-size toggle, PEARL manual vs CASCADE DEFENSE auto-interdiction, feedback widget, etc.
+- **Two-phase structure**:
+  - **First run** (~9 steps): auto-launches on first visit. Tight, hands-on — three steps gate on user interaction (`awaitInteraction`) before advancing: click any node, switch to TARSKI, drag the time dial. Last step opens an opt-in deep-dive menu.
+  - **Deep dive** (opt-in, accessed from finish-step menu or via `?` button): three tracks the user picks from — `engines` (SPIRTES / TARSKI / PEARL / PARETO), `loop` (shocks · Cascade Defense · Compute), `customization` (views · text size · import · feedback).
+- **Track-aware copy**: each step's `copy` field can be `StepCopy` (shared) or `Record<TourTrack, StepCopy>` (per-track). The two tracks are `analyst` (used for `financial | macro | geopolitical | cross | analyst`) and `scientist`. `trackForPersona()` does the mapping. Five personas collapse to two tracks because financial/macro/geopolitical/cross share enough vocab to take the same tour with shared copy; scientist is a distinct domain that deserves its own framing.
+- **Escalating-hint stall recovery**: when a step has `awaitInteraction` and the user idles, after 8s the highlight starts a soft pulse (`tour-pulse-soft`); after 15s it pulses harder (`tour-pulse-strong`) and the in-tooltip hint goes bold. There is no "skip step" button — users can still bail from the whole tour via SKIP TOUR / Esc.
 
 ### Persona gating
 - `activePersona: "scientist" | "financial" | "macro" | "geopolitical" | "cross" | "analyst"` in `useApexStore`, default `"financial"`. (`"analyst"` is retained only to tolerate legacy persisted values from before the persona refactor — no UI surfaces it.)

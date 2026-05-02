@@ -2381,6 +2381,21 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+  // ── FX / USD strength (1) ──
+  {
+    id: "ip_dxy",
+    label: "US Dollar Index (DXY)",
+    shortLabel: "DXY",
+    category: "finance",
+    omegaFragility: omega(7.5, 1.0, 1.0, 8.5, 9, 8.0),
+    globalConcentration: "Geometric basket: EUR 57.6%, JPY 13.6%, GBP 11.9%, CAD 9.1%, SEK 4.2%, CHF 3.6%",
+    replacementTime: "real-time (FX market continuous)",
+    physicalConstraint: "Reserve-currency premium gauge; rises with US rate differential and risk-off; transmits to commodity prices (USD-priced) and EM dollar-debt rollover stress; closes the Fed → DXY → import-prices → core CPI → Fed feedback loop",
+    domain: "Macro Impact: Inflation & Policy",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2764,33 +2779,49 @@ const EDGES: CausalEdge[] = [
   { id: "mi_case_shiller_hpi__ip_cpi_oer", source: "mi_case_shiller_hpi", target: "ip_cpi_oer", weight: 0.55, lag: 6, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Home price appreciation feeds into OER with 12-18 month lag as new leases gradually roll into the BLS rental sample." },
 
   // ─── Physical → Inflation pass-through (audit-driven cross-domain) ─
-  // Closes the loop so physical shocks (Hormuz, Red Sea, fertilizer outages,
-  // China demand) can propagate into US CPI/PPI. Prior to this block the
-  // macro domains only emitted signal; nothing inbound from energy/supply
-  // chain/sovereign reached the inflation print.
+  // Weights are empirical — fitted with ARDL on monthly log-returns of
+  // IMF Pink Sheet + EIA-mirror commodity series, AIC-selected lags,
+  // Newey-West HAC standard errors. See research/macro/ for the full
+  // pipeline + research/macro/output/edge_fits.json for the per-edge
+  // fit record. weight = clip(|long_run_multiplier| × source_share, 0,
+  // 0.95) — i.e. expected % move in target under full source disruption.
+  // P1/P2/P4 channel fits sit at 90% confidence; P3 capped at 55%
+  // because shipping is fit through a partial proxy (Industrial Inputs
+  // index in lieu of an unreachable Baltic Dry / Drewry feed).
 
-  // ── P1: Energy → Inflation ──
-  { id: "sa_ras_tanura_terminal__ip_cpi_energy", source: "sa_ras_tanura_terminal", target: "ip_cpi_energy", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ras Tanura handles ~6.5 Mbbl/d of Saudi crude exports — terminal disruption tightens global crude supply and transmits to retail gasoline prices within weeks." },
-  { id: "sa_abqaiq_plants__ip_cpi_energy", source: "sa_abqaiq_plants", target: "ip_cpi_energy", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d; the 2019 drone attack spiked Brent ~20% intraday — processing-chokepoint events flow through to US CPI energy." },
-  { id: "qf_strait_of_hormuz__ip_cpi_energy", source: "qf_strait_of_hormuz", target: "ip_cpi_energy", weight: 0.65, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Hormuz transit risk (insurance, partial closure) sets the geopolitical risk premium in oil prices that feeds directly into CPI energy." },
-  { id: "qe_north_field_gas_field__ip_cpi_energy", source: "qe_north_field_gas_field", target: "ip_cpi_energy", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "North Field LNG supply disruption tightens global gas markets — transmits to US natural gas / piped utility component of CPI energy via spot price linkage." },
-  { id: "qe_ras_laffan_port__ip_ppi_energy", source: "qe_ras_laffan_port", target: "ip_ppi_energy", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Ras Laffan loads ~77 MTPA LNG; export disruption raises global gas spot benchmarks that feed producer energy costs." },
+  // ── P1: Energy → Inflation (channel: Brent → IMF Fuel Energy, β=0.918 [0.84, 1.00], n=303) ──
+  { id: "sa_ras_tanura_terminal__ip_cpi_energy", source: "sa_ras_tanura_terminal", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Ras Tanura handles ~6.5 Mbbl/d Saudi crude (~7% global). Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.07 source share." },
+  { id: "sa_abqaiq_plants__ip_cpi_energy", source: "sa_abqaiq_plants", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d (~7% global). 2019 drone attack drove +23% abnormal cumulative Brent return (t=2.26, 90d post-window) — consistent with the 0.918 channel elasticity applied to a 57.6% peak disruption." },
+  { id: "qf_strait_of_hormuz__ip_cpi_energy", source: "qf_strait_of_hormuz", target: "ip_cpi_energy", weight: 0.184, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Hormuz carries ~20% of global oil transit. Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.20 transit share." },
+  { id: "qe_north_field_gas_field__ip_cpi_energy", source: "qe_north_field_gas_field", target: "ip_cpi_energy", weight: 0.092, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "North Field is ~25% of global LNG capacity. Empirical channel: Brent → IMF Fuel Energy elasticity 0.918, scaled by 0.10 (CPI energy is mostly oil; partial gas pass-through)." },
+  { id: "qe_ras_laffan_port__ip_ppi_energy", source: "qe_ras_laffan_port", target: "ip_ppi_energy", weight: 0.011, lag: 1, type: "directed", confidence: 0.82, isInconsistent: false, physicalMechanism: "Ras Laffan loads ~77 MTPA LNG. Empirical channel: Henry Hub natgas → IMF Fuel Energy refit, scaled by 0.10 source share." },
 
-  // ── P2: Food/Fertilizer → Inflation ──
-  { id: "qf_global_food_prices__ip_cpi_food", source: "qf_global_food_prices", target: "ip_cpi_food", weight: 0.55, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Nitrogen fertilizer price spikes raise global crop input costs; transmits to US CPI food via grain/protein channels with one-quarter lag." },
-  { id: "mn_global_food_price_stress__ip_cpi_food", source: "mn_global_food_price_stress", target: "ip_cpi_food", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Phosphate-driven food price stress propagates into US CPI food through global grain and animal-feed price linkages." },
-  { id: "sc_food_price_inflation__ip_cpi_food", source: "sc_food_price_inflation", target: "ip_cpi_food", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "MENA food price inflation tracks the same global wheat/oilseed cycle that drives US CPI food at home — shared upstream commodity exposure." },
-  { id: "sc_fertilizer_price_index__ip_ppi_all_commodities", source: "sc_fertilizer_price_index", target: "ip_ppi_all_commodities", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Fertilizer is a key agricultural input commodity; price spikes raise the all-commodities PPI index through farm-gate cost transmission." },
+  // ── P2: Food/Fertilizer → Inflation (channel: Wheat → IMF Food Price Index, β=0.184, n=316; Industrial Inputs → All Commodity Index, n=446) ──
+  { id: "qf_global_food_prices__ip_cpi_food", source: "qf_global_food_prices", target: "ip_cpi_food", weight: 0.018, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Global food prices feed US CPI food via grain/protein channels. Empirical channel: Wheat → IMF Food Price Index long-run elasticity 0.184, scaled by 0.10 QAFCO-attributable share of global nitrogen-driven food cost." },
+  { id: "mn_global_food_price_stress__ip_cpi_food", source: "mn_global_food_price_stress", target: "ip_cpi_food", weight: 0.022, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Phosphate-driven food stress propagates into US CPI food. Empirical channel: Wheat → IMF Food Price Index elasticity 0.184, scaled by 0.12 Ma'aden share of global DAP." },
+  { id: "sc_food_price_inflation__ip_cpi_food", source: "sc_food_price_inflation", target: "ip_cpi_food", weight: 0.092, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "MENA food inflation tracks the same global wheat/oilseed cycle as US CPI food. Empirical channel: Wheat → IMF Food Price Index, scaled by 0.50 shared-cycle exposure." },
+  { id: "sc_fertilizer_price_index__ip_ppi_all_commodities", source: "sc_fertilizer_price_index", target: "ip_ppi_all_commodities", weight: 0.118, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Fertilizer cost shocks raise the all-commodities PPI index via farm-gate transmission. Empirical channel: IMF Industrial Inputs (fertilizer proxy) → All Commodity Index, scaled by 0.15." },
 
-  // ── P3: Supply Chain → Goods inflation ──
-  { id: "sc_shipping_cost_index__ip_ppi_all_commodities", source: "sc_shipping_cost_index", target: "ip_ppi_all_commodities", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Container freight costs are a direct input to imported intermediate-goods prices; 2024 Red Sea disruption tripled rates and fed straight into commodities PPI." },
-  { id: "sc_shipping_cost_index__ip_cpi_goods", source: "sc_shipping_cost_index", target: "ip_cpi_goods", weight: 0.55, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Sustained shipping cost increases pass through to retail durables/non-durables with 1-2 quarter lag as importers exhaust pre-priced inventory." },
-  { id: "ic_red_sea_exposure__ip_cpi_goods", source: "ic_red_sea_exposure", target: "ip_cpi_goods", weight: 0.4, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat vector affects both maritime cargo and submarine cables — shared chokepoint stress raises imported-goods costs via shipping reroute." },
+  // ── P3: Supply Chain → Goods inflation (channel: Industrial Inputs → All Commodity Index — partial proxy for shipping; confidence capped at 0.55) ──
+  { id: "sc_shipping_cost_index__ip_ppi_all_commodities", source: "sc_shipping_cost_index", target: "ip_ppi_all_commodities", weight: 0.235, lag: 1, type: "directed", confidence: 0.55, isInconsistent: false, physicalMechanism: "Container freight costs feed imported intermediate-goods prices. Partial-proxy channel: IMF Industrial Inputs → All Commodity Index (in lieu of unreachable Baltic Dry / Drewry feed), scaled by 0.30. Refit pending freight-index access." },
+  { id: "sc_shipping_cost_index__ip_cpi_goods", source: "sc_shipping_cost_index", target: "ip_cpi_goods", weight: 0.196, lag: 1, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Shipping cost → goods inflation pass-through. Partial-proxy channel: same Industrial Inputs → All Commodity fit, scaled by 0.25." },
+  { id: "ic_red_sea_exposure__ip_cpi_goods", source: "ic_red_sea_exposure", target: "ip_cpi_goods", weight: 0.157, lag: 1, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat vector raises imported-goods costs via shipping reroute. Partial-proxy channel through commodity-volatility transmission, scaled by 0.20." },
 
-  // ── P4: Sovereign → US Macro feedback ──
-  { id: "sr_china_gdp__mi_ism_manufacturing", source: "sr_china_gdp", target: "mi_ism_manufacturing", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "China is the marginal demand setter for global manufacturing; Chinese GDP slowdown reduces US exporter orders and depresses ISM manufacturing PMI." },
-  { id: "sr_china_gdp__mi_industrial_production", source: "sr_china_gdp", target: "mi_industrial_production", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Chinese demand contraction propagates to US industrial production via reduced export volumes and supply-chain feedback through multinational manufacturing networks." },
-  { id: "sr_china_gdp__ip_ppi_all_commodities", source: "sr_china_gdp", target: "ip_ppi_all_commodities", weight: 0.5, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "China is the largest marginal buyer of global commodities; GDP swings drive copper, steel, and crude prices that anchor the US all-commodities PPI." },
+  // ── P4: Sovereign → US Macro feedback (channel: China Iron-Ore → IMF Industrial Inputs, β=0.193, n=446) ──
+  { id: "sr_china_gdp__mi_ism_manufacturing", source: "sr_china_gdp", target: "mi_ism_manufacturing", weight: 0.077, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand drives US manufacturing PMI via export channel. Empirical channel: IMF China Iron-Ore (demand proxy) → IMF Industrial Inputs long-run elasticity 0.193, scaled by 0.40." },
+  { id: "sr_china_gdp__mi_industrial_production", source: "sr_china_gdp", target: "mi_industrial_production", weight: 0.068, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand → US IP via supply-chain feedback. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.35." },
+  { id: "sr_china_gdp__ip_ppi_all_commodities", source: "sr_china_gdp", target: "ip_ppi_all_commodities", weight: 0.106, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China is the marginal commodity demand setter. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.55 (closest direct mapping among P4 edges)." },
+
+  // ─── DXY / USD-strength loop (closes the Fed → DXY → import-price → core CPI feedback) ─
+  // Empirical fits in research/macro/output/dxy_fits.json. Synthetic DXY is a
+  // geometric basket of EUR/JPY/GBP/CAD/SEK/CHF rebuilt monthly from the
+  // datasets/exchange-rates GitHub mirror; matches real-world DXY level to
+  // ~1% in 2026-03. Two channels are ARDL-fit; two are literature-cited
+  // because no EM-FX-pressure panel is reachable from this sandbox.
+  { id: "ip_fed_funds_effective__ip_dxy", source: "ip_fed_funds_effective", target: "ip_dxy", weight: 0.014, lag: 1, type: "directed", confidence: 0.5, isInconsistent: false, physicalMechanism: "Fed funds policy stance moves USD via real-rate differential. Empirical channel: US10y monthly → synthetic DXY long-run multiplier 0.014 [-0.014, 0.042], n=324; CI includes zero so confidence floored at 0.5. DXY responds more to rate-expectation shifts than to spot rates — a refit with breakeven-adjusted real rates is a follow-on." },
+  { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description)." },
+  { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.6, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022): a 1% DXY appreciation maps to ~0.5-0.7% EM FX depreciation in the medium term. Literature-cited; refit pending EM FX panel access." },
+  { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.45, lag: 1, type: "directed", confidence: 0.6, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Literature-cited; refit pending EM reserves panel access." },
 ];
 
 const METADATA: GraphMetadata = {

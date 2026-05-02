@@ -293,6 +293,7 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
 export default function DomainSelector() {
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
   const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
+  const setTourActive = useApexStore((s) => s.setTourActive);
   const setIsMultiDomainMode = useApexStore((s) => s.setIsMultiDomainMode);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
   const setVisibleCategories = useApexStore((s) => s.setVisibleCategories);
@@ -458,6 +459,16 @@ export default function DomainSelector() {
                   Select risk domain{localMulti ? "s" : ""} to initialize causal graph
                 </span>
               </div>
+              {/* Tutorial launcher — same affordance as the header "?" button,
+                  reachable before the user has even committed to a domain. */}
+              <button
+                onClick={() => setTourActive(true)}
+                className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"
+                title="Feature tour"
+                aria-label="Launch feature tour"
+              >
+                ?
+              </button>
             </div>
 
             {/* Persona Selector */}

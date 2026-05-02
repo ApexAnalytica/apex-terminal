@@ -18,14 +18,16 @@ This session does **not** care about graph data, engines, canvas rendering, or p
 - Tour currently has 22+ steps covering persona-based domain selector, 3D/2D/MAP views, text-size toggle, PEARL manual vs CASCADE DEFENSE auto-interdiction, feedback widget, etc.
 
 ### Persona gating
-- `activePersona: "scientist" | "analyst" | "cross"` in `useApexStore`, default `"analyst"`
-- Three pills in the Domain Workspace modal control which domain cards are visible:
-  - **Analyst** → geopolitical / financial / macro / defense (`dataset: main | athena`)
-  - **Scientist** → Life Sciences (`dataset: t1d`)
-  - **Cross-Domain** → all cards; only persona where multi-select across dataset families is allowed
+- `activePersona: "scientist" | "financial" | "macro" | "geopolitical" | "cross" | "analyst"` in `useApexStore`, default `"financial"`. (`"analyst"` is retained only to tolerate legacy persisted values from before the persona refactor — no UI surfaces it.)
+- Five pills in the Domain Workspace modal control which domain cards are visible:
+  - **FINANCIAL** → Markets · Credit · Sovereign (`FINANCIAL & SOVEREIGN`, `MENA ENERGY & COMMODITIES`)
+  - **MACRO** → Growth · Inflation · Policy (`MACRO IMPACT`, `FINANCIAL & SOVEREIGN`)
+  - **GEOPOLITICAL** → Energy · Infra · Defense (`MENA ENERGY & COMMODITIES`, `INFRASTRUCTURE & DEFENSE`, `FINANCIAL & SOVEREIGN`)
+  - **SCIENTIST** → Life Sciences (`dataset: t1d`)
+  - **CROSS-DOMAIN** → all cards; only persona where multi-select across dataset families is allowed
 - Switching persona silently drops out-of-family selections
-- Within Analyst/Scientist, multi-select is restricted to the same family
-- Canonical type union lives in `useApexStore.ts`. `DomainSelector.tsx` mirrors it locally — keep them in sync.
+- Within focused personas (Financial/Macro/Geopolitical/Scientist), multi-select is restricted to a single dataset family
+- Canonical type union lives in `useApexStore.ts`. `DomainSelector.tsx` mirrors it locally as `Persona` — keep them in sync.
 
 ### Domain Workspace modal
 - `src/components/DomainSelector.tsx`

@@ -33,9 +33,13 @@ const RADAR_LABEL_R = RADAR_R * 1.42;
 function PillarRadar({
   axes,
   composite,
+  selectedKey,
+  onSelect,
 }: {
   axes: { key: PillarKey; value: number }[];
   composite: number;
+  selectedKey: PillarKey | null;
+  onSelect: (key: PillarKey) => void;
 }) {
   if (axes.length === 0) return null;
   const angles = axes.map((_, i) => ((i * 360) / axes.length) * (Math.PI / 180));
@@ -116,13 +120,41 @@ function PillarRadar({
       </text>
       {axes.map((a, i) => {
         const lp = vertex(angles[i], RADAR_LABEL_R);
+        const isSelected = selectedKey === a.key;
         return (
-          <g key={a.key}>
+          <g
+            key={a.key}
+            onClick={() => onSelect(a.key)}
+            style={{ cursor: "pointer" }}
+          >
+            {/* Transparent hit target — generous tap area around the letter+value pair */}
+            <rect
+              x={lp.x - 14}
+              y={lp.y - 12}
+              width={28}
+              height={26}
+              fill="transparent"
+            />
+            {isSelected && (
+              <circle
+                cx={lp.x}
+                cy={lp.y + 1}
+                r={13}
+                fill={`${accent}14`}
+                stroke={accent}
+                strokeWidth={1}
+                style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.5))" }}
+              />
+            )}
             <text
               x={lp.x}
               y={lp.y - 1}
               textAnchor="middle"
-              style={{ fontSize: 11, fill: accent, fontWeight: 700 }}
+              style={{
+                fontSize: isSelected ? 13 : 11,
+                fill: accent,
+                fontWeight: 700,
+              }}
               className="font-mono"
             >
               {PILLAR_SHORT[a.key]}
@@ -147,7 +179,7 @@ function PillarRadar({
 // / future verticals each carry their own vocabulary without branching here.
 
 export default function NodeInspector() {
-  const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
+  const [expandedPillar, setExpandedPillar] = useState<PillarKey | null>(null);
   const [showMethodology, setShowMethodology] = useState(false);
   const [showDataExplainer, setShowDataExplainer] = useState(false);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -378,7 +410,12 @@ export default function NodeInspector() {
                 center. Replaces the gauge-bar stack; the pillar legend below
                 keeps click-to-expand affordance for description / formula. */}
             <div>
-              <PillarRadar axes={axes} composite={node.omegaFragility.composite} />
+              <PillarRadar
+                axes={axes}
+                composite={node.omegaFragility.composite}
+                selectedKey={expandedPillar}
+                onSelect={(k) => setExpandedPillar(expandedPillar === k ? null : k)}
+              />
               <div className="flex justify-center mt-1">
                 <button
                   onClick={() => setShowMethodology((v) => !v)}
@@ -404,58 +441,58 @@ export default function NodeInspector() {
               </AnimatePresence>
             </div>
 
-            {/* Pillar legend — letter + label + value, click to expand description */}
-            <div className="space-y-1">
-              {axes.map((axis) => {
-                const desc = pillarDetails[axis.key];
-                const isExpanded = expandedPillar === axis.key;
-                return (
-                  <div key={axis.key}>
-                    <button
-                      onClick={() => setExpandedPillar(isExpanded ? null : axis.key)}
-                      className="w-full flex items-center justify-between gap-2 hover:bg-white/[0.03] rounded px-1.5 py-1 transition-colors text-left"
-                    >
+            {/* Pillar description — only visible when a vertex is clicked.
+                Replaces the always-on legend rows; no real estate consumed in
+                the default state. */}
+            <AnimatePresence>
+              {expandedPillar && pillarDetails[expandedPillar] && (
+                <motion.div
+                  key={expandedPillar}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-2.5 rounded border border-accent-cyan/30 bg-surface-elevated space-y-2">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[8px] opacity-50 flex-shrink-0">{isExpanded ? "▾" : "▸"}</span>
-                        <span className="text-[9px] font-mono font-bold text-accent-cyan flex-shrink-0 w-3 text-center">
-                          {PILLAR_SHORT[axis.key]}
+                        <span className="text-[11px] font-mono font-bold text-accent-cyan flex-shrink-0 w-3 text-center">
+                          {PILLAR_SHORT[expandedPillar]}
                         </span>
-                        <span className="text-[8px] text-text-muted font-mono truncate">{axis.label}</span>
+                        <span className="text-[10px] text-foreground font-mono truncate">
+                          {pillarDetails[expandedPillar].label}
+                        </span>
                       </div>
-                      <span
-                        className="text-[9px] font-mono font-bold flex-shrink-0"
-                        style={{ color: getBarColor(axis.value) }}
-                      >
-                        {axis.value.toFixed(1)}
-                      </span>
-                    </button>
-                    <AnimatePresence>
-                      {isExpanded && desc && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                          className="overflow-hidden"
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span
+                          className="text-[11px] font-mono font-bold"
+                          style={{ color: getBarColor(node.omegaFragility[expandedPillar]) }}
                         >
-                          <div className="mt-1 ml-6 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
-                            <div className="text-[8px] font-mono text-foreground/90 leading-relaxed">
-                              {desc.short}
-                            </div>
-                            <div className="text-[7px] font-mono text-text-muted leading-relaxed">
-                              {desc.detail}
-                            </div>
-                            <div className="text-[7px] font-mono text-accent-cyan/60 leading-relaxed border-t border-border pt-1">
-                              {desc.formula}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                          {node.omegaFragility[expandedPillar].toFixed(1)}
+                        </span>
+                        <button
+                          onClick={() => setExpandedPillar(null)}
+                          className="text-[10px] text-text-muted hover:text-foreground transition-colors"
+                          aria-label="Close pillar description"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+                      {pillarDetails[expandedPillar].short}
+                    </div>
+                    <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+                      {pillarDetails[expandedPillar].detail}
+                    </div>
+                    <div className="text-[9px] font-mono text-accent-cyan/70 leading-relaxed border-t border-border pt-1.5">
+                      {pillarDetails[expandedPillar].formula}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Metadata */}
             <div className="text-[9px] font-mono space-y-1 pt-1 border-t border-border">

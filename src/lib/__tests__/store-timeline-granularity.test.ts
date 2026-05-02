@@ -69,4 +69,26 @@ describe("setTimelineGranularity also adjusts timelineRange to a matching window
     expect(afterMonth.start).toBeLessThan(afterHour.start);
     expect(afterMonth.end - afterMonth.start).toBe(30 * DAY);
   });
+
+  it("captures timelineFullRange on first call so successive clicks can EXPAND back, not just shrink", () => {
+    // Regression for the sticky-window bug: before the fix, clicking 1H first
+    // shrank timelineRange to 1H, then clicking 1M used the *shrunk* start as
+    // the floor and stayed locked at 1H forever.
+    useApexStore.setState({ timelineFullRange: null }); // explicitly unset
+    const initialEnd = useApexStore.getState().timelineRange.end;
+
+    useApexStore.getState().setTimelineGranularity("hour");
+    const afterHour = useApexStore.getState().timelineRange;
+    expect(afterHour.end - afterHour.start).toBe(HOUR);
+
+    // timelineFullRange should now be captured (so the expand-back path works)
+    expect(useApexStore.getState().timelineFullRange).not.toBeNull();
+
+    // Clicking 1M after 1H expands back to a 30-day window
+    useApexStore.getState().setTimelineGranularity("month");
+    const afterMonth = useApexStore.getState().timelineRange;
+    expect(afterMonth.end).toBe(initialEnd);
+    expect(afterMonth.end - afterMonth.start).toBe(30 * DAY);
+    expect(afterMonth.start).toBeLessThan(afterHour.start);
+  });
 });

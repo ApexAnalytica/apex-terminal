@@ -945,6 +945,13 @@ export const useApexStore = create<ApexState>((set, get) => ({
       // anchored at the end of the existing range. Card sparklines and the
       // comparison overlay filter their history by timelineRange, so the
       // visible curve length follows the chosen scale.
+      //
+      // CAPTURE FULL RANGE ON FIRST CALL: without this, the floor
+      // (max(_, end - windowMs)) would clamp to the *current* timelineRange
+      // start — which after the first granularity click is already shrunk.
+      // Result: subsequent clicks could shrink further but never expand back.
+      // By saving timelineFullRange on first entry, we always have the
+      // original extent to expand into.
       const windowMs: Record<TimeGranularity, number> = {
         hour: 60 * 60 * 1000,
         day: 24 * 60 * 60 * 1000,
@@ -952,11 +959,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
         month: 30 * 24 * 60 * 60 * 1000,
       };
       const end = s.timelineRange.end;
-      const fullStart = s.timelineFullRange?.start ?? s.timelineRange.start;
-      const newStart = Math.max(fullStart, end - windowMs[g]);
+      const fullRange = s.timelineFullRange ?? { ...s.timelineRange };
+      const newStart = Math.max(fullRange.start, end - windowMs[g]);
       return {
         timelineGranularity: g,
         timelineRange: { start: newStart, end },
+        timelineFullRange: fullRange,
       };
     }),
 

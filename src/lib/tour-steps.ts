@@ -77,6 +77,14 @@ export function trackForPersona(persona: string | null | undefined): TourTrack {
 
 // ─── First-run track (~9 steps, both tracks) ─────────────────────────────
 
+/** Welcome step copy is exported so non-tour surfaces (e.g. the read-aloud
+ *  speaker on the Domain Workspace modal) can show or speak it without
+ *  touching the tour state machine. Keep this and the welcome step's `copy`
+ *  field in sync. */
+export const WELCOME_TITLE = "WELCOME — PICK A PERSONA";
+export const WELCOME_DESCRIPTION =
+  "Welcome to APEX Analytica MANIFOLD — a causal-inference platform for discovering, verifying, and stress-testing networks. Start by picking one of the five persona pills above: FINANCIAL, MACRO, GEOPOLITICAL, SCIENTIST (Life Sciences), or CROSS-DOMAIN. Each one filters the visible domain cards. Pick a card, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the “?” in the top-right.";
+
 const FIRST_RUN_STEPS: TourStep[] = [
   {
     id: "welcome-and-domain",
@@ -84,9 +92,8 @@ const FIRST_RUN_STEPS: TourStep[] = [
     targetSelector: '[data-tour="domain-selector-modal"]',
     tooltipPosition: "right",
     copy: {
-      title: "WELCOME — PICK A PERSONA",
-      description:
-        "Welcome to APEX Analytica MANIFOLD — a causal-inference platform for discovering, verifying, and stress-testing networks. Start by picking one of the five persona pills above: FINANCIAL, MACRO, GEOPOLITICAL, SCIENTIST (Life Sciences), or CROSS-DOMAIN. Each one filters the visible domain cards. Pick a card, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the “?” in the top-right.",
+      title: WELCOME_TITLE,
+      description: WELCOME_DESCRIPTION,
     },
   },
   {

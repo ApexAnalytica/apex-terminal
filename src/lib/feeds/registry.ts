@@ -11,6 +11,7 @@
  * generic `applyFeedBatch` store action.
  */
 import { clinicalTrialsProvider } from "./providers/clinical-trials";
+import { derivationsProvider } from "./providers/derivations";
 import { eiaHormuzProvider } from "./providers/eia-hormuz";
 import { fredProvider } from "./providers/fred";
 import { ofacSdnProvider } from "./providers/ofac-sdn";
@@ -18,6 +19,12 @@ import { openFdaProvider } from "./providers/openfda";
 import { worldBankProvider } from "./providers/world-bank";
 import type { FeedProvider } from "./providers/types";
 
+/**
+ * Order matters loosely: primitive providers first, derivations last.
+ * Polling is independent per provider so this isn't strict execution
+ * order, but a derivation provider that fires before its primitives
+ * have ticked simply emits an empty batch and tries again next cycle.
+ */
 export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   eiaHormuzProvider,
   ofacSdnProvider,
@@ -25,4 +32,5 @@ export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   worldBankProvider,
   openFdaProvider,
   clinicalTrialsProvider,
+  derivationsProvider,
 ];

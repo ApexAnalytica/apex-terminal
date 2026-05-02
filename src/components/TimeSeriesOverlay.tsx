@@ -148,20 +148,50 @@ export default function TimeSeriesOverlay() {
   const plotInset = geom;
   const chartW = geom.width;
 
-  // Gather histories for pinned nodes.
-  // Nodes with exactly 1 history point (unmapped fallback) are included
-  // as a flat horizontal line at their static omega — previously they
-  // were silently dropped (history.length < 2 guard), causing the chart
-  // to show nothing for those pins.
+  // Gather histories for pinned nodes. Prefer live-data history when a node
+  // has any liveData[] attached (consistent with the per-card sparkline
+  // behaviour in RiskPropagationFlow); fall back to synthetic omega history
+  // otherwise. Nodes with no history at all fall through to noDataNodes.
   const curves = useMemo(() => {
-    if (!temporalData || pinnedNodes.length === 0) return [];
+    if (pinnedNodes.length === 0) return [];
     return pinnedNodes
       .map((nodeId) => {
-        const nodeData = temporalData.nodes.get(nodeId);
         const node = graphData.nodes.find((n) => n.id === nodeId);
-        // No temporal entry at all → falls through to noDataNodes
-        if (!nodeData || !node || nodeData.history.length === 0) return null;
+        if (!node) return null;
         const dataDesc = getNodeDataDescription(nodeId);
+
+        // Live-data path: any liveData entry → plot live values.
+        const liveSignal = node.liveData?.[0];
+        if (liveSignal) {
+          const liveHistory: NodeTemporalState[] = [
+            ...(liveSignal.history ?? []).map((h) => ({
+              timestamp: new Date(h.observedAt).getTime(),
+              omegaComposite: h.value,
+              omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+            })),
+            {
+              timestamp: new Date(liveSignal.observedAt).getTime(),
+              omegaComposite: liveSignal.value,
+              omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+            },
+          ];
+          if (liveHistory.length === 0) return null;
+          return {
+            nodeId,
+            label: node.label,
+            domain: node.domain,
+            color: getDomainColor(node.domain),
+            history: liveHistory,
+            currentOmega: liveSignal.value,
+            pointCount: liveHistory.length,
+            sourceLabel: `LIVE · ${liveSignal.source.split(/[\s—(]/)[0]}`,
+            sourceUnit: liveSignal.unit,
+          };
+        }
+
+        // Synthetic-omega fallback (existing behaviour).
+        const nodeData = temporalData?.nodes.get(nodeId);
+        if (!nodeData || nodeData.history.length === 0) return null;
         return {
           nodeId,
           label: node.label,
@@ -169,7 +199,6 @@ export default function TimeSeriesOverlay() {
           color: getDomainColor(node.domain),
           history: nodeData.history,
           currentOmega: node.omegaFragility.composite,
-          // Number of *published* timepoints (1 = unmapped fallback flat line)
           pointCount: nodeData.history.length,
           sourceLabel: dataDesc?.label ?? null,
           sourceUnit: dataDesc?.unit ?? null,

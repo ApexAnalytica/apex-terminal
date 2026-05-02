@@ -1,29 +1,4 @@
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCenter,
-} from "d3-force-3d";
 import { CausalNode, CausalEdge } from "./types";
-
-interface LayoutNode {
-  id: string;
-  x: number;
-  y: number;
-  z: number;
-  domain: string;
-  index?: number;
-  vx?: number;
-  vy?: number;
-  vz?: number;
-}
-
-interface LayoutLink {
-  source: string | LayoutNode;
-  target: string | LayoutNode;
-  weight: number;
-  index?: number;
-}
 
 export interface NodePosition {
   id: string;
@@ -41,7 +16,9 @@ export interface NodeMetrics {
   avgEdgeWeight: number;       // average weight of connected edges
 }
 
-// Domain z-layer targets (before normalization)
+// Domain z-layer targets. Used by both the rank layout below and the
+// fallback force layout to keep each domain on its own depth band so the
+// 3D camera reads the graph as stratified.
 const DOMAIN_Z_OFFSETS: Record<string, number> = {
   "Saudi Aramco Energy": -3,
   "QatarEnergy LNG": -1.5,
@@ -59,9 +36,6 @@ const DOMAIN_Z_OFFSETS: Record<string, number> = {
   "Secure Compute": 0,
   "Kill Chain": -1,
 };
-
-// Target bounding box half-extents for the final layout
-const BOUNDS = { x: 55, y: 40, z: 35 };
 
 /**
  * Compute per-node network metrics from the graph topology.
@@ -203,96 +177,166 @@ export function computeNetworkMetrics(
   return metrics;
 }
 
+/**
+ * Sugiyama-style rank layout for the 3D DAG view. Replaces the previous
+ * force-directed simulation that normalized to fixed bounds (which made
+ * dense graphs cluster too tightly regardless of node count).
+ *
+ * Pipeline:
+ *  1. Rank assignment via Kahn's topological sort with longest-path
+ *     propagation. Sources land at rank 0; each successor's rank is
+ *     `max(parent rank) + 1`. Cycle nodes (rare in causal DAGs but
+ *     possible in inferred graphs) are placed at rank 0.
+ *  2. Barycenter ordering across ranks, sweeping down then up to
+ *     reduce edge crossings.
+ *  3. Coordinate assignment with bounds that scale with sqrt(N) so
+ *     dense graphs spread; the camera rig (computeFitCamera in
+ *     CausalDAG3D) auto-pulls back to fit the extent.
+ *  4. Z stratified by `DOMAIN_Z_OFFSETS` with small jitter so domain
+ *     bands stay separable but don't z-fight.
+ *
+ * `existingPositions` is currently unused — the topology key in
+ * CausalDAG3D only changes when the node/edge id sets change, which
+ * always warrants a fresh layout. Kept in the signature for forward
+ * compatibility (e.g. partial graph mutations later).
+ */
 export function computeLayout3D(
   nodes: CausalNode[],
   edges: CausalEdge[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   existingPositions?: NodePosition[]
 ): NodePosition[] {
-  const existingMap = new Map<string, NodePosition>();
-  if (existingPositions) {
-    existingPositions.forEach((p) => existingMap.set(p.id, p));
-  }
-  const hasExisting = existingMap.size > 0;
+  if (nodes.length === 0) return [];
 
-  const simNodes: LayoutNode[] = nodes.map((n) => {
-    const existing = existingMap.get(n.id);
-    if (existing) {
-      return { id: n.id, domain: n.domain, x: existing.x, y: existing.y, z: existing.z };
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const domainById = new Map<string, string>();
+  for (const n of nodes) domainById.set(n.id, n.domain);
+
+  // ── 1. Build directed adjacency ─────────────────────────────────
+  const outAdj = new Map<string, string[]>();
+  const inAdj = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  for (const id of nodeIds) {
+    outAdj.set(id, []);
+    inAdj.set(id, []);
+    inDegree.set(id, 0);
+  }
+  for (const e of edges) {
+    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
+    outAdj.get(e.source)!.push(e.target);
+    inAdj.get(e.target)!.push(e.source);
+    inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+  }
+
+  // ── 2. Longest-path rank assignment via Kahn's algorithm ────────
+  const rank = new Map<string, number>();
+  for (const id of nodeIds) rank.set(id, 0);
+  const remaining = new Map(inDegree);
+  const queue: string[] = [];
+  for (const id of nodeIds) {
+    if (remaining.get(id) === 0) queue.push(id);
+  }
+  let head = 0;
+  while (head < queue.length) {
+    const u = queue[head++];
+    const ru = rank.get(u)!;
+    for (const v of outAdj.get(u) ?? []) {
+      if (rank.get(v)! < ru + 1) rank.set(v, ru + 1);
+      const newDeg = (remaining.get(v) ?? 0) - 1;
+      remaining.set(v, newDeg);
+      if (newDeg === 0) queue.push(v);
     }
-    const zBase = DOMAIN_Z_OFFSETS[n.domain] ?? 0;
-    return {
-      id: n.id,
-      domain: n.domain,
-      x: (Math.random() - 0.5) * 10,
-      y: (Math.random() - 0.5) * 10,
-      z: zBase + (Math.random() - 0.5) * 2,
-    };
-  });
+  }
+  // Cycle nodes never reach in-degree 0 — leave them at rank 0 (they
+  // cluster at the top, which is correct for unranked content).
 
-  // Edge weight drives spring distance: higher weight (stronger correlation) → shorter distance
-  const simLinks: LayoutLink[] = edges.map((e) => ({
-    source: e.source,
-    target: e.target,
-    weight: e.weight,
-  }));
+  // ── 3. Group by rank, then barycenter ordering ──────────────────
+  const maxRank = Math.max(0, ...Array.from(rank.values()));
+  const ranks: string[][] = Array.from({ length: maxRank + 1 }, () => []);
+  for (const n of nodes) ranks[rank.get(n.id)!].push(n.id);
 
-  // Build adjacency to identify connected vs disconnected nodes
-  const connected = new Set<string>();
-  for (const link of simLinks) {
-    const src = typeof link.source === "string" ? link.source : link.source.id;
-    const tgt = typeof link.target === "string" ? link.target : link.target.id;
-    connected.add(src);
-    connected.add(tgt);
+  // Initial within-rank order: by domain (so domain bands don't get
+  // shuffled by barycenter), then alphabetically by id for stability.
+  for (const r of ranks) {
+    r.sort((a, b) => {
+      const da = domainById.get(a) ?? "";
+      const db = domainById.get(b) ?? "";
+      if (da !== db) return da.localeCompare(db);
+      return a.localeCompare(b);
+    });
   }
 
-  // d3-force-3d types are incomplete — runtime API accepts (nodes, nDim)
-  const sim = (forceSimulation as any)(simNodes, 3)
-    .force(
-      "link",
-      forceLink(simLinks)
-        .id((d: any) => d.id)
-        // Distance inversely proportional to edge weight:
-        // weight 1.0 (strong correlation) → distance 10 (close together)
-        // weight 0.1 (weak correlation) → distance 35 (far apart)
-        .distance((d: any) => 10 + (1 - d.weight) * 25)
-        .strength((d: any) => 0.3 + d.weight * 0.4)
-    )
-    .force("charge", forceManyBody().strength((d: any) =>
-      connected.has(d.id) ? -100 : -30
-    ))
-    .force("center", forceCenter(0, 0, 0))
-    .velocityDecay(0.4)
-    .stop();
+  const order = new Map<string, number>();
+  for (const r of ranks) r.forEach((id, i) => order.set(id, i));
 
-  const iterations = hasExisting ? 50 : 200;
-  for (let i = 0; i < iterations; i++) {
-    sim.tick();
+  const barycenter = (
+    id: string,
+    neighborMap: Map<string, string[]>,
+  ): number => {
+    const nbrs = neighborMap.get(id) ?? [];
+    if (nbrs.length === 0) return order.get(id) ?? 0;
+    let sum = 0;
+    let count = 0;
+    for (const nb of nbrs) {
+      const o = order.get(nb);
+      if (o !== undefined) {
+        sum += o;
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : (order.get(id) ?? 0);
+  };
+
+  // Two passes: down-sweep (predecessors define each rank's barycenter),
+  // then up-sweep (successors). Two iterations of each is enough for the
+  // crossing-reduction tradeoff at this graph size.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 1; k <= maxRank; k++) {
+      ranks[k].sort((a, b) => barycenter(a, inAdj) - barycenter(b, inAdj));
+      ranks[k].forEach((id, i) => order.set(id, i));
+    }
+    for (let k = maxRank - 1; k >= 0; k--) {
+      ranks[k].sort((a, b) => barycenter(a, outAdj) - barycenter(b, outAdj));
+      ranks[k].forEach((id, i) => order.set(id, i));
+    }
   }
 
-  // Shift each domain group's z toward its target layer
-  const domainGroups: Record<string, LayoutNode[]> = {};
-  simNodes.forEach((n) => {
-    (domainGroups[n.domain] ??= []).push(n);
-  });
-  for (const [domain, group] of Object.entries(domainGroups)) {
-    const targetZ = (DOMAIN_Z_OFFSETS[domain] ?? 0) * 5; // scale up
-    const avgZ = group.reduce((s, n) => s + n.z, 0) / group.length;
-    const shift = (targetZ - avgZ) * 0.7;
-    group.forEach((n) => { n.z += shift; });
+  // ── 4. Coordinate assignment with N-scaled bounds ───────────────
+  const N = nodes.length;
+  const widestRank = Math.max(...ranks.map((r) => r.length));
+  // Bounds grow with sqrt(N). Floors keep small graphs from looking
+  // empty in the viewport; the camera fits the extent automatically.
+  const xSpan = Math.max(60, Math.sqrt(N) * 9);     // half-extent in x
+  const ySpan = Math.max(45, Math.sqrt(N) * 6.5);   // half-extent in y
+  const Z_SCALE = 6;                                 // scale of DOMAIN_Z_OFFSETS
+
+  const rankSpacing = maxRank > 0 ? (2 * ySpan) / maxRank : 0;
+  const colSpacing = widestRank > 1 ? (2 * xSpan) / (widestRank - 1) : 0;
+
+  const positions: NodePosition[] = [];
+  for (let k = 0; k <= maxRank; k++) {
+    const r = ranks[k];
+    const rankLen = r.length;
+    const xStart = -colSpacing * (rankLen - 1) / 2;
+    // Sources land at +ySpan (top), sinks at -ySpan (bottom). Causal flow
+    // reads top-down in the camera's default tilt.
+    const y = maxRank === 0 ? 0 : ySpan - k * rankSpacing;
+    r.forEach((id, i) => {
+      const domain = domainById.get(id) ?? "";
+      const zBase = (DOMAIN_Z_OFFSETS[domain] ?? 0) * Z_SCALE;
+      // Small deterministic jitter (id-hash) so co-domain nodes within
+      // the same rank don't z-fight; not so much that bands blur.
+      let h = 0;
+      for (let c = 0; c < id.length; c++) h = ((h << 5) - h + id.charCodeAt(c)) | 0;
+      const zJitter = ((Math.abs(h) % 100) / 100 - 0.5) * 2.5;
+      positions.push({
+        id,
+        x: xStart + i * colSpacing,
+        y,
+        z: zBase + zJitter,
+      });
+    });
   }
 
-  // Normalize positions to fit within BOUNDS
-  const xs = simNodes.map((n) => n.x);
-  const ys = simNodes.map((n) => n.y);
-  const zs = simNodes.map((n) => n.z);
-  const extX = Math.max(Math.abs(Math.min(...xs)), Math.abs(Math.max(...xs))) || 1;
-  const extY = Math.max(Math.abs(Math.min(...ys)), Math.abs(Math.max(...ys))) || 1;
-  const extZ = Math.max(Math.abs(Math.min(...zs)), Math.abs(Math.max(...zs))) || 1;
-
-  return simNodes.map((n) => ({
-    id: n.id,
-    x: (n.x / extX) * BOUNDS.x,
-    y: (n.y / extY) * BOUNDS.y,
-    z: (n.z / extZ) * BOUNDS.z,
-  }));
+  return positions;
 }

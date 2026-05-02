@@ -39,7 +39,7 @@ import { AnimatePresence } from "framer-motion";
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
 
 function CausalNode2D({ data, selected }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, domain, datasetColor, shockIntensity, emphasis } = data;
+  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity, emphasis } = data;
   const color = datasetColor ?? getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
@@ -47,70 +47,97 @@ function CausalNode2D({ data, selected }: NodeProps) {
   const nodeEmphasis: NodeEmphasis = emphasis ?? "none";
   const isDim = nodeEmphasis === "dim";
   const isFocus = nodeEmphasis === "focus";
+  const isRinged = selected || isFocus;
 
-  const selectionGlow = selected || isFocus
-    ? "0 0 12px #00e5ff80, 0 0 24px #00e5ff40"
+  // Diameter scales with \u03A9F: low-risk nodes are small, high-risk are larger.
+  const diameter = 14 + Math.min(10, Math.max(0, omegaComposite)) * 2;
+
+  // Layered box-shadow: selection ring (sharp), shock glow (pulsing), base
+  // omega glow (soft halo). All applied to the same circle element.
+  const selectionRing = isRinged ? "0 0 0 2px #00e5ff, 0 0 12px #00e5ffaa" : "";
+  const shockShadow = shockGlow > 0
+    ? `0 0 ${Math.round(shockGlow * 24)}px ${color}, 0 0 ${Math.round(shockGlow * 12)}px ${color}cc`
     : "";
+  const baseShadow = omegaComposite > 0
+    ? `0 0 ${Math.round((omegaComposite / 10) * 14)}px ${color}88`
+    : "";
+  const boxShadow = [selectionRing, shockShadow, baseShadow].filter(Boolean).join(", ") || "none";
 
   return (
     <motion.div
-      className="relative px-5 py-3 rounded border font-mono text-[11px] tracking-wider text-center min-w-[120px]"
+      className="relative"
       style={{
-        borderColor: selected || isFocus ? "#00e5ff" : isRestricted ? "#ff1744" : color,
-        backgroundColor: `color-mix(in srgb, ${color} ${Math.round(5 + (omegaComposite / 10) * 15)}%, #0a0b10)`,
-        color,
+        width: diameter,
+        height: diameter,
         opacity: isDim ? 0.18 : 1,
         transition: "opacity 180ms ease-out",
-        boxShadow: [
-          selectionGlow,
-          shockGlow > 0
-            ? `0 0 ${Math.round(shockGlow * 30)}px ${color}80, 0 0 ${Math.round(shockGlow * 15)}px ${color}40, inset 0 0 ${Math.round(shockGlow * 10)}px ${color}30`
-            : omegaComposite > 0
-              ? `0 0 ${Math.round((omegaComposite / 10) * 20)}px ${color}40, inset 0 0 ${Math.round((omegaComposite / 10) * 10)}px ${color}20`
-              : "",
-        ].filter(Boolean).join(", ") || "none",
       }}
-      animate={
-        shockGlow > 0.3
-          ? {
-              scale: [1, 1 + shockGlow * 0.06, 1],
-              borderColor: [color, "#ffab00", color],
-            }
-          : isFractured
-            ? { borderColor: [color, "#ff1744", color], scale: [1, 1.02, 1] }
-            : isStressed
-              ? { opacity: [1, 0.7, 1] }
-              : {}
-      }
-      transition={
-        shockGlow > 0.3
-          ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" }
-          : isFractured
-            ? { duration: 0.8, repeat: Infinity }
-            : isStressed
-              ? { duration: 1.5, repeat: Infinity }
-              : {}
-      }
+      animate={isRinged ? { scale: 1.1 } : { scale: 1 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
     >
       <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
       <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
       <Handle type="target" position={Position.Left} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="left-target" />
       <Handle type="source" position={Position.Right} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="right-source" />
 
-      <div className="font-[family-name:var(--font-michroma)] text-[10px]">
-        {label}
-      </div>
-      <div className="text-[8px] mt-0.5 opacity-50">
-        {domain}
-      </div>
-      {omegaComposite > 0 && (
-        <div className="text-[9px] mt-1 opacity-70">
-          {"\u03A9"} {omegaComposite.toFixed(1)}
+      <motion.div
+        className="rounded-full absolute inset-0"
+        style={{
+          backgroundColor: color,
+          border: isRestricted ? `1px solid #ff1744` : "none",
+          boxShadow,
+        }}
+        animate={
+          shockGlow > 0.3
+            ? { scale: [1, 1 + shockGlow * 0.18, 1] }
+            : isFractured
+              ? { scale: [1, 1.08, 1] }
+              : isStressed
+                ? { opacity: [1, 0.7, 1] }
+                : {}
+        }
+        transition={
+          shockGlow > 0.3
+            ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" }
+            : isFractured
+              ? { duration: 0.8, repeat: Infinity }
+              : isStressed
+                ? { duration: 1.5, repeat: Infinity }
+                : {}
+        }
+      />
+
+      {/* \u03A9F + label below the circle. Absolute so the node bounding box stays
+          circle-sized and edges anchor at the circle's edges, not the label's. */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+        style={{ top: diameter + 3 }}
+      >
+        {omegaComposite > 0 && (
+          <div
+            className="text-[8px] font-mono leading-tight"
+            style={{
+              color: `${color}cc`,
+              textShadow: "0 0 4px rgba(0,0,0,0.85)",
+            }}
+          >
+            {"\u03A9"} {omegaComposite.toFixed(1)}
+          </div>
+        )}
+        <div
+          className="text-[8px] font-mono leading-tight whitespace-nowrap"
+          style={{
+            color: isRinged ? "#00e5ff" : "rgba(220,220,230,0.75)",
+            textShadow: "0 0 4px rgba(0,0,0,0.85)",
+            maxWidth: 140,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            transition: "color 180ms ease-out",
+          }}
+        >
+          {label}
         </div>
-      )}
-      {isRestricted && (
-        <div className="text-[8px] mt-0.5 text-accent-red">RESTRICTED</div>
-      )}
+      </div>
     </motion.div>
   );
 }

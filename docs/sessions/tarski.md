@@ -2,7 +2,7 @@
 
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
-> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 6 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov) covering **~39 graph nodes** including the T1D side and EM FX. All free-tier; mock fallback when keys/upstream missing.
+> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 7 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, Derivations) covering **~41 graph nodes** including the T1D side, EM FX, and 2 derived composites. All free-tier; mock fallback when keys/upstream missing.
 >
 > **Stated end-state goal:** every node carries continuously-pulled real data. **No synthetic composites.** 4 composites still synthetic as of this writing — all 4 have a concrete path to real-data backing (see "Real-data-only goal" section below).
 
@@ -201,7 +201,7 @@ The card render already does the right thing here: a node with no `liveData[]` s
 
 | Phase | Scope | Eliminates |
 |---|---|---|
-| 6 | **Derivation provider** — FeedProvider reads other providers' liveData and emits composites. First two: Currency Contagion + Exchange Rate Pressure from FRED EM FX. | 2 of 4 composites |
+| 6 | **Derivation provider — shipped** — FeedProvider reads other providers' liveData and emits composites. Currency Contagion = mean ratio across FRED EM FX (DEXTUUS / DEXSFUS / DEXBZUS); Exchange Rate Pressure = max ratio. Source string tagged "Derived · mean EM FX stress" / "max EM FX stress" with per-country breakdown. Stub `/api/feeds/derivations/trigger` route, 5-min cadence (faster than primitives so derivations always catches up within one cycle). | 2 of 4 composites — **shipped** |
 | 7 | **Sovereign-debt provider** — World Bank IDS or FRED EM HY proxies for the Sovereign Default node. | 3 of 4 composites |
 | 8 | **UN Comtrade provider** — for MENA Import Dependency. Rate-limited; need careful caching. | 4 of 4 composites — goal reached |
 

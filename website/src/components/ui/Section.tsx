@@ -51,3 +51,48 @@ export function SectionLede({ children }: { children: ReactNode }) {
     </p>
   );
 }
+
+/**
+ * Mosaic-style terminal header — // LABEL · path · right-meta on a thin underline.
+ * Replaces the SectionLabel + SectionHeading + SectionLede stripe.
+ */
+export function TerminalHeader({
+  label,
+  path,
+  right,
+  color = "cyan",
+}: {
+  label: string;
+  path?: string;
+  right?: string;
+  color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange";
+}) {
+  const map: Record<string, string> = {
+    cyan: "text-accent-cyan/90",
+    amber: "text-accent-amber/90",
+    purple: "text-accent-purple/90",
+    green: "text-accent-green/90",
+    red: "text-accent-red/90",
+    magenta: "text-accent-magenta/90",
+    orange: "text-accent-orange/90",
+  };
+  return (
+    <div className="flex items-center justify-between border-b border-border pb-2 mb-6">
+      <div className="flex items-baseline gap-3">
+        <span className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] ${map[color]}`}>
+          {label}
+        </span>
+        {path && (
+          <span className="hidden sm:inline font-mono text-[10px] text-text-muted/60">
+            {path}
+          </span>
+        )}
+      </div>
+      {right && (
+        <span className="font-mono text-[10px] tracking-wider text-text-muted/70">
+          {right}
+        </span>
+      )}
+    </div>
+  );
+}

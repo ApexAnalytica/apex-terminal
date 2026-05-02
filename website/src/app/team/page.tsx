@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Section, SectionLabel, SectionHeading } from "@/components/ui/Section";
+import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
 
@@ -11,6 +11,7 @@ const TEAM = [
     initials: "JG",
     photo: "https://apexanalytica.co/junaid.png",
     linkedin: "https://www.linkedin.com/in/jghauri/",
+    scholar: null,
     expertise: "Leadership in tech, Bayesian models, COVID-19 analytics, reinsurance risk.",
     background:
       "Ex-General Partner at Pareto Technologies. Former CTO at MARK LABS. Chair of the Board at Emerita.",
@@ -23,6 +24,7 @@ const TEAM = [
     initials: "GK",
     photo: "https://apexanalytica.co/gergios.png",
     linkedin: "https://www.linkedin.com/in/georgios-korpas/",
+    scholar: "https://scholar.google.com/citations?user=pOcS2dkAAAAJ",
     expertise:
       "Quantum algorithms, hybrid computing for continuous optimization, collateral optimization, AI-quantum integration.",
     background:
@@ -37,6 +39,7 @@ const TEAM = [
     initials: "BS",
     photo: "/team/brynna.png",
     linkedin: null,
+    scholar: null,
     expertise: "Business strategy, data analytics, and operational efficiency.",
     background:
       "Goldman Sachs Analyst in Capital Reporting. Background in business, computer science, and data analytics.",
@@ -51,6 +54,7 @@ const ADVISORS = [
     color: "cyan",
     initials: "TI",
     photo: "/team/igusa.png",
+    scholar: "https://scholar.google.com/citations?user=g2Whhq0AAAAJ",
     expertise: "Systems science, applied mathematics, epidemiology, and resilience.",
     background:
       "Professor at Johns Hopkins University with interdisciplinary roles. Funded by NIH and CDC.",
@@ -61,6 +65,7 @@ const ADVISORS = [
     color: "amber",
     initials: "GP",
     photo: "/team/pita.png",
+    scholar: "https://scholar.google.com/citations?user=BLx3FSQAAAAJ",
     expertise: "Natural-disaster risk, climate change, and infrastructure vulnerability.",
     background:
       "Associate Research Scientist at Johns Hopkins University. Former Senior Consultant at the World Bank.",
@@ -71,6 +76,7 @@ const ADVISORS = [
     color: "purple",
     initials: "AT",
     photo: "/team/telukdarie.png",
+    scholar: "https://scholar.google.com/citations?user=LpNn2QUAAAAJ",
     expertise: "AI and large-scale systems design.",
     background:
       "Professor at the University of Johannesburg with extensive industry experience.",
@@ -90,224 +96,68 @@ const colorMap: Record<
   magenta: { text: "text-accent-magenta", border: "border-accent-magenta/30", bg: "bg-accent-magenta/10", soft: "hover:border-accent-magenta/40", accentBg: "bg-accent-magenta" },
 };
 
-const PHOTO_SIZE_TEAM = 200;
-const PHOTO_SIZE_ADVISOR = 140;
-
 export default function TeamPage() {
   return (
     <>
       {/* Header */}
       <section className="relative border-b border-border overflow-hidden">
         <div className="absolute inset-0 grid-bg opacity-40 mask-fade-edges" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-20 pb-16 md:pt-28 md:pb-20">
-          <SectionLabel color="purple">TEAM</SectionLabel>
-          <h1 className="mt-4 font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
-            The people behind
-            <br />
+        <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-16 pb-12 md:pt-20 md:pb-14">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-purple/90">
+              // TEAM
+            </span>
+            <span className="font-mono text-[10px] text-text-muted/60">apex.people</span>
+          </div>
+          <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
+            The people behind{" "}
             <span className="text-accent-cyan text-glow-cyan">Apex Analytica.</span>
           </h1>
-          <p className="mt-6 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
-            An interdisciplinary team combining quantitative finance, applied
-            mathematics, and engineering — building causal risk intelligence
-            for capital markets in an era of escalating catastrophes.
+          <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
+            An interdisciplinary team building causal risk intelligence for
+            capital markets in an era of escalating catastrophes.
           </p>
         </div>
       </section>
 
-      {/* Core team — horizontal cards with large boxy photos */}
-      <Section className="py-20 md:py-24">
-        <div className="space-y-3 mb-10">
-          <SectionLabel color="cyan">CORE TEAM</SectionLabel>
-          <SectionHeading>Engineering, research, operations.</SectionHeading>
-        </div>
-
-        <div className="space-y-5">
-          {TEAM.map((m) => {
-            const c = colorMap[m.color];
-            return (
-              <div
-                key={m.name}
-                className={`relative bg-surface-elevated border border-border rounded-lg p-6 md:p-8 transition-colors ${c.soft}`}
-              >
-                {/* Accent corner */}
-                <div className={`absolute top-0 left-0 h-1 w-16 ${c.accentBg} opacity-70`} />
-
-                <div className="grid gap-6 md:gap-8 md:grid-cols-[auto_1fr] items-start">
-                  {/* Boxy headshot */}
-                  {m.photo ? (
-                    <div
-                      className={`relative overflow-hidden border ${c.border} bg-surface`}
-                      style={{
-                        width: PHOTO_SIZE_TEAM,
-                        height: PHOTO_SIZE_TEAM,
-                        minWidth: PHOTO_SIZE_TEAM,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Image
-                        src={m.photo}
-                        alt={`Portrait of ${m.name}`}
-                        fill
-                        sizes={`${PHOTO_SIZE_TEAM}px`}
-                        className="object-cover"
-                        unoptimized
-                      />
-                      {/* Corner brackets for terminal aesthetic */}
-                      <Bracket position="tl" color={c.text} />
-                      <Bracket position="tr" color={c.text} />
-                      <Bracket position="bl" color={c.text} />
-                      <Bracket position="br" color={c.text} />
-                    </div>
-                  ) : (
-                    <div
-                      className={`relative flex items-center justify-center border ${c.border} ${c.bg}`}
-                      style={{
-                        width: PHOTO_SIZE_TEAM,
-                        height: PHOTO_SIZE_TEAM,
-                        minWidth: PHOTO_SIZE_TEAM,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        className={`font-[family-name:var(--font-michroma)] tracking-[0.1em] ${c.text}`}
-                        style={{ fontSize: 42 }}
-                      >
-                        {m.initials}
-                      </span>
-                      <Bracket position="tl" color={c.text} />
-                      <Bracket position="tr" color={c.text} />
-                      <Bracket position="bl" color={c.text} />
-                      <Bracket position="br" color={c.text} />
-                    </div>
-                  )}
-
-                  <div className="space-y-5 min-w-0">
-                    <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-                      <div>
-                        <div className="font-[family-name:var(--font-michroma)] text-xl md:text-2xl tracking-[0.06em] text-foreground leading-tight">
-                          {m.name}
-                        </div>
-                        <div className={`mt-2 font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] ${c.text}`}>
-                          {m.role.toUpperCase()}
-                        </div>
-                      </div>
-                      {m.linkedin && (
-                        <a
-                          href={m.linkedin}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 border ${c.border} bg-surface rounded font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.25em] ${c.text} hover:bg-surface-elevated transition-colors w-fit`}
-                        >
-                          <span>LINKEDIN</span>
-                          <span aria-hidden>›</span>
-                        </a>
-                      )}
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <BioBlock label="EXPERTISE"  body={m.expertise}  accent={c.text} />
-                      <BioBlock label="BACKGROUND" body={m.background} accent={c.text} />
-                      <BioBlock label="EDUCATION"  body={m.education}  accent={c.text} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {/* Core team — mosaic grid */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// CORE TEAM"
+          path="apex.team"
+          right={`${TEAM.length} MEMBERS`}
+          color="cyan"
+        />
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {TEAM.map((m) => (
+            <PersonTile key={m.name} person={m} variant="team" />
+          ))}
         </div>
       </Section>
 
-      {/* Advisors — horizontal cards (smaller than team) */}
-      <Section className="py-20 md:py-24 border-t border-border">
-        <div className="space-y-3 mb-10">
-          <SectionLabel color="amber">ADVISORS</SectionLabel>
-          <SectionHeading>Senior research and risk-modeling counsel.</SectionHeading>
-        </div>
-
-        <div className="space-y-4">
-          {ADVISORS.map((a) => {
-            const c = colorMap[a.color];
-            return (
-              <div
-                key={a.name}
-                className={`relative bg-surface-elevated border border-border rounded-lg p-5 md:p-6 transition-colors ${c.soft}`}
-              >
-                <div className="grid gap-5 md:gap-6 md:grid-cols-[auto_1fr] items-start">
-                  {/* Boxy headshot or initials */}
-                  {a.photo ? (
-                    <div
-                      className={`relative overflow-hidden border ${c.border} bg-surface`}
-                      style={{
-                        width: PHOTO_SIZE_ADVISOR,
-                        height: PHOTO_SIZE_ADVISOR,
-                        minWidth: PHOTO_SIZE_ADVISOR,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Image
-                        src={a.photo}
-                        alt={`Portrait of ${a.name}`}
-                        fill
-                        sizes={`${PHOTO_SIZE_ADVISOR}px`}
-                        className="object-cover"
-                        unoptimized
-                      />
-                      <Bracket position="tl" color={c.text} />
-                      <Bracket position="tr" color={c.text} />
-                      <Bracket position="bl" color={c.text} />
-                      <Bracket position="br" color={c.text} />
-                    </div>
-                  ) : (
-                    <div
-                      className={`relative flex items-center justify-center border ${c.border} ${c.bg}`}
-                      style={{
-                        width: PHOTO_SIZE_ADVISOR,
-                        height: PHOTO_SIZE_ADVISOR,
-                        minWidth: PHOTO_SIZE_ADVISOR,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        className={`font-[family-name:var(--font-michroma)] tracking-[0.1em] ${c.text}`}
-                        style={{ fontSize: 28 }}
-                      >
-                        {a.initials}
-                      </span>
-                      <Bracket position="tl" color={c.text} />
-                      <Bracket position="tr" color={c.text} />
-                      <Bracket position="bl" color={c.text} />
-                      <Bracket position="br" color={c.text} />
-                    </div>
-                  )}
-
-                  <div className="space-y-4 min-w-0">
-                    <div>
-                      <div className="font-[family-name:var(--font-michroma)] text-base md:text-lg tracking-[0.05em] text-foreground leading-tight">
-                        {a.name}
-                      </div>
-                      <div className={`mt-1.5 font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] ${c.text}`}>
-                        {a.role.toUpperCase()}
-                      </div>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <BioBlock label="EXPERTISE"  body={a.expertise}  accent={c.text} />
-                      <BioBlock label="BACKGROUND" body={a.background} accent={c.text} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {/* Advisors — mosaic grid */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// ADVISORS"
+          path="apex.advisors"
+          right={`${ADVISORS.length} ADVISORS`}
+          color="amber"
+        />
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {ADVISORS.map((a) => (
+            <PersonTile key={a.name} person={a} variant="advisor" />
+          ))}
         </div>
       </Section>
 
       {/* Partners */}
-      <Section className="py-16 md:py-20 border-t border-border">
-        <div className="space-y-3 mb-8">
-          <SectionLabel color="green">PARTNERS</SectionLabel>
-          <SectionHeading>Backed by world-class infrastructure and research.</SectionHeading>
-        </div>
-
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// PARTNERS"
+          path="apex.partners"
+          right="03 ALLIANCES"
+          color="green"
+        />
         <div className="grid gap-px bg-border border border-border rounded-lg overflow-hidden md:grid-cols-3">
           {PARTNERS.map((p) => (
             <div
@@ -323,16 +173,18 @@ export default function TeamPage() {
       </Section>
 
       {/* Hiring band */}
-      <Section className="py-16 md:py-20 border-t border-border">
-        <div className="bg-surface border border-border rounded-lg p-6 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-3 max-w-xl">
-            <SectionLabel color="cyan">JOIN US</SectionLabel>
-            <h3 className="font-[family-name:var(--font-michroma)] text-xl md:text-2xl tracking-[0.06em] text-foreground leading-[1.3]">
+      <Section className="py-12 md:py-16 border-t border-border">
+        <div className="bg-surface border border-border rounded-lg p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-2 max-w-xl">
+            <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
+              // JOIN US
+            </div>
+            <div className="font-[family-name:var(--font-michroma)] text-xl md:text-2xl tracking-[0.06em] text-foreground leading-[1.3]">
               Building causal-intelligence systems is a small-team problem.
-            </h3>
+            </div>
             <p className="text-[12px] font-mono text-text-muted leading-relaxed">
-              We&apos;re selectively expanding across engineering, quantitative
-              research, and domain-specialist roles.
+              Selectively expanding across engineering, quantitative research,
+              and domain-specialist roles.
             </p>
           </div>
           <div className="shrink-0">
@@ -346,16 +198,141 @@ export default function TeamPage() {
   );
 }
 
-function BioBlock({ label, body, accent }: { label: string; body: string; accent: string }) {
+type Person = {
+  name: string;
+  role: string;
+  color: string;
+  initials: string;
+  photo: string | null;
+  linkedin?: string | null;
+  scholar: string | null;
+  expertise: string;
+  background: string;
+  education?: string;
+};
+
+function PersonTile({
+  person,
+  variant,
+}: {
+  person: Person;
+  variant: "team" | "advisor";
+}) {
+  const c = colorMap[person.color];
+  const photoSize = variant === "team" ? 112 : 96;
   return (
-    <div className="space-y-1.5">
-      <div className={`font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] ${accent}`}>
+    <div
+      className={`relative bg-surface-elevated border border-border rounded-lg p-5 transition-colors flex flex-col gap-4 ${c.soft}`}
+    >
+      {/* Accent corner */}
+      <div className={`absolute top-0 left-0 h-0.5 w-12 ${c.accentBg} opacity-70`} />
+
+      {/* Photo + name row */}
+      <div className="flex items-start gap-4">
+        {person.photo ? (
+          <div
+            className={`relative overflow-hidden border ${c.border} bg-surface shrink-0`}
+            style={{ width: photoSize, height: photoSize }}
+          >
+            <Image
+              src={person.photo}
+              alt={`Portrait of ${person.name}`}
+              fill
+              sizes={`${photoSize}px`}
+              className="object-cover"
+              unoptimized
+            />
+            <Bracket position="tl" color={c.text} />
+            <Bracket position="tr" color={c.text} />
+            <Bracket position="bl" color={c.text} />
+            <Bracket position="br" color={c.text} />
+          </div>
+        ) : (
+          <div
+            className={`relative flex items-center justify-center border ${c.border} ${c.bg} shrink-0`}
+            style={{ width: photoSize, height: photoSize }}
+          >
+            <span
+              className={`font-[family-name:var(--font-michroma)] tracking-[0.1em] ${c.text}`}
+              style={{ fontSize: variant === "team" ? 28 : 22 }}
+            >
+              {person.initials}
+            </span>
+            <Bracket position="tl" color={c.text} />
+            <Bracket position="tr" color={c.text} />
+            <Bracket position="bl" color={c.text} />
+            <Bracket position="br" color={c.text} />
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="font-[family-name:var(--font-michroma)] text-base tracking-[0.04em] text-foreground leading-tight">
+            {person.name}
+          </div>
+          <div className={`mt-1.5 font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.25em] ${c.text} leading-snug`}>
+            {person.role.toUpperCase()}
+          </div>
+        </div>
+      </div>
+
+      {/* Bio blocks */}
+      <div className="space-y-3">
+        <BioRow label="EXPERTISE" body={person.expertise} accent={c.text} />
+        <BioRow label="BACKGROUND" body={person.background} accent={c.text} />
+        {person.education && (
+          <BioRow label="EDUCATION" body={person.education} accent={c.text} />
+        )}
+      </div>
+
+      {/* Links footer */}
+      {(person.linkedin || person.scholar) && (
+        <div className="mt-auto flex flex-wrap gap-2 pt-2 border-t border-border/60">
+          {person.linkedin && (
+            <LinkChip href={person.linkedin} label="LINKEDIN" colorClass={c.text} borderClass={c.border} />
+          )}
+          {person.scholar && (
+            <LinkChip href={person.scholar} label="PUBLICATIONS" colorClass={c.text} borderClass={c.border} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BioRow({ label, body, accent }: { label: string; body: string; accent: string }) {
+  return (
+    <div className="space-y-1">
+      <div className={`font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.3em] ${accent}`}>
         {label}
       </div>
-      <p className="text-[12px] font-mono text-foreground/85 leading-relaxed">
+      <p className="text-[11.5px] font-mono text-foreground/85 leading-relaxed">
         {body}
       </p>
     </div>
+  );
+}
+
+function LinkChip({
+  href,
+  label,
+  colorClass,
+  borderClass,
+}: {
+  href: string;
+  label: string;
+  colorClass: string;
+  borderClass: string;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 border ${borderClass} bg-surface rounded font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.25em] ${colorClass} hover:bg-surface transition-colors`}
+    >
+      <span>{label}</span>
+      <span aria-hidden>›</span>
+    </a>
   );
 }
 

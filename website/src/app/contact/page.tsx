@@ -1,4 +1,4 @@
-import { Section, SectionLabel, SectionHeading, SectionLede } from "@/components/ui/Section";
+import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
 
@@ -23,6 +23,13 @@ const ACCESS_OPTIONS = [
   },
 ] as const;
 
+const CONTACT_CHANNELS = [
+  { channel: "GENERAL",         subject: "" },
+  { channel: "ACCESS · INVITE", subject: "Manifold%20%E2%80%94%20Invite%20Request" },
+  { channel: "PARTNERSHIPS",    subject: "Partnership%20Inquiry" },
+  { channel: "RESEARCH",        subject: "Research%20Collaboration" },
+];
+
 const colorMap: Record<string, { text: string; border: string; bg: string }> = {
   cyan:  { text: "text-accent-cyan",  border: "border-accent-cyan/30",  bg: "bg-accent-cyan" },
   amber: { text: "text-accent-amber", border: "border-accent-amber/30", bg: "bg-accent-amber" },
@@ -33,47 +40,50 @@ export default function ContactPage() {
     <>
       <section className="relative border-b border-border overflow-hidden">
         <div className="absolute inset-0 grid-bg opacity-40 mask-fade-edges" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-20 pb-16 md:pt-28 md:pb-20">
-          <SectionLabel>CONTACT</SectionLabel>
-          <h1 className="mt-4 font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
-            Get in touch
-            <br />
-            with{" "}
+        <div className="relative mx-auto max-w-7xl px-4 md:px-6 pt-16 pb-12 md:pt-20 md:pb-14">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
+              // CONTACT
+            </span>
+            <span className="font-mono text-[10px] text-text-muted/60">apex.contact</span>
+          </div>
+          <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
+            Get in touch with{" "}
             <span className="text-accent-cyan text-glow-cyan">Apex Analytica.</span>
           </h1>
-          <p className="mt-6 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
-            For platform access, partnerships, research collaboration, or
-            general inquiry — reach us by email or pick the access path that
-            fits.
+          <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
+            Platform access, partnerships, research collaboration, or general
+            inquiry — pick a path or email us directly.
           </p>
         </div>
       </section>
 
       {/* Access options */}
-      <Section className="py-20 md:py-24">
-        <div className="space-y-3 mb-12">
-          <SectionLabel color="cyan">PLATFORM ACCESS</SectionLabel>
-          <SectionHeading>Two ways to get into Manifold.</SectionHeading>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// PLATFORM ACCESS"
+          path="apex.access"
+          right="2 PATHS"
+          color="cyan"
+        />
+        <div className="grid gap-3 md:grid-cols-2">
           {ACCESS_OPTIONS.map((opt) => {
             const c = colorMap[opt.color];
             return (
               <div
                 key={opt.title}
-                className={`bg-surface-elevated border ${c.border} rounded-lg p-8 flex flex-col gap-5 hover:bg-surface transition-colors`}
+                className={`bg-surface-elevated border ${c.border} rounded-lg p-5 flex flex-col gap-4 hover:bg-surface transition-colors`}
               >
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className={`font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] ${c.text}`}>
                     {opt.label}
                   </div>
-                  <div className="font-[family-name:var(--font-michroma)] text-xl tracking-[0.15em] text-foreground">
+                  <div className="font-[family-name:var(--font-michroma)] text-lg tracking-[0.12em] text-foreground">
                     {opt.title}
                   </div>
                 </div>
                 <span className={`block h-1 w-12 ${c.bg} opacity-70`} />
-                <p className="text-[13px] font-mono text-text-muted leading-relaxed flex-1">
+                <p className="text-[12.5px] font-mono text-text-muted leading-relaxed flex-1">
                   {opt.blurb}
                 </p>
                 <CTAButton
@@ -90,52 +100,50 @@ export default function ContactPage() {
         </div>
       </Section>
 
-      {/* Direct contact */}
-      <Section className="py-20 md:py-24 border-t border-border">
-        <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-start">
-          <div className="space-y-4">
-            <SectionLabel color="purple">DIRECT</SectionLabel>
-            <SectionHeading>Email is the best way.</SectionHeading>
-            <SectionLede>
-              We read every inbound. Use the addresses on the right and add
-              context — your organization, what you&apos;re trying to solve,
-              and the timeframe you&apos;re working on.
-            </SectionLede>
-          </div>
-
-          <div className="space-y-3">
-            <ContactRow
-              channel="GENERAL"
-              dest={SITE.email}
-              href={`mailto:${SITE.email}`}
-            />
-            <ContactRow
-              channel="ACCESS · INVITE"
-              dest={SITE.email}
-              href={`mailto:${SITE.email}?subject=Manifold%20%E2%80%94%20Invite%20Request`}
-            />
-            <ContactRow
-              channel="PARTNERSHIPS"
-              dest={SITE.email}
-              href={`mailto:${SITE.email}?subject=Partnership%20Inquiry`}
-            />
-            <ContactRow
-              channel="RESEARCH"
-              dest={SITE.email}
-              href={`mailto:${SITE.email}?subject=Research%20Collaboration`}
-            />
-          </div>
+      {/* Direct contact — channel grid */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// DIRECT"
+          path="apex.email"
+          right={SITE.email}
+          color="purple"
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          {CONTACT_CHANNELS.map((ch) => {
+            const href = ch.subject
+              ? `mailto:${SITE.email}?subject=${ch.subject}`
+              : `mailto:${SITE.email}`;
+            return (
+              <a
+                key={ch.channel}
+                href={href}
+                className="flex items-center justify-between bg-surface-elevated border border-border rounded-lg px-5 py-4 hover:border-accent-cyan/40 hover:bg-surface transition-colors group"
+              >
+                <div className="space-y-1">
+                  <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] text-accent-cyan/80">
+                    {ch.channel}
+                  </div>
+                  <div className="font-mono text-[12.5px] text-foreground group-hover:text-accent-cyan transition-colors">
+                    {SITE.email}
+                  </div>
+                </div>
+                <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted group-hover:text-accent-cyan transition-colors">
+                  ›
+                </span>
+              </a>
+            );
+          })}
         </div>
       </Section>
 
       {/* Returning users */}
-      <Section className="py-16 md:py-20 border-t border-border">
-        <div className="bg-surface border border-border rounded-lg p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
+      <Section className="py-10 md:py-14 border-t border-border">
+        <div className="bg-surface border border-border rounded-lg p-5 md:p-7 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5">
             <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted">
-              ALREADY HAVE ACCESS?
+              // ALREADY HAVE ACCESS?
             </div>
-            <div className="font-[family-name:var(--font-michroma)] text-lg md:text-xl tracking-[0.08em] text-foreground">
+            <div className="font-[family-name:var(--font-michroma)] text-lg md:text-xl tracking-[0.06em] text-foreground">
               Sign in to the Manifold terminal.
             </div>
           </div>
@@ -145,34 +153,5 @@ export default function ContactPage() {
         </div>
       </Section>
     </>
-  );
-}
-
-function ContactRow({
-  channel,
-  dest,
-  href,
-}: {
-  channel: string;
-  dest: string;
-  href: string;
-}) {
-  return (
-    <a
-      href={href}
-      className="flex items-center justify-between bg-surface-elevated border border-border rounded-lg px-5 py-4 hover:border-accent-cyan/40 hover:bg-surface transition-colors group"
-    >
-      <div className="space-y-1">
-        <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] text-accent-cyan/80">
-          {channel}
-        </div>
-        <div className="font-mono text-[13px] text-foreground group-hover:text-accent-cyan transition-colors">
-          {dest}
-        </div>
-      </div>
-      <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted group-hover:text-accent-cyan transition-colors">
-        ›
-      </span>
-    </a>
   );
 }

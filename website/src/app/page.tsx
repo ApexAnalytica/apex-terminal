@@ -1,7 +1,7 @@
 import Link from "next/link";
 import HeroGraph from "@/components/HeroGraph";
 import EngineFlow from "@/components/visuals/EngineFlow";
-import { Section } from "@/components/ui/Section";
+import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
 
@@ -239,30 +239,6 @@ export default function Home() {
         </div>
       </Section>
     </>
-  );
-}
-
-/* ───────── Terminal-style section header ───────── */
-
-function TerminalHeader({ label, path, right }: { label: string; path?: string; right?: string }) {
-  return (
-    <div className="flex items-center justify-between border-b border-border pb-2 mb-4">
-      <div className="flex items-baseline gap-3">
-        <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-accent-cyan/90">
-          {label}
-        </span>
-        {path && (
-          <span className="hidden sm:inline font-mono text-[10px] text-text-muted/60">
-            {path}
-          </span>
-        )}
-      </div>
-      {right && (
-        <span className="font-mono text-[10px] tracking-wider text-text-muted/70">
-          {right}
-        </span>
-      )}
-    </div>
   );
 }
 

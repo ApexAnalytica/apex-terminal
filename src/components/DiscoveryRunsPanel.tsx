@@ -2,6 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DiscoveryRun } from "@/lib/discovery";
+import type { Capability } from "@/lib/capability";
+import CapabilityBadge from "./CapabilityBadge";
+
+// Per-algorithm capability tag. The discovery algorithms are all
+// running on the public D1NAMO cohort today; calibration is also live.
+// When they switch to real partner-cohort data, these stay "live"; the
+// distinction would be encoded as `live-synthetic` on the cohort, not
+// the algorithm.
+const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
+  "lag-correlation": "live",
+  "pcmci-linear": "live",
+  "bocpd-hypo-calibration": "live",
+};
 
 // ─── DiscoveryRunsPanel ──────────────────────────────────────────────
 //
@@ -132,9 +145,16 @@ function RunTile({ run }: { run: DiscoveryRun }) {
     <div className="space-y-2 border border-[#40c4ff]/30 rounded bg-[#40c4ff]/5 p-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-[#40c4ff]">
-          {isCalibration ? "CALIBRATION RUN" : "DISCOVERY RUN"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-[#40c4ff]">
+            {isCalibration ? "CALIBRATION RUN" : "DISCOVERY RUN"}
+          </span>
+          {CAPABILITY_BY_ALGORITHM[run.algorithm.id] && (
+            <CapabilityBadge
+              capability={CAPABILITY_BY_ALGORITHM[run.algorithm.id]}
+            />
+          )}
+        </div>
         <span
           className={`text-[7px] font-mono ${
             run.status === "succeeded"

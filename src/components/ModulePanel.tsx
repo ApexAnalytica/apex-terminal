@@ -1313,9 +1313,9 @@ function ParetoPanel({
               modelSeries: undefined,
               shortDesc: meta.shortDesc,
               methodology: meta.methodology,
-              formula: `INSUFFICIENT DATA — need ≥20 points, have ${maxN}` +
+              formula: `INSUFFICIENT DATA on curated graph nodes — need ≥20 points, have ${maxN}` +
                 (bestEntry ? ` (from ${bestEntry.source})` : ""),
-              assessment: `INSUFFICIENT DATA — BOCPD (Adams & MacKay 2007) requires ≥20 observations to estimate a meaningful run-length posterior. All 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points (VX-880 FORWARD-101 has 3 points; TN-10 has 2–3; T1D Index has 5). Maximum available: ${maxN} point(s). Card is shown so the estimator tab is always visible; it will activate automatically once series reach ≥20 points.`,
+              assessment: `INSUFFICIENT DATA on curated graph nodes — BOCPD (Adams & MacKay 2007) requires ≥20 observations on each node to fit the run-length posterior. The 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points each (VX-880 FORWARD-101 has 3; TN-10 has 2–3; T1D Index has 5). Maximum available on this surface: ${maxN} point(s).\n\nNOTE: BOCPD is LIVE elsewhere in the platform — see the SPIRTES module's bocpd-hypo-calibration tab, which runs the same estimator on the D1NAMO public cohort (8,300+ CGM samples across 9 T1D subjects) and reports AUROC 0.679 / Brier 0.183 / ECE 0.175 against ground-truth hypoglycemic events. This Pareto card activates here when one of these curated graph nodes carries ≥20 longitudinal observations.`,
               emptyState: { kind: "awaiting-data" as const, inputs },
             };
           }

@@ -92,9 +92,15 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 **Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 522/522 pass.
 
+### 2026-05-02 — Reverted: 3D Sugiyama rank layout
+
+**Reverted #168 on user request.** The strict rank layout read too rigid/grid-like in production — user preferred the previous force-directed look. `src/lib/graph-layout.ts` restored to the pre-#168 state (force-directed simulation, fixed bounds normalization). Latent `any`-cast lint errors that lived on main pre-#168 fixed with the same `AnySim` type-cast pattern used in `graph-layout-2d.ts` while the file was open. 2D circle layout from #166 is unchanged.
+
+**Lesson.** Sugiyama gives a clean causal-flow read but loses the organic/spatial feel of force-directed. If we revisit 3D layout later, the right approach is probably force-directed seeding + a light rank-influence pass (use rank as a soft y-bias on top of free force layout), not a strict rank assignment.
+
 ### 2026-05-02 — Next up
 
-- TBD — open for direction.
+- **Map view (`CausalDAGMap.tsx`) orb fixes.** Two issues from prod feedback: (1) animated orbs float independently of the edge lines they should be tracing, and (2) all orbs reach point B in the same time regardless of edge length, so short edges have slow orbs and long edges have fast ones — should be constant px/s instead.
 
 ---
 

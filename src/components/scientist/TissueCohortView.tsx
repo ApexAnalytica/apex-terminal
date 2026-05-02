@@ -62,6 +62,27 @@ function meanOf(
   return count === 0 ? 0 : sum / count;
 }
 
+/** Mean and population SD of a variable across donors. */
+function summaryOf(
+  subjects: readonly Subject[],
+  variableId: string,
+): { mean: number; sd: number; n: number } {
+  const values: number[] = [];
+  for (const subj of subjects) {
+    for (const m of subj.measurements) {
+      if (m.variableId === variableId && typeof m.value === "number") {
+        values.push(m.value);
+      }
+    }
+  }
+  const n = values.length;
+  if (n === 0) return { mean: 0, sd: 0, n: 0 };
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance =
+    values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
+  return { mean, sd: Math.sqrt(variance), n };
+}
+
 function clamp01(x: number): number {
   return Math.max(0, Math.min(10, x));
 }
@@ -250,15 +271,22 @@ export default function TissueCohortView() {
         </div>
       </div>
 
-      {/* ΩF pillar bars */}
+      {/* ΩF pillar bars (with HC-baseline delta) */}
       <div className="space-y-1.5">
         <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
           Ω-FRAGILITY PILLAR READING
+          {active !== "HC" && (
+            <span className="text-[7px] font-mono text-text-muted ml-2 normal-case tracking-normal">
+              (Δ vs HC baseline shown on the right)
+            </span>
+          )}
         </div>
         <ul className="space-y-1">
           {(Object.keys(activePillars) as Array<keyof PillarSet>).map(
             (key) => {
               const v = activePillars[key];
+              const baseline = pillarsByStratum.HC[key];
+              const delta = v - baseline;
               return (
                 <li
                   key={key}
@@ -280,11 +308,73 @@ export default function TissueCohortView() {
                   <span className="w-8 text-text-muted text-right">
                     {v.toFixed(1)}
                   </span>
+                  <span
+                    className={`w-10 text-right ${
+                      active === "HC"
+                        ? "text-text-muted/40"
+                        : delta > 0
+                          ? "text-accent-amber"
+                          : delta < 0
+                            ? "text-accent-green"
+                            : "text-text-muted"
+                    }`}
+                  >
+                    {active === "HC"
+                      ? "—"
+                      : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                  </span>
                 </li>
               );
             },
           )}
         </ul>
+      </div>
+
+      {/* Per-feature-group distributions */}
+      <div className="space-y-1.5">
+        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground">
+          FEATURE DISTRIBUTIONS — {active.replace(/_/g, " ")}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <FeatureGroupCard
+            title="Histology"
+            features={[
+              { id: "histo_insulitis_grade", label: "Insulitis", unit: "0–4" },
+              { id: "histo_beta_cell_mass_pct", label: "β-mass", unit: "%" },
+              { id: "histo_islet_count", label: "Islets", unit: "n" },
+            ]}
+            subjects={activeDonors}
+          />
+          <FeatureGroupCard
+            title="scRNA cluster"
+            features={[
+              { id: "scrna_beta_pct", label: "β-cell", unit: "frac" },
+              { id: "scrna_alpha_pct", label: "α-cell", unit: "frac" },
+              { id: "scrna_immune_pct", label: "Immune", unit: "frac" },
+              { id: "scrna_delta_pct", label: "δ-cell", unit: "frac" },
+            ]}
+            subjects={activeDonors}
+          />
+          <FeatureGroupCard
+            title="Serum / proteomic"
+            features={[
+              { id: "prot_c_peptide_pmol_per_mL", label: "C-peptide", unit: "pmol/mL" },
+              { id: "prot_gad65_titer", label: "GAD65", unit: "U/mL" },
+              { id: "prot_ifn_gamma_pg_per_mL", label: "IFN-γ", unit: "pg/mL" },
+              { id: "prot_hba1c_pct", label: "HbA1c", unit: "%" },
+            ]}
+            subjects={activeDonors}
+          />
+          <FeatureGroupCard
+            title="Clinical"
+            features={[
+              { id: "clin_age_band", label: "Age band", unit: "0–4" },
+              { id: "clin_t1d_duration_years", label: "Duration", unit: "yr" },
+              { id: "clin_autoantibody_count", label: "AAB count", unit: "0–4" },
+            ]}
+            subjects={activeDonors}
+          />
+        </div>
       </div>
 
       {/* Cross-stratum reserve / junction trajectory — the demo story */}
@@ -359,6 +449,56 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[9px] font-mono text-foreground truncate" title={value}>
         {value}
       </div>
+    </div>
+  );
+}
+
+// ─── Feature group card (mean ± SD per variable) ─────────────────────
+
+function fmtValue(value: number, unit: string): string {
+  // Simple precision rule: small numbers (< 1) → 2 dp, medium → 1 dp,
+  // large (>= 100) → 0 dp. Keeps the table readable across feature scales.
+  let dp: number;
+  if (Math.abs(value) < 1) dp = 2;
+  else if (Math.abs(value) < 100) dp = 1;
+  else dp = 0;
+  return `${value.toFixed(dp)} ${unit}`.trim();
+}
+
+function FeatureGroupCard({
+  title,
+  features,
+  subjects,
+}: {
+  title: string;
+  features: { id: string; label: string; unit: string }[];
+  subjects: readonly Subject[];
+}) {
+  return (
+    <div className="border border-border/60 rounded bg-surface p-1.5 space-y-0.5">
+      <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground/80 pb-0.5">
+        {title}
+      </div>
+      <ul className="space-y-0.5">
+        {features.map((f) => {
+          const s = summaryOf(subjects, f.id);
+          return (
+            <li
+              key={f.id}
+              className="flex items-baseline justify-between gap-2 text-[7px] font-mono leading-tight"
+            >
+              <span className="text-text-muted truncate">{f.label}</span>
+              <span className="text-foreground tabular-nums whitespace-nowrap">
+                {fmtValue(s.mean, "")}
+                <span className="text-text-muted/70 ml-0.5">
+                  ± {fmtValue(s.sd, "")}
+                </span>
+                <span className="text-text-muted/50 ml-0.5">{f.unit}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

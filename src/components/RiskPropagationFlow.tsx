@@ -143,40 +143,67 @@ export default function RiskPropagationFlow() {
     return { riskCards: cards, riskMap: map };
   }, [activeGraph, shocks]);
 
-  // Get the nodes to display time series for.
-  // Selected nodes (single + multi) shown first, then fill remaining slots with top risk nodes.
-  // Depends on riskCards/riskMap identity (stable across scrub) + allSelectedIds.
+  // Get the nodes to display time series for. Priority order:
+  //   1. Selected nodes (single + multi) — explicit user choice
+  //   2. Nodes with `liveData` attached — surface live-fed nodes so the
+  //      Live Coverage Program is visible without clicking
+  //   3. Top-Ω risk nodes — the original default
+  // Depends on riskCards/riskMap identity (stable across scrub) +
+  // allSelectedIds + activeGraph (for liveData scan).
   const displayNodes = useMemo(() => {
-    if (allSelectedIds.size > 0) {
-      // Build cards for all selected nodes, even if they're not top-risk
-      const selectedCards: typeof riskCards = [];
-      for (const id of allSelectedIds) {
-        const existing = riskMap.get(id);
-        if (existing) {
-          selectedCards.push(existing);
-        } else {
-          // Node not in top risk — build a card from graph data
-          const node = activeGraph.nodes.find((n) => n.id === id);
-          if (node) {
-            const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
-            const shockMult = Math.min(1, totalSeverity);
-            selectedCards.push({
-              nodeId: node.id,
-              label: node.label,
-              category: node.category,
-              omegaScore: parseFloat((node.omegaFragility.composite * (1 + shockMult * 0.05)).toFixed(1)),
-              domain: node.domain,
-              globalConcentration: node.globalConcentration,
-            });
-          }
+    const cards: typeof riskCards = [];
+    const seen = new Set<string>();
+
+    // Helper: synthesize a card for a node not in the riskCards list
+    const buildCardFor = (nodeId: string): (typeof riskCards)[number] | null => {
+      const existing = riskMap.get(nodeId);
+      if (existing) return existing;
+      const node = activeGraph.nodes.find((n) => n.id === nodeId);
+      if (!node) return null;
+      const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
+      const shockMult = Math.min(1, totalSeverity);
+      return {
+        nodeId: node.id,
+        label: node.label,
+        category: node.category,
+        omegaScore: parseFloat((node.omegaFragility.composite * (1 + shockMult * 0.05)).toFixed(1)),
+        domain: node.domain,
+        globalConcentration: node.globalConcentration,
+      };
+    };
+
+    // 1. Selected nodes
+    for (const id of allSelectedIds) {
+      if (seen.has(id)) continue;
+      const c = buildCardFor(id);
+      if (c) {
+        cards.push(c);
+        seen.add(id);
+      }
+    }
+
+    // 2. Live-fed nodes — any node whose `liveData[]` is non-empty
+    if (allSelectedIds.size === 0) {
+      for (const n of activeGraph.nodes) {
+        if (seen.has(n.id)) continue;
+        if (!n.liveData || n.liveData.length === 0) continue;
+        const c = buildCardFor(n.id);
+        if (c) {
+          cards.push(c);
+          seen.add(n.id);
         }
       }
-      // Fill remaining slots with top risk nodes not already selected
-      const remaining = riskCards.filter((c) => !allSelectedIds.has(c.nodeId));
-      const maxSlots = Math.max(5, allSelectedIds.size);
-      return [...selectedCards, ...remaining].slice(0, maxSlots);
     }
-    return riskCards.slice(0, 5);
+
+    // 3. Top-Ω fillers
+    for (const c of riskCards) {
+      if (seen.has(c.nodeId)) continue;
+      cards.push(c);
+      seen.add(c.nodeId);
+    }
+
+    const maxSlots = Math.max(5, allSelectedIds.size);
+    return cards.slice(0, maxSlots);
   }, [riskCards, riskMap, allSelectedIds, activeGraph, shocks]);
 
   // Get temporal history for each display node
@@ -289,23 +316,19 @@ export default function RiskPropagationFlow() {
               <div ref={containerRef} className="flex-1 flex items-stretch gap-2 overflow-x-auto min-w-0">
               {displayNodes.map((card, i) => {
                 const omegaHistory = nodeHistories.get(card.nodeId) ?? [];
-                // Prefer a live-data history when available (first liveData kind
-                // with >= 2 historical entries). The sparkline plots the live
-                // values directly; falls back to the synthetic omega history
-                // when no live signal has accumulated enough points yet.
+                // Prefer live-data when ANY liveData entry is attached (even
+                // if history hasn't accumulated yet — first tick has only the
+                // current value, history.length === 0). On second tick the
+                // sparkline gets 2 points and renders a curve.
                 const node = nodeById.get(card.nodeId);
-                const liveSignal = node?.liveData?.find(
-                  (p) => (p.history?.length ?? 0) >= 1,
-                );
+                const liveSignal = node?.liveData?.[0];
                 const usingLiveHistory = !!liveSignal;
                 const history = usingLiveHistory
                   ? [
                       ...(liveSignal!.history ?? []).map((h) => ({
                         timestamp: new Date(h.observedAt).getTime(),
                         omegaComposite: h.value,
-                        omegaProfile: card.nodeId
-                          ? ({} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"])
-                          : ({} as never),
+                        omegaProfile: {} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"],
                       })),
                       {
                         timestamp: new Date(liveSignal!.observedAt).getTime(),

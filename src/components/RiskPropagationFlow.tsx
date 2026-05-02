@@ -109,6 +109,7 @@ export default function RiskPropagationFlow() {
   const temporalData = useApexStore((s) => s.temporalData);
   const initTemporalData = useApexStore((s) => s.initTemporalData);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const timelineRange = useApexStore((s) => s.timelineRange);
   const { graph: temporalGraph } = useTemporalGraph();
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
@@ -323,7 +324,7 @@ export default function RiskPropagationFlow() {
                 const node = nodeById.get(card.nodeId);
                 const liveSignal = node?.liveData?.[0];
                 const usingLiveHistory = !!liveSignal;
-                const history = usingLiveHistory
+                const allHistory = usingLiveHistory
                   ? [
                       ...(liveSignal!.history ?? []).map((h) => ({
                         timestamp: new Date(h.observedAt).getTime(),
@@ -337,6 +338,15 @@ export default function RiskPropagationFlow() {
                       },
                     ]
                   : omegaHistory;
+                // Filter to the visible time-dial window so the 1H/1D/1W/1M
+                // scale buttons actually change the curve. If the filter
+                // would yield zero points (e.g. monthly data with a 1H window),
+                // fall back to the unfiltered series so the card never goes
+                // empty due to scale mismatch alone.
+                const filtered = allHistory.filter(
+                  (h) => h.timestamp >= timelineRange.start && h.timestamp <= timelineRange.end,
+                );
+                const history = filtered.length > 0 ? filtered : allHistory;
                 const domainColor = getDomainColor(card.domain);
                 const isActive = allSelectedIds.has(card.nodeId);
                 const currentOmega = card.omegaScore;

@@ -49,6 +49,15 @@ import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
 import { generateTemporalData } from "@/lib/temporal-data";
 import { loadRealTemporalData } from "@/lib/real-timeseries";
 
+// Drop pinned time-series ids that no longer exist in the graph. Returns the
+// same array when nothing changes so Zustand subscribers don't re-render.
+function prunePinsToGraph(graph: CausalGraph, pins: string[]): string[] {
+  if (pins.length === 0) return pins;
+  const validIds = new Set(graph.nodes.map((n) => n.id));
+  const filtered = pins.filter((id) => validIds.has(id));
+  return filtered.length === pins.length ? pins : filtered;
+}
+
 interface ApexState {
   // Module navigation
   activeModule: ModuleId;
@@ -277,9 +286,15 @@ export const useApexStore = create<ApexState>((set, get) => ({
   graphData: EMPTY_GRAPH,
   initialGraph: EMPTY_GRAPH,
   setGraphData: (g) => {
-    set({ graphData: g, initialGraph: g, temporalData: null });
-    // Re-fire temporal load so the new graph gets its real-data mappings
-    // resolved (without this, switching profiles keeps stale temporal data).
+    // Whenever the graph node id set changes we must re-resolve temporalData
+    // and drop pinned-series ids that no longer exist; otherwise the
+    // TimeSeriesOverlay shows stale "NO DATA" badges for ghost pins.
+    set((s) => ({
+      graphData: g,
+      initialGraph: g,
+      temporalData: null,
+      pinnedTimeSeriesNodes: prunePinsToGraph(g, s.pinnedTimeSeriesNodes),
+    }));
     get().initTemporalData();
   },
 
@@ -474,7 +489,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSandboxOrgName: (name) => set({ sandboxOrgName: name }),
   sandboxGraphs: [],
   activeSandboxGraphId: null,
-  addSandboxGraph: (name, graph) =>
+  addSandboxGraph: (name, graph) => {
     set((s) => {
       const id = `graph-${Date.now()}`;
       return {
@@ -482,12 +497,18 @@ export const useApexStore = create<ApexState>((set, get) => ({
         activeSandboxGraphId: id,
         graphData: graph,
         initialGraph: graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
       };
-    }),
-  switchSandboxGraph: (id) =>
+    });
+    get().initTemporalData();
+  },
+  switchSandboxGraph: (id) => {
+    let didSwitch = false;
     set((s) => {
       const target = s.sandboxGraphs.find((g) => g.id === id);
       if (!target) return s;
+      didSwitch = true;
       // Save current graph back to its slot before switching
       const updatedGraphs = s.sandboxGraphs.map((g) =>
         g.id === s.activeSandboxGraphId
@@ -499,23 +520,32 @@ export const useApexStore = create<ApexState>((set, get) => ({
         activeSandboxGraphId: id,
         graphData: target.graph,
         initialGraph: target.graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(target.graph, s.pinnedTimeSeriesNodes),
       };
-    }),
-  deleteSandboxGraph: (id) =>
+    });
+    if (didSwitch) get().initTemporalData();
+  },
+  deleteSandboxGraph: (id) => {
+    const wasActive = get().activeSandboxGraphId === id;
     set((s) => {
       const remaining = s.sandboxGraphs.filter((g) => g.id !== id);
-      const wasActive = s.activeSandboxGraphId === id;
       if (wasActive) {
         const next = remaining[0];
+        const nextGraph = next?.graph ?? EMPTY_GRAPH;
         return {
           sandboxGraphs: remaining,
           activeSandboxGraphId: next?.id ?? null,
-          graphData: next?.graph ?? EMPTY_GRAPH,
-          initialGraph: next?.graph ?? EMPTY_GRAPH,
+          graphData: nextGraph,
+          initialGraph: nextGraph,
+          temporalData: null,
+          pinnedTimeSeriesNodes: prunePinsToGraph(nextGraph, s.pinnedTimeSeriesNodes),
         };
       }
       return { sandboxGraphs: remaining };
-    }),
+    });
+    if (wasActive) get().initTemporalData();
+  },
   renameSandboxGraph: (id, name) =>
     set((s) => ({
       sandboxGraphs: s.sandboxGraphs.map((g) =>
@@ -548,23 +578,32 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Import
   importModalOpen: false,
   setImportModalOpen: (open) => set({ importModalOpen: open }),
-  mergeGraphData: (nodes, edges, datasetColor) =>
+  mergeGraphData: (nodes, edges, datasetColor) => {
     set((s) => {
       const coloredNodes = datasetColor
         ? nodes.map((n) => ({ ...n, datasetColor }))
         : nodes;
       const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
-      return { graphData: graph, initialGraph: graph };
-    }),
+      return {
+        graphData: graph,
+        initialGraph: graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
+      };
+    });
+    get().initTemporalData();
+  },
 
   // Imported dataset tracking
   importedDatasets: [],
   addImportedDataset: (dataset) =>
     set((s) => ({ importedDatasets: [...s.importedDatasets, dataset] })),
-  removeImportedDataset: (id) =>
+  removeImportedDataset: (id) => {
+    let graphChanged = false;
     set((s) => {
       const dataset = s.importedDatasets.find((d) => d.id === id);
       if (!dataset) return s;
+      graphChanged = true;
 
       const remainingDatasets = s.importedDatasets.filter((d) => d.id !== id);
 
@@ -612,8 +651,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
         importedDatasets: remainingDatasets,
         graphData: graph,
         initialGraph: graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
       };
-    }),
+    });
+    if (graphChanged) get().initTemporalData();
+  },
 
   // Tour
   tourActive: false,

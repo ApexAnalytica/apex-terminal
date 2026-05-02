@@ -71,6 +71,10 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 **Verification.** `tsc --noEmit` clean; lint clean on changed files; vitest 511/511 pass. Visual sign-off on Vercel preview.
 
+### 2026-05-02 — Housekeeping: stop tracking the auto-generated test suite HTML
+
+`APEX-Terminal-Test-Suite.html` is regenerated on every `vitest run` by the custom HTML reporter at `src/lib/__tests__/html-reporter.ts`. The only diff between runs is the timestamp on the cover, so committing it created noise on every PR and tripped the stop-hook git-clean check repeatedly during this session. Untracked via `git rm --cached` and added to `.gitignore`. Anyone who wants the report runs `npx vitest run` locally — it generates fresh.
+
 ### 2026-05-02 — Next up
 
 - **Issue #1 — 3D Sugiyama layout.** Highest-leverage rendering item still open. Next on deck unless redirected.

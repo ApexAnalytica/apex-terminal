@@ -3,6 +3,8 @@
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
 > **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 6 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov) covering **~39 graph nodes** including the T1D side and EM FX. All free-tier; mock fallback when keys/upstream missing.
+>
+> **Stated end-state goal:** every node carries continuously-pulled real data. **No synthetic composites.** 4 composites still synthetic as of this writing — all 4 have a concrete path to real-data backing (see "Real-data-only goal" section below).
 
 ## Scope summary (in)
 
@@ -157,6 +159,45 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 - Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.
 - Polling load grows with coverage. Each provider declares its cadence; per-provider server-side caching keeps upstream calls bounded.
 - A `mode` field on registry entries (live | modeled | static) is a likely Phase 2.5 addition so the UI can distinguish empirical from inferred.
+
+## Real-data-only goal — no synthetic composites
+
+**Stated objective:** every node in the active graph carries continuously-pulled real data. No synthetic composites in the end state.
+
+This is the target; the current state is a work-in-progress program of incremental provider additions. The synthetic composites still in the graph as of this writing fall into three categories:
+
+### A. Composites that can be derived from real primitives we already pull
+
+- **Currency Contagion Channel** — derivable from FRED EM FX series (DEXTUUS / DEXSFUS / DEXBZUS) — e.g. average normalized depreciation across the basket.
+- **Exchange Rate Pressure Index** — same primitives, different aggregation (weighted depreciation index).
+
+These need a **derivation provider**: a `FeedProvider` whose `matchPayload` reads other nodes' existing `liveData[]` from the `nodes` parameter and emits computed composites. Same registry pattern, no new upstream API required. Ready to build when prioritized; one PR.
+
+### B. Composites that need a real source we haven't wired yet
+
+- **Sovereign Default / Restructuring** — closest free proxies: World Bank IDS external-debt service ratios, FRED's EM HY corporate bond yields (BAMLEMHB...), or IMF Article IV staff reports. Best candidate is a new provider on top of FRED's existing key.
+- **MENA Import Dependency Index** — needs UN Comtrade, WITS, or IMF Direction of Trade. UN Comtrade has a free JSON API but tight rate limits on the unauthenticated tier.
+
+### C. Composites with no defensible free source
+
+If any composite ends up in this category after a real search, the right move is to **delete the node from the graph data** (data-session ownership) rather than keep it as a synthetic placeholder. The principle: a node that can't be measured shouldn't be on the map.
+
+### Status of the goal as of last update
+
+| Total nodes covered live | ~39 |
+| Synthetic composites still present in graph | 4 (the four in §A and §B) |
+| Synthetic composites with a clear path to real data | 4 (all of them — A is derivation, B is new providers) |
+| Synthetic composites with no defensible source (target: 0) | 0 — none of the 4 are in category C |
+
+**Implication:** the goal is reachable. No node is condemned to stay synthetic. Each remaining composite has a concrete next step.
+
+### Next phases against this goal
+
+| Phase | Scope | Eliminates |
+|---|---|---|
+| 6 | **Derivation provider** — FeedProvider reads other providers' liveData and emits composites. First two: Currency Contagion + Exchange Rate Pressure from FRED EM FX. | 2 of 4 composites |
+| 7 | **Sovereign-debt provider** — World Bank IDS or FRED EM HY proxies for the Sovereign Default node. | 3 of 4 composites |
+| 8 | **UN Comtrade provider** — for MENA Import Dependency. Rate-limited; need careful caching. | 4 of 4 composites — goal reached |
 
 ## Architectural decisions
 

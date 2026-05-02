@@ -11,7 +11,6 @@ import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
-  computeRelevanceBatch,
   csdRegimeGate,
   lpplsRegimeGate,
   phRegimeGate,
@@ -20,6 +19,7 @@ import {
   type ModelRelevanceInput,
   type RelevanceBreakdown,
 } from "@/lib/pareto-relevance";
+import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import TrinityPanel from "./TrinityPanel";
@@ -1160,8 +1160,9 @@ function ParetoPanel({
       sufficiency: trajectorySufficiency(lpplsData.sampleSize, edgeCount),
     });
 
-    const result = computeRelevanceBatch(inputs, {
+    const result = bootstrapRelevanceBatch(inputs, {
       previous: prevCompositesRef.current,
+      bootstrap: { samples: 200, level: 0.9 },
     });
     // Persist composites for the next render's EMA seed.
     for (const [key, breakdown] of result) {
@@ -2408,6 +2409,28 @@ function CriticalityCard({
   const isEmpty = !!emptyState;
   const headlineLabel = relevance ? "rel" : "conf";
   const sectionLabel = relevance ? "MODEL RELEVANCE" : "MODEL CONFIDENCE";
+  // Bootstrap CI half-width on the composite (from `bootstrapRelevanceBatch`).
+  // Rendered as `± N%` next to the headline percentage when present, with the
+  // full range visible on hover. Hidden when the half-width rounds to 0%
+  // (degenerate CI for insufficient-data cases).
+  const ciLowPct = relevance?.compositeCi
+    ? Math.round(relevance.compositeCi.low * 100)
+    : undefined;
+  const ciHighPct = relevance?.compositeCi
+    ? Math.round(relevance.compositeCi.high * 100)
+    : undefined;
+  const ciHalfPct =
+    ciLowPct !== undefined && ciHighPct !== undefined
+      ? Math.round((ciHighPct - ciLowPct) / 2)
+      : undefined;
+  const ciTitle =
+    relevance?.compositeCi
+      ? `${Math.round(
+          relevance.compositeCi.level * 100,
+        )}% bootstrap CI: ${ciLowPct}%–${ciHighPct}% (${
+          relevance.compositeCi.level === 0.9 ? "5th–95th" : "quantile"
+        } percentiles, n=200 resamples)`
+      : undefined;
   // Subsection collapse state — breakdown open by default (it's the headline
   // justification), methodology closed (long prose, mostly read-once).
   const [breakdownOpen, setBreakdownOpen] = useState(true);
@@ -2454,12 +2477,20 @@ function CriticalityCard({
                     {emptyState!.kind === "awaiting-data" ? "awaiting data" : "pending port"}
                   </div>
                 ) : (
-                  <div className="text-[7px] font-mono px-1 py-0.5 rounded" style={{
-                    color: confColor,
-                    backgroundColor: `${confColor}15`,
-                    border: `1px solid ${confColor}30`,
-                  }}>
-                    {confPct}% {headlineLabel}
+                  <div
+                    className="text-[7px] font-mono px-1 py-0.5 rounded"
+                    style={{
+                      color: confColor,
+                      backgroundColor: `${confColor}15`,
+                      border: `1px solid ${confColor}30`,
+                    }}
+                    title={ciTitle}
+                  >
+                    {confPct}%
+                    {ciHalfPct !== undefined && ciHalfPct > 0 ? (
+                      <span className="opacity-70"> ± {ciHalfPct}%</span>
+                    ) : null}{" "}
+                    {headlineLabel}
                   </div>
                 )}
               </div>
@@ -2642,6 +2673,9 @@ function CriticalityCard({
                       </div>
                       <div className="text-[8px] font-mono text-text-muted/80 mt-1 leading-relaxed">
                         {confPct}% = {relevance.S.score.toFixed(2)} · {relevance.G.score.toFixed(2)} · ({(0.6 * relevance.F.score).toFixed(2)} + {(0.4 * relevance.E.score).toFixed(2)}) = {relevance.rawComposite.toFixed(2)}
+                        {relevance.compositeCi && ciLowPct !== undefined && ciHighPct !== undefined && (
+                          <> · {Math.round(relevance.compositeCi.level * 100)}% CI [{ciLowPct}%–{ciHighPct}%]</>
+                        )}
                         {Math.abs(relevance.composite - relevance.rawComposite) > 0.005 && (
                           <> → smoothed {relevance.composite.toFixed(2)}</>
                         )}

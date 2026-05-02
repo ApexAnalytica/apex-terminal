@@ -67,6 +67,15 @@ export interface SubScore {
   detail: string;
 }
 
+export interface ConfidenceInterval {
+  /** Lower bound at the requested confidence level. */
+  low: number;
+  /** Upper bound at the requested confidence level. */
+  high: number;
+  /** Confidence level used (e.g. 0.9 → 5th/95th percentiles). */
+  level: number;
+}
+
 export interface RelevanceBreakdown {
   F: SubScore;
   E: SubScore;
@@ -76,6 +85,15 @@ export interface RelevanceBreakdown {
   composite: number;
   /** Composite before EMA smoothing, in [0, 1]. */
   rawComposite: number;
+  /**
+   * Optional bootstrap CI on the composite. Populated when the breakdown is
+   * produced via `bootstrapRelevanceBatch` (see pareto-relevance-bootstrap.ts).
+   * Undefined for the deterministic path. The CI is propagated from F through
+   * the composite formula; E/G/S are held at their point estimates.
+   */
+  compositeCi?: ConfidenceInterval;
+  /** Optional CI on F itself (the bootstrapped ingredient). */
+  fCi?: ConfidenceInterval;
 }
 
 export interface ModelRelevanceInput {

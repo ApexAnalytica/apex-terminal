@@ -1,0 +1,61 @@
+name: CI
+
+# Build-gate. Mirrors Vercel's deploy build so a PR can't merge if the
+# production build is broken — preventing repeats of the 9-hour Vercel
+# outage on 2026-05-01 where a `node:` prefix import + vitest env config
+# regression made it through merge because there was no pre-merge build.
+#
+# `npm run build` chains:
+#   prebuild → vitest run            (full test suite, 540+ cases)
+#   build    → next build            (full Next.js production build:
+#                                      compile, TS check, lint, page data)
+#
+# Both must pass for the gate to pass. If a test fails, the build never
+# starts. If TS errors exist, compile fails. If a runtime import is
+# busted (the original outage mode), compile fails.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref when a new commit lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Dummy env vars so Next.js page-data collection doesn't spuriously
+    # fail at runtime-init for Supabase. These are NEVER hit in real
+    # data flows during the build — the client just asserts presence.
+    # Real production env vars come from Vercel's project config; this
+    # CI does not need them and must not require them.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-stub.example.invalid
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-stub-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-stub-service-role-key
+      ADMIN_EMAILS: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (runs full vitest suite via prebuild, then next build)
+        run: npm run build

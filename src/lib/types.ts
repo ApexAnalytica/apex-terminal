@@ -110,6 +110,11 @@ export type NodeCategory =
 
 export type EdgeType = "directed" | "confounded" | "temporal";
 
+export interface LiveDataHistoryEntry {
+  value: number;
+  observedAt: string;
+}
+
 export interface LiveDataPoint {
   /** discriminator — multiple feeds can attach distinct signals to one node */
   kind: "throughput" | "sanctions" | string;
@@ -123,7 +128,17 @@ export interface LiveDataPoint {
   observedAt: string;
   /** human-readable provenance ("EIA v2 / Persian Gulf producers (mock)") */
   source: string;
+  /**
+   * Past observations for this kind, oldest-first. Populated by
+   * `upsertLiveSignal` accumulating across feed ticks (the previous current
+   * value rolls into the history when a new value arrives). Capped at
+   * `LIVE_HISTORY_MAX` to bound memory. Undefined or [] means no history yet.
+   */
+  history?: LiveDataHistoryEntry[];
 }
+
+/** Cap on the per-signal history array length. */
+export const LIVE_HISTORY_MAX = 60;
 
 export interface CausalNode {
   id: string;
@@ -151,12 +166,46 @@ export function getLiveSignal(node: CausalNode, kind: string): LiveDataPoint | u
   return node.liveData?.find((p) => p.kind === kind);
 }
 
-/** Upsert a live signal into a node's liveData array (immutable; returns new array). */
+/** Upsert a live signal into a node's liveData array (immutable; returns new array).
+ *  When replacing a point of the same `kind`, accumulates the previous
+ *  current value into `history`, capped at `LIVE_HISTORY_MAX`. */
 export function upsertLiveSignal(
   existing: LiveDataPoint[] | undefined,
   point: LiveDataPoint,
 ): LiveDataPoint[] {
   const without = (existing ?? []).filter((p) => p.kind !== point.kind);
+  const old = (existing ?? []).find((p) => p.kind === point.kind);
+  // Accumulate: previous (value, observedAt) rolls into history, plus any
+  // history the previous point already carried. De-dupe identical timestamps
+  // and cap to LIVE_HISTORY_MAX entries (oldest first).
+  if (old) {
+    const carried: LiveDataHistoryEntry[] = [...(old.history ?? [])];
+    // Only roll the old current into history if the incoming point has a
+    // *different* timestamp — otherwise it's the same observation, no
+    // history change. Also skip if the old timestamp already terminates
+    // the carried history.
+    const oldAlreadyTerminates =
+      carried.length > 0 && carried[carried.length - 1].observedAt === old.observedAt;
+    if (old.observedAt !== point.observedAt && !oldAlreadyTerminates) {
+      carried.push({ value: old.value, observedAt: old.observedAt });
+    }
+    // Honour any pre-existing history on the incoming point too (provider may
+    // have hydrated it from a multi-period upstream response).
+    const merged = [...carried, ...(point.history ?? [])];
+    // Sort by observedAt ascending so the sparkline plots left-to-right.
+    merged.sort((a, b) => a.observedAt.localeCompare(b.observedAt));
+    // De-dupe identical timestamps.
+    const deduped: LiveDataHistoryEntry[] = [];
+    for (const e of merged) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].observedAt !== e.observedAt) {
+        deduped.push(e);
+      }
+    }
+    const trimmed = deduped.length > LIVE_HISTORY_MAX
+      ? deduped.slice(-LIVE_HISTORY_MAX)
+      : deduped;
+    return [...without, { ...point, history: trimmed }];
+  }
   return [...without, point];
 }
 

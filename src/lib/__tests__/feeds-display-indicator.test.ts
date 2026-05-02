@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatLiveSignal } from "@/lib/feeds/display";
+import { feedSparklineColor, formatLiveSignal } from "@/lib/feeds/display";
 import type { LiveDataPoint } from "@/lib/types";
 
 const indicator = (over: Partial<LiveDataPoint>): LiveDataPoint => ({
@@ -47,5 +47,14 @@ describe("indicator kind formatter", () => {
   it("preserves space for verbose units like 'mb/d'", () => {
     const f = formatLiveSignal(indicator({ value: 18.5, unit: "mb/d", capacity: 21 }));
     expect(f.primaryValue).toBe("18.50 mb/d");
+  });
+});
+
+describe("feedSparklineColor", () => {
+  it("returns hex strokes aligned with the chip dot colors", () => {
+    expect(feedSparklineColor("live")).toBe("#00e676");
+    expect(feedSparklineColor("mock-fallback")).toBe("#ffab00");
+    expect(feedSparklineColor("mock")).toBe("#9aa0a6");
+    expect(feedSparklineColor("stale")).toBe("#5f6368");
   });
 });

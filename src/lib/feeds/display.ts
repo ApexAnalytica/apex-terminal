@@ -144,3 +144,15 @@ export function feedDotClass(mode: FeedMode): string {
     stale: "bg-text-muted/40",
   }[mode];
 }
+
+/** Hex stroke color for a sparkline plotting live-data history. Aligns
+ *  with the chip-dot colors so a card with a green live row paints a
+ *  green sparkline. */
+export function feedSparklineColor(mode: FeedMode): string {
+  return {
+    live: "#00e676", // accent-green
+    mock: "#9aa0a6",
+    "mock-fallback": "#ffab00", // accent-amber
+    stale: "#5f6368",
+  }[mode];
+}

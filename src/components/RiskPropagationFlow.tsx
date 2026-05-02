@@ -11,6 +11,7 @@ import { getNodeDataDescription } from "@/lib/real-timeseries";
 import {
   feedDotClass,
   feedModeFromSource,
+  feedSparklineColor,
   formatLiveSignal,
   summarizeLiveFeeds,
   timeAgoLabel,
@@ -287,7 +288,32 @@ export default function RiskPropagationFlow() {
               {/* Cards — aligns with TimeDial track */}
               <div ref={containerRef} className="flex-1 flex items-stretch gap-2 overflow-x-auto min-w-0">
               {displayNodes.map((card, i) => {
-                const history = nodeHistories.get(card.nodeId) ?? [];
+                const omegaHistory = nodeHistories.get(card.nodeId) ?? [];
+                // Prefer a live-data history when available (first liveData kind
+                // with >= 2 historical entries). The sparkline plots the live
+                // values directly; falls back to the synthetic omega history
+                // when no live signal has accumulated enough points yet.
+                const node = nodeById.get(card.nodeId);
+                const liveSignal = node?.liveData?.find(
+                  (p) => (p.history?.length ?? 0) >= 1,
+                );
+                const usingLiveHistory = !!liveSignal;
+                const history = usingLiveHistory
+                  ? [
+                      ...(liveSignal!.history ?? []).map((h) => ({
+                        timestamp: new Date(h.observedAt).getTime(),
+                        omegaComposite: h.value,
+                        omegaProfile: card.nodeId
+                          ? ({} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"])
+                          : ({} as never),
+                      })),
+                      {
+                        timestamp: new Date(liveSignal!.observedAt).getTime(),
+                        omegaComposite: liveSignal!.value,
+                        omegaProfile: {} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"],
+                      },
+                    ]
+                  : omegaHistory;
                 const domainColor = getDomainColor(card.domain);
                 const isActive = allSelectedIds.has(card.nodeId);
                 const currentOmega = card.omegaScore;
@@ -429,14 +455,36 @@ export default function RiskPropagationFlow() {
                           history={history}
                           width={isActive ? 254 : 174}
                           height={isActive ? 48 : 36}
-                          color={getBarColor(currentOmega)}
+                          color={
+                            usingLiveHistory
+                              ? feedSparklineColor(
+                                  feedModeFromSource(liveSignal!.source, liveSignal!.observedAt),
+                                )
+                              : getBarColor(currentOmega)
+                          }
                           highlightIdx={hoveredDay ?? currentHistoryIdx}
                         />
                       ) : (
                         <div className="h-9 flex items-center justify-center gap-1.5">
-                          <span className="text-[7px] font-mono text-text-muted/40 tracking-wider">NO DATA</span>
-                          <span className="text-[6px] font-mono text-text-muted/25">— static Ω only</span>
+                          <span className="text-[7px] font-mono text-text-muted/40 tracking-wider">
+                            {usingLiveHistory ? "LIVE — building" : "NO DATA"}
+                          </span>
+                          <span className="text-[6px] font-mono text-text-muted/25">
+                            {usingLiveHistory ? `· ${liveSignal!.source.split(/[\s—(]/)[0]} polling` : "— static Ω only"}
+                          </span>
                         </div>
+                      )}
+                      {usingLiveHistory && history.length > 1 && (
+                        <span
+                          className="absolute top-0 right-0 text-[6px] font-mono tracking-wider px-1 rounded-sm"
+                          style={{
+                            color: feedSparklineColor(feedModeFromSource(liveSignal!.source, liveSignal!.observedAt)),
+                            backgroundColor: "rgba(0,0,0,0.4)",
+                          }}
+                          title={liveSignal!.source}
+                        >
+                          LIVE
+                        </span>
                       )}
                     </div>
 

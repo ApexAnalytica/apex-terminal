@@ -30,9 +30,11 @@ interface LayoutLink2D {
   weight: number;
 }
 
-// Matches CausalNode2D's rendered footprint (~120px wide × ~70px tall).
-// Collision radius needs to clear the diagonal so dense clusters don't overlap.
-const NODE_COLLISION_R = 78;
+// Tuned for CausalNode2D's circular footprint: ~14–34px diameter circles
+// plus an absolute-positioned label below. Collision is sized for the
+// circles with mild label overlap allowed — keeps the Obsidian-style
+// density without the circles themselves touching.
+const NODE_COLLISION_R = 48;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySim = any;
@@ -70,14 +72,14 @@ function buildSim(
       "link",
       (forceLink as AnySim)(simLinks)
         .id((d: AnySim) => d.id)
-        // Strong correlation → shorter spring. Range tuned for ~120px nodes.
-        .distance((d: AnySim) => 110 + (1 - d.weight) * 140)
+        // Strong correlation → shorter spring. Range tuned for circle nodes.
+        .distance((d: AnySim) => 65 + (1 - d.weight) * 100)
         .strength((d: AnySim) => 0.45 + d.weight * 0.35),
     )
     .force(
       "charge",
       (forceManyBody as AnySim)().strength((d: AnySim) =>
-        connected.has(d.id) ? -900 : -250,
+        connected.has(d.id) ? -550 : -150,
       ),
     )
     .force("center", forceCenter(0, 0))

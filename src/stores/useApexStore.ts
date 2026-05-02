@@ -939,7 +939,26 @@ export const useApexStore = create<ApexState>((set, get) => ({
     })),
 
   setTimelineGranularity: (g) =>
-    set({ timelineGranularity: g }),
+    set((s) => {
+      // Granularity buttons (1H/1D/1W/1M) double as scale selectors: they
+      // also constrain timelineRange to a window of the corresponding size,
+      // anchored at the end of the existing range. Card sparklines and the
+      // comparison overlay filter their history by timelineRange, so the
+      // visible curve length follows the chosen scale.
+      const windowMs: Record<TimeGranularity, number> = {
+        hour: 60 * 60 * 1000,
+        day: 24 * 60 * 60 * 1000,
+        week: 7 * 24 * 60 * 60 * 1000,
+        month: 30 * 24 * 60 * 60 * 1000,
+      };
+      const end = s.timelineRange.end;
+      const fullStart = s.timelineFullRange?.start ?? s.timelineRange.start;
+      const newStart = Math.max(fullStart, end - windowMs[g]);
+      return {
+        timelineGranularity: g,
+        timelineRange: { start: newStart, end },
+      };
+    }),
 
   setTimelineSelection: (sel) =>
     set({ timelineSelection: sel }),

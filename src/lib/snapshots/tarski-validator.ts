@@ -1,17 +1,103 @@
 // ─── Tarski Snapshot Validator ─────────────────────────────────
-// Programmatic axiom checks against a SystemStateSnapshot.
-// Deterministic, no solver — runs client-side before store ingestion.
+// Adapter on top of the full 32-axiom validator (`runTarskiValidation`
+// in `src/lib/tarski-data.ts`). Two-validator fork resolved (#1 in the
+// open-follow-ups list).
+//
+// Background: snapshots used to run a thin 5-axiom check (negative-weight
+// edges, omega>10, self-loops, omega>9.5 saturation, sanction proxy)
+// because `SystemStateSnapshot.graph.edges` doesn't carry source/target
+// — the structural axioms (chokepoint, single-source, DAG) need that
+// information. So the snapshot path diverged from what users saw in
+// TarskiPanel.
+//
+// Resolution: when `validateSnapshot` is called WITH the live `CausalGraph`
+// (which the store has on hand at setSnapshot time), it runs the full
+// 32-axiom validator and adapts the result to `TarskiValidationResult`.
+// When called without it (e.g. through the EngineProvider interface that
+// only sees the snapshot), it falls back to a thin degraded check so
+// the contract still holds.
 
+import type { CausalGraph } from "@/lib/types";
+import { runTarskiValidation } from "@/lib/tarski-data";
 import type {
   SystemStateSnapshot,
   TarskiValidationResult,
   TarskiViolation,
 } from "./types";
 
+export interface ValidateSnapshotOptions {
+  /** Live graph at snapshot time. When provided, the full 32-axiom
+   *  validator runs and its `proofTraces` are adapted into TarskiViolations. */
+  liveGraph?: CausalGraph;
+  /** Subset of axiom ids to run (forwarded to runTarskiValidation). */
+  enabledAxioms?: Set<string>;
+}
+
+/**
+ * Validate a snapshot. Prefers the full-library validator when a live
+ * graph is supplied; otherwise runs the degraded snapshot-only checks.
+ *
+ * `opts` is positional-second so existing `validateSnapshot(snapshot)`
+ * call sites continue to compile and run (just on the degraded path).
+ */
+export function validateSnapshot(
+  snapshot: SystemStateSnapshot,
+  opts: ValidateSnapshotOptions = {},
+): TarskiValidationResult {
+  if (opts.liveGraph) {
+    const report = runTarskiValidation(opts.liveGraph, opts.enabledAxioms);
+    return reportToValidationResult(report);
+  }
+  return degradedSnapshotValidate(snapshot);
+}
+
+/** Convert a `TarskiValidationReport` (full validator's shape) into a
+ *  `TarskiValidationResult` (snapshot-side shape). Each proof trace
+ *  becomes one violation per axiomId it references. */
+export function reportToValidationResult(
+  report: import("@/lib/tarski-data").TarskiValidationReport,
+): TarskiValidationResult {
+  const violations: TarskiViolation[] = [];
+  for (const trace of report.proofTraces) {
+    for (const axiomId of trace.violatedAxioms) {
+      violations.push({
+        axiomId,
+        edgeId: trace.edgeId,
+        detail: trace.detail ?? `Edge ${trace.edgeId} violates ${axiomId}`,
+      });
+    }
+  }
+  // Restricted nodes that aren't covered by edge-bound proof traces still
+  // deserve a violation entry. (Some axioms — e.g. R-02 — produce node-
+  // level restrictions plus edge traces; some only produce node-level.)
+  const traceEdgeIds = new Set(report.proofTraces.map((t) => t.edgeId));
+  for (const nodeId of report.restrictedNodeIds) {
+    // Skip if the node already has at least one edge-bound trace (likely
+    // covered). Heuristic — surface every restriction as its own violation
+    // when no edge trace exists for it.
+    const coveredByEdge = report.proofTraces.some((t) => traceEdgeIds.has(t.edgeId));
+    if (!coveredByEdge && violations.findIndex((v) => v.nodeId === nodeId) === -1) {
+      violations.push({
+        axiomId: "R-restricted",
+        nodeId,
+        detail: `Node ${nodeId} flagged as restricted by validation pass`,
+      });
+    }
+  }
+  return {
+    status: violations.length > 0 ? "VIOLATIONS_FOUND" : "PASSED",
+    violations,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+// ─── Degraded fallback (snapshot-only) ─────────────────────────
+// Used when the caller can't supply a live CausalGraph (e.g. the
+// EngineProvider interface). Preserves the original 5-axiom behaviour
+// from before the unification so existing callers don't regress.
+
 type AxiomCheck = (snapshot: SystemStateSnapshot) => TarskiViolation[];
 
-// A-01: Temporal Priority — all edge lags ≥ 0
-// We check edge weights as proxy: negative weight implies reversed causality
 const checkTemporalPriority: AxiomCheck = (snapshot) => {
   const violations: TarskiViolation[] = [];
   for (const edge of snapshot.graph.edges) {
@@ -26,43 +112,23 @@ const checkTemporalPriority: AxiomCheck = (snapshot) => {
   return violations;
 };
 
-// A-02: Conservation of Flow — sum inbound weights ≥ sum outbound (per node)
 const checkConservationOfFlow: AxiomCheck = (snapshot) => {
   const violations: TarskiViolation[] = [];
-  const nodeIds = new Set(snapshot.graph.nodes.map((n) => n.id));
-
-  for (const nodeId of nodeIds) {
-    const inbound = snapshot.graph.edges
-      .filter((e) => e.id.includes(nodeId) === false && !e.isSevered)
-      .filter((e) => {
-        // Find edges targeting this node by checking all edges
-        // Since we only have id/weight/probability, we use a heuristic:
-        // edges are directed, we check flow balance via node omega
-        return false; // Skip — requires full edge source/target info
-      });
-
-    // Simplified: flag nodes where omega > 10 (exceeds theoretical max)
-    const node = snapshot.graph.nodes.find((n) => n.id === nodeId);
-    if (node && node.omega > 10) {
+  for (const node of snapshot.graph.nodes) {
+    if (node.omega > 10) {
       violations.push({
         axiomId: "A-02",
-        nodeId,
-        detail: `Node ${nodeId} omega=${node.omega.toFixed(2)} exceeds conservation bound (max 10)`,
+        nodeId: node.id,
+        detail: `Node ${node.id} omega=${node.omega.toFixed(2)} exceeds conservation bound (max 10)`,
       });
     }
   }
   return violations;
 };
 
-// A-03: DAG Integrity — cycle detection via DFS
 const checkDAGIntegrity: AxiomCheck = (snapshot) => {
   const violations: TarskiViolation[] = [];
-
-  // Build adjacency from edges (using edge id patterns: "eN" format)
-  // Since snapshot edges don't carry source/target, we skip full cycle
-  // detection and check for self-referencing edges
   for (const edge of snapshot.graph.edges) {
-    // Self-loop detection (edge pointing to same node)
     if (edge.weight === 0 && edge.probability === 0) {
       violations.push({
         axiomId: "A-03",
@@ -74,11 +140,9 @@ const checkDAGIntegrity: AxiomCheck = (snapshot) => {
   return violations;
 };
 
-// H-02: Capacity Saturation — flag nodes with omega > 1.1 (normalized to 11/10)
 const checkCapacitySaturation: AxiomCheck = (snapshot) => {
   const violations: TarskiViolation[] = [];
-  const SATURATION_THRESHOLD = 9.5; // Ω > 9.5 indicates near-saturation
-
+  const SATURATION_THRESHOLD = 9.5;
   for (const node of snapshot.graph.nodes) {
     if (node.omega > SATURATION_THRESHOLD) {
       violations.push({
@@ -91,37 +155,25 @@ const checkCapacitySaturation: AxiomCheck = (snapshot) => {
   return violations;
 };
 
-// R-01: Sanction Logic — flag edges connecting nodes with omega breach
-// (proxy for "restricted entity" detection)
 const checkSanctionLogic: AxiomCheck = (snapshot) => {
   const violations: TarskiViolation[] = [];
   const breachedNodes = new Set(
-    snapshot.graph.nodes
-      .filter((n) => n.omega > 9.8)
-      .map((n) => n.id)
+    snapshot.graph.nodes.filter((n) => n.omega > 9.8).map((n) => n.id),
   );
-
   if (breachedNodes.size === 0) return violations;
-
   for (const edge of snapshot.graph.edges) {
-    if (!edge.isSevered && edge.weight > 0.8) {
-      // High-weight edge in a graph with breached nodes
-      // Flag if probability is suspiciously high during crisis
-      if (edge.probability > 0.95 && breachedNodes.size >= 2) {
-        violations.push({
-          axiomId: "R-01",
-          edgeId: edge.id,
-          detail: `Edge ${edge.id} carries high-confidence flow (p=${edge.probability.toFixed(2)}) between Ω-breached nodes`,
-        });
-      }
+    if (!edge.isSevered && edge.weight > 0.8 && edge.probability > 0.95 && breachedNodes.size >= 2) {
+      violations.push({
+        axiomId: "R-01",
+        edgeId: edge.id,
+        detail: `Edge ${edge.id} carries high-confidence flow (p=${edge.probability.toFixed(2)}) between Ω-breached nodes`,
+      });
     }
   }
   return violations;
 };
 
-// ─── Registry ─────────────────────────────────────────────────
-
-const AXIOM_CHECKS: AxiomCheck[] = [
+const DEGRADED_CHECKS: AxiomCheck[] = [
   checkTemporalPriority,
   checkConservationOfFlow,
   checkDAGIntegrity,
@@ -129,15 +181,13 @@ const AXIOM_CHECKS: AxiomCheck[] = [
   checkSanctionLogic,
 ];
 
-export function validateSnapshot(
-  snapshot: SystemStateSnapshot
+function degradedSnapshotValidate(
+  snapshot: SystemStateSnapshot,
 ): TarskiValidationResult {
   const violations: TarskiViolation[] = [];
-
-  for (const check of AXIOM_CHECKS) {
+  for (const check of DEGRADED_CHECKS) {
     violations.push(...check(snapshot));
   }
-
   return {
     status: violations.length > 0 ? "VIOLATIONS_FOUND" : "PASSED",
     violations,

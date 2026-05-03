@@ -2,7 +2,7 @@
 
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
-> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 7 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, Derivations) covering **~43 graph nodes** including the T1D side, EM FX, sovereign default, and MENA import dependency. **Real-data-only goal reached: 0 synthetic composites remaining** — all 4 originally synthetic composites are now live-derived from real data. All free-tier; mock fallback when keys/upstream missing.
+> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 7 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, Derivations) covering **~56 graph nodes** including the T1D side, EM FX, sovereign default, MENA import dependency, and the broader CPI / PCE / wage / sentiment expansion. **Real-data-only goal reached: 0 synthetic composites remaining** — all 4 originally synthetic composites are now live-derived from real data. All free-tier; mock fallback when keys/upstream missing.
 >
 > **Stated end-state goal:** every node carries continuously-pulled real data. **No synthetic composites.** 4 composites still synthetic as of this writing — all 4 have a concrete path to real-data backing (see "Real-data-only goal" section below).
 

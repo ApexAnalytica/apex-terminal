@@ -77,6 +77,22 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   // corporate default risk rises. Eliminates the 3rd of 4 synthetic
   // composites in the Live Coverage Program.
   { id: "BAMLH0A0HYM2", label: "ICE BofA US High Yield OAS", labelPatterns: ["sovereign default"], unit: "%", capacity: 8, mockValue: 3.5 },
+  // Phase 9 — broader CPI / PCE / wage / sentiment expansion. 13 additional
+  // FRED series picked to match labels already in graph-data.ts. Each is
+  // a one-line addition to FRED_SERIES — no other code changes needed.
+  { id: "PCEPILFE", label: "Core PCE Y/Y", labelPatterns: ["core pce year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 2.7 },
+  { id: "PCESV", label: "PCE Services Spending (level)", labelPatterns: ["pce services spending"], unit: "$B", capacity: 0, mockValue: 13800 },
+  { id: "PCEND", label: "PCE Nondurable Goods (level)", labelPatterns: ["pce goods spending"], unit: "$B", capacity: 0, mockValue: 4200 },
+  { id: "CPIHOSSL", label: "CPI Shelter Y/Y", labelPatterns: ["cpi shelter"], unit: "%", capacity: 8, units: "pc1", mockValue: 5.4 },
+  { id: "CUSR0000SAS", label: "CPI Services Y/Y", labelPatterns: ["cpi services"], unit: "%", capacity: 8, units: "pc1", mockValue: 5.0 },
+  { id: "CUSR0000SACL1E", label: "CPI Core Goods Y/Y", labelPatterns: ["cpi core goods"], unit: "%", capacity: 5, units: "pc1", mockValue: 0.5 },
+  { id: "CPIENGSL", label: "CPI Energy Y/Y", labelPatterns: ["cpi energy"], unit: "%", capacity: 15, units: "pc1", mockValue: 2.5 },
+  { id: "CPIUFDSL", label: "CPI Food Y/Y", labelPatterns: ["cpi food"], unit: "%", capacity: 8, units: "pc1", mockValue: 2.1 },
+  { id: "CUUR0000SETA02", label: "CPI Used Cars and Trucks Y/Y", labelPatterns: ["cpi used vehicles"], unit: "%", capacity: 15, units: "pc1", mockValue: -3.5 },
+  { id: "CES0500000003", label: "Average Hourly Earnings Y/Y", labelPatterns: ["average hourly earnings yoy"], unit: "%", capacity: 6, units: "pc1", mockValue: 4.0 },
+  { id: "ECIALLCIV", label: "Employment Cost Index Q/Q", labelPatterns: ["employment cost index"], unit: "%", capacity: 1.5, units: "pch", mockValue: 1.0 },
+  { id: "TCU", label: "Capacity Utilization", labelPatterns: ["capacity utilization"], unit: "%", capacity: 85, mockValue: 78.5 },
+  { id: "MICH", label: "UMich 1Y Inflation Expectations", labelPatterns: ["umich consumer inflation expectations"], unit: "%", capacity: 5, mockValue: 3.2 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and

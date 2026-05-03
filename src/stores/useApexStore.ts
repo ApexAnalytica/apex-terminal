@@ -788,7 +788,14 @@ export const useApexStore = create<ApexState>((set, get) => ({
   isComputeLoading: false,
   setSnapshot: (snapshot) =>
     set((s) => {
-      const validated = validateSnapshot(snapshot);
+      // Validate against the FULL 32-axiom library by passing the live
+      // graph + currently-enabled axioms. Without the liveGraph, the
+      // validator falls back to a thin 5-axiom degraded path; we always
+      // have it on hand here so we always get the full coverage.
+      const validated = validateSnapshot(snapshot, {
+        liveGraph: s.graphData,
+        enabledAxioms: s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+      });
       const snapshotWithValidation = {
         ...snapshot,
         tarskiValidation: validated,

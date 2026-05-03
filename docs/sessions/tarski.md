@@ -229,11 +229,12 @@ The card render already does the right thing here: a node with no `liveData[]` s
 ### TimeDial integration discipline
 Engine-side only: `applyHormuzLiveData` / `applyOfacLiveData` append `TemporalEvent` via the `appendFeedEvent` helper, returning a new `temporalData` reference. TimeDial subscribes reactively. **Never edit `TimeDial.tsx`** — that's rendering territory.
 
-### Two-validator fork (deferred)
-- `src/lib/snapshots/tarski-validator.ts` runs only 5 axioms; called from `setSnapshot()`.
-- `runTarskiValidation` in `tarski-data.ts` runs all 32; called from `runTarskiWithAxioms()`, used by TarskiPanel and the live feeds.
-- The live signal feeds the **full** validator. Snapshot validator is currently disconnected.
-- Cleanup planned but not done.
+### Two-validator fork (resolved)
+- `src/lib/snapshots/tarski-validator.ts` is now an adapter on top of `runTarskiValidation` from `tarski-data.ts`.
+- `validateSnapshot(snapshot, { liveGraph, enabledAxioms })` runs the full 32-axiom validator and converts its `TarskiValidationReport` into the snapshot-side `TarskiValidationResult` via `reportToValidationResult`.
+- `setSnapshot` now passes `s.graphData` and `s.enabledAxioms` so snapshots get full coverage.
+- The original 5-axiom checks are preserved as a degraded fallback for callers that can't supply a live graph (e.g. the EngineProvider interface).
+- Snapshots now reflect the same axiom set users see in TarskiPanel — fork eliminated.
 
 ## Anchor files
 
@@ -287,7 +288,7 @@ src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensi
 
 ## Open follow-ups (priority-ordered)
 
-1. **Two-validator fork resolution** — route `setSnapshot()`-side validation through the full 32-axiom library.
+1. ~~**Two-validator fork resolution**~~ — ✅ shipped. `validateSnapshot` now delegates to `runTarskiValidation` when a live graph is supplied; snapshots now run the full 32-axiom library.
 2. **Profile-agnostic universal axiom library (#75 follow-up)** — A-01/A-02/A-03/H-01/H-02 are all `appliesTo: ["geopolitical"]` because their language is energy-flavored. Build a clean cross-profile version.
 3. **More live feeds** — same proxy pattern as EIA/OFAC. Candidates:
    - USGS critical minerals → A-05 Single-Source Fragility

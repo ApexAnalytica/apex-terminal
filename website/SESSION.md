@@ -13,7 +13,8 @@ can be brought up to date by reading this file alone.
 
 ## Where the code lives
 
-- **Branch:** `claude/angry-kare-9bd8f1` (no PR open yet — local-only)
+- **GitHub:** https://github.com/ApexAnalytica/apex-terminal/tree/claude/angry-kare-9bd8f1 — branch is pushed to origin (as of 2026-05-03). Open a PR at https://github.com/ApexAnalytica/apex-terminal/pull/new/claude/angry-kare-9bd8f1 when ready.
+- **Branch:** `claude/angry-kare-9bd8f1` (tracking `origin/claude/angry-kare-9bd8f1`). Push regularly; do NOT leave large amounts of uncommitted work locally.
 - **Worktree:** `/Users/Junaid/Documents/apex-terminal/.claude/worktrees/angry-kare-9bd8f1`
 - **App root:** `website/` — separate Next.js app from the main Manifold
   platform. Next 16.1.6 + React 19, Tailwind v4.
@@ -82,7 +83,9 @@ Wired on `/team`:
 
 | SHA | Title |
 | --- | ----- |
-| _(next)_ | feat(website): /domains/[slug] dynamic pages + font-bug fix in SVG visuals |
+| _(next)_ | docs(website): SESSION.md GitHub state |
+| `25bccf0` | feat(website): partner logos + change email to info@ |
+| `e14cfff` | feat(website): /domains/[slug] dynamic pages + SVG font-bug fix |
 | `f56c8f4` | feat(website): mosaic pass on subpages + advisor publications |
 | `27283c6` | fix(website): simplify home — cut redundant explainers, fix story order |
 | `f7755e8` | recover(website): restore marketing-site work after worktree wipe |

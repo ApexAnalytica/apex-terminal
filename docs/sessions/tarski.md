@@ -289,7 +289,7 @@ src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensi
 ## Open follow-ups (priority-ordered)
 
 1. ~~**Two-validator fork resolution**~~ — ✅ shipped. `validateSnapshot` now delegates to `runTarskiValidation` when a live graph is supplied; snapshots now run the full 32-axiom library.
-2. **Profile-agnostic universal axiom library (#75 follow-up)** — A-01/A-02/A-03/H-01/H-02 are all `appliesTo: ["geopolitical"]` because their language is energy-flavored. Build a clean cross-profile version.
+2. ~~**Profile-agnostic universal axiom library (#75 follow-up)**~~ — ✅ shipped. The 7 universal-concept axioms (A-01, A-02, A-03, A-05, R-04, H-01, H-02) had their `appliesTo: ["geopolitical"]` dropped, `relevantDomains` set to `[]`, and wording rewritten to remove geopolitical-specific tokens (Saudi/Aramco/Qatar/QAFCO/Ma'aden/LNG/Hormuz). `scoreAxiomRelevance` gives universal axioms (no `appliesTo`, no `relevantDomains`) a base relevance of 0.45 so they surface as recommended on every profile. Geopolitical-only axioms (A-04, R-01, R-02, R-03) and T1D-only axioms (TA-*, TR-*, TH-*) keep their scoping.
 3. **More live feeds** — same proxy pattern as EIA/OFAC. Candidates:
    - USGS critical minerals → A-05 Single-Source Fragility
    - NOAA storm tracks → conflict-zone proxies

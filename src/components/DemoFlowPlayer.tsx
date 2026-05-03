@@ -34,6 +34,8 @@ function Player({ flowId, onClose }: PlayerProps) {
   const removeShock = useApexStore((s) => s.removeShock);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
   const setGraphData = useApexStore((s) => s.setGraphData);
+  const startReplay = useApexStore((s) => s.startReplay);
+  const stopReplay = useApexStore((s) => s.stopReplay);
   const priorRef = useRef<PriorState | null>(null);
   const injectedShockIdsRef = useRef<string[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
@@ -55,7 +57,9 @@ function Player({ flowId, onClose }: PlayerProps) {
     setGraphData(merged);
     setSelectedDomains(flow.domainIds);
     return () => {
-      // Cleanup on unmount: clear injected shocks, restore graph state.
+      // Cleanup on unmount: stop the cascade replay, clear injected
+      // shocks, restore graph state.
+      stopReplay();
       for (const id of injectedShockIdsRef.current) removeShock(id);
       injectedShockIdsRef.current = [];
       if (priorRef.current) {
@@ -63,9 +67,13 @@ function Player({ flowId, onClose }: PlayerProps) {
         setSelectedDomains(priorRef.current.selectedDomains);
       }
     };
-  }, [flow, setSelectedDomains, setGraphData, removeShock]);
+  }, [flow, setSelectedDomains, setGraphData, removeShock, stopReplay]);
 
   // ── Inject the step's shock when the step becomes active ──
+  // After each shock fires we kick startReplay() so the cascade simulator
+  // runs and the modules (SPIRTES/TARSKI/PEARL/PARETO) actually see node
+  // states change. Without this addShock just appends to an array and
+  // nothing visually propagates beyond the gauge.
   useEffect(() => {
     if (!flow) return;
     const step = flow.steps[stepIdx];
@@ -76,7 +84,11 @@ function Player({ flowId, onClose }: PlayerProps) {
     };
     injectedShockIdsRef.current.push(shock.id);
     addShock(shock);
-  }, [flow, stepIdx, addShock]);
+    // Defer one tick so addShock state has applied before we read shocks
+    // back inside startReplay's simulateCascade call.
+    const t = window.setTimeout(() => startReplay(), 50);
+    return () => window.clearTimeout(t);
+  }, [flow, stepIdx, addShock, startReplay]);
 
   // ── Auto-advance when durationMs > 0 ──
   useEffect(() => {

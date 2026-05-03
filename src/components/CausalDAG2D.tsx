@@ -338,7 +338,36 @@ function CausalDAG2DInner() {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
-  const sig = graphSignature(graphData.nodes, graphData.edges);
+  // Indexed lookups — replace O(N)/O(E) find() calls in render and handlers.
+  const nodeById = useMemo(
+    () => new Map(graphData.nodes.map((n) => [n.id, n] as const)),
+    [graphData.nodes],
+  );
+  const edgeById = useMemo(
+    () => new Map(graphData.edges.map((e) => [e.id, e] as const)),
+    [graphData.edges],
+  );
+
+  // Undirected adjacency. Drives both replay contraction (O(degree) per node
+  // instead of O(E)) and hover-emphasis neighbor lookup. Built once per edge
+  // set; replay tick changes don't invalidate.
+  const adjacency = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const e of graphData.edges) {
+      let s = map.get(e.source);
+      if (!s) { s = []; map.set(e.source, s); }
+      s.push(e.target);
+      let t = map.get(e.target);
+      if (!t) { t = []; map.set(e.target, t); }
+      t.push(e.source);
+    }
+    return map;
+  }, [graphData.edges]);
+
+  const sig = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
   const [prevSig, setPrevSig] = useState<string>("");
   const [cachedLayout, setCachedLayout] = useState<Map<string, Position2D>>(
     () => new Map(),
@@ -400,18 +429,14 @@ function CausalDAG2DInner() {
   const emphasisMap = useMemo(() => {
     const map = new Map<string, NodeEmphasis>();
     if (!emphasisTarget) return map;
-    const neighbors = new Set<string>();
-    for (const e of graphData.edges) {
-      if (e.source === emphasisTarget) neighbors.add(e.target);
-      if (e.target === emphasisTarget) neighbors.add(e.source);
-    }
+    const neighbors = new Set(adjacency.get(emphasisTarget) ?? []);
     for (const n of graphData.nodes) {
       if (n.id === emphasisTarget) map.set(n.id, "focus");
       else if (neighbors.has(n.id)) map.set(n.id, "neighbor");
       else map.set(n.id, "dim");
     }
     return map;
-  }, [emphasisTarget, graphData.nodes, graphData.edges]);
+  }, [emphasisTarget, graphData.nodes, adjacency]);
 
   const nodes: Node[] = useMemo(() => {
     return graphData.nodes.map((n) => {
@@ -421,27 +446,30 @@ function CausalDAG2DInner() {
 
       // Replay contraction: pull stressed nodes toward stressed neighbors.
       // Applied as an offset over the dynamic layout so it doesn't fight drag.
+      // Walks the precomputed adjacency list — O(degree) per node instead of
+      // O(E), so per-tick cost scales with edge count rather than (nodes × edges).
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[n.id];
         if (state && state.shockIntensity > 0.01) {
-          let cx = 0, cy = 0, totalWeight = 0;
-          for (const edge of graphData.edges) {
-            const nbId = edge.source === n.id ? edge.target : edge.target === n.id ? edge.source : null;
-            if (!nbId) continue;
-            const nbPos = nodePositions.get(nbId);
-            const nbState = currentSnapshot.nodeStates[nbId];
-            if (!nbPos) continue;
-            const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
-            cx += nbPos.x * w;
-            cy += nbPos.y * w;
-            totalWeight += w;
-          }
-          if (totalWeight > 0) {
-            cx /= totalWeight;
-            cy /= totalWeight;
-            const pull = state.shockIntensity * CONTRACTION;
-            posX = posX + (cx - posX) * pull;
-            posY = posY + (cy - posY) * pull;
+          const neighbors = adjacency.get(n.id);
+          if (neighbors && neighbors.length > 0) {
+            let cx = 0, cy = 0, totalWeight = 0;
+            for (const nbId of neighbors) {
+              const nbPos = nodePositions.get(nbId);
+              if (!nbPos) continue;
+              const nbState = currentSnapshot.nodeStates[nbId];
+              const w = nbState ? 0.3 + nbState.shockIntensity * 0.7 : 0.1;
+              cx += nbPos.x * w;
+              cy += nbPos.y * w;
+              totalWeight += w;
+            }
+            if (totalWeight > 0) {
+              cx /= totalWeight;
+              cy /= totalWeight;
+              const pull = state.shockIntensity * CONTRACTION;
+              posX = posX + (cx - posX) * pull;
+              posY = posY + (cy - posY) * pull;
+            }
           }
         }
       }
@@ -466,7 +494,7 @@ function CausalDAG2DInner() {
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, emphasisMap]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, emphasisMap, adjacency]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {
@@ -559,12 +587,12 @@ function CausalDAG2DInner() {
 
   const onEdgeClick: EdgeMouseHandler = useCallback(
     (_event, rfEdge) => {
-      const causalEdge = graphData.edges.find((e) => e.id === rfEdge.id);
+      const causalEdge = edgeById.get(rfEdge.id);
       if (causalEdge) {
         setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
       }
     },
-    [graphData.edges]
+    [edgeById]
   );
 
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
@@ -708,12 +736,12 @@ function CausalDAG2DInner() {
     sim.cool();
   }, []);
 
-  // Resolve labels for edge inspector
+  // Resolve labels for edge inspector — O(1) via nodeById Map.
   const selectedSourceLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    ? nodeById.get(selectedEdge.source)?.label ?? selectedEdge.source
     : "";
   const selectedTargetLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
   return (

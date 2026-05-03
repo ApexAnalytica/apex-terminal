@@ -6,7 +6,7 @@ import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { computeLayout3D, computeNetworkMetrics, NodePosition, NodeMetrics } from "@/lib/graph-layout";
+import { computeLayout3D, computeNetworkMetrics, NodePosition } from "@/lib/graph-layout";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
@@ -59,7 +59,6 @@ class DAGErrorBoundary extends React.Component<
   }
 }
 
-const HOME_POS = new THREE.Vector3(40, 30, 80);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({
@@ -81,14 +80,18 @@ function CameraRig({
   const endPos = useRef(new THREE.Vector3());
   const startTarget = useRef(new THREE.Vector3());
   const endTarget = useRef(new THREE.Vector3());
-  // Keep a ref to posMap so the effect can read current positions without depending on them
+  // Keep a ref to posMap so the effect can read current positions without
+  // depending on them. Updating the ref in an effect (instead of during
+  // render) keeps the render function pure.
   const posMapRef = useRef(posMap);
-  posMapRef.current = posMap;
+  useEffect(() => {
+    posMapRef.current = posMap;
+  }, [posMap]);
   // Track previous selection to only animate on actual changes
   const prevSelectionKey = useRef("");
   const prevTopologyKey = useRef(topologyKey);
 
-  const orbitControlsRef = useRef<any>(null);
+  const orbitControlsRef = useRef<React.ComponentRef<typeof OrbitControls> | null>(null);
 
   // Helper: compute centroid and camera position to fit a set of node positions
   const computeFitCamera = useCallback((nodeIds: string[], currentPosMap: Record<string, [number, number, number]>) => {
@@ -155,6 +158,11 @@ function CameraRig({
         endTarget.current.copy(fit.target);
         progress.current = 0;
         animating.current = true;
+        // Event-driven external-system sync: disable orbit controls while the
+        // scripted camera animation runs. The cascading render the lint rule
+        // worries about is bounded — the effect bails on subsequent fires via
+        // the prevSelectionKey guard above.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setControlsEnabled(false);
       }
       return;
@@ -303,11 +311,19 @@ function useWebGLRecovery() {
 // forces a scene invalidate to recover from frozen/black state
 function FrameMonitor() {
   const { invalidate, gl } = useThree();
-  const lastFrameTime = useRef(performance.now());
+  // Initialize to 0 and set on mount — calling performance.now() during
+  // render is impure. The useFrame callback below replaces this on the
+  // first rendered frame, so the 0 value is observed for at most one
+  // tick before useFrame fires.
+  const lastFrameTime = useRef(0);
 
   useFrame(() => {
     lastFrameTime.current = performance.now();
   });
+
+  useEffect(() => {
+    lastFrameTime.current = performance.now();
+  }, []);
 
   useEffect(() => {
     const check = setInterval(() => {
@@ -572,6 +588,15 @@ export default function CausalDAG3D() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topologyKey]);
 
+  // Same pattern for edges — used by greyedOutNodes to resolve severed
+  // edges in O(1) instead of running graphData.edges.find per cut.
+  const edgeById = useMemo(() => {
+    const m = new Map<string, (typeof graphData.edges)[number]>();
+    for (const e of graphData.edges) m.set(e.id, e);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+
   // Store baseline omega scores (live/initial values) as a reference point.
   // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
   const baselineOmegaRef = useRef<Record<string, number>>({});
@@ -768,10 +793,11 @@ export default function CausalDAG3D() {
   // Compute greyed-out nodes: after a cut, nodes with Ω < 7 that are NOT downstream of cut points and NOT consequence nodes
   const greyedOutNodes = useMemo(() => {
     if (severedEdges.length === 0) return new Set<string>();
-    // Find all cut targets (downstream of severed edges)
+    // Find all cut targets (downstream of severed edges) — O(1) via edgeById
+    // instead of graphData.edges.find per cut.
     const cutTargets = new Set<string>();
     for (const edgeId of severedEdges) {
-      const edge = graphData.edges.find((e) => e.id === edgeId);
+      const edge = edgeById.get(edgeId);
       if (edge) cutTargets.add(edge.target);
     }
     // BFS downstream from cut targets
@@ -797,7 +823,7 @@ export default function CausalDAG3D() {
       }
     }
     return greyed;
-  }, [severedEdges, graphData]);
+  }, [severedEdges, graphData, edgeById]);
 
   // Compute disconnected nodes: find the largest connected component,
   // grey out any node not in it (floating imported clusters)
@@ -903,12 +929,13 @@ export default function CausalDAG3D() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [selectedNode, setSelectedNode, selectedEdge]);
 
-  // Resolve labels for edge inspector
+  // Resolve labels for edge inspector via the existing nodeById Map (O(1))
+  // instead of two Array.find calls per render.
   const selectedEdgeSourceLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    ? nodeById.get(selectedEdge.source)?.label ?? selectedEdge.source
     : "";
   const selectedEdgeTargetLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
   return (

@@ -10,6 +10,8 @@ import { T1D_GRAPH } from "@/lib/t1d-graph-data";
 import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
 import { mergeGraphs } from "@/lib/import/merge";
 import type { NodeCategory, CausalGraph } from "@/lib/types";
+import TTSControls from "@/components/TTSControls";
+import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
 
 const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "economic", label: "ECONOMIC", icon: "📊" },
@@ -459,16 +461,23 @@ export default function DomainSelector() {
                   Select risk domain{localMulti ? "s" : ""} to initialize causal graph
                 </span>
               </div>
-              {/* Tutorial launcher — same affordance as the header "?" button,
-                  reachable before the user has even committed to a domain. */}
-              <button
-                onClick={() => setTourActive(true)}
-                className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"
-                title="Feature tour"
-                aria-label="Launch feature tour"
-              >
-                ?
-              </button>
+              {/* Tutorial controls — speaker (read-aloud), language picker
+                  (any installed system voice), and the visual feature tour.
+                  Reachable before the user has even committed to a domain. */}
+              <div className="flex items-center gap-1.5">
+                <TTSControls
+                  text={WELCOME_DESCRIPTION}
+                  ariaLabel="Read tutorial aloud"
+                />
+                <button
+                  onClick={() => setTourActive(true)}
+                  className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"
+                  title="Feature tour"
+                  aria-label="Launch feature tour"
+                >
+                  ?
+                </button>
+              </div>
             </div>
 
             {/* Persona Selector */}

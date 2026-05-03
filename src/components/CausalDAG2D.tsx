@@ -301,16 +301,16 @@ function FitViewOnVisible({ visibleKey, isEmpty }: { visibleKey: string; isEmpty
 
 function CausalDAG2DInner() {
   const graphData = useFilteredGraph();
-  const {
-    truthFilter,
-    replayActive,
-    currentEpoch,
-    baselineEpochs,
-    interventionEpochs,
-    activeTimeline,
-    isolateSelection,
-    selectedNodes: multiSelectedNodes,
-  } = useApexStore();
+  // Fine-grained selectors — full-store destructure re-renders this whole
+  // component on any unrelated mutation (timeline scrub fires every tick).
+  const truthFilter = useApexStore((s) => s.truthFilter);
+  const replayActive = useApexStore((s) => s.replayActive);
+  const currentEpoch = useApexStore((s) => s.currentEpoch);
+  const baselineEpochs = useApexStore((s) => s.baselineEpochs);
+  const interventionEpochs = useApexStore((s) => s.interventionEpochs);
+  const activeTimeline = useApexStore((s) => s.activeTimeline);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
 

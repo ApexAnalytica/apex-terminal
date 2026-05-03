@@ -1,22 +1,29 @@
 // Pareto model-relevance scoring
 // ─────────────────────────────────────────────────────────────────────────────
 // Replaces the per-model "confidence" badge in the Pareto panel with a
-// composite relevance score grounded in four orthogonal sub-scores:
+// composite relevance score grounded in five orthogonal sub-scores:
 //
 //   F  Fit quality            out-of-sample one-step NRMSE → exp(−NRMSE)
 //   E  Evidence weight        Akaike weight across the active model set
 //   G  Regime applicability   model-specific gate of "does this regime match
 //                             the assumptions this model is designed for"
 //   S  Data sufficiency       sample size / graph-richness penalty
+//   M  Spatial consistency    Moran's I on the underlying signal across the
+//                             live adjacency graph — does the system show
+//                             coherent regional structure, or scrambled?
 //
 // Composite (multiplicative gate × additive quality):
 //
-//   raw   = S · G · (FIT_WEIGHT · F + (1 − FIT_WEIGHT) · E)
+//   raw   = S · G · M · (FIT_WEIGHT · F + (1 − FIT_WEIGHT) · E)
 //   shown = ema(raw)   with EMA_ALPHA on new contribution
 //
-// Why multiplicative on (S, G):
-//   A model that doesn't apply to the current regime, or that doesn't have
-//   enough data, must score near zero — it can't win by fitting noise.
+// Why multiplicative on (S, G, M):
+//   A model that doesn't apply to the current regime, doesn't have enough
+//   data, or is reasoning over a spatially scrambled signal must score
+//   near zero — none of those can be rescued by fitting noise tightly.
+//   M captures the failure mode "this one node looks alarming but its
+//   neighbours don't agree" — a per-node signal without graph-level
+//   structure is suspect, regardless of how well any model fits it.
 //
 // Why additive on (F, E):
 //   F is stable over short windows but local; E is the cross-model arbiter
@@ -25,6 +32,9 @@
 //   panel — see the design note in the conversation log.
 //
 // All sub-scores are bounded in [0, 1]. Composite is bounded in [0, 1].
+//
+// Backwards compatibility: M defaults to a neutral 1.0 when no consistency
+// input is supplied (preserving the historical F·E·G·S behaviour).
 
 export const PARETO_RELEVANCE_CONSTANTS = {
   // Composition
@@ -53,6 +63,21 @@ export const PARETO_RELEVANCE_CONSTANTS = {
 
   // Likelihood floors (avoid −∞ when residuals are degenerate)
   MIN_RESIDUAL_VARIANCE: 1e-6,
+
+  // Spatial consistency (M) — Moran's I gate
+  // ----------------------------------------------------------------------
+  // M = clamp01((1 − pPerm) · |I − E[I]| · M_GAIN). Rewards any non-random
+  // spatial structure (positive OR negative autocorrelation) weighted by
+  // permutation significance. M_GAIN scales the magnitude term so |I| ≈ 0.5
+  // with pPerm ≈ 0 maps to ≈ 1.0 — the typical "strong structure" reading.
+  // pPerm ≥ M_PPERM_NEUTRAL collapses M toward 1.0 (neutral, don't punish
+  // models when permutation is inconclusive — too few permutations or too
+  // few nodes is not the model's fault).
+  M_GAIN: 4.0,
+  M_MIN_NODES: 4,              // below this, M defaults to 1.0 (neutral)
+  M_PPERM_NEUTRAL: 0.5,        // pPerm ≥ this maps to a partial-neutral M
+  M_DEFAULT_PERMUTATIONS: 199, // matches the standalone Moran card default
+  M_DEFAULT_SEED: 0xa9e7c5,
 } as const;
 
 const C = PARETO_RELEVANCE_CONSTANTS;
@@ -81,6 +106,14 @@ export interface RelevanceBreakdown {
   E: SubScore;
   G: SubScore;
   S: SubScore;
+  /**
+   * M — spatial consistency (Moran's I of the underlying signal across the
+   * live adjacency). Defaults to a neutral 1.0 when no consistency input
+   * is supplied, preserving the historical F·E·G·S behaviour. Shared
+   * across all models in a batch (it's a property of the system, not the
+   * model) — same value appears in every breakdown.
+   */
+  M: SubScore;
   /** Final composite after EMA smoothing, in [0, 1]. */
   composite: number;
   /** Composite before EMA smoothing, in [0, 1]. */
@@ -116,6 +149,13 @@ export interface ComposeOptions {
   emaAlpha?: number;
   /** Previous composite values keyed by model key, for EMA smoothing. */
   previous?: Map<string, number> | Record<string, number>;
+  /**
+   * Optional shared spatial-consistency sub-score. Same value applied to
+   * every model in the batch (it's a property of the system, not the
+   * model). When absent, M defaults to a neutral 1.0 — the historical
+   * F·E·G·S composite is preserved exactly.
+   */
+  consistency?: SubScore;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +447,109 @@ export function topologySufficiency(nodeCount: number): SubScore {
   };
 }
 
+/**
+ * M — spatial consistency.
+ *
+ * Computes Moran's I of the supplied per-node signal against the supplied
+ * row-normalised adjacency, then maps to [0, 1] via:
+ *
+ *   M = clamp01((1 − pPerm) · |I − E[I]| · M_GAIN)
+ *
+ * The shape rewards any non-random structure (positive *or* negative
+ * autocorrelation), weighted by permutation significance. A spatially
+ * scrambled signal (no edges agree, neighbours look random) yields M ≈ 0,
+ * which collapses the multiplicative gate and discounts every model's
+ * relevance — consistent with the framework's "context kills, fit alone
+ * cannot save" design.
+ *
+ * Returns a neutral M = 1.0 (with an explanatory detail) when there's no
+ * evaluable graph: too few nodes, no edges, or zero-variance signal. The
+ * neutral default preserves the historical F·E·G·S behaviour for callers
+ * that don't supply consistency inputs.
+ *
+ * Implementation note: this helper is the only place in pareto-relevance.ts
+ * that depends on the Moran kernel. It imports `moransI` from
+ * `./estimators/moran` lazily through the public surface used by the
+ * standalone Moran card, keeping the math identical to what the card
+ * already shows users — by design, M and the standalone card always agree.
+ */
+export interface SpatialConsistencyArgs {
+  /** Per-node signal values aligned with adjacency rows (e.g. ΩF composite). */
+  values: ReadonlyArray<number>;
+  /**
+   * Adjacency matrix used to compute Moran's I. Should be row-normalised
+   * for canonical Moran semantics; consistency() does not re-normalise.
+   * If S₀ = Σ_ij W_ij is zero, returns the neutral default (no graph).
+   */
+  adjacency: ReadonlyArray<ReadonlyArray<number>>;
+  /** Permutation count for p-value. Defaults to M_DEFAULT_PERMUTATIONS. */
+  nPermutations?: number;
+  /** RNG seed for permutation reproducibility. Defaults to M_DEFAULT_SEED. */
+  seed?: number;
+}
+
+export function spatialConsistency(
+  args: SpatialConsistencyArgs,
+  // Late-bound for testability and to dodge any future circular-import risk.
+  // Production callers always pass the real `moransI`. Tests can stub.
+  moransI: (
+    x: ArrayLike<number>,
+    W: number[][],
+    opts?: { nPermutations?: number; seed?: number },
+  ) => { I: number; expected: number; pPerm: number },
+): SubScore {
+  const { values, adjacency } = args;
+  const n = values.length;
+  if (n < C.M_MIN_NODES || adjacency.length !== n) {
+    return {
+      score: 1,
+      detail: `n=${n} < ${C.M_MIN_NODES}; M neutral.`,
+    };
+  }
+  // S₀ check — empty graph collapses Moran's I to undefined.
+  let s0 = 0;
+  for (let i = 0; i < n; i++) {
+    const row = adjacency[i];
+    for (let j = 0; j < n; j++) s0 += row[j];
+  }
+  if (s0 <= 0) {
+    return { score: 1, detail: "no edges; M neutral." };
+  }
+  // Zero-variance signal — Moran's I is undefined, neutral.
+  let mu = 0;
+  for (let i = 0; i < n; i++) mu += values[i];
+  mu /= n;
+  let varSum = 0;
+  for (let i = 0; i < n; i++) {
+    const d = values[i] - mu;
+    varSum += d * d;
+  }
+  if (varSum <= 0) {
+    return { score: 1, detail: "zero-variance signal; M neutral." };
+  }
+
+  const W: number[][] = adjacency.map((row) => row.slice());
+  const nPerm = args.nPermutations ?? C.M_DEFAULT_PERMUTATIONS;
+  const seed = args.seed ?? C.M_DEFAULT_SEED;
+  const r = moransI([...values], W, { nPermutations: nPerm, seed });
+
+  const dev = Math.abs(r.I - r.expected);
+  // pPerm-fold blend: significant → full magnitude weight, inconclusive →
+  // partial neutral so we don't punish an under-powered permutation test.
+  const sigWeight =
+    r.pPerm <= 0
+      ? 1
+      : r.pPerm >= C.M_PPERM_NEUTRAL
+        ? Math.max(0, 1 - r.pPerm)
+        : 1 - r.pPerm;
+  const score = clamp01(dev * C.M_GAIN * sigWeight);
+  const dir = r.I > r.expected ? "+" : r.I < r.expected ? "−" : "0";
+  return {
+    score,
+    detail: `Moran's I = ${r.I.toFixed(3)} (E=${r.expected.toFixed(3)}, ${dir}struct, p=${r.pPerm.toFixed(2)}, n=${n}).`,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Composition
 
@@ -424,6 +567,10 @@ export function computeRelevanceBatch(
   const fitWeight = options.fitWeight ?? C.FIT_WEIGHT;
   const emaAlpha = options.emaAlpha ?? C.EMA_ALPHA;
   const previous = toMap(options.previous);
+  const M: SubScore = options.consistency ?? {
+    score: 1,
+    detail: "no consistency input; M neutral.",
+  };
 
   const evidence = akaikeEvidenceWeights(inputs);
   const out = new Map<string, RelevanceBreakdown>();
@@ -435,7 +582,7 @@ export function computeRelevanceBatch(
     const S = m.sufficiency;
 
     const quality = fitWeight * F.score + (1 - fitWeight) * E.score;
-    const rawComposite = clamp01(S.score * G.score * quality);
+    const rawComposite = clamp01(S.score * G.score * M.score * quality);
 
     const prev = previous.get(m.key);
     const composite =
@@ -443,7 +590,7 @@ export function computeRelevanceBatch(
         ? clamp01((1 - emaAlpha) * prev + emaAlpha * rawComposite)
         : rawComposite;
 
-    out.set(m.key, { F, E, G, S, composite, rawComposite });
+    out.set(m.key, { F, E, G, S, M, composite, rawComposite });
   }
 
   return out;

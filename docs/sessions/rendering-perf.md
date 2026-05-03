@@ -241,9 +241,34 @@ Remaining map-view perf opportunity if ever needed: the per-frame particle updat
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 666/666 pass (9 new in `graph-relief-field.test.ts`).
 
+### 2026-05-03 — Hotfix: Relief production crash on tab-switch
+
+**Trigger.** Right after PR #210 merged, user reported a Next.js "Application error: a client-side exception has occurred" on clicking RELIEF in production. Generic top-level error fallback — no console access from this session, so the diagnosis was forced to be remote.
+
+**Working theory (most-to-least likely).**
+1. **Static import of `getDomainColor` from `graph-data.ts`** in `graph-relief-field.ts`. `graph-data.ts` is the 2,920-line MAIN_GRAPH module and is intentionally split out via the `import("@/lib/graph-data")` dynamic import in `page.tsx` (item #6 in the bundle plan). My static import pulled it into the Relief chunk, defeating the split and creating two competing init paths for the same constant. Production chunk loaders handle this less gracefully than dev's webpack runtime.
+2. **NaN/Infinity propagation through the heightfield.** A single non-finite `composite` (or non-finite `p.x`/`p.y` from a degenerate layout) corrupts `peak`, then `inv = 1/peak`, then every `norm`, and finally every Float32 in the colors/positions buffers. WebGL upload of a buffer full of NaN doesn't always throw cleanly — sometimes it's "INVALID_OPERATION" on first draw, sometimes silent black, sometimes a renderer abort.
+3. **No error boundary** around the Relief Canvas, so any render-time throw inside r3f surfaces as a top-level Next.js fault and tears down the whole app instead of just the Relief pane.
+
+**Fix shipped.**
+- **Inlined `DOMAIN_COLOR_MAP`** in `graph-relief-field.ts`. Removed the static import of `getDomainColor` from `graph-data.ts` entirely. The map is now a local constant; the Relief chunk no longer depends on `graph-data.ts`. Note left in the file: keep in sync with `getDomainColor` if either changes.
+- **Defensive guards in both field functions.** Skip nodes whose layout position is non-finite. Coerce a non-finite `omegaFragility?.composite` to 0. Coerce a missing/empty `domain` string to `"Unknown"`. In the second pass, clamp `norm` to `[0, 1]` and bail to 0 on non-finite — so the GPU upload is always sane Float32.
+- **Empty-buffer guard in mesh components.** `<ReliefMesh>` and `<ReliefLayerMesh>` now early-return `null` when `field.positions.length === 0` and skip the `setAttribute`/`setIndex` calls — `THREE.BufferAttribute(empty, 3)` was the most plausible direct throw point.
+- **Removed `computeVertexNormals()`** from `<ReliefLayerMesh>` — `meshBasicMaterial` doesn't use lighting, so normals were wasted work and one less thing to fail on.
+- **`<ReliefErrorBoundary>` class component** wraps the whole Relief view. A render error inside now logs to the console and shows a small in-pane "RELIEF VIEW UNAVAILABLE" fallback; the rest of the app stays interactive. Cheap belt-and-braces — should be the last line of defence regardless of which of the above was the actual culprit.
+
+**Out of scope (deliberate).** Changing chunking config in `next.config.ts` to force the desired split — too broad. The inline copy of the color map is sufficient and decouples Relief from graph-data forever.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 673/673 pass.
+
+**Files touched.**
+- `src/lib/graph-relief-field.ts` (+ ~50 / − 4) — inlined color map, defensive sample/norm guards.
+- `src/components/CausalDAGRelief.tsx` (+ ~50 / − 5) — error boundary, empty-buffer guards, removed redundant normal compute.
+- `docs/sessions/rendering-perf.md` — this entry.
+
 ### 2026-05-03 — Next up
 
-- TBD — open for direction. Remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify hotfix lands the Relief view in production. If still broken, the user's browser console output will localise it (the new Error Boundary prints `[Relief view] render error: ...` instead of a top-level fault). If verified, remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

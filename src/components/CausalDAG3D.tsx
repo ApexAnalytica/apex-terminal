@@ -363,12 +363,12 @@ function StoreInvalidator() {
   const severedEdges = useApexStore((s) => s.severedEdges);
   const currentEpoch = useApexStore((s) => s.currentEpoch);
 
-  // Invalidate on any store change that affects visible state
-  useEffect(() => { invalidate(); }, [selectedNode, invalidate]);
-  useEffect(() => { invalidate(); }, [selectedNodes, invalidate]);
-  useEffect(() => { invalidate(); }, [timelinePosition, invalidate]);
-  useEffect(() => { invalidate(); }, [severedEdges, invalidate]);
-  useEffect(() => { invalidate(); }, [currentEpoch, invalidate]);
+  // Invalidate on any store change that affects visible state. One effect
+  // with combined deps fires identically to the previous five separate
+  // useEffects — React re-runs the effect when any dep changes.
+  useEffect(() => {
+    invalidate();
+  }, [selectedNode, selectedNodes, timelinePosition, severedEdges, currentEpoch, invalidate]);
 
   // Expose a stable callback so node hover can trigger invalidate
   // without subscribing StoreInvalidator to hover state
@@ -566,6 +566,23 @@ export default function CausalDAG3D() {
     return computeNetworkMetrics(graphData.nodes, graphData.edges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topologyKey]);
+
+  // Selection/ablation Sets — render loop iterates every node and edge, and
+  // `multiSelectedNodes.includes(...)` / `ablatedNodeIds.includes(...)` is O(M)
+  // per node, O(M) per edge. With 50 selections on a 200-node graph that's
+  // 20K+ ops per render. Sets keep `.has()` at O(1).
+  const multiSelectedSet = useMemo(
+    () => new Set(multiSelectedNodes),
+    [multiSelectedNodes],
+  );
+  const ablatedNodeSet = useMemo(
+    () => new Set(ablatedNodeIds),
+    [ablatedNodeIds],
+  );
+  const ablatedEdgeSet = useMemo(
+    () => new Set(ablatedEdgeIds),
+    [ablatedEdgeIds],
+  );
 
   // Build adjacency for neighbor lookup (shared by both replay & historical contraction)
   const neighbors = useMemo(() => {
@@ -826,15 +843,24 @@ export default function CausalDAG3D() {
   }, [severedEdges, graphData, edgeById]);
 
   // Compute disconnected nodes: find the largest connected component,
-  // grey out any node not in it (floating imported clusters)
+  // grey out any node not in it (floating imported clusters).
+  //
+  // Connectivity is purely structural — scrubbing temporal omega bumps
+  // `graphData.nodes` refs but doesn't change which edges connect what.
+  // Key on `topologyKey + severedEdges` (not `graphData`) so this O(V + E)
+  // BFS doesn't rebuild on every replay tick. Read graphData via ref so
+  // deps stay stable. Same shape as `positions` / `networkMetrics` above.
   const disconnectedNodes = useMemo(() => {
+    const g = graphDataForLayoutRef.current;
+    const severedSet = new Set(severedEdges);
+
     // Build undirected adjacency list from active (non-severed) edges
     const adj = new Map<string, Set<string>>();
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       adj.set(node.id, new Set());
     }
-    for (const edge of graphData.edges) {
-      if (edge.isSevered) continue;
+    for (const edge of g.edges) {
+      if (edge.isSevered || severedSet.has(edge.id)) continue;
       adj.get(edge.source)?.add(edge.target);
       adj.get(edge.target)?.add(edge.source);
     }
@@ -843,7 +869,7 @@ export default function CausalDAG3D() {
     const visited = new Set<string>();
     const components: Set<string>[] = [];
 
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       if (visited.has(node.id)) continue;
       const component = new Set<string>();
       const queue = [node.id];
@@ -870,13 +896,14 @@ export default function CausalDAG3D() {
 
     // Everything outside the largest component is disconnected
     const disconnected = new Set<string>();
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       if (!largest.has(node.id)) {
         disconnected.add(node.id);
       }
     }
     return disconnected;
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey, severedEdges]);
 
   const handleScissorsClick = useCallback(
     (edgeId: string) => {
@@ -993,11 +1020,11 @@ export default function CausalDAG3D() {
             if (!pos) return null;
 
             // Hide non-selected nodes when isolation is active
-            if (isolateSelection && multiSelectedNodes.length > 0 && !multiSelectedNodes.includes(node.id)) return null;
+            if (isolateSelection && multiSelectedSet.size > 0 && !multiSelectedSet.has(node.id)) return null;
 
             const isTarget = interventionTarget === node.id;
             const isRestricted = truthFilter === "verified" && node.isRestricted;
-            const isMultiSelected = multiSelectedNodes.includes(node.id);
+            const isMultiSelected = multiSelectedSet.has(node.id);
             const isSelected = selectedNode === node.id || isMultiSelected;
             const isNeighborOfSelected = selectedNeighborNodes.has(node.id);
             const anyNodeSelected = selectedNode !== null;
@@ -1014,7 +1041,7 @@ export default function CausalDAG3D() {
                 anyNodeSelected={anyNodeSelected}
                 isConsequence={node.isConsequence ?? false}
                 isGreyedOut={greyedOutNodes.has(node.id) || disconnectedNodes.has(node.id)}
-                isAblated={ablatedNodeIds.includes(node.id)}
+                isAblated={ablatedNodeSet.has(node.id)}
                 ablationMode={ablationMode}
                 metrics={networkMetrics[node.id]}
                 epochState={currentSnapshot?.nodeStates[node.id] ?? (
@@ -1048,7 +1075,7 @@ export default function CausalDAG3D() {
             if (!srcPos || !tgtPos) return null;
 
             // Hide edges that don't connect two selected nodes when isolation is active
-            if (isolateSelection && multiSelectedNodes.length > 0 && (!multiSelectedNodes.includes(edge.source) || !multiSelectedNodes.includes(edge.target))) return null;
+            if (isolateSelection && multiSelectedSet.size > 0 && (!multiSelectedSet.has(edge.source) || !multiSelectedSet.has(edge.target))) return null;
 
             const isHighlighted =
               interventionMode &&
@@ -1086,7 +1113,7 @@ export default function CausalDAG3D() {
                 isConsequenceEdge={edge.isConsequenceEdge ?? false}
                 scissorsMode={scissorsMode}
                 onScissorsClick={() => handleScissorsClick(edge.id)}
-                isAblated={ablatedEdgeIds.includes(edge.id)}
+                isAblated={ablatedEdgeSet.has(edge.id)}
                 ablationMode={ablationMode}
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
                 onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}

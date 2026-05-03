@@ -138,7 +138,7 @@ Also cleared two warnings while the file was open: removed the unused `NodeMetri
 
 ### 2026-05-03 — 2D canvas perf pass: adjacency-indexed contraction
 
-**Commit:** `84b8a18` on `claude/rendering-perf-manifold-UblqD` (pushed; PR not yet opened).
+**PR:** [#198 — perf(2d): adjacency-indexed contraction + nodeById/edgeById lookups](https://github.com/ApexAnalytica/apex-terminal/pull/198) — merged `f8b3440`.
 
 **Trigger.** User picked option #1 from a three-way split (profile 2D canvas / audit 3D scene / batch map orbs). Goal: identify and fix the highest-ROI perf issues on the most-recently-rebuilt surface before the 2D Obsidian layout starts feeling its weight on dense graphs.
 

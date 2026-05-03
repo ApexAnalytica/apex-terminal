@@ -94,6 +94,15 @@ describe("mockWorldBankFeed", () => {
       seen.add(key);
     }
   });
+
+  it("includes the Phase 8 MENA Import Dependency entry (MEA region)", () => {
+    const mena = WB_SERIES.find(
+      (s) => s.country === "MEA" && s.indicator === "NE.IMP.GNFS.ZS",
+    );
+    expect(mena).toBeDefined();
+    expect(mena!.labelPatterns).toContain("mena import dependency");
+    expect(mena!.unit).toBe("%");
+  });
 });
 
 describe("worldBankProvider.matchPayload", () => {

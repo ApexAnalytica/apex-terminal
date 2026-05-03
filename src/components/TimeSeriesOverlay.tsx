@@ -44,6 +44,8 @@ function buildHoldForwardPoints(
 
   const toX = (ts: number) =>
     plotLeft + ((ts - xStart) / xRange) * plotW;
+  // Caller passes per-curve [yMin, yMax] for normalized rendering; this
+  // helper itself stays unit-agnostic.
   const toY = (omega: number) =>
     PAD.top + (1 - (omega - yMin) / yRange) * (CHART_HEIGHT - PAD.top - PAD.bottom);
 
@@ -231,42 +233,42 @@ export default function TimeSeriesOverlay() {
       .filter(Boolean) as { nodeId: string; label: string; domain: string }[];
   }, [pinnedNodes, curves, temporalData, graphData]);
 
-  // Compute dynamic y-axis range from actual data with padding
-  const { yMin, yMax, gridLines } = useMemo(() => {
-    if (curves.length === 0) return { yMin: 0, yMax: 10, gridLines: [2.5, 5.0, 7.5] };
-
-    let lo = Infinity;
-    let hi = -Infinity;
+  // Per-curve scale: each pinned curve normalizes to its OWN min/max so
+  // curves with mismatched units (Ω 0-10, %, mb/d, USD/ton, programs)
+  // can be visually compared by shape, not absolute value. Without this,
+  // a single high-magnitude curve dominated the chart and lower-magnitude
+  // curves collapsed to flat lines along the bottom.
+  const curveScales = useMemo(() => {
+    const scales = new Map<string, { min: number; max: number }>();
     for (const curve of curves) {
+      let lo = Infinity;
+      let hi = -Infinity;
       for (const h of curve.history) {
         if (h.omegaComposite < lo) lo = h.omegaComposite;
         if (h.omegaComposite > hi) hi = h.omegaComposite;
       }
+      if (!Number.isFinite(lo)) {
+        lo = 0;
+        hi = 1;
+      }
+      if (lo === hi) {
+        // Avoid divide-by-zero: a flat curve gets a tiny synthetic range
+        // so it renders as a horizontal line at the chart's vertical center.
+        hi = lo + 1;
+        lo = lo - 1;
+      }
+      scales.set(curve.nodeId, { min: lo, max: hi });
     }
+    return scales;
+  }, [curves]);
 
-    // Add 10% padding on each side, clamped to [0, 10]
-    const span = hi - lo || 1;
-    const pad = span * 0.1;
-    const yMinRaw = Math.max(0, Math.floor((lo - pad) * 2) / 2); // snap to 0.5
-    const yMaxRaw = Math.min(10, Math.ceil((hi + pad) * 2) / 2);
-
-    // Generate ~3-5 evenly spaced grid lines
-    const range = yMaxRaw - yMinRaw;
-    // Pick a nice step: 0.5, 1, 2, or 2.5
-    let step = 1;
-    if (range <= 2) step = 0.5;
-    else if (range <= 5) step = 1;
-    else if (range <= 8) step = 2;
-    else step = 2.5;
-
-    const lines: number[] = [];
-    let v = Math.ceil(yMinRaw / step) * step;
-    while (v < yMaxRaw) {
-      if (v > yMinRaw) lines.push(Math.round(v * 10) / 10);
-      v += step;
-    }
-
-    return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
+  // Compute dynamic y-axis range from actual data with padding.
+  // (When normalized, the chart axis is 0..1; gridLines reflect that.)
+  // Kept for the rare single-curve case where global scale is meaningful.
+  const { yMin, yMax, gridLines } = useMemo(() => {
+    if (curves.length === 0) return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
+    // Multi-curve: normalized 0..1 axis with quartile gridlines.
+    return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
   }, [curves]);
 
   // Always mirror the TimeDial's visible window so a timestamp renders at
@@ -278,21 +280,33 @@ export default function TimeSeriesOverlay() {
     [timelineRange],
   );
 
-  // Convert data coordinates to SVG coordinates
+  // Convert data coordinates to SVG coordinates. Per-curve normalization:
+  // when curveId is provided, the value is mapped to its own 0..1 range
+  // (set by `curveScales`), then placed on the shared 0..1 axis. This is
+  // the path used by all multi-curve renderings.
   const toSvg = useCallback(
-    (timestamp: number, omega: number, width: number) => {
+    (timestamp: number, omega: number, width: number, curveId?: string) => {
       const xRange = xEnd - xStart || 1;
       const x =
         plotInset.left +
         ((timestamp - xStart) / xRange) *
           (width - plotInset.left - plotInset.right);
+      let norm: number;
+      if (curveId) {
+        const scale = curveScales.get(curveId);
+        if (scale) {
+          norm = (omega - scale.min) / (scale.max - scale.min || 1);
+        } else {
+          norm = (omega - yMin) / (yMax - yMin || 1);
+        }
+      } else {
+        norm = (omega - yMin) / (yMax - yMin || 1);
+      }
       const y =
-        PAD.top +
-        (1 - (omega - yMin) / (yMax - yMin || 1)) *
-          (CHART_HEIGHT - PAD.top - PAD.bottom);
+        PAD.top + (1 - norm) * (CHART_HEIGHT - PAD.top - PAD.bottom);
       return { x, y };
     },
-    [xStart, xEnd, yMin, yMax, plotInset],
+    [xStart, xEnd, yMin, yMax, curveScales, plotInset],
   );
 
   // Resolve which x to anchor the tooltip to. Hover wins when the cursor is
@@ -402,15 +416,19 @@ export default function TimeSeriesOverlay() {
           className="overflow-hidden"
         >
           <div className="flex items-stretch px-4 pb-2">
-            {/* Y-axis label column — aligned with TimeDial, auto-scaled */}
+            {/* Y-axis label column — normalized 0..100% so curves with mismatched
+                units share an axis without one dominating the others. */}
             <div className="min-w-[72px] flex-shrink-0 flex flex-col justify-between py-1">
-              <span className="text-[7px] font-mono text-text-muted/60">{yMax % 1 === 0 ? yMax : yMax.toFixed(1)}</span>
+              <span className="text-[7px] font-mono text-text-muted/60">100%</span>
               {gridLines.map((v) => (
                 <span key={v} className="text-[7px] font-mono text-text-muted/60">
-                  {v % 1 === 0 ? v : v.toFixed(1)}
+                  {Math.round(v * 100)}%
                 </span>
               ))}
-              <span className="text-[7px] font-mono text-text-muted/60">{yMin % 1 === 0 ? yMin : yMin.toFixed(1)}</span>
+              <span className="text-[7px] font-mono text-text-muted/60">0%</span>
+              <span className="text-[6px] font-mono text-text-muted/40 tracking-wider mt-0.5">
+                NORM
+              </span>
             </div>
 
             {/* SVG Chart */}
@@ -455,12 +473,15 @@ export default function TimeSeriesOverlay() {
                     // to xEnd. This makes a 3-point series cover the full
                     // axis width rather than collapsing to a tiny segment.
                     // Handles the 1-point fallback (flat horizontal line).
+                    // Per-curve normalization: pass this curve's own min/max
+                    // so it renders against its own range, not the global one.
+                    const scale = curveScales.get(curve.nodeId) ?? { min: yMin, max: yMax };
                     const { linePoints, fillPoints } = buildHoldForwardPoints(
                       curve.history,
                       xStart,
                       xEnd,
-                      yMin,
-                      yMax,
+                      scale.min,
+                      scale.max,
                       plotInset.left,
                       plotInset.right,
                       w,
@@ -482,7 +503,7 @@ export default function TimeSeriesOverlay() {
                         />
                         {/* Published point markers */}
                         {curve.history.map((h) => {
-                          const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
+                          const { x, y } = toSvg(h.timestamp, h.omegaComposite, w, curve.nodeId);
                           return (
                             <circle
                               key={h.timestamp}
@@ -501,21 +522,25 @@ export default function TimeSeriesOverlay() {
                   // Dense series — original solid polyline rendering
                   const points = curve.history
                     .map((h) => {
-                      const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
+                      const { x, y } = toSvg(h.timestamp, h.omegaComposite, w, curve.nodeId);
                       return `${x},${y}`;
                     })
                     .join(" ");
 
-                  // Fill polygon — baseline at yMin (bottom of visible range)
+                  // Fill polygon — baseline at this curve's normalized 0
+                  const scale = curveScales.get(curve.nodeId);
+                  const baseValue = scale?.min ?? yMin;
                   const first = toSvg(
                     curve.history[0].timestamp,
-                    yMin,
+                    baseValue,
                     w,
+                    curve.nodeId,
                   );
                   const last = toSvg(
                     curve.history[curve.history.length - 1].timestamp,
-                    yMin,
+                    baseValue,
                     w,
+                    curve.nodeId,
                   );
                   const fillPoints = `${first.x},${first.y} ${points} ${last.x},${last.y}`;
 
@@ -689,6 +714,21 @@ export default function TimeSeriesOverlay() {
                   <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
                     {curve.label}
                   </span>
+                  {/* Per-curve value-range chip — shows the actual unit-bearing
+                      range so the normalized 0-100% chart isn't ambiguous about
+                      what shape corresponds to what magnitude. */}
+                  {(() => {
+                    const scale = curveScales.get(curve.nodeId);
+                    if (!scale) return null;
+                    const u = curve.sourceUnit ?? "";
+                    const fmt = (n: number) =>
+                      Number.isInteger(n) ? n.toString() : n.toFixed(2);
+                    return (
+                      <span className="text-[7px] font-mono text-text-muted/70 tabular-nums shrink-0">
+                        {fmt(scale.min)}–{fmt(scale.max)}{u}
+                      </span>
+                    );
+                  })()}
                   {/* Sparsity badge — shown for sparse real data */}
                   {isSparse && (
                     <span

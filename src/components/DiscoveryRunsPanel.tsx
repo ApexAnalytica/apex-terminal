@@ -14,7 +14,16 @@ const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
   "lag-correlation": "live",
   "pcmci-linear": "live",
   "bocpd-hypo-calibration": "live",
+  "csd-fit-hypo-calibration": "live",
 };
+
+// Calibration algorithm ids — runs whose result.diagnostics carry the
+// AUROC / Brier / ECE / reliability-bin shape that CalibrationBlock
+// renders, rather than discovered edges.
+const CALIBRATION_ALGORITHM_IDS = new Set([
+  "bocpd-hypo-calibration",
+  "csd-fit-hypo-calibration",
+]);
 
 // ─── DiscoveryRunsPanel ──────────────────────────────────────────────
 //
@@ -35,6 +44,7 @@ const SAMPLE_RUN_URLS = [
   "/discovery-runs/d1namo-lag-correlation-v0-1-0.json",
   "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
   "/discovery-runs/d1namo-bocpd-hypo-calibration-v0-1-0.json",
+  "/discovery-runs/d1namo-csd-fit-hypo-calibration-v0-1-0.json",
 ];
 
 type LoadState =
@@ -75,10 +85,13 @@ export default function DiscoveryRunsPanel() {
   return (
     <div className="p-4 space-y-3">
       <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-        Edges learned from a real observational cohort (D1NAMO, Dubosson
-        2018), separate from the curated CausalGraph above. Each tab below
-        is a different algorithm run on the same cohort — comparing them
-        is how we tell signal from artefact.
+        Edges and calibration runs computed on a real observational
+        cohort (D1NAMO, Dubosson 2018), separate from the curated
+        CausalGraph above. The two structure-discovery tabs (lag /
+        pcmci) compare algorithms on the same data — common-cause
+        artefacts in the cheaper algorithm fail under proper
+        conditioning. The two calibration tabs (bocpd / csd-fit)
+        validate scores the platform ships against real labelled events.
       </div>
 
       {state.kind === "loading" && <LoadingTile />}
@@ -132,7 +145,7 @@ function ErrorTile({ message }: { message: string }) {
 
 function RunTile({ run }: { run: DiscoveryRun }) {
   const r = run.result;
-  const isCalibration = run.algorithm.id === "bocpd-hypo-calibration";
+  const isCalibration = CALIBRATION_ALGORITHM_IDS.has(run.algorithm.id);
   const sortedEdges = useMemo(
     () =>
       [...r.edges].sort(
@@ -296,6 +309,21 @@ function RunTile({ run }: { run: DiscoveryRun }) {
           on Joslin data is meant to answer at scale.
         </div>
       )}
+      {run.algorithm.id === "csd-fit-hypo-calibration" && (
+        <div className="text-[7px] font-mono text-accent-cyan/80 leading-relaxed border border-accent-cyan/20 bg-accent-cyan/5 rounded px-1.5 py-1">
+          <strong>F sub-score (CSD/AR(1) fit) vs hypoglycemia, 30-min
+          horizon.</strong> Validates the F sub-score and the bootstrap
+          CI shipped in the F·E·G·S·M relevance composite, on real
+          labelled D1NAMO data. <em>Not</em> a full F·E·G·S·M
+          validation: D1NAMO is single-subject CGM, so M (multi-node
+          consistency) and several other sub-scores are degenerate —
+          listed in the box above. Two AUROCs reported: high-F-predicts-
+          event (sanity) and (1−F)-predicts-event (the regime-shift
+          hypothesis: AR(1) fit collapses as the system approaches a
+          tipping point). The full F·E·G·S·M validation requires a
+          multi-subject-graph cohort like nPOD.
+        </div>
+      )}
     </div>
   );
 }
@@ -326,7 +354,30 @@ function CalibrationBlock({
 }: {
   diagnostics: Record<string, unknown>;
 }) {
-  const auroc = typeof diagnostics.auroc === "number" ? diagnostics.auroc : null;
+  // BOCPD calibrator emits a single AUROC; the CSD-fit calibrator emits two
+  // (high-F-predicts-event vs low-F-predicts-event). Prefer aurocFitHigh
+  // when present and surface aurocFitLow as a secondary stat below.
+  const aurocBocpd =
+    typeof diagnostics.auroc === "number" ? diagnostics.auroc : null;
+  const aurocFitHigh =
+    typeof diagnostics.aurocFitHigh === "number"
+      ? diagnostics.aurocFitHigh
+      : null;
+  const aurocFitLow =
+    typeof diagnostics.aurocFitLow === "number"
+      ? diagnostics.aurocFitLow
+      : null;
+  const headlineAuroc = aurocBocpd ?? aurocFitHigh;
+  const meanCiHalfWidth =
+    typeof diagnostics.meanCiHalfWidth === "number"
+      ? diagnostics.meanCiHalfWidth
+      : null;
+  const validatedSubScores = Array.isArray(diagnostics.validatedSubScores)
+    ? (diagnostics.validatedSubScores as string[])
+    : null;
+  const degenerateSubScores = Array.isArray(diagnostics.degenerateSubScores)
+    ? (diagnostics.degenerateSubScores as string[])
+    : null;
   const brier =
     typeof diagnostics.brierScore === "number" ? diagnostics.brierScore : null;
   const ece = typeof diagnostics.ece === "number" ? diagnostics.ece : null;
@@ -340,7 +391,10 @@ function CalibrationBlock({
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-4 gap-1.5">
-        <Stat label="AUROC" value={auroc !== null ? auroc.toFixed(3) : "—"} />
+        <Stat
+          label="AUROC"
+          value={headlineAuroc !== null ? headlineAuroc.toFixed(3) : "—"}
+        />
         <Stat label="BRIER" value={brier !== null ? brier.toFixed(3) : "—"} />
         <Stat label="ECE" value={ece !== null ? ece.toFixed(3) : "—"} />
         <Stat
@@ -348,6 +402,40 @@ function CalibrationBlock({
           value={baseRate !== null ? `${(baseRate * 100).toFixed(1)}%` : "—"}
         />
       </div>
+      {/* Secondary stats — only emitted by the csd-fit calibrator. */}
+      {(aurocFitLow !== null || meanCiHalfWidth !== null) && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {aurocFitLow !== null && (
+            <Stat
+              label="AUROC (1−F → hypo)"
+              value={aurocFitLow.toFixed(3)}
+            />
+          )}
+          {meanCiHalfWidth !== null && (
+            <Stat
+              label="MEAN CI HALF-WIDTH"
+              value={meanCiHalfWidth.toFixed(3)}
+            />
+          )}
+        </div>
+      )}
+      {/* Sub-score validation honesty box — only emitted by csd-fit. */}
+      {(validatedSubScores || degenerateSubScores) && (
+        <div className="text-[7px] font-mono text-text-muted leading-relaxed border-l-2 border-accent-cyan/30 pl-2 space-y-0.5">
+          {validatedSubScores && validatedSubScores.length > 0 && (
+            <div>
+              <span className="text-accent-green">VALIDATES:</span>{" "}
+              {validatedSubScores.join(", ")}
+            </div>
+          )}
+          {degenerateSubScores && degenerateSubScores.length > 0 && (
+            <div>
+              <span className="text-accent-amber">DEGENERATE ON THIS SUBSTRATE:</span>{" "}
+              {degenerateSubScores.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Reliability diagram */}
       <div className="space-y-1">

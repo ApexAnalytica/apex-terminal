@@ -23,6 +23,7 @@ import {
   clearTarskiFlags,
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
+import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
 
 export interface ImportedDataset {
   id: string;
@@ -338,11 +339,15 @@ export const useApexStore = create<ApexState>((set, get) => ({
     // Whenever the graph node id set changes we must re-resolve temporalData
     // and drop pinned-series ids that no longer exist; otherwise the
     // TimeSeriesOverlay shows stale "NO DATA" badges for ghost pins.
+    // Apply ΩF live-pillar adjustments (Tarski → J, Spirtes-metrics → C)
+    // so a freshly loaded graph carries any overlay derived from incoming
+    // node attributes (e.g. live sanctions, out-degree).
+    const adjusted = applyOmegaLiveAdjustments(g);
     set((s) => ({
-      graphData: g,
-      initialGraph: g,
+      graphData: adjusted,
+      initialGraph: adjusted,
       temporalData: null,
-      pinnedTimeSeriesNodes: prunePinsToGraph(g, s.pinnedTimeSeriesNodes),
+      pinnedTimeSeriesNodes: prunePinsToGraph(adjusted, s.pinnedTimeSeriesNodes),
     }));
     get().initTemporalData();
   },
@@ -443,9 +448,15 @@ export const useApexStore = create<ApexState>((set, get) => ({
           s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-        return { ...base, graphData: flaggedGraph, tarskiReport: report };
+        // ΩF pillar wiring: refresh live deltas after the feed mutation
+        // (sanctions / centrality may have shifted).
+        const adjusted = applyOmegaLiveAdjustments(flaggedGraph);
+        return { ...base, graphData: adjusted, tarskiReport: report };
       }
-      return { ...base, graphData: nextGraph };
+      // Same wiring on the non-verified path so the overlay stays current
+      // whether or not Tarski validation is being recomputed.
+      const adjusted = applyOmegaLiveAdjustments(nextGraph);
+      return { ...base, graphData: adjusted };
     }),
   setTruthFilter: (f) =>
     set((s) => {

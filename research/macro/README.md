@@ -85,15 +85,32 @@ All sources are public, free, no API key. Sandboxed runs use only
 `raw.githubusercontent.com` + bundled `statsmodels` + repo files; no FRED
 or BLS endpoint is required.
 
-### Known data gaps
+### Known data gaps + FRED fallback
 
 The sandbox blocks every government endpoint (FRED, BLS, BEA, EIA
 direct, World Bank). Where US-specific monthly CPI / PPI components or
 labor data would be the ideal target, we use the IMF global counterpart
 as a proxy. The mapping is disclosed in `output/edge_fits.json` per row
-under `target_proxy`. A follow-on with FRED access can re-fit with
-`CPIENGSL`, `PPIACO`, `MANEMP`, `NAPM`, `INDPRO`, etc. and tighten the
-elasticities.
+under `target_proxy`.
+
+`datasets/fred.py` ships a fetcher with **automatic fallback**: when
+FRED is reachable (anyone with `FRED_API_KEY` env var, or an
+environment that doesn't block fred.stlouisfed.org) it pulls
+US-specific series like `CPIENGSL`, `PPIACO`, `DFII10`, `T10YIE`,
+`PAYEMS`, `INDPRO`. When FRED is unreachable the wrapper
+`with_fred_or_fallback()` warns and returns the caller-supplied IMF
+proxy. The fit record discloses which path was used in the
+`data_path` field so weights are always traceable.
+
+Probe reachability for your environment:
+
+```bash
+python -m research.macro.scripts.probe_fred
+```
+
+A FRED-preferred refit lives in `fits/edge_fits_with_fred.py`. Run it
+on a machine with FRED access to get tighter US-specific weights —
+topology stays unchanged.
 
 ## Layout
 

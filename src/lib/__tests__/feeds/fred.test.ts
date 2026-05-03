@@ -117,6 +117,27 @@ describe("mockFredFeed", () => {
     expect(sovDef!.labelPatterns).toContain("sovereign default");
     expect(sovDef!.unit).toBe("%");
   });
+
+  it("includes the Phase 9 CPI / PCE / wage / sentiment expansion (13 series)", () => {
+    const ids = new Set(FRED_SERIES.map((s) => s.id));
+    for (const id of [
+      "PCEPILFE",
+      "PCESV",
+      "PCEND",
+      "CPIHOSSL",
+      "CUSR0000SAS",
+      "CUSR0000SACL1E",
+      "CPIENGSL",
+      "CPIUFDSL",
+      "CUUR0000SETA02",
+      "CES0500000003",
+      "ECIALLCIV",
+      "TCU",
+      "MICH",
+    ]) {
+      expect(ids.has(id), `expected FRED_SERIES to include ${id}`).toBe(true);
+    }
+  });
 });
 
 describe("fredProvider.matchPayload", () => {

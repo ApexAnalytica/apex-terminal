@@ -188,7 +188,7 @@ The principle, restated: a node we can't measure shows nothing rather than somet
 
 The card render already does the right thing here: a node with no `liveData[]` simply doesn't render any live rows. The card still shows up (with its label, domain badge, and Ω score) but the live block is absent. That's the "blank" state — already implemented, just needs a corresponding entry in the registry to mark the node as "data needed" rather than left ambiguous.
 
-**Future enhancement:** add an explicit `dataStatus: "live" | "modeled" | "blank-needs-data"` field on `CausalNode` (or a parallel registry) so blank nodes are visually distinguished from "no provider has matched yet" nodes. Both look identical today; the distinction matters for the program's tracking. Flag for a small follow-up PR when needed.
+**Future enhancement (shipped):** `dataStatus: "live" | "modeled" | "blank-needs-data"` is now an optional field on `CausalNode`. The `getDataStatus(node)` helper returns the explicit value when set, otherwise derives "live" (any liveData entry present) or "modeled" (none). The Category-C "blank-needs-data" label is exclusively explicit — never derived — so the data session can mark specific nodes as known-incomplete without affecting nodes that simply haven't been wired yet. The `RiskPropagationFlow` card header surfaces a small `DATA NEEDED` badge (amber) on nodes carrying `dataStatus: "blank-needs-data"`.
 
 ### Status of the goal as of last update
 

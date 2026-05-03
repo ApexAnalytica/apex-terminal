@@ -174,6 +174,24 @@ export interface OmegaLiveAdjustments {
   cSource?: string;
 }
 
+/**
+ * Provenance label for a node's omega/data state. Distinguishes
+ *   - "live": at least one live feed is currently attached.
+ *   - "modeled": synthetic / inferred / static-baseline only (the historic
+ *     default for nodes without live coverage).
+ *   - "blank-needs-data": intentionally blank — the data session has
+ *     decided this node has no defensible free source, so the slot is
+ *     preserved as a known-incomplete TODO marker. UI surfaces this
+ *     explicitly so it isn't confused with "no provider matched yet."
+ *
+ * Derivation rule (see `getDataStatus`): when `dataStatus` is unset on
+ * a node, it's inferred from `liveData` ("live" if any entries exist,
+ * else "modeled"). An explicit value always overrides — that's how the
+ * data session marks a node as Category-C blank-needs-data without
+ * affecting nodes that simply haven't been wired yet.
+ */
+export type DataStatus = "live" | "modeled" | "blank-needs-data";
+
 export interface CausalNode {
   id: string;
   label: string;
@@ -195,6 +213,20 @@ export interface CausalNode {
   liveData?: LiveDataPoint[];
   /** Live deltas on top of the static omega profile (see OmegaLiveAdjustments). */
   liveAdjustments?: OmegaLiveAdjustments;
+  /** Provenance label — see `DataStatus`. Optional; defaults to derivation. */
+  dataStatus?: DataStatus;
+}
+
+/**
+ * Resolve a node's data-status, preferring the explicit `dataStatus`
+ * field when set. Without it, derives from `liveData` presence: any
+ * entry → "live", none → "modeled". Never returns "blank-needs-data"
+ * by derivation — that label is only set explicitly by the data
+ * session for category-C nodes.
+ */
+export function getDataStatus(node: CausalNode): DataStatus {
+  if (node.dataStatus) return node.dataStatus;
+  return (node.liveData?.length ?? 0) > 0 ? "live" : "modeled";
 }
 
 /** Pull a single live signal of a given kind from a node. */

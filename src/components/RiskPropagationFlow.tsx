@@ -378,6 +378,18 @@ export default function RiskPropagationFlow() {
                       <div className="text-[10px] font-mono text-foreground truncate flex-1">
                         {card.label}
                       </div>
+                      {/* DATA NEEDED badge — surfaces nodes the data session
+                          has explicitly marked Category-C (no defensible
+                          free source). Distinguishes intentionally-blank
+                          slots from "no provider matched yet" cases. */}
+                      {node?.dataStatus === "blank-needs-data" && (
+                        <span
+                          className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wider px-1 py-px rounded flex-shrink-0 bg-accent-amber/15 text-accent-amber border border-accent-amber/40"
+                          title="Node intentionally blank — real data source still needed (Category C in the live-coverage program)"
+                        >
+                          DATA NEEDED
+                        </span>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

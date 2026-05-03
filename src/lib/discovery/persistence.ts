@@ -14,40 +14,78 @@
 import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { DiscoveryRun, DiscoveryResult } from "./run-types";
 
-// ─── Module-level service client ──────────────────────────────────────
+// ─── Module-level service client (state machine) ─────────────────────
 //
-// Initialized lazily so build-time stub env vars don't crash module
-// load. The Supabase JS client only validates env vars at request time.
+// Three states:
+//   - "uninit"   : lazy init pending; first getService() call reads env
+//   - "live"     : a SupabaseClient is available (either lazy-initialised
+//                  from real env or injected via a test hook)
+//   - "disabled" : explicit no-op; getService() always returns null
+//                  (used in tests AND when stub env detected)
+//
+// The explicit "disabled" state is necessary because tests run in
+// environments (Vercel build) where the real env vars exist but we
+// want graceful-degrade behaviour. Without it, the lazy init succeeds
+// against real Supabase and tests assert against real responses.
 
-let _service: SupabaseClient | null = null;
+type ServiceState =
+  | { kind: "uninit" }
+  | { kind: "live"; client: SupabaseClient }
+  | { kind: "disabled" };
+
+let _state: ServiceState = { kind: "uninit" };
+
+function isStubEnv(url: string, key: string): boolean {
+  // Detect CI placeholder values. Must stay in sync with
+  // .github/workflows/pr-validate.yml.
+  if (!url || !key) return true;
+  if (
+    url.includes("placeholder") ||
+    url.includes("ci-stub") ||
+    url.includes("example.invalid")
+  ) return true;
+  if (key.includes("placeholder") || key.includes("ci-stub")) return true;
+  return false;
+}
 
 function getService(): SupabaseClient | null {
-  if (_service !== null) return _service;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  // Detect placeholder/stub values used by CI builds. These match the
-  // values in `.github/workflows/pr-validate.yml`.
-  if (url.includes("placeholder") || url.includes("ci-stub") ||
-      url.includes("example.invalid") || url === "") {
+  if (_state.kind === "live") return _state.client;
+  if (_state.kind === "disabled") return null;
+
+  // uninit → consult env and either materialize or disable.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  if (isStubEnv(url, key)) {
+    _state = { kind: "disabled" };
     return null;
   }
-  if (key.includes("placeholder") || key.includes("ci-stub") || key === "") {
-    return null;
-  }
-  _service = createServiceClient(url, key, {
+  const client = createServiceClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  return _service;
+  _state = { kind: "live", client };
+  return client;
 }
 
 /**
- * Inject a service client. Used in tests to swap a mock; production
- * callers shouldn't pass anything and let the lazy initialiser pick up
- * env vars.
+ * Inject a service client. Used in tests:
+ *   - pass a fake → forces "live" with the fake
+ *   - pass null   → forces "disabled" regardless of env vars
+ *
+ * The graceful-degrade tests need the disabled state explicitly because
+ * they run on Vercel's build env where the real env vars exist; without
+ * the explicit disable, the lazy init would create a real client and
+ * the tests would assert against real Supabase responses.
  */
 export function setServiceClientForTesting(client: SupabaseClient | null): void {
-  _service = client;
+  _state = client === null ? { kind: "disabled" } : { kind: "live", client };
+}
+
+/**
+ * Clear the test override and restore lazy-init behaviour. Use in
+ * afterEach so subsequent tests start from the default state.
+ */
+export function resetServiceClientForTesting(): void {
+  _state = { kind: "uninit" };
 }
 
 // ─── Row shape (the database mirror of DiscoveryRun) ──────────────────

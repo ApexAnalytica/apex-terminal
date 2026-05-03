@@ -30,6 +30,7 @@ import {
   validateCohort,
 } from "@/lib/discovery/cohort-validator";
 import { buildDiscoveryRun } from "@/lib/discovery/run-types";
+import { persistRun } from "@/lib/discovery/persistence";
 
 interface RunRequestBody {
   cohort: unknown;
@@ -104,5 +105,21 @@ export async function POST(req: NextRequest) {
     result,
   });
 
-  return NextResponse.json(run, { status: 200 });
+  // Best-effort persistence. The compute-and-return path is load-
+  // bearing; persistence is durability gravy. If Supabase is
+  // unavailable (CI stub env, network blip, schema not migrated yet),
+  // `persistRun` returns {persisted:false} without throwing and we
+  // surface that to the caller via a header so they can retry later
+  // if they care about audit trail.
+  const persistResult = await persistRun(run);
+
+  return NextResponse.json(run, {
+    status: 200,
+    headers: {
+      "x-discovery-persisted": persistResult.persisted ? "true" : "false",
+      ...(persistResult.persisted
+        ? {}
+        : { "x-discovery-persistence-skipped": persistResult.reason ?? "unknown" }),
+    },
+  });
 }

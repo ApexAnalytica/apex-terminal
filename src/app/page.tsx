@@ -44,6 +44,20 @@ const CausalDAGMap = dynamic(() => import("@/components/CausalDAGMap"), {
   ),
 });
 
+// Dynamic import for Relief view — r3f scene with a Gaussian heightfield.
+// Mount only when active; unlike 2D/3D it doesn't keep its own WebGL context
+// alive in the background.
+const CausalDAGRelief = dynamic(() => import("@/components/CausalDAGRelief"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="text-[10px] font-mono text-text-muted animate-pulse">
+        INITIALIZING RELIEF RENDERER...
+      </div>
+    </div>
+  ),
+});
+
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
 
@@ -129,6 +143,11 @@ export default function Home() {
             {viewMode === "map" && (
               <div className="absolute inset-0" style={{ zIndex: 1 }}>
                 <CausalDAGMap />
+              </div>
+            )}
+            {viewMode === "relief" && (
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <CausalDAGRelief />
               </div>
             )}
             {/* Client deployment CTA */}

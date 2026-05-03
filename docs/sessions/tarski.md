@@ -294,7 +294,7 @@ src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensi
    - USGS critical minerals → A-05 Single-Source Fragility
    - NOAA storm tracks → conflict-zone proxies
    - World Bank governance indicators → R-04 Cross-Domain Dependency
-4. **ΩF pillar wiring audit** — confirm Tarski violations actually feed pillar **J** scalar; verification task.
+4. ~~**ΩF pillar wiring audit**~~ — ✅ shipped. Audit found that Tarski violations only set `isRestricted: boolean` (no J writeback); Spirtes-metrics never updated `cascadeLoad` after import-time. Fix: added `OmegaLiveAdjustments` overlay (`liveAdjustments` field on `CausalNode`) that surfaces live deltas without mutating the static `omegaFragility` profile. `applyOmegaLiveAdjustments(graph)` walks nodes, computes J-bump from live sanctions (0.4 per active OFAC program, capped at +4) and C-bump from out-degree above 5 (0.3 per excess edge, capped at +3). Runs in `setGraphData` and after every `applyFeedBatch`. `getEffectivePillars(node)` returns clamped 0..10 sum for downstream consumers; static baseline stays auditable.
 5. **More T1D axioms** as clinical evidence lands (MODY exclusions, LADA, age-of-onset, exogenous insulin half-life). Coordinate with T1D session.
 6. **More geopolitical axioms** as new data verticals land. Coordinate with Geopolitical/Macro session.
 

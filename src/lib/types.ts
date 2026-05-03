@@ -151,6 +151,29 @@ export interface LiveDataPoint {
 /** Cap on the per-signal history array length. */
 export const LIVE_HISTORY_MAX = 60;
 
+/**
+ * Live deltas on top of the static omega profile, surfaced separately so
+ * the underlying baseline stays auditable. Each field is an additive
+ * adjustment in 0..10 ΩF units; positive = elevates fragility, negative =
+ * dampens. `source` carries human-readable provenance ("OFAC sanctions",
+ * "high eigenvector centrality") so a hover/tooltip can explain why.
+ *
+ * Engine-side ΩF wiring (per the session brief):
+ *   - Tarski violations feed pillar J (jurisdictionalHazard).
+ *   - Spirtes network metrics feed pillar C (cascadeLoad).
+ * The static `omegaFragility` profile is the baseline; this overlay is
+ * the live delta. Consumers (ΩF radar, hover, copilot) can render either
+ * the baseline alone, the adjusted total, or the breakdown.
+ */
+export interface OmegaLiveAdjustments {
+  /** Pillar deltas; only set when non-zero. */
+  jurisdictionalHazardDelta?: number;
+  cascadeLoadDelta?: number;
+  /** Per-pillar provenance. */
+  jSource?: string;
+  cSource?: string;
+}
+
 export interface CausalNode {
   id: string;
   label: string;
@@ -170,6 +193,8 @@ export interface CausalNode {
   datasetColor?: string; // color from imported dataset
   /** Live API-fed measurements; multiple feeds can co-attach distinct kinds. */
   liveData?: LiveDataPoint[];
+  /** Live deltas on top of the static omega profile (see OmegaLiveAdjustments). */
+  liveAdjustments?: OmegaLiveAdjustments;
 }
 
 /** Pull a single live signal of a given kind from a node. */

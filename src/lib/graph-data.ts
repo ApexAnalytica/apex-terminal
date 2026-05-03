@@ -2396,6 +2396,21 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+  // ── Real-rate intermediary (1) ──
+  {
+    id: "ip_real_rate_10y",
+    label: "10y Real Interest Rate",
+    shortLabel: "10yR",
+    category: "finance",
+    omegaFragility: omega(7.0, 1.0, 1.0, 7.5, 8, 7.0),
+    globalConcentration: "100% United States (Treasury + TIPS market)",
+    replacementTime: "real-time (TIPS market continuous)",
+    physicalConstraint: "Inflation-adjusted long-end yield; the cleanest signal for global capital flows since carry-trade decisions hinge on real not nominal returns. Strips out inflation expectations from US10y and is what theoretical models (Engel-Mark-West 2007, Stavrakeva-Tang 2024) put on the right-hand side of the DXY equation",
+    domain: "Macro Impact: Inflation & Policy",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2818,7 +2833,11 @@ const EDGES: CausalEdge[] = [
   // datasets/exchange-rates GitHub mirror; matches real-world DXY level to
   // ~1% in 2026-03. Two channels are ARDL-fit; two are literature-cited
   // because no EM-FX-pressure panel is reachable from this sandbox.
-  { id: "ip_fed_funds_effective__ip_dxy", source: "ip_fed_funds_effective", target: "ip_dxy", weight: 0.014, lag: 1, type: "directed", confidence: 0.5, isInconsistent: false, physicalMechanism: "Fed funds policy stance moves USD via real-rate differential. Empirical channel: US10y monthly → synthetic DXY long-run multiplier 0.014 [-0.014, 0.042], n=324; CI includes zero so confidence floored at 0.5. DXY responds more to rate-expectation shifts than to spot rates — a refit with breakeven-adjusted real rates is a follow-on." },
+  // Replaces the prior weak direct ip_fed_funds_effective → ip_dxy edge
+  // (β=+0.014, structural break flagged in OOS) with a two-step chain
+  // routed through the real-rate intermediary — the cleaner causal mechanism.
+  { id: "ip_fed_funds_effective__ip_real_rate_10y", source: "ip_fed_funds_effective", target: "ip_real_rate_10y", weight: 0.031, lag: 1, type: "directed", confidence: 0.51, isInconsistent: false, physicalMechanism: "Fed funds policy stance drives the long-end nominal yield, which feeds into the real rate after stripping inflation expectations. Empirical channel: US10y → synthetic real rate (constructed as us10y − 2.5%-anchored CPI-equivalent inflation proxy from IMF All Commodity smoothed YoY × 0.15 pass-through), long-run β=0.031 [-0.029, 0.091], n=280. Mechanical near-identity by construction — the meaningful empirical content sits in the next edge." },
+  { id: "ip_real_rate_10y__ip_dxy", source: "ip_real_rate_10y", target: "ip_dxy", weight: 0.6, lag: 6, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Real-rate-differential channel: high US real rates pull capital in, strengthening the dollar. Engel-Mark-West 2007 + Stavrakeva-Tang 2024 estimate a 1pp rise in 10y real rate maps to +5-7% DXY appreciation over 12-18 months. Empirical refit on synthetic-proxy real rate (β=-0.000 [-0.001, 0.001], n=219) was too noisy for monthly returns — proxy doesn't separate real-rate moves from forward-guidance / risk-regime confounders. Literature-cited until FRED DFII10 (TIPS yield) becomes reachable." },
   { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description)." },
   { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.6, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022): a 1% DXY appreciation maps to ~0.5-0.7% EM FX depreciation in the medium term. Literature-cited; refit pending EM FX panel access." },
   { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.45, lag: 1, type: "directed", confidence: 0.6, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Literature-cited; refit pending EM reserves panel access." },

@@ -4,16 +4,18 @@
  * DemoFlowPlayer — guided cause-and-effect tour through the causal graph.
  *
  * Steps a user through a scripted DemoFlow (see src/lib/demo-flows.ts):
- * sets the relevant domains, injects shocks in sequence, and shows
- * narrative overlays. Restores prior store state on exit.
+ * sets the relevant domains, loads the graph, injects shocks in
+ * sequence, and shows narrative overlays. Restores prior store state
+ * on exit.
  *
  * Mounted at the app root level so it overlays the existing canvas.
  * Visibility is driven by zustand state (`activeDemoFlowId`).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { buildGraphFromDomains } from "@/components/DomainSelector";
 import { FLOWS, getFlowById, type DemoFlow } from "@/lib/demo-flows";
-import type { CausalShock } from "@/lib/types";
+import type { CausalGraph, CausalShock } from "@/lib/types";
 import { useApexStore } from "@/stores/useApexStore";
 
 interface PlayerProps {
@@ -21,33 +23,57 @@ interface PlayerProps {
   onClose: () => void;
 }
 
+interface PriorState {
+  selectedDomains: string[];
+  graphData: CausalGraph;
+}
+
 function Player({ flowId, onClose }: PlayerProps) {
   const flow = useMemo(() => getFlowById(flowId), [flowId]);
   const addShock = useApexStore((s) => s.addShock);
   const removeShock = useApexStore((s) => s.removeShock);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
-  const priorDomainsRef = useRef<string[] | null>(null);
+  const setGraphData = useApexStore((s) => s.setGraphData);
+  const startReplay = useApexStore((s) => s.startReplay);
+  const stopReplay = useApexStore((s) => s.stopReplay);
+  const priorRef = useRef<PriorState | null>(null);
   const injectedShockIdsRef = useRef<string[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  // ── On mount: capture prior state, force the flow's domains ──
+  // ── On mount: capture prior state, load the flow's graph + domains ──
   useEffect(() => {
     if (!flow) return;
     const store = useApexStore.getState();
-    priorDomainsRef.current = [...store.selectedDomains];
+    priorRef.current = {
+      selectedDomains: [...store.selectedDomains],
+      graphData: store.graphData,
+    };
+    // Load the graph data so useFilteredGraph has nodes/edges to filter
+    // (the canvas was empty without this — DomainSelector's "Initialize"
+    // button does the same; we replicate it here so the demo works
+    // before the user has committed to a domain selection).
+    const merged = buildGraphFromDomains(flow.domainIds);
+    setGraphData(merged);
     setSelectedDomains(flow.domainIds);
     return () => {
-      // Cleanup on unmount: clear injected shocks, restore domains.
+      // Cleanup on unmount: stop the cascade replay, clear injected
+      // shocks, restore graph state.
+      stopReplay();
       for (const id of injectedShockIdsRef.current) removeShock(id);
       injectedShockIdsRef.current = [];
-      if (priorDomainsRef.current) {
-        setSelectedDomains(priorDomainsRef.current);
+      if (priorRef.current) {
+        setGraphData(priorRef.current.graphData);
+        setSelectedDomains(priorRef.current.selectedDomains);
       }
     };
-  }, [flow, setSelectedDomains, removeShock]);
+  }, [flow, setSelectedDomains, setGraphData, removeShock, stopReplay]);
 
   // ── Inject the step's shock when the step becomes active ──
+  // After each shock fires we kick startReplay() so the cascade simulator
+  // runs and the modules (SPIRTES/TARSKI/PEARL/PARETO) actually see node
+  // states change. Without this addShock just appends to an array and
+  // nothing visually propagates beyond the gauge.
   useEffect(() => {
     if (!flow) return;
     const step = flow.steps[stepIdx];
@@ -58,7 +84,11 @@ function Player({ flowId, onClose }: PlayerProps) {
     };
     injectedShockIdsRef.current.push(shock.id);
     addShock(shock);
-  }, [flow, stepIdx, addShock]);
+    // Defer one tick so addShock state has applied before we read shocks
+    // back inside startReplay's simulateCascade call.
+    const t = window.setTimeout(() => startReplay(), 50);
+    return () => window.clearTimeout(t);
+  }, [flow, stepIdx, addShock, startReplay]);
 
   // ── Auto-advance when durationMs > 0 ──
   useEffect(() => {

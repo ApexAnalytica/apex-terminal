@@ -1,5 +1,42 @@
 import type { CausalNode } from "./types";
-import { getDomainColor } from "./graph-data";
+
+/**
+ * Per-domain color map for the multilayer Relief view. Inlined here (rather
+ * than importing `getDomainColor` from `graph-data.ts`) so this module never
+ * pulls the 2,920-line graph-data module into the Relief chunk — that module
+ * is dynamically imported elsewhere (see `page.tsx`) and a static import
+ * here would defeat the chunk split. Keep these in sync with
+ * `graph-data.ts:getDomainColor` if either changes.
+ */
+const DOMAIN_COLOR_MAP: Record<string, string> = {
+  "Saudi Aramco Energy": "#00e676",
+  "QatarEnergy LNG": "#00e5ff",
+  "QAFCO Fertilizer": "#76ff03",
+  "Ma'aden Phosphate": "#ffab00",
+  "Financial Contagion": "#ff6d00",
+  "Sovereign Risk": "#ffab00",
+  "Supply Chain Food Security": "#00e5ff",
+  "Undersea Cable Infrastructure": "#7c4dff",
+  "Macro Impact: Labor, Growth & Housing": "#40c4ff",
+  "Macro Impact: Inflation & Policy": "#ff80ab",
+  "Drone Swarms": "#ff4081",
+  "SATCOM": "#448aff",
+  "ISR Fusion": "#ea80fc",
+  "Chip Embargo": "#ff9100",
+  "Secure Compute": "#69f0ae",
+  "Kill Chain": "#ff1744",
+  "T1D Autoimmune": "#ff80ab",
+  "T1D β-cell Biology": "#40c4ff",
+  "T1D Metabolic": "#69f0ae",
+  "T1D Intervention": "#ffab00",
+  "T1D Complications": "#ff6d00",
+  "T1D VX-880": "#40c4ff",
+};
+const DEFAULT_DOMAIN_COLOR = "#5a5e72";
+
+function reliefDomainColor(domain: string): string {
+  return DOMAIN_COLOR_MAP[domain] ?? DEFAULT_DOMAIN_COLOR;
+}
 
 /**
  * Build a 2D scalar criticality field from a node layout. Each node contributes
@@ -67,7 +104,10 @@ export function computeReliefField(
   for (const n of nodes) {
     const p = layout.get(n.id);
     if (!p) continue;
-    samples.push({ x: p.x, y: p.y, w: n.omegaFragility.composite });
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite;
+    const w = Number.isFinite(composite) ? composite : 0;
+    samples.push({ x: p.x, y: p.y, w });
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
     if (p.y < minY) minY = p.y;
@@ -119,7 +159,10 @@ export function computeReliefField(
     for (let i = 0; i < N; i++) {
       const xWorld = minX + (i / (N - 1)) * width;
       const idx = j * N + i;
-      const norm = heights[idx] * inv;
+      const rawNorm = heights[idx] * inv;
+      const norm = Number.isFinite(rawNorm)
+        ? Math.max(0, Math.min(1, rawNorm))
+        : 0;
       const z = norm * heightScale;
 
       positions[idx * 3 + 0] = xWorld - cx;
@@ -228,10 +271,16 @@ export function computeReliefLayers(
   for (const n of nodes) {
     const p = layout.get(n.id);
     if (!p) continue;
-    const sample: Sample = { x: p.x, y: p.y, w: n.omegaFragility.composite };
-    const arr = byDomain.get(n.domain);
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite;
+    const w = Number.isFinite(composite) ? composite : 0;
+    const domain = typeof n.domain === "string" && n.domain.length > 0
+      ? n.domain
+      : "Unknown";
+    const sample: Sample = { x: p.x, y: p.y, w };
+    const arr = byDomain.get(domain);
     if (arr) arr.push(sample);
-    else byDomain.set(n.domain, [sample]);
+    else byDomain.set(domain, [sample]);
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
     if (p.y < minY) minY = p.y;
@@ -296,7 +345,7 @@ export function computeReliefLayers(
       }
     }
 
-    const colorHex = getDomainColor(domain);
+    const colorHex = reliefDomainColor(domain);
     const colorRGB = hexToLinearRGB(colorHex);
     const inv = peak > 0 ? 1 / peak : 0;
 
@@ -305,15 +354,19 @@ export function computeReliefLayers(
       for (let i = 0; i < N; i++) {
         const xWorld = gx[i];
         const idx = j * N + i;
-        const norm = heights[idx] * inv;
+        // Clamp defensively — a NaN/Infinity in `composite` propagates to
+        // `peak`/`inv`/`norm` and corrupts the GPU upload, which can crash
+        // the renderer on first draw.
+        const rawNorm = heights[idx] * inv;
+        const norm = Number.isFinite(rawNorm)
+          ? Math.max(0, Math.min(1, rawNorm))
+          : 0;
         const z = norm * heightScale;
 
         positions[idx * 3 + 0] = xWorld - cx;
         positions[idx * 3 + 1] = z;
         positions[idx * 3 + 2] = yWorld - cy;
 
-        // Gamma=1.5 keeps valleys dark (≈black under additive blending) and
-        // makes peaks pop with full domain saturation.
         const tint = Math.pow(norm, 1.5);
         colors[idx * 3 + 0] = colorRGB[0] * tint;
         colors[idx * 3 + 1] = colorRGB[1] * tint;

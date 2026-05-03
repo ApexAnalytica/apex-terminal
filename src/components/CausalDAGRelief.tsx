@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -14,6 +14,40 @@ import {
 } from "@/lib/graph-relief-field";
 import CanvasWatermark from "./CanvasWatermark";
 import DAGOverlay from "./dag3d/DAGOverlay";
+
+/**
+ * Class-based error boundary — keeps a render error inside the Relief view
+ * from tearing down the whole app to Next.js's generic "Application error"
+ * fallback. We log to the console (visible in DevTools / Vercel logs) and
+ * show a small in-pane fallback so the rest of the UI stays interactive.
+ */
+class ReliefErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error("[Relief view] render error:", error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="absolute inset-0 flex items-center justify-center bg-background pointer-events-none">
+          <div className="text-[10px] font-mono text-text-muted text-center px-6">
+            RELIEF VIEW UNAVAILABLE
+            <div className="mt-1 text-[9px] opacity-60">
+              {this.state.error.message || "Renderer failed to initialise"}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * Topographic / "Relief" view — 4th rendering mode. Reads the network as a
@@ -31,6 +65,7 @@ function ReliefMesh({ field }: { field: ReliefField }) {
   // ΩF value change. Hover and orbit don't trigger recompute.
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
+    if (field.positions.length === 0) return geom;
     geom.setAttribute(
       "position",
       new THREE.BufferAttribute(field.positions, 3),
@@ -45,6 +80,8 @@ function ReliefMesh({ field }: { field: ReliefField }) {
   }, [field]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  if (field.positions.length === 0) return null;
 
   return (
     <mesh geometry={geometry} castShadow={false} receiveShadow={false}>
@@ -69,6 +106,7 @@ function ReliefMesh({ field }: { field: ReliefField }) {
 function ReliefLayerMesh({ layer }: { layer: ReliefLayer }) {
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
+    if (layer.field.positions.length === 0) return geom;
     geom.setAttribute(
       "position",
       new THREE.BufferAttribute(layer.field.positions, 3),
@@ -78,11 +116,12 @@ function ReliefLayerMesh({ layer }: { layer: ReliefLayer }) {
       new THREE.BufferAttribute(layer.field.colors, 3),
     );
     geom.setIndex(new THREE.BufferAttribute(layer.field.indices, 1));
-    geom.computeVertexNormals();
     return geom;
   }, [layer.field]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  if (layer.field.positions.length === 0) return null;
 
   return (
     <mesh geometry={geometry} castShadow={false} receiveShadow={false}>
@@ -153,6 +192,14 @@ function DomainLegend({ layers }: { layers: ReliefLayer[] }) {
 }
 
 export default function CausalDAGRelief() {
+  return (
+    <ReliefErrorBoundary>
+      <CausalDAGReliefInner />
+    </ReliefErrorBoundary>
+  );
+}
+
+function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
 
   // Reuse the existing 2D force layout so peaks land exactly where nodes

@@ -96,6 +96,16 @@ GRAPH_SERIES = {
     "mi_nonfarm_payroll_level": "PAYEMS",
     "mi_unemployment_rate_u3": "UNRATE",
     "mi_industrial_production": "INDPRO",
+    # Shipping / freight  (closes the P3 confidence cap once FRED reachable)
+    # The graph nodes are sc_shipping_cost_index and ic_red_sea_exposure;
+    # both are best matched by the Cass Freight Index (CASSFI), with
+    # WPSDH (Deep Sea Freight PPI) and TRUCKD11 (Truck Tonnage) as cross-
+    # checks for mode-specific stress. Real Baltic Dry isn't on FRED but
+    # CASSFI has good correlation with BDI in published comparisons (~0.7
+    # over 2000-2020 monthly).
+    "sc_shipping_cost_index": "CASSFI",
+    "ic_red_sea_exposure": "WPSDH",
+    "truck_tonnage": "TRUCKD11",
 }
 
 

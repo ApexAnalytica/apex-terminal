@@ -72,6 +72,16 @@ def _build_lags(y: pd.Series, x: pd.Series, p: int, q: int) -> tuple[np.ndarray,
     return X, Y
 
 
+def _apply_transform(s: pd.Series, kind: str) -> pd.Series:
+    if kind == "log_diff":
+        return np.log(s.where(s > 0)).diff()
+    if kind == "diff":
+        return s.diff()
+    if kind == "level":
+        return s.copy()
+    raise ValueError(f"unknown transform: {kind!r}")
+
+
 def ardl_fit(
     *,
     edge: str,
@@ -82,11 +92,34 @@ def ardl_fit(
     p_grid: tuple[int, ...] = (1, 2, 3),
     q_grid: tuple[int, ...] = (0, 1, 2, 3, 4, 6),
     note: str = "",
+    transform: str | tuple[str, str] = "log_diff",
 ) -> ARDLResult:
-    """Fit ARDL on log returns and return long-run multiplier as the edge weight."""
-    # Align, log-difference (commodity prices are multiplicative).
-    df = pd.concat([source.rename("x"), target.rename("y")], axis=1).dropna()
-    df = np.log(df.where(df > 0)).diff().dropna()
+    """Fit ARDL and return the long-run multiplier as the edge weight.
+
+    ``transform`` selects how to make the series stationary. Pass a
+    single string to apply to both source and target, or a
+    ``(source_transform, target_transform)`` tuple for asymmetric
+    cases (e.g. stationary-level regressor with multiplicative target).
+
+    Per-side options:
+      - "log_diff": Δlog(x) — appropriate for prices and any strictly-
+        positive multiplicative series.
+      - "diff":     Δx       — appropriate for rates that can be
+        negative.
+      - "level":    x        — appropriate when the series is already
+        stationary in levels (e.g. an interest rate sitting around a
+        long-run mean).
+    """
+    if isinstance(transform, str):
+        x_kind, y_kind = transform, transform
+    else:
+        x_kind, y_kind = transform
+
+    df = pd.concat([source.rename("x"), target.rename("y")], axis=1, sort=False).dropna()
+    df = pd.concat(
+        [_apply_transform(df["x"], x_kind).rename("x"), _apply_transform(df["y"], y_kind).rename("y")],
+        axis=1, sort=False,
+    ).dropna()
     if len(df) < 24:
         raise ValueError(f"too few overlapping monthly obs for {edge}: {len(df)}")
     y = df["y"]

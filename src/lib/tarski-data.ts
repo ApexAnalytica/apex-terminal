@@ -6,15 +6,18 @@ import type { TarskiViolation } from "./snapshots/types";
 
 export const AXIOM_LIBRARY: TarskiAxiom[] = [
   // Level 0 — Physical Laws (immutable, prune on violation)
+  // A-01, A-02, A-03 — universal physical-law axioms. No `appliesTo` (any profile)
+  // and no domain-specific `relevantDomains`. Their concepts (causality, mass
+  // balance, acyclicity) hold equally on geopolitical supply chains, T1D
+  // β-cell physiology, or any future profile.
   {
     id: "A-01",
     level: 0,
     name: "Temporal Priority",
     formalNotation: "∀e∈Edges, Lag(e) ≥ 0",
-    description: "Effects cannot precede causes — causal edges must have non-negative temporal lag",
+    description: "Effects cannot precede causes — every edge in the causal structure must carry a non-negative temporal lag",
     plainText: "Causes must happen before their effects — no time travel allowed.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Financial Contagion", "Sovereign Risk", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Reversed causality (negative-weight edges)",
     diagramHint: "A ──[t<0]──> B  ✗",
   },
@@ -23,10 +26,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 0,
     name: "Flow Conservation",
     formalNotation: "Σw_in(v) ≥ Σw_out(v) · (1 − loss)",
-    description: "Throughput entering a node must account for outbound flow — mass/energy balance must hold across processing hubs",
+    description: "Throughput entering a node must account for outbound flow — quantities (mass, energy, capital, signal) cannot be created at a node that has nothing equivalent flowing in",
     plainText: "What goes into a node must account for what comes out — nothing appears from nowhere.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Nodes outputting more than they receive",
     diagramHint: "→[2]→ NODE →[5]→  ✗  (out > in)",
   },
@@ -35,10 +37,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 0,
     name: "DAG Integrity",
     formalNotation: "∄ path v→⋯→v",
-    description: "No directed cycles in the causal structure — feedback loops must be broken by temporal lag",
+    description: "No directed cycles in the causal structure — any apparent feedback loop must be broken by an explicit temporal lag",
     plainText: "The causal chain can't loop back on itself — A can't cause B if B already caused A.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion", "Sovereign Risk"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Circular causal loops",
     diagramHint: "A → B → C → A  ✗  (cycle)",
   },
@@ -54,16 +55,18 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     checksFor: "Chokepoint nodes exceeding flow capacity",
     diagramHint: "━━▶ [STRAIT] ▶━━  cap exceeded",
   },
+  // A-05 — universal structural axiom. Single-supplier-with-high-load is fragile
+  // whether the dependency is a Persian Gulf phosphate route or a stem-cell
+  // β-cell line with one upstream donor.
   {
     id: "A-05",
     level: 0,
     name: "Single-Source Fragility",
     formalNotation: "InDegree(v)=1 ∧ C(v)≥7 → FRAGILE",
-    description: "A node with only one inbound supplier and high cascade load is structurally fragile — no redundancy path exists",
-    plainText: "If a node depends on just one supplier and carries heavy load, it's dangerously fragile.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
-    checksFor: "Nodes with no supply redundancy",
+    description: "A node with only one inbound dependency and high cascade load is structurally fragile — no redundancy path exists if that dependency fails",
+    plainText: "If a node depends on just one input and carries heavy load, it's dangerously fragile.",
+    relevantDomains: [],
+    checksFor: "Nodes with no input redundancy",
     diagramHint: "→ [SINGLE] → (no backup path)",
   },
 
@@ -104,20 +107,24 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     checksFor: "All exports routing through single chokepoint",
     diagramHint: "PROD ──▶ [CHOKE] ──▶ MARKET (no alt route)",
   },
+  // R-04 — universal regulatory axiom. Cross-domain causal claims with low
+  // confidence are unverified whether the domains are "Financial Contagion ×
+  // Sovereign Risk" or "Autoimmune × Glycemic Control".
   {
     id: "R-04",
     level: 1,
     name: "Cross-Domain Dependency",
     formalNotation: "domain(source) ≠ domain(target) ∧ conf < 0.7 → UNVERIFIED",
-    description: "Cross-domain edges with low confidence may represent assumed rather than verified causal relationships",
+    description: "Causal edges that span two distinct domains with confidence below the verification threshold may represent assumed rather than empirically established relationships",
     plainText: "Cross-domain links with low confidence might be assumed rather than proven.",
-    relevantDomains: ["Financial Contagion", "Sovereign Risk", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Weak cross-domain causal assumptions",
     diagramHint: "[DOMAIN A] ··?··> [DOMAIN B]  (conf < 70%)",
   },
 
   // Level 2 — Heuristic (flagged as anomaly)
+  // H-01, H-02 — universal heuristic axioms. Saturation and cascade-amplifier
+  // signatures hold on any graph whose nodes carry an Ω-fragility profile.
   {
     id: "H-01",
     level: 2,
@@ -125,8 +132,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "ΩF(v) > 9.0 → ANOMALY",
     description: "Nodes with composite fragility exceeding 9.0 are at saturation — any additional shock may trigger cascade failure",
     plainText: "A node's fragility score is maxed out — any additional shock could break it.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Maxed-out fragility nodes",
     diagramHint: "[NODE] Ω=9.4  ▓▓▓▓▓▓▓▓▓░ saturated",
   },
@@ -135,10 +141,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 2,
     name: "Cascade Amplification",
     formalNotation: "C(v) ≥ 9 ∧ OutDegree(v) ≥ 3 → AMPLIFIER",
-    description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly",
+    description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly through the graph",
     plainText: "A highly loaded node with many outbound connections amplifies disruption exponentially.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Hub nodes that amplify cascading failures",
     diagramHint: "→ [HUB C=9] →→→  (amplifier)",
   },
@@ -382,8 +387,20 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
     const matchedDomains: string[] = [];
     let reason = "";
 
-    // Domain overlap scoring
+    // Universal axioms — no `appliesTo` AND empty `relevantDomains`. Their
+    // concepts (temporal priority, DAG integrity, flow conservation,
+    // single-source fragility, cross-domain dependency, capacity saturation,
+    // cascade amplification) hold on every profile, so they get a flat base
+    // relevance of 0.45 (just above the "recommended" threshold of 0.4) on
+    // any active graph rather than scoring 0 from empty domain overlap.
     const axiomDomains = axiom.relevantDomains ?? [];
+    const isUniversal = !axiom.appliesTo && axiomDomains.length === 0;
+    if (isUniversal) {
+      score += 0.45;
+      reason = "Universal axiom — applies to all profiles";
+    }
+
+    // Domain overlap scoring (skipped when the axiom is universal)
     for (const ad of axiomDomains) {
       if (activeDomains.has(ad)) {
         matchedDomains.push(ad);

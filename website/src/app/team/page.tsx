@@ -83,7 +83,18 @@ const ADVISORS = [
   },
 ] as const;
 
-const PARTNERS = ["AWS", "JOHNS HOPKINS UNIVERSITY", "NVIDIA"];
+const PARTNERS: {
+  name: string;
+  logo: string;
+  alt: string;
+  naturalW: number;
+  naturalH: number;
+  mono?: boolean;
+}[] = [
+  { name: "AWS",                     logo: "/partners/aws.svg",    alt: "Amazon Web Services",      naturalW: 304, naturalH: 182, mono: true },
+  { name: "JOHNS HOPKINS UNIVERSITY", logo: "/partners/jhu.svg",    alt: "Johns Hopkins University", naturalW: 624, naturalH: 309, mono: true },
+  { name: "NVIDIA",                  logo: "/partners/nvidia.svg", alt: "NVIDIA",                   naturalW: 656, naturalH: 120 },
+];
 
 const colorMap: Record<
   string,
@@ -161,12 +172,23 @@ export default function TeamPage() {
         <div className="grid gap-px bg-border border border-border rounded-lg overflow-hidden md:grid-cols-3">
           {PARTNERS.map((p) => (
             <div
-              key={p}
-              className="bg-surface-elevated p-8 flex items-center justify-center hover:bg-surface transition-colors"
+              key={p.name}
+              className="bg-surface-elevated px-8 py-10 flex items-center justify-center hover:bg-surface transition-colors min-h-[140px]"
+              title={p.name}
             >
-              <span className="font-[family-name:var(--font-michroma)] text-sm tracking-[0.3em] text-foreground/80">
-                {p}
-              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.logo}
+                alt={p.alt}
+                width={p.naturalW}
+                height={p.naturalH}
+                className="opacity-80 hover:opacity-100 transition-opacity"
+                style={{
+                  height: 48,
+                  width: (48 * p.naturalW) / p.naturalH,
+                  ...(p.mono ? { filter: "brightness(0) invert(1)" } : {}),
+                }}
+              />
             </div>
           ))}
         </div>

@@ -6,7 +6,7 @@ export const SITE = {
   loginUrl: "https://manifold.apexanalytica.co/login",
   trialUrl: "https://manifold.apexanalytica.co/trial-signup",
   trustedUrl: "https://manifold.apexanalytica.co/trusted-signup",
-  email: "hello@apexanalytica.co",
+  email: "info@apexanalytica.co",
 };
 
 export const NAV = [

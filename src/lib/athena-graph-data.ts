@@ -637,4 +637,43 @@ export const BRIDGE_EDGES: CausalEdge[] = [
     isInconsistent: false,
     physicalMechanism: "Tightening dual-use export controls on cryogenic compressors and turbine controls slows critical equipment delivery to the North Field expansion program.",
   },
+
+  // ── Macro inflation/policy ↔ defense capex & supply chain ──
+  // Closes the missing macro → Athena pathway. Bridge layer previously
+  // had inbound edges from energy / supply-chain / financial-contagion
+  // but nothing from the macro inflation/labor panel — so a Fed pivot
+  // or DXY swing didn't propagate into defense readiness.
+  {
+    id: "br_ip_fed_funds__gpu_supply_itar",
+    source: "ip_fed_funds_effective",
+    target: "gpu_supply_itar",
+    weight: 0.45,
+    lag: 3,
+    type: "temporal",
+    confidence: 0.6,
+    isInconsistent: false,
+    physicalMechanism: "Fed tightening raises the cost of capital for advanced fab buildouts (TSMC Arizona, Intel Ohio, Samsung Texas all financed through 2024-2026 hike cycle); ITAR-restricted GPU pipeline lag follows policy by 2-4 quarters as capex decisions reprice.",
+  },
+  {
+    id: "br_ip_dxy__gpu_supply_itar",
+    source: "ip_dxy",
+    target: "gpu_supply_itar",
+    weight: 0.4,
+    lag: 2,
+    type: "temporal",
+    confidence: 0.6,
+    isInconsistent: false,
+    physicalMechanism: "USD strength compresses dollar-denominated price of imported lithography and metrology equipment (ASML EUV scanners, KLA inspection tools), accelerating allied fab tool-up and downstream GPU availability for ITAR-cleared programs.",
+  },
+  {
+    id: "br_mi_industrial_production__milsatcom",
+    source: "mi_industrial_production",
+    target: "milsatcom_bw",
+    weight: 0.35,
+    lag: 6,
+    type: "temporal",
+    confidence: 0.55,
+    isInconsistent: false,
+    physicalMechanism: "US industrial-production trend signals defense-industrial-base capacity; sustained IP slowdowns precede MILSATCOM procurement compression as DoD competes with civilian sectors for contracted manufacturing slots.",
+  },
 ];

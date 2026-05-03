@@ -222,7 +222,24 @@ production disruption.
 
 ## Follow-ons
 
-1. **FRED access** — refit with US-specific monthly CPI/PPI series; tightens elasticities.
-2. **Baltic Dry / Drewry WCI** — replace the partial-proxy P3 fits.
-3. **DXY / USD-strength node** — required for FX → import-price loop edges (deferred from PR #115).
-4. **Defense-ISR / frontier-science domains** — same audit pattern when data lands.
+1. ~~**FRED access**~~ — fetcher + IMF fallback shipped in PR #191. Set `FRED_API_KEY` to refit P1/P2 with US-specific CPIENGSL/PPIACO/etc.
+2. ~~**Baltic Dry / Drewry WCI**~~ — Baltic Dry isn't free (proprietary); FRED CASSFI (Cass Freight Index) is the closest substitute and ships in PR #192.
+3. ~~**DXY / USD-strength node**~~ — shipped in PR #134.
+4. **Real-rate refit with TIPS** — shipped in PR #190 with a synthetic proxy; the topology is correct but the proxy is too noisy for monthly returns. Refit with FRED `DFII10` (10y TIPS yield) once FRED key is set; weight tightens, topology unchanged.
+
+## Sub-domain audit notes
+
+- **Defense / ISR** — NOT empty (the session brief was stale). 18 nodes
+  across Drone Swarms / SATCOM / ISR Fusion / Chip Embargo / Secure
+  Compute / Kill Chain live in `src/lib/athena-graph-data.ts` with 17+
+  bridge edges to civilian / energy / financial domains. Macro → Athena
+  bridges added in PR #193 (Fed funds → GPU supply, DXY → GPU supply,
+  IP → MILSATCOM) — closes the missing macro pathway.
+- **Frontier Science** — truly empty. `hasData: false` in
+  `DomainSelector.tsx`. Card exists, no nodes anywhere. Activation
+  requires a teammate data drop covering: post-Standard Model physics,
+  neutrino frontier, quantum gravity, dark sector detection. When data
+  lands, follow the activation pattern from PR #115 / #129 — add nodes
+  with `domain: "frontier-science"`, register in `DOMAIN_MAP` (already
+  routes via `frontier-science` ID), add cross-domain edges where
+  mechanisms are clear.

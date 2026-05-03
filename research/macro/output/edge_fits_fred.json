@@ -1,0 +1,22 @@
+[
+  {
+    "channel_id": "brent__cpi_energy",
+    "edges_using_this_channel": [
+      "sa_ras_tanura_terminal__ip_cpi_energy",
+      "sa_abqaiq_plants__ip_cpi_energy",
+      "qf_strait_of_hormuz__ip_cpi_energy",
+      "qe_north_field_gas_field__ip_cpi_energy"
+    ],
+    "method": "ardl_direct",
+    "source_proxy": "Brent crude (USD/bbl)",
+    "target_proxy": "IMF Fuel Energy Index (proxy)",
+    "data_path": "IMF fallback",
+    "long_run_multiplier": 0.871,
+    "ci_lower": 0.777,
+    "ci_upper": 0.966,
+    "selected_lag_months": 0,
+    "n_obs": 303,
+    "sample_period": "1992-02-29 \u2013 2017-06-30",
+    "note": "FRED-preferred refit of the P1 channel; falls back to IMF if FRED blocked."
+  }
+]

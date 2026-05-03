@@ -263,6 +263,10 @@ interface ApexState {
   setTourActive: (active: boolean) => void;
   setTourStep: (step: number) => void;
 
+  // Guided demo flows (Hormuz / China / Red Sea cause-and-effect tours)
+  activeDemoFlowId: string | null;
+  setActiveDemoFlowId: (id: string | null) => void;
+
   // Snapshots
   currentSnapshot: SystemStateSnapshot | null;
   snapshotHistory: SystemStateSnapshot[];
@@ -780,6 +784,10 @@ export const useApexStore = create<ApexState>((set, get) => ({
   tourActive: false,
   tourStep: 0,
   setTourActive: (active) => set({ tourActive: active, tourStep: 0 }),
+
+  // Demo flows
+  activeDemoFlowId: null,
+  setActiveDemoFlowId: (id) => set({ activeDemoFlowId: id }),
   setTourStep: (step) => set({ tourStep: step }),
 
   // Snapshots

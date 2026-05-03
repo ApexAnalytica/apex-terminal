@@ -1,4 +1,5 @@
 import type { CausalNode } from "./types";
+import { getDomainColor } from "./graph-data";
 
 /**
  * Build a 2D scalar criticality field from a node layout. Each node contributes
@@ -182,4 +183,172 @@ function elevationColor(t: number): [number, number, number] {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+// ─── Multilayer (per-domain) ───────────────────────────────────────
+
+export interface ReliefLayer {
+  domain: string;
+  /** Hex string from getDomainColor — passthrough so the legend can render. */
+  colorHex: string;
+  /** Linear RGB tuple (0–1) used to tint vertex colors in the mesh. */
+  colorRGB: [number, number, number];
+  field: ReliefField;
+  /** Node count contributing to this layer — drives legend ordering. */
+  nodeCount: number;
+}
+
+/**
+ * Group nodes by `node.domain` and build one ReliefField per domain over a
+ * shared world-space grid. Shared bounds are critical: per-domain bounds would
+ * scatter the meshes into separate continents, defeating the "where do
+ * domains overlap" reading. With shared bounds, peaks across layers line up
+ * by node — a dense red+green region tells you that domain reads as
+ * critical across both vocabularies.
+ *
+ * Each layer's vertex colors are pre-tinted by domain color (multiplied by
+ * the elevation gamma) so the consumer can render with additive blending and
+ * get color-mixing where peaks overlap.
+ */
+export function computeReliefLayers(
+  nodes: Pick<CausalNode, "id" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  params: ReliefFieldParams = {},
+): ReliefLayer[] {
+  const { resolution, heightScale, padding, sigmaFraction } = {
+    ...DEFAULTS,
+    ...params,
+  };
+
+  // Pre-extract usable samples and group by domain. Compute global bounds
+  // across ALL samples so every layer evaluates over the same grid.
+  type Sample = { x: number; y: number; w: number };
+  const byDomain = new Map<string, Sample[]>();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    const sample: Sample = { x: p.x, y: p.y, w: n.omegaFragility.composite };
+    const arr = byDomain.get(n.domain);
+    if (arr) arr.push(sample);
+    else byDomain.set(n.domain, [sample]);
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  if (byDomain.size === 0 || !Number.isFinite(minX)) return [];
+
+  minX -= padding; maxX += padding;
+  minY -= padding; maxY += padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const sigma = Math.max(60, Math.min(width, height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+  const N = resolution;
+  const vertCount = N * N;
+
+  // Triangle indices are identical across layers — share the buffer.
+  const cells = (N - 1) * (N - 1);
+  const indices = new Uint32Array(cells * 6);
+  {
+    let k = 0;
+    for (let j = 0; j < N - 1; j++) {
+      for (let i = 0; i < N - 1; i++) {
+        const a = j * N + i;
+        const b = j * N + i + 1;
+        const c = (j + 1) * N + i;
+        const d = (j + 1) * N + i + 1;
+        indices[k++] = a; indices[k++] = c; indices[k++] = b;
+        indices[k++] = b; indices[k++] = c; indices[k++] = d;
+      }
+    }
+  }
+
+  // Cache the X/Y grid coordinates — same for every layer.
+  const gx = new Float32Array(N);
+  const gy = new Float32Array(N);
+  for (let i = 0; i < N; i++) gx[i] = minX + (i / (N - 1)) * width;
+  for (let j = 0; j < N; j++) gy[j] = minY + (j / (N - 1)) * height;
+
+  const layers: ReliefLayer[] = [];
+  for (const [domain, samples] of byDomain) {
+    const positions = new Float32Array(vertCount * 3);
+    const colors = new Float32Array(vertCount * 3);
+    const heights = new Float32Array(vertCount);
+
+    let peak = 0;
+    for (let j = 0; j < N; j++) {
+      const y = gy[j];
+      for (let i = 0; i < N; i++) {
+        const x = gx[i];
+        let h = 0;
+        for (const s of samples) {
+          const dx = x - s.x;
+          const dy = y - s.y;
+          h += s.w * Math.exp(-(dx * dx + dy * dy) / sigma2);
+        }
+        const idx = j * N + i;
+        heights[idx] = h;
+        if (h > peak) peak = h;
+      }
+    }
+
+    const colorHex = getDomainColor(domain);
+    const colorRGB = hexToLinearRGB(colorHex);
+    const inv = peak > 0 ? 1 / peak : 0;
+
+    for (let j = 0; j < N; j++) {
+      const yWorld = gy[j];
+      for (let i = 0; i < N; i++) {
+        const xWorld = gx[i];
+        const idx = j * N + i;
+        const norm = heights[idx] * inv;
+        const z = norm * heightScale;
+
+        positions[idx * 3 + 0] = xWorld - cx;
+        positions[idx * 3 + 1] = z;
+        positions[idx * 3 + 2] = yWorld - cy;
+
+        // Gamma=1.5 keeps valleys dark (≈black under additive blending) and
+        // makes peaks pop with full domain saturation.
+        const tint = Math.pow(norm, 1.5);
+        colors[idx * 3 + 0] = colorRGB[0] * tint;
+        colors[idx * 3 + 1] = colorRGB[1] * tint;
+        colors[idx * 3 + 2] = colorRGB[2] * tint;
+      }
+    }
+
+    layers.push({
+      domain,
+      colorHex,
+      colorRGB,
+      field: {
+        positions,
+        colors,
+        indices,
+        width,
+        height,
+        resolution: N,
+        peak,
+      },
+      nodeCount: samples.length,
+    });
+  }
+
+  // Render order: lowest peak first, highest last. With additive blending the
+  // order is mathematically irrelevant, but a stable, peak-driven order keeps
+  // the legend meaningful.
+  layers.sort((a, b) => b.field.peak - a.field.peak);
+  return layers;
+}
+
+function hexToLinearRGB(hex: string): [number, number, number] {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16) / 255;
+  const g = parseInt(m.slice(2, 4), 16) / 255;
+  const b = parseInt(m.slice(4, 6), 16) / 255;
+  return [r, g, b];
 }

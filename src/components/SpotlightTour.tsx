@@ -404,10 +404,25 @@ export default function SpotlightTour() {
   }, [setTourActive, setTourStep]);
 
   const next = useCallback(() => {
-    if (step?.id === "welcome-and-domain" && selectedDomains.length === 0) {
-      setShowDomainHint(true);
-      if (!domainSelectorOpen) setDomainSelectorOpen(true);
-      return;
+    if (step?.id === "welcome-and-domain") {
+      // Don't advance while the workspace modal is still on top of the
+      // canvas — the next step highlights the canvas and would render
+      // behind the modal. The user has to click LAUNCH WORKSPACE inside
+      // the modal (which writes selectedDomains into the store AND
+      // closes the modal). The auto-advance effect below picks it up
+      // from there.
+      if (domainSelectorOpen) {
+        setShowDomainHint(true);
+        return;
+      }
+      // Modal is closed but no domains made it into the store — user
+      // dismissed without launching. Reopen and surface the hint.
+      if (selectedDomains.length === 0) {
+        setShowDomainHint(true);
+        setDomainSelectorOpen(true);
+        return;
+      }
+      // Modal closed AND domains in store → normal advance below.
     }
     if (step?.id === "first-run-finish") {
       // First-run done → show the deep-dive menu instead of closing.
@@ -757,7 +772,7 @@ function TooltipCard({
 
       {showDomainHint && (
         <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[10px] font-mono tracking-wider text-amber-300">
-          Pick a domain in the workspace first — the platform can&apos;t render without one.
+          Pick at least one domain and click LAUNCH WORKSPACE in the modal to continue.
         </div>
       )}
 

@@ -2,7 +2,7 @@
 
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
-> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 7 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, Derivations) covering **~41 graph nodes** including the T1D side, EM FX, and 2 derived composites. All free-tier; mock fallback when keys/upstream missing.
+> **Status:** Active. Live API feeds wired into A-04 (Hormuz throughput), R-01 / R-02 (sanctions). Live Coverage Program: 7 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, Derivations) covering **~43 graph nodes** including the T1D side, EM FX, sovereign default, and MENA import dependency. **Real-data-only goal reached: 0 synthetic composites remaining** — all 4 originally synthetic composites are now live-derived from real data. All free-tier; mock fallback when keys/upstream missing.
 >
 > **Stated end-state goal:** every node carries continuously-pulled real data. **No synthetic composites.** 4 composites still synthetic as of this writing — all 4 have a concrete path to real-data backing (see "Real-data-only goal" section below).
 
@@ -149,6 +149,7 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | 5 | ClinicalTrials.gov — trial counts | 2 T1D therapy nodes: Teplizumab + VX-880 (with stem-cell-derived β-cell replacement label match). Free, JSON v2 API. Total + recruiting subset surfaced. | **shipped (#153)** |
 | 5b | FRED expansion — EM FX | 3 emerging-market FX rates from FRED: Turkey FX Stress (TRY/USD via DEXTUUS), South Africa FX Stress (ZAR/USD via DEXSFUS), Brazil FX Stress (BRL/USD via DEXBZUS). Daily updates. | **shipped (#154)** |
 | 7 | **Sovereign Default real data** — eliminates 3rd of 4 synthetic composites. ICE BofA US High Yield OAS (FRED `BAMLH0A0HYM2`) wired to the Sovereign Default / Restructuring node as a credit-stress proxy: HY spreads widen when sovereign + corporate default risk co-moves up. Capacity = 8% (stress regime threshold). | **shipped** |
+| 8 | **MENA Import Dependency real data — goal reached** — eliminates the 4th and final synthetic composite. World Bank `NE.IMP.GNFS.ZS` (Imports of goods and services, % of GDP) for MEA aggregate region wired to the MENA Import Dependency Index node. Capacity = 50% (high-dependency regime). Pivoted from a separate UN Comtrade provider (rate-limited, auth-required) to a single-line addition to the existing keyless WB provider — ships faster, same fidelity for the regional aggregate. | **shipped** |
 | 5c | Per-card live-data sparkline | `LiveDataPoint.history` field + `upsertLiveSignal` accumulation (capped at 60 entries, sorted, deduped). Card sparkline prefers live history when present, falls back to synthetic omega when not. LIVE badge + mode-colored stroke distinguish live curves visually. | **shipped** |
 | 6 | USGS critical minerals | Phosphate / potash / sulfur — needs Excel-scraping (no JSON API) | blocked: needs scraper |
 | 7 | BLS labor stats | ~10 labor/employment nodes | not started |
@@ -191,12 +192,12 @@ The card render already does the right thing here: a node with no `liveData[]` s
 
 ### Status of the goal as of last update
 
-| Total nodes covered live | ~39 |
-| Synthetic composites still present in graph | 4 (the four in §A and §B) |
-| Synthetic composites with a clear path to real data | 4 (all of them — A is derivation, B is new providers) |
-| Synthetic composites with no defensible source (target: 0) | 0 — none of the 4 are in category C |
+| Total nodes covered live | ~43 |
+| Synthetic composites still present in graph | **0** |
+| Synthetic composites with a clear path to real data | n/a (goal reached) |
+| Synthetic composites with no defensible source (target: 0) | 0 |
 
-**Implication:** the goal is reachable. No node is condemned to stay synthetic. Each remaining composite has a concrete next step. If any future node hits category C, it stays in the graph but blank — preserving the TODO rather than erasing it.
+**Implication: goal reached.** All 4 originally-synthetic composites (Currency Contagion, Exchange Rate Pressure, Sovereign Default, MENA Import Dependency) are now backed by live data — derivations on top of FRED EM FX for the first two, FRED HY OAS for the third, World Bank MEA imports for the fourth. The graph is fully real-data-driven on the engine side; remaining work is widening node coverage rather than replacing synthetics.
 
 ### Next phases against this goal
 

@@ -85,6 +85,22 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 6,
     mockValue: 4.5,
   },
+  // Phase 8 — MENA Import Dependency real data. World Bank aggregates the
+  // Middle East & North Africa region as country code "MEA". The indicator
+  // NE.IMP.GNFS.ZS (Imports of goods and services, % of GDP) is the
+  // canonical free measure of import dependence — higher = more reliant
+  // on external supply chains. Eliminates the 4th and final synthetic
+  // composite in the Live Coverage Program.
+  {
+    country: "MEA",
+    indicator: "NE.IMP.GNFS.ZS",
+    label: "MENA Import Dependency (Imports % of GDP)",
+    labelPatterns: ["mena import dependency"],
+    scale: 1,
+    unit: "%",
+    capacity: 50, // 50% of GDP from imports = high dependency regime
+    mockValue: 35.5,
+  },
 ];
 
 export interface WbObservation {

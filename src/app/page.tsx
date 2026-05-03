@@ -17,6 +17,7 @@ import SpotlightTour from "@/components/SpotlightTour";
 import TimeDial from "@/components/TimeDial";
 import DomainSelector from "@/components/DomainSelector";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import { DemoFlowPlayerHost } from "@/components/DemoFlowPlayer";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
 
 // Dynamic import for 3D canvas (no SSR)
@@ -87,6 +88,7 @@ export default function Home() {
       <ImportModal />
       <DomainSelector />
       <SpotlightTour />
+      <DemoFlowPlayerHost />
       <FeedbackWidget />
 
       {/* Header with module tabs */}

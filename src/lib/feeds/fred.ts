@@ -72,6 +72,11 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "DEXTUUS", label: "Turkish Lira / USD", labelPatterns: ["turkey fx stress"], unit: "TRY/$", capacity: 35, mockValue: 32.4 },
   { id: "DEXSFUS", label: "South African Rand / USD", labelPatterns: ["south africa fx stress"], unit: "ZAR/$", capacity: 22, mockValue: 18.3 },
   { id: "DEXBZUS", label: "Brazilian Real / USD", labelPatterns: ["brazil fx stress"], unit: "BRL/$", capacity: 6, mockValue: 5.05 },
+  // Phase 7 — Sovereign Default real data. ICE BofA US High Yield OAS is
+  // the canonical credit-stress proxy: spreads widen when sovereign /
+  // corporate default risk rises. Eliminates the 3rd of 4 synthetic
+  // composites in the Live Coverage Program.
+  { id: "BAMLH0A0HYM2", label: "ICE BofA US High Yield OAS", labelPatterns: ["sovereign default"], unit: "%", capacity: 8, mockValue: 3.5 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and

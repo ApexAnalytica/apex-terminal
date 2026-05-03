@@ -110,6 +110,13 @@ describe("mockFredFeed", () => {
     expect(ids.has("T5YIFR")).toBe(true);
     expect(ids.has("PWHEAMTUSDM")).toBe(true);
   });
+
+  it("includes the Phase 7 Sovereign Default proxy (HY OAS)", () => {
+    const sovDef = FRED_SERIES.find((s) => s.id === "BAMLH0A0HYM2");
+    expect(sovDef).toBeDefined();
+    expect(sovDef!.labelPatterns).toContain("sovereign default");
+    expect(sovDef!.unit).toBe("%");
+  });
 });
 
 describe("fredProvider.matchPayload", () => {

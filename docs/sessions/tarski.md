@@ -148,6 +148,7 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | 4b | OpenFDA — adverse events | 2 T1D drug nodes: Teplizumab, Insulin Glargine. Free, FAERS counts in last 12-month window. **First T1D-side feed.** | **shipped (#152)** |
 | 5 | ClinicalTrials.gov — trial counts | 2 T1D therapy nodes: Teplizumab + VX-880 (with stem-cell-derived β-cell replacement label match). Free, JSON v2 API. Total + recruiting subset surfaced. | **shipped (#153)** |
 | 5b | FRED expansion — EM FX | 3 emerging-market FX rates from FRED: Turkey FX Stress (TRY/USD via DEXTUUS), South Africa FX Stress (ZAR/USD via DEXSFUS), Brazil FX Stress (BRL/USD via DEXBZUS). Daily updates. | **shipped (#154)** |
+| 7 | **Sovereign Default real data** — eliminates 3rd of 4 synthetic composites. ICE BofA US High Yield OAS (FRED `BAMLH0A0HYM2`) wired to the Sovereign Default / Restructuring node as a credit-stress proxy: HY spreads widen when sovereign + corporate default risk co-moves up. Capacity = 8% (stress regime threshold). | **shipped** |
 | 5c | Per-card live-data sparkline | `LiveDataPoint.history` field + `upsertLiveSignal` accumulation (capped at 60 entries, sorted, deduped). Card sparkline prefers live history when present, falls back to synthetic omega when not. LIVE badge + mode-colored stroke distinguish live curves visually. | **shipped** |
 | 6 | USGS critical minerals | Phosphate / potash / sulfur — needs Excel-scraping (no JSON API) | blocked: needs scraper |
 | 7 | BLS labor stats | ~10 labor/employment nodes | not started |

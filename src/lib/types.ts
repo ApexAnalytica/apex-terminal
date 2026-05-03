@@ -272,7 +272,7 @@ export interface RiskPropagationCard {
 }
 
 // ─── View State ──────────────────────────────────────────────────
-export type ViewMode = "2d" | "3d" | "map";
+export type ViewMode = "2d" | "3d" | "map" | "relief";
 export type TruthFilter = "raw" | "verified";
 
 // ─── Regime & Doomsday ──────────────────────────────────────────

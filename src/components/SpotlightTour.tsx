@@ -14,6 +14,7 @@ import {
   type TourStep,
   type DeepDiveTrack,
 } from "@/lib/tour-steps";
+import TTSControls from "@/components/TTSControls";
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -404,10 +405,25 @@ export default function SpotlightTour() {
   }, [setTourActive, setTourStep]);
 
   const next = useCallback(() => {
-    if (step?.id === "welcome-and-domain" && selectedDomains.length === 0) {
-      setShowDomainHint(true);
-      if (!domainSelectorOpen) setDomainSelectorOpen(true);
-      return;
+    if (step?.id === "welcome-and-domain") {
+      // Don't advance while the workspace modal is still on top of the
+      // canvas — the next step highlights the canvas and would render
+      // behind the modal. The user has to click LAUNCH WORKSPACE inside
+      // the modal (which writes selectedDomains into the store AND
+      // closes the modal). The auto-advance effect below picks it up
+      // from there.
+      if (domainSelectorOpen) {
+        setShowDomainHint(true);
+        return;
+      }
+      // Modal is closed but no domains made it into the store — user
+      // dismissed without launching. Reopen and surface the hint.
+      if (selectedDomains.length === 0) {
+        setShowDomainHint(true);
+        setDomainSelectorOpen(true);
+        return;
+      }
+      // Modal closed AND domains in store → normal advance below.
     }
     if (step?.id === "first-run-finish") {
       // First-run done → show the deep-dive menu instead of closing.
@@ -691,12 +707,15 @@ function TooltipCard({
     mode === "first-run"
       ? "FIRST RUN"
       : mode === "engines"
-        ? "DEEP DIVE · ENGINES"
+        ? "ENGINES"
         : mode === "loop"
-          ? "DEEP DIVE · LOOP"
+          ? "LOOP"
           : mode === "customization"
-            ? "DEEP DIVE · CUSTOMIZATION"
+            ? "CUSTOM"
             : "";
+  // Speaker reads the title and body together so users hear the full
+  // step in context, not just the body without the heading.
+  const ttsText = `${copy.title}. ${copy.description}`;
 
   return (
     <motion.div
@@ -716,18 +735,27 @@ function TooltipCard({
       transition={{ duration: 0.2 }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="text-[9px] font-mono tracking-wider text-text-muted mb-2 flex items-center justify-between">
-        <span>
+      {/* Header row: phase + step counter on the left, TTS controls + the
+          optional return-to-menu button on the right. TTS lives here on
+          every step so users can read or switch language at any point in
+          the tour, not just from the modal. */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[9px] font-mono tracking-wider text-text-muted truncate">
           {phaseLabel} · {tourStep + 1} OF {totalSteps}
         </span>
-        {onReturnToMenu && (
-          <button
-            onClick={onReturnToMenu}
-            className="text-text-muted hover:text-foreground transition-colors"
-          >
-            ◂ MENU
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <TTSControls text={ttsText} ariaLabel="Read this step aloud" />
+          {onReturnToMenu && (
+            <button
+              onClick={onReturnToMenu}
+              className="text-[9px] font-mono tracking-wider text-text-muted hover:text-foreground transition-colors"
+              title="Back to deep-dive menu"
+              aria-label="Back to deep-dive menu"
+            >
+              ◂
+            </button>
+          )}
+        </div>
       </div>
 
       <h3 className="font-[family-name:var(--font-michroma)] text-sm tracking-wider text-accent-cyan mb-2">
@@ -757,7 +785,7 @@ function TooltipCard({
 
       {showDomainHint && (
         <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[10px] font-mono tracking-wider text-amber-300">
-          Pick a domain in the workspace first — the platform can&apos;t render without one.
+          Pick at least one domain and click LAUNCH WORKSPACE in the modal to continue.
         </div>
       )}
 
@@ -817,8 +845,14 @@ function DeepDiveMenu({
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="text-[9px] font-mono tracking-wider text-text-muted mb-2">
-        DEEP DIVE · OPT-IN
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[9px] font-mono tracking-wider text-text-muted">
+          DEEP DIVE · OPT-IN
+        </span>
+        <TTSControls
+          text="Pick a deeper look. First run done. Pick a track for a deeper walkthrough, or close out and explore on your own. You can always relaunch this from the question mark in the top right."
+          ariaLabel="Read this menu aloud"
+        />
       </div>
       <h3 className="font-[family-name:var(--font-michroma)] text-sm tracking-wider text-accent-cyan mb-3">
         PICK A DEEPER LOOK

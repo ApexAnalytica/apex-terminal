@@ -12,6 +12,7 @@ import { mergeGraphs } from "@/lib/import/merge";
 import type { NodeCategory, CausalGraph } from "@/lib/types";
 import TTSControls from "@/components/TTSControls";
 import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
+import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
 
 const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "economic", label: "ECONOMIC", icon: "📊" },
@@ -711,6 +712,16 @@ export default function DomainSelector() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            {/* Demo flow picker — guided cause-and-effect tours through the
+                graph. Discoverable but unobtrusive: bottom of the modal,
+                before the footer, so first-time visitors see the offer
+                without it crowding the domain cards. */}
+            <div className="px-6 pb-4">
+              <DemoFlowPicker
+                onPick={() => setDomainSelectorOpen(false)}
+              />
             </div>
 
             {/* Footer */}

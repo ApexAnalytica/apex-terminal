@@ -85,15 +85,32 @@ All sources are public, free, no API key. Sandboxed runs use only
 `raw.githubusercontent.com` + bundled `statsmodels` + repo files; no FRED
 or BLS endpoint is required.
 
-### Known data gaps
+### Known data gaps + FRED fallback
 
 The sandbox blocks every government endpoint (FRED, BLS, BEA, EIA
 direct, World Bank). Where US-specific monthly CPI / PPI components or
 labor data would be the ideal target, we use the IMF global counterpart
 as a proxy. The mapping is disclosed in `output/edge_fits.json` per row
-under `target_proxy`. A follow-on with FRED access can re-fit with
-`CPIENGSL`, `PPIACO`, `MANEMP`, `NAPM`, `INDPRO`, etc. and tighten the
-elasticities.
+under `target_proxy`.
+
+`datasets/fred.py` ships a fetcher with **automatic fallback**: when
+FRED is reachable (anyone with `FRED_API_KEY` env var, or an
+environment that doesn't block fred.stlouisfed.org) it pulls
+US-specific series like `CPIENGSL`, `PPIACO`, `DFII10`, `T10YIE`,
+`PAYEMS`, `INDPRO`. When FRED is unreachable the wrapper
+`with_fred_or_fallback()` warns and returns the caller-supplied IMF
+proxy. The fit record discloses which path was used in the
+`data_path` field so weights are always traceable.
+
+Probe reachability for your environment:
+
+```bash
+python -m research.macro.scripts.probe_fred
+```
+
+A FRED-preferred refit lives in `fits/edge_fits_with_fred.py`. Run it
+on a machine with FRED access to get tighter US-specific weights —
+topology stays unchanged.
 
 ## Layout
 
@@ -205,7 +222,24 @@ production disruption.
 
 ## Follow-ons
 
-1. **FRED access** — refit with US-specific monthly CPI/PPI series; tightens elasticities.
-2. **Baltic Dry / Drewry WCI** — replace the partial-proxy P3 fits.
-3. **DXY / USD-strength node** — required for FX → import-price loop edges (deferred from PR #115).
-4. **Defense-ISR / frontier-science domains** — same audit pattern when data lands.
+1. ~~**FRED access**~~ — fetcher + IMF fallback shipped in PR #191. Set `FRED_API_KEY` to refit P1/P2 with US-specific CPIENGSL/PPIACO/etc.
+2. ~~**Baltic Dry / Drewry WCI**~~ — Baltic Dry isn't free (proprietary); FRED CASSFI (Cass Freight Index) is the closest substitute and ships in PR #192.
+3. ~~**DXY / USD-strength node**~~ — shipped in PR #134.
+4. **Real-rate refit with TIPS** — shipped in PR #190 with a synthetic proxy; the topology is correct but the proxy is too noisy for monthly returns. Refit with FRED `DFII10` (10y TIPS yield) once FRED key is set; weight tightens, topology unchanged.
+
+## Sub-domain audit notes
+
+- **Defense / ISR** — NOT empty (the session brief was stale). 18 nodes
+  across Drone Swarms / SATCOM / ISR Fusion / Chip Embargo / Secure
+  Compute / Kill Chain live in `src/lib/athena-graph-data.ts` with 17+
+  bridge edges to civilian / energy / financial domains. Macro → Athena
+  bridges added in PR #193 (Fed funds → GPU supply, DXY → GPU supply,
+  IP → MILSATCOM) — closes the missing macro pathway.
+- **Frontier Science** — truly empty. `hasData: false` in
+  `DomainSelector.tsx`. Card exists, no nodes anywhere. Activation
+  requires a teammate data drop covering: post-Standard Model physics,
+  neutrino frontier, quantum gravity, dark sector detection. When data
+  lands, follow the activation pattern from PR #115 / #129 — add nodes
+  with `domain: "frontier-science"`, register in `DOMAIN_MAP` (already
+  routes via `frontier-science` ID), add cross-domain edges where
+  mechanisms are clear.

@@ -136,9 +136,58 @@ Also cleared two warnings while the file was open: removed the unused `NodeMetri
 
 **Verification.** `tsc --noEmit` clean; lint clean on `CausalDAG3D.tsx`; vitest 567/567 pass.
 
-### 2026-05-02 — Next up
+### 2026-05-03 — 2D canvas perf pass: adjacency-indexed contraction
 
-- TBD — open for direction.
+**PR:** [#198 — perf(2d): adjacency-indexed contraction + nodeById/edgeById lookups](https://github.com/ApexAnalytica/apex-terminal/pull/198) — merged `f8b3440`.
+
+**Trigger.** User picked option #1 from a three-way split (profile 2D canvas / audit 3D scene / batch map orbs). Goal: identify and fix the highest-ROI perf issues on the most-recently-rebuilt surface before the 2D Obsidian layout starts feeling its weight on dense graphs.
+
+**Hot spots found.**
+1. **`CausalDAG2D.tsx:428–438` — replay contraction was O(N×E) per tick.** The inner contraction loop walked all of `graphData.edges` for every node in the `nodes` useMemo. That useMemo rebuilds on every `currentSnapshot` change (i.e. every replay tick at ~30 Hz). On a 100-node / 200-edge graph that's 20K iters per tick, ~600K ops/sec sustained during replay.
+2. **`CausalDAG2D.tsx:404–407` — hover-emphasis neighbor lookup also walked `graphData.edges`** linearly on every hover. Same fix shape as (1).
+3. **`graphSignature` recomputed on every render** (`CausalDAG2D.tsx:341`) — sort+join over node+edge id sets. Cheap individually, but runs on hover, drag, replay tick.
+4. **`O(N)` / `O(E)` `find()` calls** in `onEdgeClick` and the `selectedSourceLabel` / `selectedTargetLabel` resolution.
+
+**Fixes.**
+- New memos: `nodeById`, `edgeById`, `adjacency` (`Map<id, neighborId[]>`), all keyed on the corresponding `graphData.nodes` / `graphData.edges` ref.
+- Replay contraction now walks `adjacency.get(n.id)` — O(degree) per shocked node instead of O(E). Per-tick cost scales with edge count, not (nodes × edges).
+- `emphasisMap` neighbor lookup reuses the same adjacency map.
+- `graphSignature` wrapped in `useMemo` against the same node/edge refs.
+- `onEdgeClick` uses `edgeById.get(rfEdge.id)`; label resolution uses `nodeById.get(...)`.
+
+**Out of scope (deliberately).** The `edges` useMemo (`:478–541`) still rebuilds on every hover because `emphasisTarget` is in its deps — that's structural to React Flow's prop-diff model. Splitting structural edge data from emphasis-derived style would need a custom edge component subscribing to `emphasisTarget` separately. Filed as a follow-up if dense-graph hover starts feeling heavy.
+
+**Files touched.** `src/components/CausalDAG2D.tsx` (+59 −31).
+
+**Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 600/600 pass. No behavior change — just lookup-shape refactoring.
+
+### 2026-05-03 — 3D scene audit: selection Sets + scrub-stable disconnected check
+
+**PR:** [#199 — perf(3d): selection Sets in render loop + scrub-stable disconnected check](https://github.com/ApexAnalytica/apex-terminal/pull/199) — merged `febc761`.
+
+**Trigger.** Continued the perf sweep with item #2 of the original three-way split (3D scene audit).
+
+**Hot spots found.**
+1. **Render loop `.includes()` checks were O(M) per node and per edge.** `CausalDAG3D.tsx` at `:996, :1000, :1017, :1051, :1089` calls `multiSelectedNodes.includes(...)` / `ablatedNodeIds.includes(...)` / `ablatedEdgeIds.includes(...)` inside the per-node and per-edge maps. With 50 selections on a 200-node graph that's ~20K ops per re-render across all four call sites.
+2. **`disconnectedNodes` was scrub-thrashing.** Memoed on the full `graphData` ref, so a V+E BFS re-ran on every replay tick — but connectivity is purely structural and scrubbing only bumps temporal omega. Same cost as `positions` rebuild every tick, just for the connected-component check.
+3. **Five separate invalidator effects** in `StoreInvalidator` (`:367–371`) — each `useEffect` has a one-element dep list, all calling `invalidate()`.
+
+**Fixes.**
+- New memos: `multiSelectedSet`, `ablatedNodeSet`, `ablatedEdgeSet`. Render-loop call sites switched to `.has()`. Same shape as the existing `selectedEdgeIds` / `selectedNeighborNodes` / `disconnectedNodes` Sets used elsewhere in the file.
+- `disconnectedNodes` re-keyed on `topologyKey + severedEdges` and reads graph data via `graphDataForLayoutRef` — same scrub-stable pattern as `positions` and `networkMetrics`.
+- Five invalidator effects collapsed to one with combined deps. Behaviorally identical (React fires on any-dep change), just less noise.
+
+**Out of scope (deliberately).**
+- The blanket `onPointerMove` invalidate on the Canvas (`:983`) — broad firehose on every pointer move, but it's the safety net for hover-driven node lighting under `frameloop="demand"`. Touching it risks visible regressions on hover. Filed as follow-up if a benchmark shows it as a real cost.
+- `downstreamNodes` / `greyedOutNodes` BFS still iterates `graphData.edges` linearly. Only fires on intervention click; not hot.
+
+**Files touched.** `src/components/CausalDAG3D.tsx` (+45 −18).
+
+**Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 622/622 pass.
+
+### 2026-05-03 — Next up
+
+- TBD — open for direction. Two remaining of the original three-way split: map orb batching (#3), or the deferred 3D follow-ups (Canvas onPointerMove throttle / hoist).
 
 ---
 

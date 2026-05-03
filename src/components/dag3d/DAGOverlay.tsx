@@ -86,13 +86,18 @@ export default function DAGOverlay() {
       {/* Top Right: Method badges + controls */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
         <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
-          RENDERING: {viewMode === "3d" ? "WEBGL_3D" : viewMode === "2d" ? "REACTFLOW_2D" : "MAPLIBRE_GEO"}
+          RENDERING: {
+            viewMode === "3d" ? "WEBGL_3D"
+            : viewMode === "2d" ? "REACTFLOW_2D"
+            : viewMode === "map" ? "MAPLIBRE_GEO"
+            : "WEBGL_RELIEF"
+          }
         </span>
         <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
           METHOD: DCD / NOTEARS
         </span>
         {/* View mode cycle buttons */}
-        {(["3d", "2d", "map"] as const).map((mode) => (
+        {(["3d", "2d", "map", "relief"] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
@@ -102,7 +107,7 @@ export default function DAGOverlay() {
                 : "border-border text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40"
             }`}
           >
-            {mode === "3d" ? "3D" : mode === "2d" ? "2D" : "MAP"}
+            {mode === "3d" ? "3D" : mode === "2d" ? "2D" : mode === "map" ? "MAP" : "RELIEF"}
           </button>
         ))}
       </div>

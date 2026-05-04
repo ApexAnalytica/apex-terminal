@@ -1,4 +1,14 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
+
+// Wrap the export with the bundle analyzer. It's a no-op unless
+// ANALYZE=true is set at build time, so production builds on Vercel
+// are unaffected.
+//   ANALYZE=true npm run build   → opens treemap of client + server
+//                                  bundles in the default browser.
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
 
 const nextConfig: NextConfig = {
   // Enable gzip/brotli compression for served assets
@@ -17,4 +27,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

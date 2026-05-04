@@ -18,12 +18,12 @@
     "@mozilla/readability": "^0.6.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
-    "@react-three/postprocessing": "^3.0.4",
     "@reactflow/background": "^11.3.14",
     "@reactflow/controls": "^11.2.14",
     "@reactflow/core": "^11.11.4",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
+    "@vercel/speed-insights": "^2.0.0",
     "@vis.gl/react-maplibre": "^8.1.0",
     "d3-force-3d": "^3.0.6",
     "framer-motion": "^12.34.3",
@@ -39,6 +39,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.2.4",
     "@tailwindcss/postcss": "^4",
     "@types/jsdom": "^28.0.1",
     "@types/node": "^20",

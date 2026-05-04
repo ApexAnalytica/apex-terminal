@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { NAV, SITE } from "@/lib/site";
 
@@ -6,9 +7,15 @@ export default function SiteFooter() {
     <footer className="border-t border-border bg-surface/40">
       <div className="mx-auto max-w-7xl px-4 md:px-6 py-10">
         <div className="grid gap-8 md:grid-cols-4">
-          <div className="md:col-span-2 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <span className="h-2 w-2 rounded-full bg-accent-cyan" />
+          <div className="md:col-span-2 space-y-4">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/mantis.png"
+                alt="Apex Analytica"
+                width={44}
+                height={54}
+                className="object-contain shrink-0"
+              />
               <span className="font-[family-name:var(--font-michroma)] text-[11px] tracking-[0.3em] text-foreground">
                 APEX ANALYTICA
               </span>

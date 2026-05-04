@@ -41,8 +41,8 @@ Owns the engine that audits every edge in the causal graph against domain-aware 
 ### PR #7 — original dynamic Tarski engine
 Rewrote axioms from generic physics to Middle East energy/petrochemical. Shipped VERIFIED-mode live validation, red/dashed flagging, proof traces, restricted-node lists, per-axiom violation counts.
 
-### PR #14 — copilot routes to live Tarski state
-System copilot answers about graph consistency now route to the live engine state instead of static text.
+### PR #215 + #217 — copilot routes to live engine state (closes brief item #14)
+Shipped in two parts: (a) `src/lib/engine-state-summary.ts` — a pure helper exposing `summarizeEngineState(graph, tarskiReport)` plus `summarizeFeeds`, `summarizeTarski`, `summarizePillarOverlays`, and `renderEngineStateText`. (b) `serializeGraphContext` now emits an `=== ENGINE STATE SNAPSHOT ===` section before `=== GRAPH METADATA ===`, so every copilot prompt carries feed counts, Tarski state (axiom violations included when active), and ΩF pillar overlay aggregates. The copilot no longer paraphrases stale tags — it routes off the live engine state directly.
 
 ### PR #65 — 15 T1D axioms
 TA-01..06 physiological, TR-01..05 clinical/regulatory, TH-01..04 heuristic biology with `relevantDomains` matching the five T1D graph-domain names.
@@ -290,13 +290,14 @@ src/app/api/feeds/ofac/sdn/route.ts           OFAC proxy with zero-entry defensi
 
 1. ~~**Two-validator fork resolution**~~ — ✅ shipped. `validateSnapshot` now delegates to `runTarskiValidation` when a live graph is supplied; snapshots now run the full 32-axiom library.
 2. ~~**Profile-agnostic universal axiom library (#75 follow-up)**~~ — ✅ shipped. The 7 universal-concept axioms (A-01, A-02, A-03, A-05, R-04, H-01, H-02) had their `appliesTo: ["geopolitical"]` dropped, `relevantDomains` set to `[]`, and wording rewritten to remove geopolitical-specific tokens (Saudi/Aramco/Qatar/QAFCO/Ma'aden/LNG/Hormuz). `scoreAxiomRelevance` gives universal axioms (no `appliesTo`, no `relevantDomains`) a base relevance of 0.45 so they surface as recommended on every profile. Geopolitical-only axioms (A-04, R-01, R-02, R-03) and T1D-only axioms (TA-*, TR-*, TH-*) keep their scoping.
-3. **More live feeds** — same proxy pattern as EIA/OFAC. Candidates:
+3. ~~**Copilot routes to live engine state (brief #14)**~~ — ✅ shipped (PR #215 helper + #217 wire-up). `serializeGraphContext` now emits an `=== ENGINE STATE SNAPSHOT ===` block before graph metadata, sourced from `summarizeEngineState`. Future UI status panels (`/api/engine/status`, debug overlay) plug into the same helper.
+4. **More live feeds** — same proxy pattern as EIA/OFAC. Candidates:
    - USGS critical minerals → A-05 Single-Source Fragility
    - NOAA storm tracks → conflict-zone proxies
    - World Bank governance indicators → R-04 Cross-Domain Dependency
-4. ~~**ΩF pillar wiring audit**~~ — ✅ shipped. Audit found that Tarski violations only set `isRestricted: boolean` (no J writeback); Spirtes-metrics never updated `cascadeLoad` after import-time. Fix: added `OmegaLiveAdjustments` overlay (`liveAdjustments` field on `CausalNode`) that surfaces live deltas without mutating the static `omegaFragility` profile. `applyOmegaLiveAdjustments(graph)` walks nodes, computes J-bump from live sanctions (0.4 per active OFAC program, capped at +4) and C-bump from out-degree above 5 (0.3 per excess edge, capped at +3). Runs in `setGraphData` and after every `applyFeedBatch`. `getEffectivePillars(node)` returns clamped 0..10 sum for downstream consumers; static baseline stays auditable.
-5. **More T1D axioms** as clinical evidence lands (MODY exclusions, LADA, age-of-onset, exogenous insulin half-life). Coordinate with T1D session.
-6. **More geopolitical axioms** as new data verticals land. Coordinate with Geopolitical/Macro session.
+5. ~~**ΩF pillar wiring audit**~~ — ✅ shipped. Audit found that Tarski violations only set `isRestricted: boolean` (no J writeback); Spirtes-metrics never updated `cascadeLoad` after import-time. Fix: added `OmegaLiveAdjustments` overlay (`liveAdjustments` field on `CausalNode`) that surfaces live deltas without mutating the static `omegaFragility` profile. `applyOmegaLiveAdjustments(graph)` walks nodes, computes J-bump from live sanctions (0.4 per active OFAC program, capped at +4) and C-bump from out-degree above 5 (0.3 per excess edge, capped at +3). Runs in `setGraphData` and after every `applyFeedBatch`. `getEffectivePillars(node)` returns clamped 0..10 sum for downstream consumers; static baseline stays auditable.
+6. **More T1D axioms** as clinical evidence lands (MODY exclusions, LADA, age-of-onset, exogenous insulin half-life). Coordinate with T1D session.
+7. **More geopolitical axioms** as new data verticals land. Coordinate with Geopolitical/Macro session.
 
 ## How to start a task
 

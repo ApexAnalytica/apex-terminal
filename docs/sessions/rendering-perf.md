@@ -185,9 +185,90 @@ Also cleared two warnings while the file was open: removed the unused `NodeMetri
 
 **Verification.** `tsc --noEmit` clean; lint clean on changed file; vitest 622/622 pass.
 
+### 2026-05-03 — Map orb "batching" was already live
+
+User asked about map orb batching (item #3 of the original perf split). Audit of `CausalDAGMap.tsx` confirms the orbs are already optimally batched: every rAF tick builds a single `FeatureCollection` containing all particles for all temporal edges and calls `setParticleGeoJSON(...)` once; the map renders all of them through a single `<Source id="particles" type="geojson">` with two layers (`particle-glow`, `particle-dots`). One buffer upload per frame regardless of edge count. No work to do under the "batching" framing.
+
+Remaining map-view perf opportunity if ever needed: the per-frame particle update goes through React (`setParticleGeoJSON` → re-render → react-map-gl diffs → `setData`). Cutting React out of the per-frame loop and hitting `map.getSource('particles').setData(...)` imperatively would skip ~60 React renders/sec when temporal edges are visible. Not "batching" — different fix; not pursued this round.
+
+### 2026-05-03 — Shipped: 4th view mode "Relief" — topographic criticality heightfield
+
+**PR:** [#204 — feat(relief): 4th view mode — topographic criticality heightfield](https://github.com/ApexAnalytica/apex-terminal/pull/204) — merged `fe80279`. (Backfilled here — the original PR's doc update only carried the PR #199 entry through.)
+
+**Trigger.** User asked for a 4th display method as a topological heatmap with peaks where criticality is higher, and asked how multilayer (per-domain) overlapping topo maps would look in the same format.
+
+**What shipped (v1).** Single-domain Relief view: takes the existing 2D force layout, treats each node as a Gaussian source with weight = ΩF composite, evaluates the field on an 80×80 grid, renders as an r3f heightfield mesh with elevation-driven color ramp (deep blue → cyan → amber → red). Same 2D layout drives all four views, so peaks land exactly where nodes sit on the 2D canvas — view switching feels coherent.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` (new) — `computeReliefField(nodes, layout)` returns interleaved Float32 buffers (positions, colors, indices) ready for `THREE.BufferGeometry`. Two-pass: evaluate field (per-vertex Gaussian sum), then write vertex buffers + per-vertex colors via the elevation ramp.
+- `src/components/CausalDAGRelief.tsx` (new) — r3f Canvas + mesh + ambient/directional/2 colored point lights, OrbitControls capped at the horizon (`maxPolarAngle ≈ π/2`) so users can't flip under the terrain. One-shot camera framing on first non-empty field; manual orbit preserved across graph swaps.
+- `src/lib/types.ts` — adds `"relief"` to `ViewMode`.
+- `src/app/page.tsx` — dynamic import (separate chunk), conditional mount under `viewMode === "relief"`.
+- `src/components/dag3d/DAGOverlay.tsx` — RELIEF added to the view-switcher buttons; rendering badge shows WEBGL_RELIEF.
+
+**Cost.** Field evaluation is ~30ms on 100 nodes (6,400 cells × 100 samples × `exp()`). Memoized on graph identity, so hover / scrub / orbit / selection don't trigger recompute.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 622/622 pass.
+
+### 2026-05-03 — Shipped: Relief multilayer — per-domain additive stacks
+
+**PR:** TBD (about to open after this entry).
+
+**Trigger.** Direct follow-up to PR #204 — the user's original feature request explicitly asked about multilayer ("multiple color overlaps topologizal maps"). v1 was single-domain elevation ramp; v2 is per-domain additive stacks.
+
+**What shipped.**
+- `computeReliefLayers(nodes, layout, params?)` in `graph-relief-field.ts` — groups nodes by `node.domain`, evaluates each domain's Gaussian field over a **shared world-space grid** (global bounds across all nodes; bandwidth/sigma identical per layer). Each layer's vertex colors are pre-tinted by `getDomainColor(domain) × pow(norm, 1.5)` so valleys go to black (additive zero) and peaks saturate at the domain color. Triangle indices are shared across layers — same buffer reference, no duplication.
+- New `<ReliefLayerMesh>` in `CausalDAGRelief.tsx` uses `meshBasicMaterial` + `THREE.AdditiveBlending` + `depthWrite: false` + `toneMapped: false`. Lighting is intentionally bypassed — domain colors must be unambiguous, not normal-modulated. Where two domain peaks coincide spatially, GPU adds the tints (red + cyan = magenta) — exactly the "color overlap" reading the user asked for.
+- Auto-mode-switch: 1 unique domain → original single-mesh elevation ramp (preserves v1 read for single-vertical graphs); ≥2 unique domains → multilayer. No new toggle to learn.
+- `<DomainLegend>` overlay in the top-left when multilayer is active: bullet + domain name + node count, sorted by peak descending.
+
+**Design decisions captured.**
+- *Shared layout vs per-domain layout.* Shared. Peaks across layers line up by node, so an overlap reads as "this region is critical across multiple domains" — analytically meaningful. Per-domain layouts would read as separate continents — visually pretty, analytically useless. Rejected.
+- *Additive vs alpha-blended.* Additive. Order-independent on GPU; color mixing emerges naturally; valleys disappear without depth-sorting headaches.
+- *Shared triangle index buffer.* All layers share one `Uint32Array` index buffer reference — N×N grids with identical topology. Saves N² × 6 × 4 bytes per extra layer.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — new export `computeReliefLayers` + `ReliefLayer` type + `hexToLinearRGB` helper. Existing `computeReliefField` unchanged for the single-domain path.
+- `src/components/CausalDAGRelief.tsx` — multilayer branch with `<ReliefLayerMesh>`, legend overlay, mode-switch driven by unique-domain count.
+- `src/lib/__tests__/graph-relief-field.test.ts` (new) — vitest covering: empty input, layer count = unique domains, shared bounds across layers, nodeCount per layer, peak-descending order, valley vertices = additive black, re-centering invariant.
+
+**Cost.** O(layers × cells × samples_per_layer × `exp()`) — same total work as the single-pass since `Σ samples_per_layer = total samples`. On a 4-domain × 100-node graph at 80×80 the field eval is still ~30ms. Memoized on `[graphData.nodes, layout]` — hover/scrub/orbit don't recompute.
+
+**Out of scope (deliberately).**
+- *Per-layer Y-stacking.* Not needed: additive blending with `depthWrite: false` makes every fragment additive into the framebuffer regardless of depth, so two layers at the same Y read correctly.
+- *Picking through additive layers.* Multilayer is informational; selection still happens in 2D/3D.
+- *Per-domain visibility toggles in the legend.* The existing DomainSelector card-checks already control which domains feed the field (via `useFilteredGraph`), so a second toggle would be redundant.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 666/666 pass (9 new in `graph-relief-field.test.ts`).
+
+### 2026-05-03 — Hotfix: Relief production crash on tab-switch
+
+**Trigger.** Right after PR #210 merged, user reported a Next.js "Application error: a client-side exception has occurred" on clicking RELIEF in production. Generic top-level error fallback — no console access from this session, so the diagnosis was forced to be remote.
+
+**Working theory (most-to-least likely).**
+1. **Static import of `getDomainColor` from `graph-data.ts`** in `graph-relief-field.ts`. `graph-data.ts` is the 2,920-line MAIN_GRAPH module and is intentionally split out via the `import("@/lib/graph-data")` dynamic import in `page.tsx` (item #6 in the bundle plan). My static import pulled it into the Relief chunk, defeating the split and creating two competing init paths for the same constant. Production chunk loaders handle this less gracefully than dev's webpack runtime.
+2. **NaN/Infinity propagation through the heightfield.** A single non-finite `composite` (or non-finite `p.x`/`p.y` from a degenerate layout) corrupts `peak`, then `inv = 1/peak`, then every `norm`, and finally every Float32 in the colors/positions buffers. WebGL upload of a buffer full of NaN doesn't always throw cleanly — sometimes it's "INVALID_OPERATION" on first draw, sometimes silent black, sometimes a renderer abort.
+3. **No error boundary** around the Relief Canvas, so any render-time throw inside r3f surfaces as a top-level Next.js fault and tears down the whole app instead of just the Relief pane.
+
+**Fix shipped.**
+- **Inlined `DOMAIN_COLOR_MAP`** in `graph-relief-field.ts`. Removed the static import of `getDomainColor` from `graph-data.ts` entirely. The map is now a local constant; the Relief chunk no longer depends on `graph-data.ts`. Note left in the file: keep in sync with `getDomainColor` if either changes.
+- **Defensive guards in both field functions.** Skip nodes whose layout position is non-finite. Coerce a non-finite `omegaFragility?.composite` to 0. Coerce a missing/empty `domain` string to `"Unknown"`. In the second pass, clamp `norm` to `[0, 1]` and bail to 0 on non-finite — so the GPU upload is always sane Float32.
+- **Empty-buffer guard in mesh components.** `<ReliefMesh>` and `<ReliefLayerMesh>` now early-return `null` when `field.positions.length === 0` and skip the `setAttribute`/`setIndex` calls — `THREE.BufferAttribute(empty, 3)` was the most plausible direct throw point.
+- **Removed `computeVertexNormals()`** from `<ReliefLayerMesh>` — `meshBasicMaterial` doesn't use lighting, so normals were wasted work and one less thing to fail on.
+- **`<ReliefErrorBoundary>` class component** wraps the whole Relief view. A render error inside now logs to the console and shows a small in-pane "RELIEF VIEW UNAVAILABLE" fallback; the rest of the app stays interactive. Cheap belt-and-braces — should be the last line of defence regardless of which of the above was the actual culprit.
+
+**Out of scope (deliberate).** Changing chunking config in `next.config.ts` to force the desired split — too broad. The inline copy of the color map is sufficient and decouples Relief from graph-data forever.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 673/673 pass.
+
+**Files touched.**
+- `src/lib/graph-relief-field.ts` (+ ~50 / − 4) — inlined color map, defensive sample/norm guards.
+- `src/components/CausalDAGRelief.tsx` (+ ~50 / − 5) — error boundary, empty-buffer guards, removed redundant normal compute.
+- `docs/sessions/rendering-perf.md` — this entry.
+
 ### 2026-05-03 — Next up
 
-- TBD — open for direction. Two remaining of the original three-way split: map orb batching (#3), or the deferred 3D follow-ups (Canvas onPointerMove throttle / hoist).
+- Verify hotfix lands the Relief view in production. If still broken, the user's browser console output will localise it (the new Error Boundary prints `[Relief view] render error: ...` instead of a top-level fault). If verified, remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

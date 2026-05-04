@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import {
@@ -94,6 +94,24 @@ export default function SystemCopilot() {
   const computeModel = claudeModel;
 
   const [input, setInput] = useState("");
+  // ─── Node-name autocomplete state ────────────────────────────
+  // As the user types, we look at the current "word" (text from the last
+  // whitespace before the cursor up to the cursor) and surface matching
+  // graph node labels in a dropdown above the input. Tab / Enter / click
+  // inserts; Esc dismisses until the next keystroke; arrow keys navigate.
+  const [mention, setMention] = useState<{
+    active: boolean;
+    /** Lowercase query used to filter nodes. */
+    query: string;
+    /** Index in `input` where the current word starts (used to splice the
+     *  selected label back in). */
+    wordStart: number;
+    /** Length of the current word (before insertion replaces it). */
+    wordLen: number;
+    /** Highlighted suggestion in the dropdown. */
+    selectedIdx: number;
+  }>({ active: false, query: "", wordStart: 0, wordLen: 0, selectedIdx: 0 });
+  const inputRef = useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDatasets, setShowDatasets] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
@@ -587,6 +605,116 @@ export default function SystemCopilot() {
     }
 
     setInput("");
+    setMention((m) => ({ ...m, active: false }));
+  };
+
+  // ─── Node-name autocomplete: matches + handlers ────────────────
+  const MAX_MENTION_RESULTS = 8;
+  const MIN_QUERY_LEN = 2;
+
+  /** Score a node against the query: substring of full label > substring of
+   *  short label > prefix match > anywhere. Lower is better. We only show
+   *  up to MAX_MENTION_RESULTS, sorted ascending by score. */
+  const mentionMatches = useMemo(() => {
+    if (!mention.active || mention.query.length < MIN_QUERY_LEN) return [];
+    const q = mention.query.toLowerCase();
+    const nodes = graphData.nodes;
+    type Scored = { node: typeof nodes[number]; score: number };
+    const scored: Scored[] = [];
+    for (const node of nodes) {
+      const label = node.label.toLowerCase();
+      const short = (node.shortLabel ?? "").toLowerCase();
+      let score = Infinity;
+      if (label.startsWith(q)) score = 0;
+      else if (short.startsWith(q)) score = 1;
+      else if (label.includes(q)) score = 2;
+      else if (short && short.includes(q)) score = 3;
+      if (score < Infinity) scored.push({ node, score });
+    }
+    scored.sort((a, b) => a.score - b.score || a.node.label.localeCompare(b.node.label));
+    return scored.slice(0, MAX_MENTION_RESULTS).map((s) => s.node);
+  }, [mention.active, mention.query, graphData]);
+
+  /** Re-derive mention state from the input value + cursor position. Called
+   *  on every change. The "current word" is text from the last whitespace
+   *  before the cursor (exclusive) to the cursor. We only activate when the
+   *  word is at least MIN_QUERY_LEN characters; this keeps the dropdown
+   *  silent during normal English typing where short stop-words ("is",
+   *  "to") wouldn't match anything anyway. */
+  const updateMention = useCallback((value: string, cursor: number) => {
+    const upToCursor = value.slice(0, cursor);
+    // Find the last whitespace before the cursor; current word starts after it.
+    const wsMatch = /\s\S*$/.exec(upToCursor);
+    const wordStart = wsMatch ? wsMatch.index + 1 : 0;
+    const word = value.slice(wordStart, cursor);
+    if (word.length >= MIN_QUERY_LEN) {
+      setMention({
+        active: true,
+        query: word,
+        wordStart,
+        wordLen: word.length,
+        selectedIdx: 0,
+      });
+    } else {
+      setMention((m) => (m.active ? { ...m, active: false } : m));
+    }
+  }, []);
+
+  /** Splice the chosen node's label into the input where the user was
+   *  typing the partial. Adds a trailing space if the next char isn't
+   *  already whitespace (so the cursor lands ready to keep typing). */
+  const insertMention = useCallback(
+    (label: string) => {
+      const before = input.slice(0, mention.wordStart);
+      const after = input.slice(mention.wordStart + mention.wordLen);
+      const sep = after === "" || after.startsWith(" ") ? "" : " ";
+      const next = before + label + sep + after;
+      setInput(next);
+      setMention((m) => ({ ...m, active: false }));
+      const newCursor = (before + label + sep).length;
+      // Restore focus + place cursor right after the inserted label so the
+      // user can keep typing without re-clicking.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(newCursor, newCursor);
+      });
+    },
+    [input, mention.wordStart, mention.wordLen],
+  );
+
+  // Not memoized: the key handler reads handleSubmit + mention state on
+  // every render, so memoizing it just adds noise without saving work.
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Autocomplete navigation takes priority when the dropdown is open.
+    if (mention.active && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMention((m) => ({
+          ...m,
+          selectedIdx: (m.selectedIdx + 1) % mentionMatches.length,
+        }));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMention((m) => ({
+          ...m,
+          selectedIdx: (m.selectedIdx - 1 + mentionMatches.length) % mentionMatches.length,
+        }));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[mention.selectedIdx].label);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention((m) => ({ ...m, active: false }));
+        return;
+      }
+    }
+    if (e.key === "Enter") handleSubmit();
   };
 
   const selectedNodeData = selectedNode
@@ -959,16 +1087,77 @@ export default function SystemCopilot() {
       {/* Input */}
       <div className="px-3 py-2 border-t border-border">
         <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            disabled={isLlmStreaming}
-            className="flex-1 bg-surface-elevated font-mono text-[11px] text-foreground outline-none px-2.5 py-1.5 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors disabled:opacity-40"
-            placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
-            spellCheck={false}
-          />
+          <div className="flex-1 relative">
+            {/* Node-name autocomplete dropdown — sits above the input
+                because the input is at the bottom of a tall sidebar; a
+                downward popup would clip off-viewport. */}
+            {mention.active && mentionMatches.length > 0 && (
+              <div
+                className="absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded border border-accent-cyan/30 bg-surface-elevated shadow-2xl z-50"
+                role="listbox"
+                aria-label="Node name suggestions"
+              >
+                <div className="px-2 py-1 border-b border-border/50 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/70">
+                  {mentionMatches.length} {mentionMatches.length === 1 ? "MATCH" : "MATCHES"} · ↑↓ NAV · ⏎ INSERT · ESC DISMISS
+                </div>
+                {mentionMatches.map((node, i) => {
+                  const isActive = i === mention.selectedIdx;
+                  return (
+                    <button
+                      key={node.id}
+                      type="button"
+                      // mousedown fires before the input's blur, so the
+                      // dropdown isn't dismissed before the click registers.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertMention(node.label);
+                      }}
+                      onMouseEnter={() =>
+                        setMention((m) => ({ ...m, selectedIdx: i }))
+                      }
+                      className={`w-full text-left px-2 py-1.5 text-[10px] font-mono truncate transition-colors ${
+                        isActive
+                          ? "bg-accent-cyan/15 text-accent-cyan"
+                          : "text-text-muted hover:bg-white/[0.04] hover:text-foreground"
+                      }`}
+                      role="option"
+                      aria-selected={isActive}
+                      title={node.label}
+                    >
+                      {node.label}
+                      {node.shortLabel && node.shortLabel !== node.label && (
+                        <span className="text-[8px] opacity-50 ml-1">· {node.shortLabel}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => {
+                const v = e.target.value;
+                const cursor = e.target.selectionStart ?? v.length;
+                setInput(v);
+                updateMention(v, cursor);
+              }}
+              onKeyDown={handleInputKeyDown}
+              onBlur={() => {
+                // Small delay so a mousedown on a dropdown item can fire
+                // before the dropdown unmounts (mousedown does call
+                // preventDefault, but blur still fires after this hander
+                // returns; defer the close).
+                setTimeout(() => setMention((m) => ({ ...m, active: false })), 120);
+              }}
+              disabled={isLlmStreaming}
+              className="w-full bg-surface-elevated font-mono text-[11px] text-foreground outline-none px-2.5 py-1.5 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors disabled:opacity-40"
+              placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
           <button
             onClick={isListening ? stopListening : startListening}
             disabled={isLlmStreaming}

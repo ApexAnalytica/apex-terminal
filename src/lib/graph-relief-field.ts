@@ -1,6 +1,44 @@
 import type { CausalNode } from "./types";
 
 /**
+ * Per-domain color map for the multilayer Relief view. Inlined here (rather
+ * than importing `getDomainColor` from `graph-data.ts`) so this module never
+ * pulls the 2,920-line graph-data module into the Relief chunk — that module
+ * is dynamically imported elsewhere (see `page.tsx`) and a static import
+ * here would defeat the chunk split. Keep these in sync with
+ * `graph-data.ts:getDomainColor` if either changes.
+ */
+const DOMAIN_COLOR_MAP: Record<string, string> = {
+  "Saudi Aramco Energy": "#00e676",
+  "QatarEnergy LNG": "#00e5ff",
+  "QAFCO Fertilizer": "#76ff03",
+  "Ma'aden Phosphate": "#ffab00",
+  "Financial Contagion": "#ff6d00",
+  "Sovereign Risk": "#ffab00",
+  "Supply Chain Food Security": "#00e5ff",
+  "Undersea Cable Infrastructure": "#7c4dff",
+  "Macro Impact: Labor, Growth & Housing": "#40c4ff",
+  "Macro Impact: Inflation & Policy": "#ff80ab",
+  "Drone Swarms": "#ff4081",
+  "SATCOM": "#448aff",
+  "ISR Fusion": "#ea80fc",
+  "Chip Embargo": "#ff9100",
+  "Secure Compute": "#69f0ae",
+  "Kill Chain": "#ff1744",
+  "T1D Autoimmune": "#ff80ab",
+  "T1D β-cell Biology": "#40c4ff",
+  "T1D Metabolic": "#69f0ae",
+  "T1D Intervention": "#ffab00",
+  "T1D Complications": "#ff6d00",
+  "T1D VX-880": "#40c4ff",
+};
+const DEFAULT_DOMAIN_COLOR = "#5a5e72";
+
+function reliefDomainColor(domain: string): string {
+  return DOMAIN_COLOR_MAP[domain] ?? DEFAULT_DOMAIN_COLOR;
+}
+
+/**
  * Build a 2D scalar criticality field from a node layout. Each node contributes
  * a Gaussian "bump" at its position with weight = ΩF composite (0–10). The
  * resulting heightfield reads as terrain — peaks where critical nodes cluster,
@@ -35,10 +73,25 @@ export interface ReliefField {
 
 const DEFAULTS: Required<ReliefFieldParams> = {
   resolution: 80,
-  heightScale: 30,
+  // Tall enough to read as terrain rather than a pancake on a wide layout.
+  heightScale: 70,
   padding: 80,
-  sigmaFraction: 0.12,
+  // Tighter Gaussian than v1 — a quarter-extent bandwidth (0.12) smeared every
+  // node's contribution and merged peaks into one broad lump. ~6% gives local,
+  // legible mountains while still being smooth between adjacent nodes.
+  sigmaFraction: 0.06,
 };
+
+/** Power-law boost applied to each node's composite ΩF before kernel
+ *  density estimation. Linear weighting let mid-criticality nodes (3–5)
+ *  contribute too much to the total field and made high-criticality
+ *  nodes (8–10) blend in. A modest 1.5 exponent makes peaks pop without
+ *  collapsing the lower ranges entirely. */
+const WEIGHT_EXPONENT = 1.5;
+function nodeWeight(composite: number): number {
+  if (!Number.isFinite(composite) || composite <= 0) return 0;
+  return Math.pow(composite, WEIGHT_EXPONENT);
+}
 
 const EMPTY_FIELD: ReliefField = {
   positions: new Float32Array(0),
@@ -66,7 +119,9 @@ export function computeReliefField(
   for (const n of nodes) {
     const p = layout.get(n.id);
     if (!p) continue;
-    samples.push({ x: p.x, y: p.y, w: n.omegaFragility.composite });
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite ?? 0;
+    samples.push({ x: p.x, y: p.y, w: nodeWeight(composite) });
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
     if (p.y < minY) minY = p.y;
@@ -118,7 +173,10 @@ export function computeReliefField(
     for (let i = 0; i < N; i++) {
       const xWorld = minX + (i / (N - 1)) * width;
       const idx = j * N + i;
-      const norm = heights[idx] * inv;
+      const rawNorm = heights[idx] * inv;
+      const norm = Number.isFinite(rawNorm)
+        ? Math.max(0, Math.min(1, rawNorm))
+        : 0;
       const z = norm * heightScale;
 
       positions[idx * 3 + 0] = xWorld - cx;
@@ -182,4 +240,199 @@ function elevationColor(t: number): [number, number, number] {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+// ─── Multilayer (per-domain) ───────────────────────────────────────
+
+export interface ReliefLayer {
+  domain: string;
+  /** Hex string from getDomainColor — passthrough so the legend can render. */
+  colorHex: string;
+  /** Linear RGB tuple (0–1) used to tint vertex colors in the mesh. */
+  colorRGB: [number, number, number];
+  field: ReliefField;
+  /** Node count contributing to this layer — drives legend ordering. */
+  nodeCount: number;
+}
+
+/**
+ * Group nodes by `node.domain` and build one ReliefField per domain over a
+ * shared world-space grid. Shared bounds are critical: per-domain bounds would
+ * scatter the meshes into separate continents, defeating the "where do
+ * domains overlap" reading. With shared bounds, peaks across layers line up
+ * by node — a dense red+green region tells you that domain reads as
+ * critical across both vocabularies.
+ *
+ * Each layer's vertex colors are pre-tinted by domain color (multiplied by
+ * the elevation gamma) so the consumer can render with additive blending and
+ * get color-mixing where peaks overlap.
+ */
+export function computeReliefLayers(
+  nodes: Pick<CausalNode, "id" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  params: ReliefFieldParams = {},
+): ReliefLayer[] {
+  const { resolution, heightScale, padding, sigmaFraction } = {
+    ...DEFAULTS,
+    ...params,
+  };
+
+  // Pre-extract usable samples and group by domain. Compute global bounds
+  // across ALL samples so every layer evaluates over the same grid.
+  type Sample = { x: number; y: number; w: number };
+  const byDomain = new Map<string, Sample[]>();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite ?? 0;
+    const domain = typeof n.domain === "string" && n.domain.length > 0
+      ? n.domain
+      : "Unknown";
+    const sample: Sample = { x: p.x, y: p.y, w: nodeWeight(composite) };
+    const arr = byDomain.get(domain);
+    if (arr) arr.push(sample);
+    else byDomain.set(domain, [sample]);
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  if (byDomain.size === 0 || !Number.isFinite(minX)) return [];
+
+  minX -= padding; maxX += padding;
+  minY -= padding; maxY += padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const sigma = Math.max(60, Math.min(width, height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+  const N = resolution;
+  const vertCount = N * N;
+
+  // Triangle indices are identical across layers — share the buffer.
+  const cells = (N - 1) * (N - 1);
+  const indices = new Uint32Array(cells * 6);
+  {
+    let k = 0;
+    for (let j = 0; j < N - 1; j++) {
+      for (let i = 0; i < N - 1; i++) {
+        const a = j * N + i;
+        const b = j * N + i + 1;
+        const c = (j + 1) * N + i;
+        const d = (j + 1) * N + i + 1;
+        indices[k++] = a; indices[k++] = c; indices[k++] = b;
+        indices[k++] = b; indices[k++] = c; indices[k++] = d;
+      }
+    }
+  }
+
+  // Cache the X/Y grid coordinates — same for every layer.
+  const gx = new Float32Array(N);
+  const gy = new Float32Array(N);
+  for (let i = 0; i < N; i++) gx[i] = minX + (i / (N - 1)) * width;
+  for (let j = 0; j < N; j++) gy[j] = minY + (j / (N - 1)) * height;
+
+  // ─── Pass 1: evaluate every layer's height field; track GLOBAL peak ───
+  // v1 normalized each layer by its own peak, which erased cross-domain
+  // intensity differences — a sparse-but-high domain rendered the same height
+  // as a dense-but-mild one, defeating the additive-blend "where do critical
+  // domains overlap" reading. Sharing a global peak across layers preserves
+  // both the within-layer shape AND the relative cross-domain magnitude.
+  type LayerScratch = {
+    domain: string;
+    samples: Sample[];
+    heights: Float32Array;
+    peak: number;
+  };
+  const scratch: LayerScratch[] = [];
+  let globalPeak = 0;
+  for (const [domain, samples] of byDomain) {
+    const heights = new Float32Array(vertCount);
+    let peak = 0;
+    for (let j = 0; j < N; j++) {
+      const y = gy[j];
+      for (let i = 0; i < N; i++) {
+        const x = gx[i];
+        let h = 0;
+        for (const s of samples) {
+          const dx = x - s.x;
+          const dy = y - s.y;
+          h += s.w * Math.exp(-(dx * dx + dy * dy) / sigma2);
+        }
+        const idx = j * N + i;
+        heights[idx] = h;
+        if (h > peak) peak = h;
+      }
+    }
+    if (peak > globalPeak) globalPeak = peak;
+    scratch.push({ domain, samples, heights, peak });
+  }
+  const inv = globalPeak > 0 ? 1 / globalPeak : 0;
+
+  // ─── Pass 2: emit positions + per-vertex colors per layer ──────────────
+  const layers: ReliefLayer[] = [];
+  for (const { domain, samples, heights, peak } of scratch) {
+    const positions = new Float32Array(vertCount * 3);
+    const colors = new Float32Array(vertCount * 3);
+    const colorHex = reliefDomainColor(domain);
+    const colorRGB = hexToLinearRGB(colorHex);
+
+    for (let j = 0; j < N; j++) {
+      const yWorld = gy[j];
+      for (let i = 0; i < N; i++) {
+        const xWorld = gx[i];
+        const idx = j * N + i;
+        // Clamp defensively — a NaN/Infinity in `composite` propagates to
+        // `peak`/`inv`/`norm` and corrupts the GPU upload, which can crash
+        // the renderer on first draw.
+        const rawNorm = heights[idx] * inv;
+        const norm = Number.isFinite(rawNorm)
+          ? Math.max(0, Math.min(1, rawNorm))
+          : 0;
+        const z = norm * heightScale;
+
+        positions[idx * 3 + 0] = xWorld - cx;
+        positions[idx * 3 + 1] = z;
+        positions[idx * 3 + 2] = yWorld - cy;
+
+        const tint = Math.pow(norm, 1.5);
+        colors[idx * 3 + 0] = colorRGB[0] * tint;
+        colors[idx * 3 + 1] = colorRGB[1] * tint;
+        colors[idx * 3 + 2] = colorRGB[2] * tint;
+      }
+    }
+
+    layers.push({
+      domain,
+      colorHex,
+      colorRGB,
+      field: {
+        positions,
+        colors,
+        indices,
+        width,
+        height,
+        resolution: N,
+        peak,
+      },
+      nodeCount: samples.length,
+    });
+  }
+
+  // Render order: lowest peak first, highest last. With additive blending the
+  // order is mathematically irrelevant, but a stable, peak-driven order keeps
+  // the legend meaningful.
+  layers.sort((a, b) => b.field.peak - a.field.peak);
+  return layers;
+}
+
+function hexToLinearRGB(hex: string): [number, number, number] {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.slice(0, 2), 16) / 255;
+  const g = parseInt(m.slice(2, 4), 16) / 255;
+  const b = parseInt(m.slice(4, 6), 16) / 255;
+  return [r, g, b];
 }

@@ -209,11 +209,19 @@ function Player({ flowId, onClose }: PlayerProps) {
 export function DemoFlowPlayerHost() {
   const activeDemoFlowId = useApexStore((s) => s.activeDemoFlowId);
   const setActiveDemoFlowId = useApexStore((s) => s.setActiveDemoFlowId);
+  const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
   if (!activeDemoFlowId) return null;
   return (
     <Player
       flowId={activeDemoFlowId}
-      onClose={() => setActiveDemoFlowId(null)}
+      onClose={() => {
+        setActiveDemoFlowId(null);
+        // Reopen the DomainSelector so the user lands back at the picker
+        // instead of an empty canvas. Without this the Player's cleanup
+        // restores to whatever state existed pre-demo — which is empty
+        // when the user entered straight from the picker.
+        setDomainSelectorOpen(true);
+      }}
     />
   );
 }

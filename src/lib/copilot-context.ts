@@ -5,6 +5,10 @@ import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 import type { TemporalDataset } from "./temporal-data";
 import { getEventsInRange, getNodeStateAt } from "./temporal-data";
 import { DOMAIN_CARDS } from "@/components/DomainSelector";
+import {
+  renderEngineStateText,
+  summarizeEngineState,
+} from "./engine-state-summary";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -94,6 +98,15 @@ export function serializeGraphContext(
   lines.push("SMART FILTERING: When a user describes their role, strategy, or context (e.g., 'I am a CDS trader'),");
   lines.push("determine which domains are most relevant and emit <<<ACTION:set_domains:id1,id2,...>>>.");
   lines.push("Then explain WHY those domains matter for their specific use case and what causal paths to watch.");
+  lines.push("");
+
+  // Engine state snapshot — at-a-glance view of feeds + Tarski + pillar
+  // overlays so the model sees what the engines are doing without
+  // trawling the per-node sections below. Helpful when the user asks
+  // "what's flowing right now" or "what's the validation state."
+  lines.push("=== ENGINE STATE SNAPSHOT ===");
+  const engineState = summarizeEngineState(graph, opts.tarskiReport ?? null);
+  lines.push(renderEngineStateText(engineState));
   lines.push("");
 
   // Graph metadata

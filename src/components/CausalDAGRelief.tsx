@@ -2,14 +2,16 @@
 
 import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { useApexStore } from "@/stores/useApexStore";
 import { compute2DForceLayout } from "@/lib/graph-layout-2d";
 import {
+  computeNodeAnchors,
   computeReliefField,
   computeReliefLayers,
+  type NodeAnchor,
   type ReliefField,
   type ReliefLayer,
 } from "@/lib/graph-relief-field";
@@ -158,13 +160,73 @@ function CameraSetup({
   useEffect(() => {
     if (framedRef.current) return;
     if (!enabled) return;
-    const dist = Math.max(width, height, 200) * 0.65;
-    camera.position.set(dist * 0.85, dist * 0.55, dist * 0.85);
+    // Lower Y multiplier (0.35 vs 0.55) drops the camera closer to the
+    // horizon, giving the mesh actual relief silhouette instead of a
+    // top-down "smudge". Keep X/Z symmetric so the initial frame is a
+    // 45° azimuth.
+    const dist = Math.max(width, height, 200) * 0.7;
+    camera.position.set(dist * 0.95, dist * 0.35, dist * 0.95);
     camera.lookAt(0, 0, 0);
     framedRef.current = true;
   }, [camera, width, height, enabled]);
 
   return null;
+}
+
+/**
+ * Reference grid laid flat at y=−2, sized to the field bounds. Without it the
+ * mesh floats in featureless black and there's no sense of scale or which
+ * direction is which. The slight Y-offset keeps it from z-fighting the mesh
+ * valleys.
+ */
+function ReliefGrid({ width, height }: { width: number; height: number }) {
+  const size = Math.max(width, height) * 1.2;
+  // Aim for ~16 visible cells across the larger dimension regardless of
+  // graph size — same density read at 200-unit graphs and 2000-unit graphs.
+  const divisions = 16;
+  return (
+    <gridHelper
+      args={[size, divisions, "#1a1d2b", "#0e1018"]}
+      position={[0, -2, 0]}
+    />
+  );
+}
+
+function NodeLabels({ anchors }: { anchors: NodeAnchor[] }) {
+  if (anchors.length === 0) return null;
+  return (
+    <>
+      {anchors.map((a) => (
+        <group key={a.id} position={[a.x, a.y + 14, a.z]}>
+          {/* Vertical tick from peak surface to label so the label has a
+              clear visual anchor — without this the labels float and you
+              can't tell which peak owns which name. */}
+          <mesh position={[0, -7, 0]}>
+            <cylinderGeometry args={[0.6, 0.6, 14, 6]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.35} />
+          </mesh>
+          <Html
+            center
+            distanceFactor={420}
+            zIndexRange={[10, 0]}
+            style={{ pointerEvents: "none" }}
+          >
+            <div
+              className="px-1.5 py-0.5 rounded bg-surface-elevated/90 border border-border whitespace-nowrap"
+              style={{ transform: "translateY(-50%)" }}
+            >
+              <div className="text-[8px] font-mono text-foreground leading-tight">
+                {a.label}
+              </div>
+              <div className="text-[7px] font-mono text-text-muted leading-tight">
+                Ω {a.composite.toFixed(1)}
+              </div>
+            </div>
+          </Html>
+        </group>
+      ))}
+    </>
+  );
 }
 
 function DomainLegend({ layers }: { layers: ReliefLayer[] }) {
@@ -337,6 +399,16 @@ function CausalDAGReliefInner() {
     ? layers[0]?.field
     : singleField ?? undefined;
 
+  // Top-K node anchors for floating labels above the most fragile peaks. We
+  // sample against the highest-peak layer in multilayer mode (or the single
+  // field) so the heights align with the dominant terrain the user sees.
+  const anchors = useMemo<NodeAnchor[]>(() => {
+    if (isEmpty) return [];
+    const anchorField = multilayer ? layers[0]?.field : singleField;
+    if (!anchorField) return [];
+    return computeNodeAnchors(graphData.nodes, layout, anchorField, {}, 8);
+  }, [isEmpty, multilayer, layers, singleField, graphData.nodes, layout]);
+
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <CanvasWatermark />
@@ -368,6 +440,9 @@ function CausalDAGReliefInner() {
           color="#00e5ff"
         />
 
+        {!isEmpty && frameDims && (
+          <ReliefGrid width={frameDims.width} height={frameDims.height} />
+        )}
         {!isEmpty && !multilayer && singleField && (
           <ReliefMesh field={singleField} />
         )}
@@ -375,6 +450,7 @@ function CausalDAGReliefInner() {
           <ReliefLayerMesh key={l.domain} layer={l} />
         ))}
         {!isEmpty && <SelectionMarkers layout={layout} />}
+        {!isEmpty && <NodeLabels anchors={anchors} />}
         {!isEmpty && frameDims && (
           <CameraSetup
             width={frameDims.width}

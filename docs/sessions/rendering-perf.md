@@ -266,9 +266,33 @@ Remaining map-view perf opportunity if ever needed: the per-frame particle updat
 - `src/components/CausalDAGRelief.tsx` (+ ~50 / − 5) — error boundary, empty-buffer guards, removed redundant normal compute.
 - `docs/sessions/rendering-perf.md` — this entry.
 
+### 2026-05-03 — Shipped: Relief readability pass — peakier terrain, tilted camera, grid, top-K node labels
+
+**PR:** TBD (about to open).
+
+**Trigger.** User said the live Relief view "kinda just looks like a flat map" — the multi-domain mesh was reading as one soft mound instead of distinguishable peaks, the camera was too top-down to see silhouette, and there was no way to identify *which* nodes the ridges belonged to. Asked for tilt + axes/grid + node labels.
+
+**What shipped.**
+- **Sharper terrain.** `heightScale 30 → 90`, `sigmaFraction 0.12 → 0.06` (tighter Gaussian — peaks no longer smear into one another), and a new `heightGamma: 1.35` knob that powers the normalised elevation before mapping to vertex Y. Combined with the upstream `nodeWeight()` power-1.5 boost (PR #218 territory), peaks now read as discrete ridges with flat valleys instead of a single dome. `elevationColor()` still keys off the linear `norm` so the legend ramp stays readable.
+- **Tilted initial camera.** `dist * 0.55` Y-multiplier dropped to `0.35`, giving a ~20° elevation angle instead of a half-overhead view. The mesh now has actual silhouette on first frame; OrbitControls take over from there.
+- **`<ReliefGrid>`.** Flat `gridHelper` at `y = -2`, sized to 1.2 × the bounds and divided into 16 cells. Two-tone colors (`#1a1d2b` / `#0e1018`) sit just-visible against the `#050508` background — the mesh is no longer floating in featureless black.
+- **Top-K node labels.** New `computeNodeAnchors(nodes, layout, field, params, K=8)` in `graph-relief-field.ts` samples the field at each top-K node's position and returns mesh-local `(x, z, y)` so the component can drop drei `<Html>` cards above the highest peaks. Each label shows `{node.label}` + `Ω X.X` and a thin vertical tick down to the peak surface so the visual anchor is unambiguous. Defaults to 8 labels — enough to identify the dominant ridges, not so many that the canvas turns into label soup.
+- **`ReliefField` exposes `cx, cy`.** The world-space recentring origin used by both compute functions. Lets `computeNodeAnchors` (and any future picking work) convert raw layout coords to mesh-local without re-deriving the bounds.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `heightGamma` param + `cx/cy` field exports, height-gamma applied in both compute functions, new `computeNodeAnchors` + `NodeAnchor` exports.
+- `src/components/CausalDAGRelief.tsx` — `<ReliefGrid>`, `<NodeLabels>`, tilted `<CameraSetup>`, `Html` import from drei, anchors useMemo against the dominant peak field.
+- `src/lib/__tests__/graph-relief-field.test.ts` — added 4 tests: `cx/cy` exposed correctly; anchors top-K + sorted; anchors recentred to mesh-local; anchors empty on empty field.
+
+**Cost.** Anchor sampling is O(K × N) per recompute (K=8, N=node count). On a 200-node graph that's ~1,600 `exp()` calls — under 1ms. Memoised on `[graphData.nodes, layout]` so hover/scrub/orbit don't trigger.
+
+**Out of scope (deliberately).** Per-layer Y-stacking (option B in the user's pick) — the sharpened terrain alone already separates peaks readably, and stacking would compete with the additive color-mixing read. Picking through the mesh — still a future PR.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 696/696 pass (4 new tests).
+
 ### 2026-05-03 — Next up
 
-- Verify hotfix lands the Relief view in production. If still broken, the user's browser console output will localise it (the new Error Boundary prints `[Relief view] render error: ...` instead of a top-level fault). If verified, remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify the readability pass on production (hard-refresh, click RELIEF, expect tilted camera, top-8 node labels above peaks, grid floor, sharper ridges). If labels are too dense or sparse on real data, the `topK` constant in `CausalDAGReliefInner` is one number to tune. Remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip, per-layer Y-stacking (option B). Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

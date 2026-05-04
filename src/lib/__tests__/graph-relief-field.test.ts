@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeNodeAnchors,
   computeReliefField,
   computeReliefLayers,
 } from "../graph-relief-field";
@@ -156,5 +157,61 @@ describe("computeReliefLayers", () => {
     const empty = new Map<string, { x: number; y: number }>();
     const layers = computeReliefLayers(nodes, empty);
     expect(layers).toEqual([]);
+  });
+
+  it("ReliefField exposes the cx/cy world center used for recentering", () => {
+    const nodes = [
+      makeNode("a", "X", 5),
+      makeNode("b", "X", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 100, y: 200 }],
+      ["b", { x: 200, y: 400 }],
+    ]);
+    const field = computeReliefField(nodes, layout, { resolution: 8 });
+    // cx/cy should be the midpoint of the padded bounds — the same recentering
+    // origin the mesh uses, so labels can convert (layout x,y) → mesh-local.
+    expect(field.cx).toBeCloseTo(150, 0);
+    expect(field.cy).toBeCloseTo(300, 0);
+  });
+});
+
+describe("computeNodeAnchors", () => {
+  it("returns at most topK anchors, sorted by composite descending", () => {
+    const nodes = [
+      makeNode("low", "X", 1),
+      makeNode("mid", "X", 5),
+      makeNode("high", "X", 9),
+      makeNode("higher", "X", 9.5),
+    ];
+    const layout = new Map([
+      ["low", { x: 0, y: 0 }],
+      ["mid", { x: 100, y: 0 }],
+      ["high", { x: 0, y: 100 }],
+      ["higher", { x: 100, y: 100 }],
+    ]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    const anchors = computeNodeAnchors(nodes, layout, field, {}, 2);
+    expect(anchors.length).toBe(2);
+    expect(anchors[0].id).toBe("higher");
+    expect(anchors[1].id).toBe("high");
+  });
+
+  it("anchors are recentered to mesh-local coords (matches field.cx/cy)", () => {
+    const nodes = [makeNode("a", "X", 8)];
+    const layout = new Map([["a", { x: 500, y: 300 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    const [anchor] = computeNodeAnchors(nodes, layout, field, {}, 1);
+    expect(anchor.x).toBeCloseTo(500 - field.cx, 1);
+    expect(anchor.z).toBeCloseTo(300 - field.cy, 1);
+    expect(anchor.y).toBeGreaterThan(0);
+  });
+
+  it("returns [] when the field is empty", () => {
+    const nodes = [makeNode("a", "X", 5)];
+    const empty = new Map<string, { x: number; y: number }>();
+    const field = computeReliefField(nodes, empty);
+    const anchors = computeNodeAnchors(nodes, empty, field);
+    expect(anchors).toEqual([]);
   });
 });

@@ -74,7 +74,7 @@ export default async function DomainPage({
   const d = DOMAINS[slug];
   if (!d) notFound();
   const c = colorMap[d.color];
-  const isStub = d.personas.length === 0;
+  const isStub = d.signals.length === 0;
 
   return (
     <>

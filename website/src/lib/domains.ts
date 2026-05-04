@@ -70,6 +70,7 @@ function stub(args: {
   color: Color;
   tagline: string;
   problemHint: string;
+  personas?: Persona[];
 }): DomainContent {
   return {
     slug: args.slug,
@@ -77,13 +78,13 @@ function stub(args: {
     color: args.color,
     tagline: args.tagline,
     problem: [
-      `${args.problemHint} The ${args.name.toLowerCase()} domain page is being written — full problem framing, persona list, and sample readouts are coming next.`,
+      `${args.problemHint} The ${args.name.toLowerCase()} domain page is being written — full problem framing, signal lists, and sample readouts are coming next.`,
       "If you have specific scenarios you want covered first, tell us and we'll prioritize.",
     ],
     mapping: [
       `Manifold treats ${args.name.toLowerCase()} as a causal graph: each node is an entity that produces or consumes capability, each edge encodes a real dependency. Pillar scores (I, R, J, C, T) and per-node ΩF are computed at import.`,
     ],
-    personas: [],
+    personas: args.personas ?? [],
     engines: ["SPIRTES", "PARETO"],
     pillars: ["I", "C", "T"],
     signals: [],
@@ -152,6 +153,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Power, water, ports, telecom, and rail — where one node is the system.",
     problemHint:
       "Infrastructure cascades follow physics, not procurement. A single substation, a single cable landing, a single rail interchange can take a region offline.",
+    personas: [
+      {
+        title: "Operations Planner · ISO / RTO",
+        pain: "Regulatory N-1 contingency analysis ignores the real cascade graph. The substation, transformer bank, or HV interconnection that decides regional reliability is buried in operating data, not surfaced as a structural risk.",
+        gain: "ΩF score per node on the live grid graph. Counterfactual outage simulation across substations, lines, and interconnections. Decisive-node ranking under contingency stacks.",
+      },
+      {
+        title: "CAT Underwriter · Specialty Reinsurance",
+        pain: "Property-cat models price physical asset damage. They miss the cascade — the cable landing that takes telecom and finance offline, the port that backstops half the regional supply chain.",
+        gain: "Network-aware exposure across the insured graph. Cascade load and tail-depth on the lines you actually wrote.",
+      },
+      {
+        title: "Government · Critical Infrastructure Protection",
+        pain: "Strategic-asset lists rank by size or visibility. The decisive nodes — the ones whose failure cascades — aren't the same set, and aren't ranked anywhere.",
+        gain: "I + C ranking on the national infrastructure graph, configurable per strategic objective (continuity of government, defense logistics, financial settlement).",
+      },
+    ],
   }),
 
   economic: stub({
@@ -161,6 +179,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Trade flows, sectoral GDP, and the exposure hidden in macro aggregates.",
     problemHint:
       "Macro aggregates smear over the structural fragility underneath. A sector-weighted view masks which nodes carry the load.",
+    personas: [
+      {
+        title: "Macro Strategist · Multi-Strategy Hedge Fund",
+        pain: "GDP and PMI prints lag the cascade by months. The structural fragility shows in the data only after positions have already moved.",
+        gain: "Cascade simulation on trade-flow and sectoral graphs. Leading ΩSF / ΩSX signal before it lands in the prints.",
+      },
+      {
+        title: "Sovereign Wealth · Risk & Allocation",
+        pain: "Index-weighted exposure isn't the same as structural exposure. The nodes that carry sector-level fragility don't show up in standard factor decompositions.",
+        gain: "Per-sector ΩF and node-level fragility under named shock scenarios. Defensible structural-risk view at the portfolio level.",
+      },
+      {
+        title: "Treasury / Ministry of Finance · Macro Office",
+        pain: "Budget planning prices revenue scenarios. Exposure to a single supply or trade shock is footnoted, not modeled across the national economic graph.",
+        gain: "ΩSF on the national economic graph, scenario library spanning trade, sectoral, and external-balance shocks.",
+      },
+    ],
   }),
 
   finance: stub({
@@ -170,6 +205,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Banks, settlement, and sovereign credit — interconnection as a risk axis.",
     problemHint:
       "Banking and settlement networks survive on assumed liquidity that disappears under stress. Bilateral exposure data is incomplete; structural exposure isn't priced.",
+    personas: [
+      {
+        title: "Counterparty Risk · Tier-1 Bank",
+        pain: "Bilateral exposure is monitored counterparty-by-counterparty. The network amplification — second-order exposure through the rest of the book — is hard to size and never priced into limits.",
+        gain: "Graph-based exposure on lending, derivatives, and settlement networks. ΩF per counterparty including indirect path risk.",
+      },
+      {
+        title: "Financial Stability · Central Bank",
+        pain: "Standard stress tests run firm-by-firm. They miss the network-amplification term that is the actual mechanism of past crises.",
+        gain: "Cascade simulation across the supervised graph. Scenario library mapped to identifiable systemic-stress mechanics.",
+      },
+      {
+        title: "Sovereign Credit · Buy-Side",
+        pain: "Country ratings smear over real fragility. A single political event can re-price an entire sovereign curve overnight, and the structural setup wasn't visible beforehand.",
+        gain: "Jurisdictional hazard + cascade load on the sovereign-finance subgraph. Counterfactual on named regime-change scenarios.",
+      },
+    ],
   }),
 
   energy: stub({
@@ -179,6 +231,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Grid, oil, gas, and transition tech — the supply curve is a graph.",
     problemHint:
       "Energy systems span physical infrastructure, commodity flows, and policy regimes. The fragility points sit at the seams.",
+    personas: [
+      {
+        title: "Risk & Scenarios · Integrated Energy Major",
+        pain: "Capital allocation across upstream, midstream, and transition assets is scenario-driven, but the scenarios are hand-built each cycle and don't compose into a coherent fragility view.",
+        gain: "Configurable causal graph spanning the asset book. Tail-depth simulation under joint commodity, regulatory, and infrastructure shocks.",
+      },
+      {
+        title: "Power Generation Portfolio Manager",
+        pain: "Fuel risk, grid risk, and offtake risk are each modeled in isolation. The interactions — the joint shock that hits all three — aren't priced into capital decisions.",
+        gain: "Integrated graph view; ΩF per asset under joint shocks. Counterfactual on dispatch and offtake-counterparty failure.",
+      },
+      {
+        title: "Government · Energy Security Office",
+        pain: "Vulnerability assessments rarely cross sector boundaries. Strategic-stockpile sizing and decisive-node identification depend on a graph the office doesn't have.",
+        gain: "Cross-sector graph. Irreplaceability + cascade ranking. Scenario simulation over import-cutoff and infrastructure-loss events.",
+      },
+    ],
   }),
 
   geopolitical: stub({
@@ -188,6 +257,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Sanctions, conflict, and export controls — fragility under regime change.",
     problemHint:
       "Geopolitical risk is usually narrative, rarely structural. A single export-control update can re-price a whole supply chain overnight.",
+    personas: [
+      {
+        title: "Global Head of Sanctions · Multinational",
+        pain: "Every export-control update means a manual scramble across the operating footprint. The structural exposure — which products, which sites, which counterparties are decisive — isn't pre-computed anywhere.",
+        gain: "Pre-computed jurisdictional hazard across the operating graph. Counterfactual on the actual graph for any new control regime.",
+      },
+      {
+        title: "Coercion-Vulnerability Cell · National Security",
+        pain: "Lists of strategic dependencies aren't ranked by leverage. Adversary coercion plans are built around named bottlenecks; defensive analysis often isn't.",
+        gain: "J + C ranking on the relevant subgraph. Quantified leverage by node, by adversary, by named scenario.",
+      },
+      {
+        title: "Country Risk · Buy-Side",
+        pain: "Country narrative ≠ exposure. The political-risk premium is set off vibes; structural exposure to specific regime-change scenarios isn't priced separately.",
+        gain: "Structural fragility under named scenarios. Tail-depth on jurisdictional-hazard concentration in the holdings graph.",
+      },
+    ],
   }),
 
   science: stub({
@@ -197,6 +283,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     tagline: "Research infra, instrumentation, and talent — discovery as a fragile network.",
     problemHint:
       "Scientific output depends on a thin layer of unique instruments, facilities, and people. Most of these dependencies are invisible to funders and program managers.",
+    personas: [
+      {
+        title: "Research VP · R1 University or National Lab",
+        pain: "Institutional output depends on a thin layer of unique instruments and people, and that dependency isn't tracked. When a key facility goes dark or a key PI leaves, the cascade isn't visible until grants stall.",
+        gain: "ΩF across the research graph; restoration latency on key nodes. Defensible succession and capex case at the institutional level.",
+      },
+      {
+        title: "Program Manager · NSF / DOE / ARPA-H",
+        pain: "Portfolio review is qualitative. The structural-fragility view — which instruments, which collaborations, which talent pipelines are decisive for the portfolio's deliverables — is invisible.",
+        gain: "Per-portfolio ΩF. Identification of decisive instruments, facilities, and people. Defensible reallocation case.",
+      },
+      {
+        title: "R&D Strategy · Biotech / Pharma",
+        pain: "Research bets assume inputs are fungible. Often they aren't — a single instrument supplier, a single CRO, a single specialist team can stall a program for a year.",
+        gain: "Graph view of the research supply chain. Cascade simulation on supplier and CRO failure across the pipeline.",
+      },
+    ],
   }),
 };
 

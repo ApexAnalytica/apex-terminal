@@ -61,7 +61,7 @@ export default function DomainsIndexPage() {
         <div className="grid gap-4 md:gap-5 md:grid-cols-2 lg:grid-cols-3">
           {domains.map((d) => {
             const c = colorMap[d.color];
-            const isStub = d.personas.length === 0;
+            const isStub = d.signals.length === 0;
             return (
               <Link
                 key={d.slug}

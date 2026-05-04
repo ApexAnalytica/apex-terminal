@@ -26,6 +26,7 @@ interface PlayerProps {
 interface PriorState {
   selectedDomains: string[];
   graphData: CausalGraph;
+  selectedNodes: string[];
 }
 
 function Player({ flowId, onClose }: PlayerProps) {
@@ -34,6 +35,7 @@ function Player({ flowId, onClose }: PlayerProps) {
   const removeShock = useApexStore((s) => s.removeShock);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
   const setGraphData = useApexStore((s) => s.setGraphData);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const startReplay = useApexStore((s) => s.startReplay);
   const stopReplay = useApexStore((s) => s.stopReplay);
   const priorRef = useRef<PriorState | null>(null);
@@ -48,6 +50,7 @@ function Player({ flowId, onClose }: PlayerProps) {
     priorRef.current = {
       selectedDomains: [...store.selectedDomains],
       graphData: store.graphData,
+      selectedNodes: [...store.selectedNodes],
     };
     // Load the graph data so useFilteredGraph has nodes/edges to filter
     // (the canvas was empty without this — DomainSelector's "Initialize"
@@ -58,16 +61,32 @@ function Player({ flowId, onClose }: PlayerProps) {
     setSelectedDomains(flow.domainIds);
     return () => {
       // Cleanup on unmount: stop the cascade replay, clear injected
-      // shocks, restore graph state.
+      // shocks, restore graph state + prior canvas selection.
       stopReplay();
       for (const id of injectedShockIdsRef.current) removeShock(id);
       injectedShockIdsRef.current = [];
       if (priorRef.current) {
         setGraphData(priorRef.current.graphData);
         setSelectedDomains(priorRef.current.selectedDomains);
+        setSelectedNodes(priorRef.current.selectedNodes);
       }
     };
-  }, [flow, setSelectedDomains, setGraphData, removeShock, stopReplay]);
+  }, [flow, setSelectedDomains, setGraphData, setSelectedNodes, removeShock, stopReplay]);
+
+  // ── Drive the canvas highlight from the active step's highlightNodeIds ──
+  // Without this, clicking Next changed the narrative card text but the
+  // canvas itself sat inert (highlightNodeIds was rendered only as a
+  // "Watching:" comma list inside the narrative card). Now the same multi-
+  // select pipeline that the domain legend / shift-drag marquee use lights
+  // up the watched nodes — 3D rings + camera-fit, 2D dims everything else,
+  // RELIEF raises cyan obelisks. An empty / missing field clears the
+  // selection so narrative-only steps return the camera to the full-graph
+  // fit instead of holding on the previous step's nodes.
+  useEffect(() => {
+    if (!flow) return;
+    const step = flow.steps[stepIdx];
+    setSelectedNodes(step?.highlightNodeIds ?? []);
+  }, [flow, stepIdx, setSelectedNodes]);
 
   // ── Inject the step's shock when the step becomes active ──
   // After each shock fires we kick startReplay() so the cascade simulator

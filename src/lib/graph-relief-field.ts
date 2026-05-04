@@ -58,6 +58,13 @@ export interface ReliefFieldParams {
   padding?: number;
   /** Gaussian bandwidth as a fraction of the smaller bounds dimension. */
   sigmaFraction?: number;
+  /**
+   * Power applied to normalized elevation before mapping to vertex Y.
+   * `> 1` flattens valleys and raises peaks (visually more "peaky"); `1` is
+   * linear; `< 1` lifts mid-elevations. Default 1.4 → distinct peaks instead
+   * of the soft-mound look the linear mapping produced on multi-domain graphs.
+   */
+  heightGamma?: number;
 }
 
 export interface ReliefField {
@@ -69,17 +76,30 @@ export interface ReliefField {
   resolution: number;
   /** Maximum raw field value before normalization — useful for legends. */
   peak: number;
+  /**
+   * World-space center the mesh was recentered around. Subtract these from a
+   * raw layout (x, y) to convert to mesh-local coordinates — needed by the
+   * component to place HTML labels above the right node peaks.
+   */
+  cx: number;
+  cy: number;
 }
 
 const DEFAULTS: Required<ReliefFieldParams> = {
   resolution: 80,
   // Tall enough to read as terrain rather than a pancake on a wide layout.
-  heightScale: 70,
+  // The combined effect of nodeWeight power-boost + heightGamma already
+  // makes peaks pop, so the linear scale stays modest.
+  heightScale: 90,
   padding: 80,
   // Tighter Gaussian than v1 — a quarter-extent bandwidth (0.12) smeared every
   // node's contribution and merged peaks into one broad lump. ~6% gives local,
   // legible mountains while still being smooth between adjacent nodes.
   sigmaFraction: 0.06,
+  // Power applied to normalised height. > 1 flattens valleys and sharpens
+  // peaks. Combined with the WEIGHT_EXPONENT below, makes the multi-domain
+  // mesh read as discrete ridges instead of one soft mound.
+  heightGamma: 1.35,
 };
 
 /** Power-law boost applied to each node's composite ΩF before kernel
@@ -101,6 +121,8 @@ const EMPTY_FIELD: ReliefField = {
   height: 0,
   resolution: 0,
   peak: 0,
+  cx: 0,
+  cy: 0,
 };
 
 export function computeReliefField(
@@ -108,7 +130,7 @@ export function computeReliefField(
   layout: Map<string, { x: number; y: number }>,
   params: ReliefFieldParams = {},
 ): ReliefField {
-  const { resolution, heightScale, padding, sigmaFraction } = {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
     ...DEFAULTS,
     ...params,
   };
@@ -177,12 +199,18 @@ export function computeReliefField(
       const norm = Number.isFinite(rawNorm)
         ? Math.max(0, Math.min(1, rawNorm))
         : 0;
-      const z = norm * heightScale;
+      // Gamma > 1 raises the contrast between peaks and valleys —
+      // peaks stay near 1, mid-elevations drop more aggressively, valleys
+      // flatten. Reads as ridges and basins instead of a soft mound.
+      const shaped = Math.pow(norm, heightGamma);
+      const z = shaped * heightScale;
 
       positions[idx * 3 + 0] = xWorld - cx;
       positions[idx * 3 + 1] = z;
       positions[idx * 3 + 2] = yWorld - cy;
 
+      // Color ramp still keys off the linear `norm` so the legend stays
+      // readable — only the geometry is gamma'd.
       const [r, g, b] = elevationColor(norm);
       colors[idx * 3 + 0] = r;
       colors[idx * 3 + 1] = g;
@@ -205,7 +233,7 @@ export function computeReliefField(
     }
   }
 
-  return { positions, colors, indices, width, height, resolution: N, peak };
+  return { positions, colors, indices, width, height, resolution: N, peak, cx, cy };
 }
 
 /**
@@ -272,7 +300,7 @@ export function computeReliefLayers(
   layout: Map<string, { x: number; y: number }>,
   params: ReliefFieldParams = {},
 ): ReliefLayer[] {
-  const { resolution, heightScale, padding, sigmaFraction } = {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
     ...DEFAULTS,
     ...params,
   };
@@ -385,14 +413,15 @@ export function computeReliefLayers(
       for (let i = 0; i < N; i++) {
         const xWorld = gx[i];
         const idx = j * N + i;
-        // Clamp defensively — a NaN/Infinity in `composite` propagates to
-        // `peak`/`inv`/`norm` and corrupts the GPU upload, which can crash
-        // the renderer on first draw.
         const rawNorm = heights[idx] * inv;
         const norm = Number.isFinite(rawNorm)
           ? Math.max(0, Math.min(1, rawNorm))
           : 0;
-        const z = norm * heightScale;
+        // Apply the same height-gamma as the single-domain path so the two
+        // modes have the same "peakiness" character. The color tint uses a
+        // slightly stronger gamma so valleys go to additive black faster.
+        const shaped = Math.pow(norm, heightGamma);
+        const z = shaped * heightScale;
 
         positions[idx * 3 + 0] = xWorld - cx;
         positions[idx * 3 + 1] = z;
@@ -417,6 +446,8 @@ export function computeReliefLayers(
         height,
         resolution: N,
         peak,
+        cx,
+        cy,
       },
       nodeCount: samples.length,
     });
@@ -427,6 +458,102 @@ export function computeReliefLayers(
   // the legend meaningful.
   layers.sort((a, b) => b.field.peak - a.field.peak);
   return layers;
+}
+
+// ─── Node anchors for HTML labels ──────────────────────────────────
+
+export interface NodeAnchor {
+  id: string;
+  label: string;
+  /** Mesh-local X (= layout x − cx). */
+  x: number;
+  /** Mesh-local Z (= layout y − cy). */
+  z: number;
+  /** Vertex Y the label should float above. */
+  y: number;
+  /** ΩF composite — drives top-K ordering and label coloring. */
+  composite: number;
+  /** Owning domain — drives label color. */
+  domain: string;
+}
+
+/**
+ * Compute world-space anchors for the top-K most-fragile nodes so the
+ * component can drop HTML labels above their peaks. Without these labels
+ * the relief mesh is just an abstract surface — labels are how a viewer
+ * recognises *which* nodes the mountain ridges are made of.
+ *
+ * Height is approximated by sampling the same Gaussian field at each node's
+ * (x, y) position. Cheap (O(K × N) where K is the cap) and exact enough for
+ * label placement.
+ */
+export function computeNodeAnchors(
+  nodes: Pick<CausalNode, "id" | "label" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  field: ReliefField,
+  params: ReliefFieldParams = {},
+  topK = 8,
+): NodeAnchor[] {
+  if (field.positions.length === 0 || field.peak <= 0) return [];
+
+  const { padding, sigmaFraction, heightScale, heightGamma } = {
+    ...DEFAULTS,
+    ...params,
+  };
+  const sigma = Math.max(60, Math.min(field.width, field.height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+
+  // Gather every usable node-with-position once so we can reuse them as
+  // both label candidates and Gaussian sources.
+  type Source = { id: string; label: string; domain: string; composite: number; x: number; y: number };
+  const sources: Source[] = [];
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = Number.isFinite(n.omegaFragility?.composite)
+      ? n.omegaFragility.composite
+      : 0;
+    sources.push({
+      id: n.id,
+      label: n.label,
+      domain: typeof n.domain === "string" ? n.domain : "Unknown",
+      composite,
+      x: p.x,
+      y: p.y,
+    });
+  }
+  if (sources.length === 0) return [];
+
+  // Top-K by composite. With K small (default 8), an n*log(n) sort is fine.
+  const sorted = [...sources].sort((a, b) => b.composite - a.composite);
+  const picks = sorted.slice(0, Math.min(topK, sorted.length));
+
+  // Sample the field at each pick's coordinates. Suppress padding parameter
+  // since `field.cx/cy` already encode the recentered origin.
+  void padding;
+
+  const anchors: NodeAnchor[] = [];
+  for (const pick of picks) {
+    let h = 0;
+    for (const s of sources) {
+      const dx = pick.x - s.x;
+      const dy = pick.y - s.y;
+      h += s.composite * Math.exp(-(dx * dx + dy * dy) / sigma2);
+    }
+    const norm = Math.max(0, Math.min(1, h / field.peak));
+    const shaped = Math.pow(norm, heightGamma);
+    anchors.push({
+      id: pick.id,
+      label: pick.label,
+      domain: pick.domain,
+      composite: pick.composite,
+      x: pick.x - field.cx,
+      z: pick.y - field.cy,
+      y: shaped * heightScale,
+    });
+  }
+  return anchors;
 }
 
 function hexToLinearRGB(hex: string): [number, number, number] {

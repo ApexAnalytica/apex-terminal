@@ -16,6 +16,7 @@ Manifold development is split across focused sessions. Each session owns a slice
 | PARETO | [`pareto.md`](./pareto.md) | Criticality horizons (CSD, PH, LPPLS), Ω-Fragility, shock injection |
 | Geopolitical / Macro | [`geopolitical-macro.md`](./geopolitical-macro.md) | Geopolitical / financial / macro / defense graph data (`dataset: main \| athena`) |
 | T1D / Life Sciences | [`t1d.md`](./t1d.md) | Type-1 Diabetes graph data, β-cell dynamics, T1D vocabulary (`dataset: t1d`) |
+| Copilot | [`copilot.md`](./copilot.md) | Linguistic access layer — tool-use primitive, intent routing, node isolation, system prompt, LLM provider, conversation memory. Long-term: hybrid LLM/agent. |
 
 ## How to use this
 

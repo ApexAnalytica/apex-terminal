@@ -73,10 +73,25 @@ export interface ReliefField {
 
 const DEFAULTS: Required<ReliefFieldParams> = {
   resolution: 80,
-  heightScale: 30,
+  // Tall enough to read as terrain rather than a pancake on a wide layout.
+  heightScale: 70,
   padding: 80,
-  sigmaFraction: 0.12,
+  // Tighter Gaussian than v1 — a quarter-extent bandwidth (0.12) smeared every
+  // node's contribution and merged peaks into one broad lump. ~6% gives local,
+  // legible mountains while still being smooth between adjacent nodes.
+  sigmaFraction: 0.06,
 };
+
+/** Power-law boost applied to each node's composite ΩF before kernel
+ *  density estimation. Linear weighting let mid-criticality nodes (3–5)
+ *  contribute too much to the total field and made high-criticality
+ *  nodes (8–10) blend in. A modest 1.5 exponent makes peaks pop without
+ *  collapsing the lower ranges entirely. */
+const WEIGHT_EXPONENT = 1.5;
+function nodeWeight(composite: number): number {
+  if (!Number.isFinite(composite) || composite <= 0) return 0;
+  return Math.pow(composite, WEIGHT_EXPONENT);
+}
 
 const EMPTY_FIELD: ReliefField = {
   positions: new Float32Array(0),
@@ -105,9 +120,8 @@ export function computeReliefField(
     const p = layout.get(n.id);
     if (!p) continue;
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    const composite = n.omegaFragility?.composite;
-    const w = Number.isFinite(composite) ? composite : 0;
-    samples.push({ x: p.x, y: p.y, w });
+    const composite = n.omegaFragility?.composite ?? 0;
+    samples.push({ x: p.x, y: p.y, w: nodeWeight(composite) });
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
     if (p.y < minY) minY = p.y;
@@ -272,12 +286,11 @@ export function computeReliefLayers(
     const p = layout.get(n.id);
     if (!p) continue;
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    const composite = n.omegaFragility?.composite;
-    const w = Number.isFinite(composite) ? composite : 0;
+    const composite = n.omegaFragility?.composite ?? 0;
     const domain = typeof n.domain === "string" && n.domain.length > 0
       ? n.domain
       : "Unknown";
-    const sample: Sample = { x: p.x, y: p.y, w };
+    const sample: Sample = { x: p.x, y: p.y, w: nodeWeight(composite) };
     const arr = byDomain.get(domain);
     if (arr) arr.push(sample);
     else byDomain.set(domain, [sample]);
@@ -322,12 +335,22 @@ export function computeReliefLayers(
   for (let i = 0; i < N; i++) gx[i] = minX + (i / (N - 1)) * width;
   for (let j = 0; j < N; j++) gy[j] = minY + (j / (N - 1)) * height;
 
-  const layers: ReliefLayer[] = [];
+  // ─── Pass 1: evaluate every layer's height field; track GLOBAL peak ───
+  // v1 normalized each layer by its own peak, which erased cross-domain
+  // intensity differences — a sparse-but-high domain rendered the same height
+  // as a dense-but-mild one, defeating the additive-blend "where do critical
+  // domains overlap" reading. Sharing a global peak across layers preserves
+  // both the within-layer shape AND the relative cross-domain magnitude.
+  type LayerScratch = {
+    domain: string;
+    samples: Sample[];
+    heights: Float32Array;
+    peak: number;
+  };
+  const scratch: LayerScratch[] = [];
+  let globalPeak = 0;
   for (const [domain, samples] of byDomain) {
-    const positions = new Float32Array(vertCount * 3);
-    const colors = new Float32Array(vertCount * 3);
     const heights = new Float32Array(vertCount);
-
     let peak = 0;
     for (let j = 0; j < N; j++) {
       const y = gy[j];
@@ -344,10 +367,18 @@ export function computeReliefLayers(
         if (h > peak) peak = h;
       }
     }
+    if (peak > globalPeak) globalPeak = peak;
+    scratch.push({ domain, samples, heights, peak });
+  }
+  const inv = globalPeak > 0 ? 1 / globalPeak : 0;
 
+  // ─── Pass 2: emit positions + per-vertex colors per layer ──────────────
+  const layers: ReliefLayer[] = [];
+  for (const { domain, samples, heights, peak } of scratch) {
+    const positions = new Float32Array(vertCount * 3);
+    const colors = new Float32Array(vertCount * 3);
     const colorHex = reliefDomainColor(domain);
     const colorRGB = hexToLinearRGB(colorHex);
-    const inv = peak > 0 ? 1 / peak : 0;
 
     for (let j = 0; j < N; j++) {
       const yWorld = gy[j];

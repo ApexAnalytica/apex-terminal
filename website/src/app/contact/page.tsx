@@ -24,10 +24,10 @@ const ACCESS_OPTIONS = [
 ] as const;
 
 const CONTACT_CHANNELS = [
-  { channel: "GENERAL",         subject: "" },
-  { channel: "ACCESS · INVITE", subject: "Manifold%20%E2%80%94%20Invite%20Request" },
-  { channel: "PARTNERSHIPS",    subject: "Partnership%20Inquiry" },
-  { channel: "RESEARCH",        subject: "Research%20Collaboration" },
+  { channel: "GENERAL",         email: "info@apexanalytica.co",   subject: "" },
+  { channel: "ACCESS · INVITE", email: "brynna@apexanalytica.co", subject: "Manifold%20%E2%80%94%20Invite%20Request" },
+  { channel: "PARTNERSHIPS",    email: "junaid@apexanalytica.co", subject: "Partnership%20Inquiry" },
+  { channel: "RESEARCH",        email: "info@apexanalytica.co",   subject: "Research%20Collaboration" },
 ];
 
 const colorMap: Record<string, { text: string; border: string; bg: string }> = {
@@ -105,14 +105,14 @@ export default function ContactPage() {
         <TerminalHeader
           label="// DIRECT"
           path="apex.email"
-          right={SITE.email}
+          right="ROUTED BY PURPOSE"
           color="purple"
         />
         <div className="grid gap-3 md:grid-cols-2">
           {CONTACT_CHANNELS.map((ch) => {
             const href = ch.subject
-              ? `mailto:${SITE.email}?subject=${ch.subject}`
-              : `mailto:${SITE.email}`;
+              ? `mailto:${ch.email}?subject=${ch.subject}`
+              : `mailto:${ch.email}`;
             return (
               <a
                 key={ch.channel}
@@ -124,7 +124,7 @@ export default function ContactPage() {
                     {ch.channel}
                   </div>
                   <div className="font-mono text-[12.5px] text-foreground group-hover:text-accent-cyan transition-colors">
-                    {SITE.email}
+                    {ch.email}
                   </div>
                 </div>
                 <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted group-hover:text-accent-cyan transition-colors">

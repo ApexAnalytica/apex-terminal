@@ -109,6 +109,40 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ───────── // DOMAINS ───────── */}
+      <Section id="domains" className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="07 CONFIGURED · CLICK TO EXPLORE" />
+
+        <p className="mb-5 text-[13px] md:text-sm font-mono text-text-muted leading-relaxed max-w-2xl">
+          Find your domain. Each one explains the problem Manifold solves
+          for it — in plain terms, before any of the math.
+        </p>
+
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+          {DOMAINS.map((d) => (
+            <Link
+              key={d.label}
+              href={`/domains/${d.slug}`}
+              className={`group relative bg-surface border ${d.border} rounded-lg p-4 hover:bg-surface-elevated transition-colors block`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className={`relative flex h-1.5 w-1.5`}>
+                  <span className={`absolute inline-flex h-full w-full rounded-full ${d.dot} opacity-50 pulse-ring`} />
+                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${d.dot}`} />
+                </span>
+                <span className={`font-mono text-[10px] text-text-muted/60 tracking-wider group-hover:${d.text} transition-colors`}>›</span>
+              </div>
+              <div className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.2em] ${d.text} mb-2`}>
+                {d.label}
+              </div>
+              <p className="text-[10px] font-mono text-text-muted leading-snug">
+                {d.sub}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </Section>
+
       {/* ───────── // CAPABILITIES ───────── */}
       <Section className="pt-14 pb-10 md:pt-16 md:pb-12 border-t border-border">
         <TerminalHeader label="// CAPABILITIES" path="manifold.what" right="3 STAGES" />
@@ -192,34 +226,6 @@ export default function Home() {
         </div>
       </Section>
 
-      {/* ───────── // DOMAINS ───────── */}
-      <Section id="domains" className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="07 CONFIGURED · CLICK TO EXPLORE" />
-
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-          {DOMAINS.map((d) => (
-            <Link
-              key={d.label}
-              href={`/domains/${d.slug}`}
-              className={`group relative bg-surface border ${d.border} rounded-lg p-4 hover:bg-surface-elevated transition-colors block`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className={`relative flex h-1.5 w-1.5`}>
-                  <span className={`absolute inline-flex h-full w-full rounded-full ${d.dot} opacity-50 pulse-ring`} />
-                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${d.dot}`} />
-                </span>
-                <span className={`font-mono text-[10px] text-text-muted/60 tracking-wider group-hover:${d.text} transition-colors`}>›</span>
-              </div>
-              <div className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.2em] ${d.text} mb-2`}>
-                {d.label}
-              </div>
-              <p className="text-[10px] font-mono text-text-muted leading-snug">
-                {d.sub}
-              </p>
-            </Link>
-          ))}
-        </div>
-      </Section>
 
       {/* ───────── ACCESS ───────── */}
       <Section className="py-14 md:py-20 border-t border-border">

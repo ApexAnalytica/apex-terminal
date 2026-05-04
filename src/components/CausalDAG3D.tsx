@@ -1027,7 +1027,11 @@ export default function CausalDAG3D() {
             const isMultiSelected = multiSelectedSet.has(node.id);
             const isSelected = selectedNode === node.id || isMultiSelected;
             const isNeighborOfSelected = selectedNeighborNodes.has(node.id);
-            const anyNodeSelected = selectedNode !== null;
+            // Dim non-selected nodes whenever ANYTHING is selected — single OR
+            // multi. Previously only the singular selection drove the dim
+            // pass, so domain-legend / shift-drag selections silently pushed
+            // multiple cyan rings into a sea of equally-bright neighbors.
+            const anyNodeSelected = selectedNode !== null || multiSelectedSet.size > 0;
 
             return (
               <DAGNode3D

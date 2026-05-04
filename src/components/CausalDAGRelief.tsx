@@ -5,6 +5,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
+import { useApexStore } from "@/stores/useApexStore";
 import { compute2DForceLayout } from "@/lib/graph-layout-2d";
 import {
   computeReliefField,
@@ -199,6 +200,97 @@ export default function CausalDAGRelief() {
   );
 }
 
+/**
+ * Cyan markers at selected node positions.
+ *
+ * The Relief view is a continuous heightfield, not discrete node renders, so
+ * neither the singular `selectedNode` nor the multi-select array
+ * (`selectedNodes`, written by the domain legend / shift-drag marquee) was
+ * visible here at all. This component renders a tall cyan pillar + glowing
+ * top sphere at each selected node's (x, y) layout position so users get the
+ * same "where is my selection" reading they get in the 3D / 2D / Map views.
+ *
+ * Pillar height (110) is intentionally taller than the relief's max
+ * heightScale (70) so markers always poke through the surface regardless of
+ * where the underlying field happens to peak.
+ */
+function SelectionMarkers({
+  layout,
+}: {
+  layout: Map<string, { x: number; y: number }>;
+}) {
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+
+  const markers = useMemo(() => {
+    if (layout.size === 0) return [];
+    // Mirror the bounds + padding the relief uses so marker world coords
+    // line up with the heightfield. See computeReliefField in
+    // src/lib/graph-relief-field.ts — keep the padding constant in sync.
+    const PADDING = 80;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of layout.values()) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX)) return [];
+    minX -= PADDING; maxX += PADDING;
+    minY -= PADDING; maxY += PADDING;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+
+    // Multi-select takes priority but still surface the singular selection
+    // when nothing else is selected (e.g. user clicked a top-Ω node).
+    const ids = new Set<string>(selectedNodes);
+    if (selectedNode) ids.add(selectedNode);
+
+    const out: { id: string; x: number; z: number }[] = [];
+    for (const id of ids) {
+      const p = layout.get(id);
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      out.push({ id, x: p.x - cx, z: p.y - cy });
+    }
+    return out;
+  }, [layout, selectedNode, selectedNodes]);
+
+  if (markers.length === 0) return null;
+
+  const PILLAR_HEIGHT = 110;
+  const PILLAR_RADIUS = 1.4;
+
+  return (
+    <group>
+      {markers.map((m) => (
+        <group key={m.id} position={[m.x, 0, m.z]}>
+          {/* Pillar: thin cyan cylinder rising from y=0 through the surface. */}
+          <mesh position={[0, PILLAR_HEIGHT / 2, 0]}>
+            <cylinderGeometry args={[PILLAR_RADIUS, PILLAR_RADIUS, PILLAR_HEIGHT, 10]} />
+            <meshBasicMaterial color="#00e5ff" transparent opacity={0.65} />
+          </mesh>
+          {/* Outer pillar halo for a soft glow. */}
+          <mesh position={[0, PILLAR_HEIGHT / 2, 0]}>
+            <cylinderGeometry args={[PILLAR_RADIUS * 2.2, PILLAR_RADIUS * 2.2, PILLAR_HEIGHT, 10]} />
+            <meshBasicMaterial color="#00e5ff" transparent opacity={0.12} />
+          </mesh>
+          {/* Cap: glowing sphere at the top so the marker reads from above
+              even when camera is high enough to see straight down. */}
+          <mesh position={[0, PILLAR_HEIGHT, 0]}>
+            <sphereGeometry args={[3.2, 14, 14]} />
+            <meshBasicMaterial color="#00e5ff" />
+          </mesh>
+          <mesh position={[0, PILLAR_HEIGHT, 0]}>
+            <sphereGeometry args={[5.5, 14, 14]} />
+            <meshBasicMaterial color="#00e5ff" transparent opacity={0.25} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
 
@@ -282,6 +374,7 @@ function CausalDAGReliefInner() {
         {!isEmpty && multilayer && layers.map((l) => (
           <ReliefLayerMesh key={l.domain} layer={l} />
         ))}
+        {!isEmpty && <SelectionMarkers layout={layout} />}
         {!isEmpty && frameDims && (
           <CameraSetup
             width={frameDims.width}

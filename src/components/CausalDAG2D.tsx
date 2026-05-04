@@ -422,12 +422,34 @@ function CausalDAG2DInner() {
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  // Emphasis target: hover wins over selection. Empty when nothing is hovered
-  // or selected — that's the default "no dimming" state.
+  // Emphasis target: hover wins over single selection. Empty when nothing is
+  // hovered or selected — that's the default "no dimming" state.
   const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
 
   const emphasisMap = useMemo(() => {
     const map = new Map<string, NodeEmphasis>();
+
+    // Multi-selection (domain legend, shift-drag marquee): every selected
+    // node gets focus, everything else dims. Takes effect even when no
+    // single node is selected — previously this state was invisible
+    // unless the user separately turned on isolation.
+    if (multiSelectedNodes.length > 0) {
+      const sel = new Set(multiSelectedNodes);
+      for (const n of graphData.nodes) {
+        map.set(n.id, sel.has(n.id) ? "focus" : "dim");
+      }
+      // If a singular hover/select coexists, let it upgrade its target to
+      // focus and surface its neighbors as "neighbor" (over the dim base).
+      if (emphasisTarget) {
+        map.set(emphasisTarget, "focus");
+        const neighbors = adjacency.get(emphasisTarget) ?? [];
+        for (const id of neighbors) {
+          if (!sel.has(id)) map.set(id, "neighbor");
+        }
+      }
+      return map;
+    }
+
     if (!emphasisTarget) return map;
     const neighbors = new Set(adjacency.get(emphasisTarget) ?? []);
     for (const n of graphData.nodes) {
@@ -436,7 +458,7 @@ function CausalDAG2DInner() {
       else map.set(n.id, "dim");
     }
     return map;
-  }, [emphasisTarget, graphData.nodes, adjacency]);
+  }, [emphasisTarget, graphData.nodes, adjacency, multiSelectedNodes]);
 
   const nodes: Node[] = useMemo(() => {
     return graphData.nodes.map((n) => {

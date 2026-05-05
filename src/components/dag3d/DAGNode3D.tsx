@@ -423,5 +423,58 @@ function DAGNode3DInner({
   );
 }
 
-const DAGNode3D = React.memo(DAGNode3DInner);
+/**
+ * Custom equality check for the React.memo wrap below. The default shallow
+ * comparator was being defeated for every node on every parent re-render
+ * because three props rebuild fresh refs each time:
+ *
+ *   - `position`: a new `[x, y, z]` tuple from posMap[node.id]
+ *   - `epochState`: a fresh object literal in the non-snapshot fallback path
+ *     (see CausalDAG3D.tsx, where the parent maps the nodes)
+ *   - `onClick` / `onDoubleClick`: inline closures
+ *
+ * That meant ~169 nodes re-rendering on every parent update — each with its
+ * own framer-motion / R3F work — which competed with the per-frame edge
+ * particle animations and made the orbs glitch when domain selection
+ * touched many nodes at once.
+ *
+ * This comparator compares the value-bearing props by content (not by ref)
+ * and ignores callback identity. Closures are functionally pure (they close
+ * over `node.id` + stable store actions), so re-render isn't required when
+ * only their reference flips.
+ */
+function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
+  if (prev.node !== next.node) return false;
+  // position is a tuple — compare element-wise
+  if (
+    prev.position[0] !== next.position[0] ||
+    prev.position[1] !== next.position[1] ||
+    prev.position[2] !== next.position[2]
+  ) return false;
+  if (prev.isInterventionTarget !== next.isInterventionTarget) return false;
+  if (prev.isVerifiedRestricted !== next.isVerifiedRestricted) return false;
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isNeighborOfSelected !== next.isNeighborOfSelected) return false;
+  if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
+  if (prev.isConsequence !== next.isConsequence) return false;
+  if (prev.isGreyedOut !== next.isGreyedOut) return false;
+  if (prev.isAblated !== next.isAblated) return false;
+  if (prev.ablationMode !== next.ablationMode) return false;
+  if (prev.metrics !== next.metrics) return false;
+  // epochState fields actually read by the component (omegaComposite +
+  // shockIntensity). The object reference often changes per render even when
+  // the contents don't, so reference compare would always invalidate.
+  const pe = prev.epochState;
+  const ne = next.epochState;
+  if (pe !== ne) {
+    if (!pe || !ne) return false;
+    if (pe.omegaComposite !== ne.omegaComposite) return false;
+    if (pe.shockIntensity !== ne.shockIntensity) return false;
+  }
+  // Intentionally not comparing onClick / onDoubleClick — closures rebuild
+  // every parent render but their behavior is stable per node.id.
+  return true;
+}
+
+const DAGNode3D = React.memo(DAGNode3DInner, arePropsEqual);
 export default DAGNode3D;

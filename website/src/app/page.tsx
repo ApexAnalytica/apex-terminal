@@ -89,7 +89,7 @@ export default function Home() {
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
-                <CTAButton href={SITE.trialUrl} external>REQUEST ACCESS</CTAButton>
+                <CTAButton href="/access">REQUEST ACCESS</CTAButton>
                 <CTAButton href="/product" variant="secondary">EXPLORE THE PRODUCT</CTAButton>
               </div>
 
@@ -260,7 +260,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/contact" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST INVITE</CTAButton>
             </div>
           </div>
         </div>

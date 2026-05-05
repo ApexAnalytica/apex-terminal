@@ -17,9 +17,9 @@ const ACCESS_OPTIONS = [
     color: "amber",
     label: "INVITE-ONLY · INSTITUTIONAL",
     blurb:
-      "Full platform access for institutional users. Issued by invite from the Apex Analytica team. Email below to request an invite code.",
-    cta: "EMAIL FOR INVITE",
-    href: `mailto:${SITE.email}?subject=Manifold%20%E2%80%94%20Invite%20Request`,
+      "Full platform access for institutional users. Issued by invite from the Apex Analytica team. Submit a request and we'll route it internally.",
+    cta: "REQUEST INVITE",
+    href: "/access",
   },
 ] as const;
 
@@ -88,7 +88,7 @@ export default function ContactPage() {
                 </p>
                 <CTAButton
                   href={opt.href}
-                  external
+                  external={opt.href.startsWith("http")}
                   variant={opt.color === "cyan" ? "primary" : "secondary"}
                   className="w-full"
                 >

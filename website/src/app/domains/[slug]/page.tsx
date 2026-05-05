@@ -256,7 +256,7 @@ export default async function DomainPage({
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/contact" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST INVITE</CTAButton>
               <a
                 href={SITE.pricingUrl}
                 className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted/70 hover:text-foreground inline-flex items-center justify-center gap-2 pt-1"

@@ -40,12 +40,12 @@ export default function SiteHeader() {
           >
             LOGIN
           </a>
-          <a
-            href={SITE.trialUrl}
+          <Link
+            href="/access"
             className="px-3 py-2 bg-accent-cyan/10 border border-accent-cyan/40 rounded text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan hover:bg-accent-cyan/20 hover:border-accent-cyan/60 transition-all"
           >
             REQUEST ACCESS
-          </a>
+          </Link>
         </div>
 
         {/* Mobile menu button */}
@@ -82,12 +82,13 @@ export default function SiteHeader() {
               >
                 LOGIN
               </a>
-              <a
-                href={SITE.trialUrl}
+              <Link
+                href="/access"
+                onClick={() => setOpen(false)}
                 className="flex-1 text-center px-3 py-2 bg-accent-cyan/10 border border-accent-cyan/40 rounded text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan"
               >
                 REQUEST ACCESS
-              </a>
+              </Link>
             </div>
           </div>
         </div>

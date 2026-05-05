@@ -354,9 +354,28 @@ The framework is fine — three.js / r3f is exactly what those reference platfor
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
 
+### 2026-05-03 — Shipped: Topo replay animation — terrain morphs as the cascade runs
+
+**PR:** TBD (about to open).
+
+**Trigger.** User picked option 1 — turn TOPO from a static topology view into a scenario tool that morphs as the cascade replay advances. Bind the field input to `currentSnapshot.nodeStates[id].omegaComposite` so peaks rise / fall in sync with the replay scrubber.
+
+**What shipped.**
+- **Replay-aware field input.** `CausalDAGRelief` now reads `replayActive`, `activeTimeline`, `baselineEpochs` / `interventionEpochs`, and `currentEpoch` from the store. Derives a `currentSnapshot: EpochSnapshot | null` (clamped to range, like `CausalDAG2D` does). When non-null, builds a `fieldNodes` array that overrides each node's `omegaFragility.composite` with the snapshot's per-node ΩF. The fused / single field, the anchors, and the labels all read from `fieldNodes` — so the surface, the elevation, and the label Ω text all morph in lockstep as the user scrubs.
+- **Stable layout under scrub.** Switched the layout `useMemo` from `[graphData.nodes, graphData.edges]` (re-fires every scrub tick because `useTemporalGraph` allocates fresh arrays + node objects) to `[sig]` where `sig = graphSignature(nodes, edges)` (sorted node + edge id string). Topology changes still re-run the force-directed simulation; replay scrubs don't. Same pattern `CausalDAG2D` uses (`graphSignature` from `graph-layout-2d.ts`). Without this fix, scrubbing would also shuffle the canvas, which would compete with the field eval for the main thread and look terrible.
+- **REPLAY · EPOCH N / M pill** in the top-right. Amber-bordered, only renders when `currentSnapshot` is active. Tells users at a glance that the surface they're seeing is a replay frame, not the static graph.
+
+**Files.**
+- `src/components/CausalDAGRelief.tsx` — adds replay-state selectors, `currentSnapshot` derive, `fieldNodes` override, sig-keyed layout cache, REPLAY pill. Also adds imports: `graphSignature` from `graph-layout-2d`, `EpochSnapshot` type from `lib/types`.
+- `src/lib/__tests__/graph-relief-field.test.ts` — added 2 tests: `norms` length matches `positions/3` and ranges across [0,1]; replay contract — same nodes/layout, escalated ΩF → strictly higher peak.
+
+**Out of scope.** Throttling field recompute during fast scrubbing — at 128² × 169 samples × N domains the eval is ~100ms per frame, which is fine for click-stepping through epochs but would feel laggy for a real-time slider drag. If users actually scrub at 60fps, the right fix is either (a) lower-resolution preview during drag + full res on settle, or (b) port the kernel sum to a compute shader. Filed for later.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 704/704 pass (2 new in `graph-relief-field.test.ts`).
+
 ### 2026-05-03 — Next up
 
-- Verify v5 on production: hard-refresh, click **TOPO**, expect (a) much smoother surface (no visible triangulation), (b) crisp anti-aliased contour rings (no more stair-stepped bands), (c) heatmap colour ramp pixel-perfect across the surface. Knobs to tune in shader uniforms if needed: `uBands` (default 14, controls ring density), `uLineWidth` (default 0.04, controls line thickness). Remaining follow-ups: replay animation (bind field input to `currentSnapshot`), onboarding tooltip. Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify replay animation on production: load any demo flow → hit play → watch the topo surface morph as epochs advance. Expect the REPLAY · EPOCH N pill in the top-right and label Ω values updating in sync. Remaining follow-ups: onboarding tooltip (most users still won't intuit the topographic mental model on first glance), real-time scrub perf (preview-resolution-during-drag or compute-shader port). Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

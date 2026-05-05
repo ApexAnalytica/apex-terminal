@@ -13,8 +13,12 @@ export default function PricingPage() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="Manifold" width={36} height={36} />
+          {/* Brand mark on /pricing routes back to the marketing home
+              (apexanalytica.co), NOT to the platform root — visitors
+              landing here are evaluating the product, so "home" means
+              the public marketing site, not the platform dashboard. */}
+          <a href="https://apexanalytica.co/" className="flex items-center gap-3">
+            <Image src="/logo.png" alt="Apex Analytica" width={36} height={36} />
             <div className="leading-tight">
               <div className="text-[12px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan">
                 MANIFOLD
@@ -23,7 +27,7 @@ export default function PricingPage() {
                 by APEX ANALYTICA
               </div>
             </div>
-          </Link>
+          </a>
           <nav className="flex items-center gap-5 text-[10px] font-mono text-text-muted">
             <Link href="/login" className="hover:text-foreground">
               SIGN IN

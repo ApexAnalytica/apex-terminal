@@ -144,7 +144,7 @@ export default function Home() {
                 </span>
                 <span className={`font-mono text-[10px] text-text-muted/60 tracking-wider group-hover:${d.text} transition-colors`}>›</span>
               </div>
-              <div className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.2em] ${d.text} mb-2`}>
+              <div className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.12em] leading-tight break-words ${d.text} mb-2`}>
                 {d.label}
               </div>
               <p className="text-[10px] font-mono text-text-muted leading-snug">

@@ -471,9 +471,27 @@ export interface TarskiValidationReport {
   totalViolations: number;
 }
 
-export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<string>): TarskiValidationReport {
-  // If a subset is provided, only run those axioms
-  const isEnabled = (id: string) => !enabledAxiomIds || enabledAxiomIds.has(id);
+export function runTarskiValidation(
+  graph: CausalGraph,
+  enabledAxiomIds?: Set<string>,
+  activeProfileId?: string,
+): TarskiValidationReport {
+  // Profile scoping: an axiom with `appliesTo` declares which profiles it's
+  // valid for. When the caller supplies an active profile, drop checks
+  // whose axiom is scoped to a different profile so e.g. T1D-only graphs
+  // never see geopolitical chokepoint flags (and vice versa once T1D
+  // axioms grow check implementations). Without `activeProfileId` the
+  // legacy behaviour is preserved — every implemented check runs.
+  const profileAllows = (id: string) => {
+    if (!activeProfileId) return true;
+    const axiom = AXIOM_LIBRARY.find((a) => a.id === id);
+    if (!axiom?.appliesTo) return true; // universal
+    return axiom.appliesTo.includes(activeProfileId);
+  };
+  // If a subset is provided, only run those axioms — and intersect with
+  // the profile filter so explicit enable can't override profile scoping.
+  const isEnabled = (id: string) =>
+    (!enabledAxiomIds || enabledAxiomIds.has(id)) && profileAllows(id);
   const inconsistentEdgeIds = new Set<string>();
   const restrictedNodeIds = new Set<string>();
   const proofTraces: ProofTrace[] = [];

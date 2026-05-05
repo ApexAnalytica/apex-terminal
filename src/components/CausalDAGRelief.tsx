@@ -16,6 +16,90 @@ import {
   type NodeAnchor,
   type ReliefField,
 } from "@/lib/graph-relief-field";
+
+/* ─── Topo shader ──────────────────────────────────────────────────
+ *
+ * The earlier path baked elevation colour + iso-contour rings into per-vertex
+ * RGB and let meshStandardMaterial linearly interpolate them across triangles.
+ * That's why the surface looked pixelated: a contour band drawn at norm=0.5
+ * would only land *exactly* on triangle interiors that crossed 0.5, so its
+ * apparent width followed the triangle grid, not the screen.
+ *
+ * Moving the colour + band math to the fragment shader fixes that — the
+ * varying `vNorm` is interpolated across each triangle, then every pixel
+ * computes its own colour and its own distance-to-band-edge. Result is
+ * pixel-smooth gradients and crisp anti-aliased contour lines, regardless
+ * of geometry resolution.
+ */
+const TOPO_VERTEX_SHADER = /* glsl */ `
+  attribute float aNorm;
+  varying float vNorm;
+  varying vec3 vNormal;
+
+  void main() {
+    vNorm = aNorm;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const TOPO_FRAGMENT_SHADER = /* glsl */ `
+  precision highp float;
+
+  varying float vNorm;
+  varying vec3 vNormal;
+
+  uniform vec3 uLightDir;
+  uniform float uBands;
+  uniform float uLineWidth;
+
+  // Mirror of elevationColor() in graph-relief-field.ts. Keep in sync.
+  vec3 elevationColor(float t) {
+    float n = clamp(t, 0.0, 1.0);
+    if (n < 0.25) {
+      float k = n / 0.25;
+      return vec3(
+        mix(0.04, 0.0, k),
+        mix(0.05, 0.9, k),
+        mix(0.18, 1.0, k)
+      );
+    }
+    if (n < 0.55) {
+      float k = (n - 0.25) / 0.30;
+      return vec3(
+        mix(0.0, 1.0, k),
+        mix(0.9, 0.67, k),
+        mix(1.0, 0.0, k)
+      );
+    }
+    float k = clamp((n - 0.55) / 0.45, 0.0, 1.0);
+    return vec3(
+      1.0,
+      mix(0.67, 0.09, k),
+      mix(0.0, 0.27, k)
+    );
+  }
+
+  void main() {
+    float n = clamp(vNorm, 0.0, 1.0);
+    vec3 baseColor = elevationColor(n);
+
+    // Iso-contour lines. Distance from band-edge in [0, 0.5]; smooth-step
+    // across uLineWidth gives an anti-aliased dark line at every band edge.
+    float band = fract(n * uBands);
+    float distToEdge = min(band, 1.0 - band);
+    float line = 1.0 - smoothstep(uLineWidth, uLineWidth + 0.008, distToEdge);
+    vec3 surface = mix(baseColor, baseColor * 0.35, line * 0.75);
+
+    // Lambert shading with a fill so back-facing slopes aren't black.
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightDir);
+    float lambert = max(dot(N, L), 0.0);
+    float light = 0.45 + 0.55 * lambert;
+
+    gl_FragColor = vec4(surface * light, 1.0);
+  }
+`;
 import CanvasWatermark from "./CanvasWatermark";
 import DAGOverlay from "./dag3d/DAGOverlay";
 
@@ -62,11 +146,17 @@ class ReliefErrorBoundary extends Component<
 
 function ReliefMesh({
   field,
+  norms,
   onPick,
 }: {
   field: ReliefField;
+  /** Per-vertex normalised height. Present for fused-mode renders; the
+   *  single-domain path falls back to vertex-colour rendering. */
+  norms?: Float32Array;
   onPick?: (clickX: number, clickZ: number) => void;
 }) {
+  const useShader = !!(norms && norms.length === field.positions.length / 3);
+
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
     if (field.positions.length === 0) return geom;
@@ -74,16 +164,33 @@ function ReliefMesh({
       "position",
       new THREE.BufferAttribute(field.positions, 3),
     );
-    geom.setAttribute(
-      "color",
-      new THREE.BufferAttribute(field.colors, 3),
-    );
+    if (useShader && norms) {
+      geom.setAttribute(
+        "aNorm",
+        new THREE.BufferAttribute(norms, 1),
+      );
+    } else {
+      geom.setAttribute(
+        "color",
+        new THREE.BufferAttribute(field.colors, 3),
+      );
+    }
     geom.setIndex(new THREE.BufferAttribute(field.indices, 1));
     geom.computeVertexNormals();
     return geom;
-  }, [field]);
+  }, [field, norms, useShader]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  // Uniforms — recreated only on first mount; values are stable.
+  const uniforms = useMemo(
+    () => ({
+      uLightDir: { value: new THREE.Vector3(0.45, 1.0, 0.6).normalize() },
+      uBands: { value: 14 },
+      uLineWidth: { value: 0.04 },
+    }),
+    [],
+  );
 
   if (field.positions.length === 0) return null;
 
@@ -100,13 +207,23 @@ function ReliefMesh({
       receiveShadow={false}
       onClick={handleClick}
     >
-      <meshStandardMaterial
-        vertexColors
-        roughness={0.55}
-        metalness={0.05}
-        side={THREE.DoubleSide}
-        flatShading={false}
-      />
+      {useShader ? (
+        <shaderMaterial
+          vertexShader={TOPO_VERTEX_SHADER}
+          fragmentShader={TOPO_FRAGMENT_SHADER}
+          uniforms={uniforms}
+          side={THREE.DoubleSide}
+          transparent={false}
+        />
+      ) : (
+        <meshStandardMaterial
+          vertexColors
+          roughness={0.55}
+          metalness={0.05}
+          side={THREE.DoubleSide}
+          flatShading={false}
+        />
+      )}
     </mesh>
   );
 }
@@ -445,7 +562,11 @@ function CausalDAGReliefInner() {
           <ReliefGrid width={activeField.width} height={activeField.height} />
         )}
         {!isEmpty && activeField && (
-          <ReliefMesh field={activeField} onPick={handlePick} />
+          <ReliefMesh
+            field={activeField}
+            norms={fusedField?.norms}
+            onPick={handlePick}
+          />
         )}
         {!isEmpty && (
           <SelectionMarkers layout={layout} field={activeField} />

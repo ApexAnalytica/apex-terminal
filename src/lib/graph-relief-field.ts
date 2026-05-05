@@ -86,16 +86,15 @@ export interface ReliefField {
 }
 
 const DEFAULTS: Required<ReliefFieldParams> = {
-  resolution: 80,
-  // Bigger height scale than v3 — the user wanted real vertical drama,
-  // not just colour. Combined with heightGamma 1.6, peaks now stand
-  // visibly above valleys in silhouette, not just in colour.
+  // Bumped from 80 to 128 — at 80 cells, triangles were visible at the
+  // silhouette and contour-band stripes looked stepped. 128² = 16,384
+  // verts ≈ 100ms compute on a 200-node graph. The shader-side iso-contour
+  // pass means we don't need to crank resolution any further; smoothness
+  // now comes from the pixel-rate fragment shader, not the mesh density.
+  resolution: 128,
   heightScale: 140,
   padding: 80,
-  // Tightened from 0.06 to 0.05 — even narrower Gaussian per node, so
-  // adjacent peaks stay separable rather than blending into a ridge.
   sigmaFraction: 0.05,
-  // Higher gamma → more aggressive valley-flattening + peak-rising.
   heightGamma: 1.6,
 };
 
@@ -572,6 +571,13 @@ export interface FusedReliefLegendEntry {
 
 export interface FusedReliefField extends ReliefField {
   legend: FusedReliefLegendEntry[];
+  /**
+   * Per-vertex normalised height in [0, 1] — same length as
+   * `positions.length / 3`. Fed to the topo shader as a per-vertex
+   * attribute so the fragment shader can compute pixel-perfect heatmap
+   * colour + iso-contour lines, regardless of how coarse the geometry is.
+   */
+  norms: Float32Array;
 }
 
 /**
@@ -624,7 +630,7 @@ export function computeFusedReliefField(
     if (p.y > maxY) maxY = p.y;
   }
   if (byDomain.size === 0 || !Number.isFinite(minX)) {
-    return { ...EMPTY_FIELD, legend: [] };
+    return { ...EMPTY_FIELD, legend: [], norms: new Float32Array(0) };
   }
 
   minX -= padding; maxX += padding;
@@ -679,15 +685,14 @@ export function computeFusedReliefField(
     }
   }
 
-  // Pass 2 — emit positions + colors. Vertex color = elevation heatmap
-  // (deep blue → cyan → amber → red) × iso-contour modulation. v3
-  // tinted by dominant domain at each cell, which read as a patchwork
-  // and lost the "brighter = higher" intuition users expect from a
-  // topographic / heatmap visualisation. v4 uses the elevation ramp
-  // for the surface and tints labels by domain instead.
+  // Pass 2 — emit positions + per-vertex norms. Vertex colours stay populated
+  // (used by the meshStandardMaterial fallback) but the *primary* topo
+  // shader path consumes `norms` and computes heatmap colour + iso-contour
+  // lines per fragment, which is why the surface looks crisp instead of
+  // pixelated regardless of how coarse the geometry is.
   void domainRGB; void dominantDomain; // retained for legend; not used in colour pass.
+  const norms = new Float32Array(vertCount);
   const inv = peak > 0 ? 1 / peak : 0;
-  const BANDS = 12;
   for (let j = 0; j < N; j++) {
     const yWorld = minY + (j / (N - 1)) * height;
     for (let i = 0; i < N; i++) {
@@ -704,18 +709,14 @@ export function computeFusedReliefField(
       positions[idx * 3 + 1] = z;
       positions[idx * 3 + 2] = yWorld - cy;
 
-      // Elevation heatmap. The same ramp the single-domain path uses, so
-      // both modes read identically — brighter / hotter = higher peak.
-      const [rR, gG, bB] = elevationColor(norm);
-      // Iso-contour modulation. cos goes 1 at band centre, -1 at edge —
-      // map (1 + cos) / 2 → [0..1] and darken edges to 0.55× for the
-      // ringed topographic look.
-      const ring = (Math.cos(norm * BANDS * Math.PI * 2) + 1) * 0.5;
-      const ringFactor = 0.55 + 0.45 * ring;
+      norms[idx] = norm;
 
-      colors[idx * 3 + 0] = rR * ringFactor;
-      colors[idx * 3 + 1] = gG * ringFactor;
-      colors[idx * 3 + 2] = bB * ringFactor;
+      // Vertex colour fallback (when the shaderMaterial isn't used).
+      // No iso-contour modulation here — the shader does that per pixel.
+      const [rR, gG, bB] = elevationColor(norm);
+      colors[idx * 3 + 0] = rR;
+      colors[idx * 3 + 1] = gG;
+      colors[idx * 3 + 2] = bB;
     }
   }
 
@@ -753,6 +754,7 @@ export function computeFusedReliefField(
     cx,
     cy,
     legend,
+    norms,
   };
 }
 

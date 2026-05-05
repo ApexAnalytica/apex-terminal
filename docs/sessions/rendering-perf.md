@@ -334,9 +334,29 @@ The dominant-domain colour scheme from v3 read as patchwork. Users expect a topo
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
 
+### 2026-05-03 — Shipped: Topo v5 — fragment shader, denser geometry, smooth contours
+
+**PR:** TBD (about to open).
+
+**Trigger.** v4 user feedback: *"this is better, but it's pixelated-looking. I've seen platforms that have a lot clearer terrain. Is there a different framework we can use?"*
+
+The framework is fine — three.js / r3f is exactly what those reference platforms use. The "pixelated" look came from two things stacking: (1) the geometry was 80×80 cells, so triangles were visible at silhouette, and (2) the iso-contour bands were baked into per-vertex RGB and linearly interpolated across triangles, so a band drawn at norm=0.5 only landed on triangles whose edges crossed 0.5 — apparent line width followed the triangle grid, not the screen. Pixel-rate fragment shading fixes both.
+
+**What shipped.**
+- **Fragment-shader topo material.** New `<shaderMaterial>` with custom GLSL inside `CausalDAGRelief.tsx`. The vertex shader passes a single per-vertex `aNorm` (normalised height) as a varying; the fragment shader reconstructs the elevation colour ramp + iso-contour lines + Lambert shading **per pixel**. Result: silky smooth gradients and crisp anti-aliased contour lines, regardless of geometry resolution. Iso-contour line is `1 - smoothstep(uLineWidth, uLineWidth + 0.008, distToBandEdge)`, mixed at 0.75 strength against `0.35× baseColor` for visible-but-not-busy ringing. 14 bands by default (was 12). Ambient floor 0.45 + 0.55 Lambert.
+- **Per-vertex `norms` attribute** on `FusedReliefField`. Same length as `positions/3`. The shader reads it; vertex `colors` stay populated as a fallback for any code path that doesn't bind the shader.
+- **Geometry resolution 80 → 128.** Triangles still get smaller for a smoother silhouette, but we don't need to crank further because the surface smoothness now comes from the fragment shader, not mesh density. ~16K vertices, ~100ms compute on 200-node graphs.
+- The single-domain path (1 unique domain) keeps using `meshStandardMaterial` with vertex colours — the shader is wired conditionally on the presence of `norms`.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — DEFAULTS resolution 80 → 128; `FusedReliefField` adds `norms: Float32Array`; `computeFusedReliefField` writes per-vertex norms in pass 2 (vertex colours stay populated minus the iso-contour modulation, which moved to the shader).
+- `src/components/CausalDAGRelief.tsx` — `TOPO_VERTEX_SHADER` + `TOPO_FRAGMENT_SHADER` GLSL strings, `<ReliefMesh>` accepts `norms?: Float32Array` and conditionally renders `<shaderMaterial>` vs `<meshStandardMaterial>` based on its presence. Fused-mesh call site passes `fusedField.norms`.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify v4 on production: hard-refresh, click **TOPO**, expect (a) heatmap palette across the surface (cool valleys, hot peaks), (b) iso-contour rings, (c) up to 40 labels with sizes scaling by Ω and borders coloured by domain, (d) more dramatic peak/valley separation in silhouette. Remaining follow-ups: replay animation (bind field input to `currentSnapshot`), onboarding tooltip. Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify v5 on production: hard-refresh, click **TOPO**, expect (a) much smoother surface (no visible triangulation), (b) crisp anti-aliased contour rings (no more stair-stepped bands), (c) heatmap colour ramp pixel-perfect across the surface. Knobs to tune in shader uniforms if needed: `uBands` (default 14, controls ring density), `uLineWidth` (default 0.04, controls line thickness). Remaining follow-ups: replay animation (bind field input to `currentSnapshot`), onboarding tooltip. Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

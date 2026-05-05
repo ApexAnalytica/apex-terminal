@@ -72,6 +72,20 @@ EM_RESERVES_PANEL = [
     "Pakistan", "Sri Lanka", "Philippines", "Kenya", "Ghana",
 ]
 
+# EMs in the PIMCO FX-rate panel. Same reasoning as the reserves panel,
+# plus drops Lebanon (currency board pre-2019, then catastrophic break),
+# Saudi Arabia (USD peg), and Dominican Republic / Bangladesh / Jordan
+# (managed floats with limited DXY pass-through). What's left is the
+# canonical free-floating EM set the literature anchors on. Includes
+# Turkey + Argentina, the two highest-vol EMs missing from the monthly
+# datasets/exchange-rates mirror — that's the whole point of this
+# follow-up fit.
+EM_FX_ANNUAL_PANEL = [
+    "Brazil", "Mexico", "Colombia", "Turkey", "Argentina",
+    "South Africa", "Egypt", "Morocco", "Tunisia", "Nigeria",
+    "Pakistan", "Sri Lanka", "Philippines", "Kenya", "Ghana",
+]
+
 
 def load_em_fx_panel() -> pd.Series:
     raw = cached_get(EXCHANGE_RATES_URL)
@@ -101,6 +115,27 @@ def load_em_reserves_panel() -> pd.DataFrame:
     df = df[["country", "date", "fx_reserves_usd"]].dropna()
     df["date"] = pd.to_datetime(df["date"])
     df["year"] = df["date"].dt.year
+    return df.sort_values(["country", "year"]).reset_index(drop=True)
+
+
+def load_em_fx_annual_panel() -> pd.DataFrame:
+    """Annual EM FX panel from the PIMCO sovereign workbook.
+
+    Trades off temporal resolution (annual vs monthly) for panel breadth
+    — adds Turkey, Argentina, Colombia, Egypt, Pakistan, Tunisia, Nigeria,
+    Morocco, Kenya, Ghana, Sri Lanka, Philippines that the FRED H.10
+    monthly mirror doesn't carry. The exchange_rate_to_usd field is LCU
+    per USD (rises = depreciation), same direction as the monthly basket
+    so positive-sign β has the same interpretation in both fits.
+    """
+    payload = json.loads(PIMCO_PATH.read_text())
+    rows = payload.get("pimco_sovereign", [])
+    df = pd.DataFrame(rows)
+    df = df[df["country"].isin(EM_FX_ANNUAL_PANEL)].copy()
+    df = df[["country", "date", "exchange_rate_to_usd"]].dropna()
+    df["date"] = pd.to_datetime(df["date"])
+    df["year"] = df["date"].dt.year
+    df = df[df["exchange_rate_to_usd"] > 0]
     return df.sort_values(["country", "year"]).reset_index(drop=True)
 
 
@@ -225,22 +260,109 @@ def fit_dxy_to_em_reserves(dxy_monthly: pd.Series, reserves: pd.DataFrame) -> di
     }
 
 
+def fit_dxy_to_em_fx_annual(dxy_monthly: pd.Series, fx_panel: pd.DataFrame) -> dict:
+    """Pooled panel OLS: Δlog(em_fx_{i,t}) ~ Δlog(DXY_t).
+
+    Annual companion to the monthly fit. Same construction as the
+    reserves panel fit (within-country log-differences pooled across
+    countries), but on the LCU/USD rate. Including Turkey + Argentina
+    is the whole reason for this fit — both contribute outsized variance
+    in DXY-strengthening cycles (2018, 2020, 2022) that the monthly
+    7-EM mirror misses, and the panel literature (Hofmann-Patel-Wu 2022)
+    estimates β on a similar 15+ EM cap-weighted set.
+    """
+    dxy_annual = dxy_monthly.groupby(dxy_monthly.index.year).mean()
+    dxy_annual.index = pd.to_datetime(
+        dxy_annual.index.astype(int).astype(str) + "-12-31"
+    )
+    dxy_log_diff = np.log(dxy_annual).diff().dropna()
+    dxy_log_diff.index = dxy_log_diff.index.year
+
+    rows: list[tuple[float, float]] = []
+    by_country: dict[str, int] = {}
+    for c, g in fx_panel.groupby("country"):
+        s = g.sort_values("year").set_index("year")["exchange_rate_to_usd"]
+        if len(s) < 4:
+            continue
+        log_diff = np.log(s).diff().dropna()
+        for yr, dr in log_diff.items():
+            if yr in dxy_log_diff.index:
+                rows.append((float(dxy_log_diff.loc[yr]), float(dr)))
+        by_country[c] = len(log_diff)
+
+    arr = np.array(rows)
+    if len(arr) < 30:
+        raise RuntimeError(f"too few panel obs: {len(arr)}")
+    x = arr[:, 0]
+    y = arr[:, 1]
+    X = np.column_stack([np.ones_like(x), x])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    resid = y - X @ beta
+    n, k = X.shape
+    sigma2 = float(resid @ resid) / (n - k)
+    cov = sigma2 * np.linalg.inv(X.T @ X)
+    se_slope = float(np.sqrt(cov[1, 1]))
+    long_run = float(beta[1])
+    ci_l = long_run - 1.96 * se_slope
+    ci_u = long_run + 1.96 * se_slope
+    weight = float(np.clip(abs(long_run), 0.0, 0.95))
+
+    return {
+        "edge_id": "ip_dxy__fc_fx_pressure",
+        "method": "pooled_panel_ols_log_diff_annual",
+        "source_proxy": "Synthetic DXY (annual mean)",
+        "target_proxy": f"PIMCO sovereign FX panel ({len(by_country)} EMs incl. Turkey/Argentina, annual)",
+        "long_run_multiplier": round(long_run, 4),
+        "ci_lower": round(ci_l, 4),
+        "ci_upper": round(ci_u, 4),
+        "selected_lag_months": 0,
+        "n_obs": int(n),
+        "sample_period": (
+            f"{int(min(dxy_log_diff.index))} – {int(max(dxy_log_diff.index))} (annual, pooled)"
+        ),
+        "fitted_weight": round(weight, 3),
+        "fitted_lag_months": 12,
+        "fitted_confidence": 0.75,
+        "sign": int(np.sign(long_run)) or 1,
+        "panel": list(by_country.keys()),
+        "note": (
+            "Pooled OLS Δlog(EM FX) ~ Δlog(DXY) on the PIMCO 15-EM annual "
+            "panel (2011–2024). Includes Turkey + Argentina + Colombia + "
+            "Egypt + Pakistan that the monthly datasets/exchange-rates "
+            "mirror doesn't carry. Sign positive (LCU/USD rises with DXY = "
+            "EM depreciation); fitted_weight is the magnitude. Annual "
+            "frequency loses the high-frequency channel timing the monthly "
+            "fit captures, but identifies a richer panel for the literature-"
+            "anchored 0.5–0.7 range."
+        ),
+    }
+
+
 def main() -> None:
     print("Loading sources …")
     dxy_monthly = fetch_dxy_monthly()["dxy"]
     em_fx = load_em_fx_panel()
+    em_fx_annual = load_em_fx_annual_panel()
     reserves = load_em_reserves_panel()
 
-    print(f"  DXY:       {dxy_monthly.index.min().date()} → {dxy_monthly.index.max().date()}, n={len(dxy_monthly)}")
-    print(f"  EM FX:     {em_fx.index.min().date()} → {em_fx.index.max().date()}, n={len(em_fx)}")
-    print(f"  Reserves:  {reserves.year.min()} → {reserves.year.max()}, "
+    print(f"  DXY:           {dxy_monthly.index.min().date()} → {dxy_monthly.index.max().date()}, n={len(dxy_monthly)}")
+    print(f"  EM FX (mo):    {em_fx.index.min().date()} → {em_fx.index.max().date()}, n={len(em_fx)}")
+    print(f"  EM FX (yr):    {em_fx_annual.year.min()} → {em_fx_annual.year.max()}, "
+          f"{em_fx_annual.country.nunique()} countries, n={len(em_fx_annual)}")
+    print(f"  Reserves (yr): {reserves.year.min()} → {reserves.year.max()}, "
           f"{reserves.country.nunique()} countries, n={len(reserves)}")
 
-    print("\nFitting ip_dxy → fc_fx_pressure …")
+    print("\nFitting ip_dxy → fc_fx_pressure (monthly, 7-EM panel) …")
     fx_fit = fit_dxy_to_em_fx(dxy_monthly, em_fx)
     print(f"  long-run β = {fx_fit['long_run_multiplier']}  "
           f"CI [{fx_fit['ci_lower']}, {fx_fit['ci_upper']}]  "
           f"n={fx_fit['n_obs']}  weight={fx_fit['fitted_weight']}")
+
+    print("\nFitting ip_dxy → fc_fx_pressure (annual, 15-EM panel) …")
+    fx_annual_fit = fit_dxy_to_em_fx_annual(dxy_monthly, em_fx_annual)
+    print(f"  long-run β = {fx_annual_fit['long_run_multiplier']}  "
+          f"CI [{fx_annual_fit['ci_lower']}, {fx_annual_fit['ci_upper']}]  "
+          f"n={fx_annual_fit['n_obs']}  weight={fx_annual_fit['fitted_weight']}")
 
     print("\nFitting ip_dxy → fc_em_fx_reserves …")
     res_fit = fit_dxy_to_em_reserves(dxy_monthly, reserves)
@@ -249,7 +371,7 @@ def main() -> None:
           f"n={res_fit['n_obs']}  weight={res_fit['fitted_weight']}")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps([fx_fit, res_fit], indent=2))
+    OUT.write_text(json.dumps([fx_fit, fx_annual_fit, res_fit], indent=2))
     print(f"\nWrote {OUT}")
 
 

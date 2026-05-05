@@ -1,29 +1,24 @@
 "use client";
 
-import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { useApexStore } from "@/stores/useApexStore";
 import { compute2DForceLayout } from "@/lib/graph-layout-2d";
 import {
+  computeFusedReliefField,
   computeNodeAnchors,
   computeReliefField,
-  computeReliefLayers,
+  pickNearestNode,
+  type FusedReliefField,
   type NodeAnchor,
   type ReliefField,
-  type ReliefLayer,
 } from "@/lib/graph-relief-field";
 import CanvasWatermark from "./CanvasWatermark";
 import DAGOverlay from "./dag3d/DAGOverlay";
 
-/**
- * Class-based error boundary — keeps a render error inside the Relief view
- * from tearing down the whole app to Next.js's generic "Application error"
- * fallback. We log to the console (visible in DevTools / Vercel logs) and
- * show a small in-pane fallback so the rest of the UI stays interactive.
- */
 class ReliefErrorBoundary extends Component<
   { children: ReactNode },
   { error: Error | null }
@@ -58,14 +53,20 @@ class ReliefErrorBoundary extends Component<
  * high-ΩF nodes cluster, valleys where it's quiet.
  *
  * Single-domain graphs render with the elevation ramp (deep blue → red).
- * Multi-domain graphs split into per-domain meshes with additive blending —
- * each domain tinted by its color, peaks add together where domains overlap
- * (e.g. red + cyan = magenta where both are critical at the same spot).
+ * Multi-domain graphs use a single fused mesh: each vertex is colored by
+ * the dominant domain at that grid cell × elevation tint × iso-contour
+ * banding. This gives discrete, recognisable peaks (each ridge belongs to
+ * one domain by colour) instead of the blurry haze the additive multilayer
+ * produced.
  */
 
-function ReliefMesh({ field }: { field: ReliefField }) {
-  // BufferGeometry rebuilt only when the field changes — graph topology /
-  // ΩF value change. Hover and orbit don't trigger recompute.
+function ReliefMesh({
+  field,
+  onPick,
+}: {
+  field: ReliefField;
+  onPick?: (clickX: number, clickZ: number) => void;
+}) {
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
     if (field.positions.length === 0) return geom;
@@ -86,11 +87,22 @@ function ReliefMesh({ field }: { field: ReliefField }) {
 
   if (field.positions.length === 0) return null;
 
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (!onPick) return;
+    e.stopPropagation();
+    onPick(e.point.x, e.point.z);
+  };
+
   return (
-    <mesh geometry={geometry} castShadow={false} receiveShadow={false}>
+    <mesh
+      geometry={geometry}
+      castShadow={false}
+      receiveShadow={false}
+      onClick={handleClick}
+    >
       <meshStandardMaterial
         vertexColors
-        roughness={0.65}
+        roughness={0.55}
         metalness={0.05}
         side={THREE.DoubleSide}
         flatShading={false}
@@ -100,50 +112,8 @@ function ReliefMesh({ field }: { field: ReliefField }) {
 }
 
 /**
- * Per-domain mesh used in multilayer mode. Vertex colors are pre-tinted by
- * domain color × elevation gamma, and the material uses additive blending so
- * overlapping peaks color-mix on the GPU. Lighting is intentionally bypassed
- * (`emissive`-style additive read) — we want the colors to be unambiguous
- * domain reads, not modulated by surface normals.
- */
-function ReliefLayerMesh({ layer }: { layer: ReliefLayer }) {
-  const geometry = useMemo(() => {
-    const geom = new THREE.BufferGeometry();
-    if (layer.field.positions.length === 0) return geom;
-    geom.setAttribute(
-      "position",
-      new THREE.BufferAttribute(layer.field.positions, 3),
-    );
-    geom.setAttribute(
-      "color",
-      new THREE.BufferAttribute(layer.field.colors, 3),
-    );
-    geom.setIndex(new THREE.BufferAttribute(layer.field.indices, 1));
-    return geom;
-  }, [layer.field]);
-
-  useEffect(() => () => geometry.dispose(), [geometry]);
-
-  if (layer.field.positions.length === 0) return null;
-
-  return (
-    <mesh geometry={geometry} castShadow={false} receiveShadow={false}>
-      <meshBasicMaterial
-        vertexColors
-        side={THREE.DoubleSide}
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
-
-/**
  * Sets the camera to a sensible initial framing the first time a non-empty
- * field is rendered, then leaves it to OrbitControls. Subsequent graph
- * changes don't re-frame so the user's manual orbit is preserved.
+ * field is rendered, then leaves it to OrbitControls.
  */
 function CameraSetup({
   width,
@@ -160,10 +130,6 @@ function CameraSetup({
   useEffect(() => {
     if (framedRef.current) return;
     if (!enabled) return;
-    // Lower Y multiplier (0.35 vs 0.55) drops the camera closer to the
-    // horizon, giving the mesh actual relief silhouette instead of a
-    // top-down "smudge". Keep X/Z symmetric so the initial frame is a
-    // 45° azimuth.
     const dist = Math.max(width, height, 200) * 0.7;
     camera.position.set(dist * 0.95, dist * 0.35, dist * 0.95);
     camera.lookAt(0, 0, 0);
@@ -173,16 +139,8 @@ function CameraSetup({
   return null;
 }
 
-/**
- * Reference grid laid flat at y=−2, sized to the field bounds. Without it the
- * mesh floats in featureless black and there's no sense of scale or which
- * direction is which. The slight Y-offset keeps it from z-fighting the mesh
- * valleys.
- */
 function ReliefGrid({ width, height }: { width: number; height: number }) {
   const size = Math.max(width, height) * 1.2;
-  // Aim for ~16 visible cells across the larger dimension regardless of
-  // graph size — same density read at 200-unit graphs and 2000-unit graphs.
   const divisions = 16;
   return (
     <gridHelper
@@ -197,28 +155,28 @@ function NodeLabels({ anchors }: { anchors: NodeAnchor[] }) {
   return (
     <>
       {anchors.map((a) => (
-        <group key={a.id} position={[a.x, a.y + 14, a.z]}>
-          {/* Vertical tick from peak surface to label so the label has a
-              clear visual anchor — without this the labels float and you
-              can't tell which peak owns which name. */}
-          <mesh position={[0, -7, 0]}>
-            <cylinderGeometry args={[0.6, 0.6, 14, 6]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.35} />
+        <group key={a.id} position={[a.x, a.y + 18, a.z]}>
+          {/* Vertical tick from peak surface to label so each label has a
+              clear visual anchor — without this they float and you can't
+              tell which peak owns which name. */}
+          <mesh position={[0, -9, 0]}>
+            <cylinderGeometry args={[0.5, 0.5, 18, 6]} />
+            <meshBasicMaterial color="#ffffff" transparent opacity={0.55} />
           </mesh>
           <Html
             center
-            distanceFactor={420}
+            distanceFactor={380}
             zIndexRange={[10, 0]}
             style={{ pointerEvents: "none" }}
           >
             <div
-              className="px-1.5 py-0.5 rounded bg-surface-elevated/90 border border-border whitespace-nowrap"
+              className="px-1.5 py-0.5 rounded bg-black/85 border border-white/30 whitespace-nowrap shadow-[0_0_6px_rgba(0,0,0,0.6)]"
               style={{ transform: "translateY(-50%)" }}
             >
-              <div className="text-[8px] font-mono text-foreground leading-tight">
+              <div className="text-[8.5px] font-mono text-white leading-tight">
                 {a.label}
               </div>
-              <div className="text-[7px] font-mono text-text-muted leading-tight">
+              <div className="text-[7px] font-mono text-white/60 leading-tight">
                 Ω {a.composite.toFixed(1)}
               </div>
             </div>
@@ -229,14 +187,14 @@ function NodeLabels({ anchors }: { anchors: NodeAnchor[] }) {
   );
 }
 
-function DomainLegend({ layers }: { layers: ReliefLayer[] }) {
-  if (layers.length < 2) return null;
+function DomainLegend({ field }: { field: FusedReliefField }) {
+  if (field.legend.length < 2) return null;
   return (
     <div className="absolute top-4 left-4 z-10 flex flex-col gap-1 px-3 py-2 rounded border border-border bg-surface-elevated/80 backdrop-blur-sm pointer-events-none">
       <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-        DOMAIN LAYERS · {layers.length}
+        DOMAIN LAYERS · {field.legend.length}
       </div>
-      {layers.map((l) => (
+      {field.legend.map((l) => (
         <div key={l.domain} className="flex items-center gap-2">
           <span
             className="inline-block h-2 w-2 rounded-full"
@@ -254,91 +212,46 @@ function DomainLegend({ layers }: { layers: ReliefLayer[] }) {
   );
 }
 
-export default function CausalDAGRelief() {
-  return (
-    <ReliefErrorBoundary>
-      <CausalDAGReliefInner />
-    </ReliefErrorBoundary>
-  );
-}
-
-/**
- * Cyan markers at selected node positions.
- *
- * The Relief view is a continuous heightfield, not discrete node renders, so
- * neither the singular `selectedNode` nor the multi-select array
- * (`selectedNodes`, written by the domain legend / shift-drag marquee) was
- * visible here at all. This component renders a tall cyan pillar + glowing
- * top sphere at each selected node's (x, y) layout position so users get the
- * same "where is my selection" reading they get in the 3D / 2D / Map views.
- *
- * Pillar height (110) is intentionally taller than the relief's max
- * heightScale (70) so markers always poke through the surface regardless of
- * where the underlying field happens to peak.
- */
 function SelectionMarkers({
   layout,
+  field,
 }: {
   layout: Map<string, { x: number; y: number }>;
+  field: ReliefField | null | undefined;
 }) {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const selectedNodes = useApexStore((s) => s.selectedNodes);
 
   const markers = useMemo(() => {
-    if (layout.size === 0) return [];
-    // Mirror the bounds + padding the relief uses so marker world coords
-    // line up with the heightfield. See computeReliefField in
-    // src/lib/graph-relief-field.ts — keep the padding constant in sync.
-    const PADDING = 80;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of layout.values()) {
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    }
-    if (!Number.isFinite(minX)) return [];
-    minX -= PADDING; maxX += PADDING;
-    minY -= PADDING; maxY += PADDING;
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-
-    // Multi-select takes priority but still surface the singular selection
-    // when nothing else is selected (e.g. user clicked a top-Ω node).
+    if (!field || layout.size === 0) return [];
     const ids = new Set<string>(selectedNodes);
     if (selectedNode) ids.add(selectedNode);
-
     const out: { id: string; x: number; z: number }[] = [];
     for (const id of ids) {
       const p = layout.get(id);
       if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-      out.push({ id, x: p.x - cx, z: p.y - cy });
+      out.push({ id, x: p.x - field.cx, z: p.y - field.cy });
     }
     return out;
-  }, [layout, selectedNode, selectedNodes]);
+  }, [layout, field, selectedNode, selectedNodes]);
 
-  if (markers.length === 0) return null;
+  if (markers.length === 0 || !field) return null;
 
-  const PILLAR_HEIGHT = 110;
+  const PILLAR_HEIGHT = 140;
   const PILLAR_RADIUS = 1.4;
 
   return (
     <group>
       {markers.map((m) => (
         <group key={m.id} position={[m.x, 0, m.z]}>
-          {/* Pillar: thin cyan cylinder rising from y=0 through the surface. */}
           <mesh position={[0, PILLAR_HEIGHT / 2, 0]}>
             <cylinderGeometry args={[PILLAR_RADIUS, PILLAR_RADIUS, PILLAR_HEIGHT, 10]} />
             <meshBasicMaterial color="#00e5ff" transparent opacity={0.65} />
           </mesh>
-          {/* Outer pillar halo for a soft glow. */}
           <mesh position={[0, PILLAR_HEIGHT / 2, 0]}>
             <cylinderGeometry args={[PILLAR_RADIUS * 2.2, PILLAR_RADIUS * 2.2, PILLAR_HEIGHT, 10]} />
             <meshBasicMaterial color="#00e5ff" transparent opacity={0.12} />
           </mesh>
-          {/* Cap: glowing sphere at the top so the marker reads from above
-              even when camera is high enough to see straight down. */}
           <mesh position={[0, PILLAR_HEIGHT, 0]}>
             <sphereGeometry args={[3.2, 14, 14]} />
             <meshBasicMaterial color="#00e5ff" />
@@ -353,8 +266,18 @@ function SelectionMarkers({
   );
 }
 
+export default function CausalDAGRelief() {
+  return (
+    <ReliefErrorBoundary>
+      <CausalDAGReliefInner />
+    </ReliefErrorBoundary>
+  );
+}
+
 function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const [pickHint, setPickHint] = useState<string | null>(null);
 
   // Reuse the existing 2D force layout so peaks land exactly where nodes
   // sit on the 2D canvas — switching between views feels coherent.
@@ -363,9 +286,6 @@ function CausalDAGReliefInner() {
     [graphData.nodes, graphData.edges],
   );
 
-  // Decide the rendering mode from the unique-domain count. Multilayer kicks
-  // in at ≥2 distinct domains; otherwise the elevation-ramp single mesh reads
-  // more naturally for a single subgraph.
   const uniqueDomains = useMemo(() => {
     const set = new Set<string>();
     for (const n of graphData.nodes) set.add(n.domain);
@@ -382,32 +302,44 @@ function CausalDAGReliefInner() {
     [multilayer, graphData.nodes, layout],
   );
 
-  const layers = useMemo(
+  // Fused mesh path — replaces the v2 additive multilayer. One single
+  // BufferGeometry, dominant-domain coloring, iso-contour bands.
+  const fusedField = useMemo(
     () =>
       multilayer
-        ? computeReliefLayers(graphData.nodes, layout)
-        : [],
+        ? computeFusedReliefField(graphData.nodes, layout)
+        : null,
     [multilayer, graphData.nodes, layout],
   );
 
-  const isEmpty = multilayer
-    ? layers.length === 0
-    : !singleField || singleField.positions.length === 0;
+  const activeField: ReliefField | null =
+    (multilayer ? fusedField : singleField) ?? null;
+  const isEmpty = !activeField || activeField.positions.length === 0;
 
-  // Use the first layer (or the single field) for camera framing dimensions.
-  const frameDims = multilayer
-    ? layers[0]?.field
-    : singleField ?? undefined;
-
-  // Top-K node anchors for floating labels above the most fragile peaks. We
-  // sample against the highest-peak layer in multilayer mode (or the single
-  // field) so the heights align with the dominant terrain the user sees.
   const anchors = useMemo<NodeAnchor[]>(() => {
-    if (isEmpty) return [];
-    const anchorField = multilayer ? layers[0]?.field : singleField;
-    if (!anchorField) return [];
-    return computeNodeAnchors(graphData.nodes, layout, anchorField, {}, 8);
-  }, [isEmpty, multilayer, layers, singleField, graphData.nodes, layout]);
+    if (!activeField || isEmpty) return [];
+    return computeNodeAnchors(graphData.nodes, layout, activeField, {}, 12);
+  }, [activeField, isEmpty, graphData.nodes, layout]);
+
+  // Click handler — convert the mesh-local hit point to nearest node id
+  // and dispatch into the store. Same selection signal the rest of the app
+  // already listens to (3D pillars, 2D React Flow, ModulePanel, etc.).
+  const handlePick = (clickX: number, clickZ: number) => {
+    if (!activeField) return;
+    const id = pickNearestNode(
+      clickX,
+      clickZ,
+      graphData.nodes,
+      layout,
+      activeField,
+    );
+    if (id) {
+      setSelectedNode(id);
+      const node = graphData.nodes.find((n) => n.id === id);
+      setPickHint(node?.label ?? id);
+      window.setTimeout(() => setPickHint(null), 1400);
+    }
+  };
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
@@ -423,10 +355,10 @@ function CausalDAGReliefInner() {
         }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
       >
-        <ambientLight intensity={0.35} />
+        <ambientLight intensity={0.45} />
         <directionalLight
           position={[200, 300, 200]}
-          intensity={0.7}
+          intensity={0.85}
           color="#ffffff"
         />
         <pointLight
@@ -440,21 +372,20 @@ function CausalDAGReliefInner() {
           color="#00e5ff"
         />
 
-        {!isEmpty && frameDims && (
-          <ReliefGrid width={frameDims.width} height={frameDims.height} />
+        {!isEmpty && activeField && (
+          <ReliefGrid width={activeField.width} height={activeField.height} />
         )}
-        {!isEmpty && !multilayer && singleField && (
-          <ReliefMesh field={singleField} />
+        {!isEmpty && activeField && (
+          <ReliefMesh field={activeField} onPick={handlePick} />
         )}
-        {!isEmpty && multilayer && layers.map((l) => (
-          <ReliefLayerMesh key={l.domain} layer={l} />
-        ))}
-        {!isEmpty && <SelectionMarkers layout={layout} />}
+        {!isEmpty && (
+          <SelectionMarkers layout={layout} field={activeField} />
+        )}
         {!isEmpty && <NodeLabels anchors={anchors} />}
-        {!isEmpty && frameDims && (
+        {!isEmpty && activeField && (
           <CameraSetup
-            width={frameDims.width}
-            height={frameDims.height}
+            width={activeField.width}
+            height={activeField.height}
             enabled
           />
         )}
@@ -470,7 +401,16 @@ function CausalDAGReliefInner() {
           maxPolarAngle={Math.PI * 0.49}
         />
       </Canvas>
-      {!isEmpty && multilayer && <DomainLegend layers={layers} />}
+      {!isEmpty && multilayer && fusedField && (
+        <DomainLegend field={fusedField} />
+      )}
+      {pickHint && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded border border-accent-cyan/60 bg-surface-elevated/90 backdrop-blur-sm pointer-events-none">
+          <div className="text-[9px] font-mono text-accent-cyan">
+            SELECTED: {pickHint}
+          </div>
+        </div>
+      )}
       {isEmpty && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-[10px] font-mono text-text-muted">

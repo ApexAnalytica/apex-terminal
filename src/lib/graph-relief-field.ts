@@ -563,3 +563,245 @@ function hexToLinearRGB(hex: string): [number, number, number] {
   const b = parseInt(m.slice(4, 6), 16) / 255;
   return [r, g, b];
 }
+
+// ─── Fused relief — single mesh colored by dominant domain ────────
+
+export interface FusedReliefLegendEntry {
+  domain: string;
+  colorHex: string;
+  /** Number of nodes in this domain — drives legend ordering. */
+  nodeCount: number;
+}
+
+export interface FusedReliefField extends ReliefField {
+  legend: FusedReliefLegendEntry[];
+}
+
+/**
+ * Build ONE heightfield mesh for the whole graph (sum of every domain's
+ * Gaussians) and color each vertex by the *dominant* domain at that grid
+ * cell × elevation tint × iso-contour banding.
+ *
+ * Why this beats the additive multilayer:
+ *  - Real silhouette. Each peak is a single 3D ridge, not 7 transparent
+ *    sheets stacked on top of each other smearing into a haze.
+ *  - Domain identity is still readable — the dominant-domain choice paints
+ *    each peak with one color, so the user can see "this ridge is mostly
+ *    Energy" vs "this one is mostly Macro Inflation".
+ *  - Iso-contours add the topographic-map character (the rings around
+ *    peaks) the user explicitly asked for.
+ *  - Only one geometry to raycast, so click-to-select picking works.
+ */
+export function computeFusedReliefField(
+  nodes: Pick<CausalNode, "id" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  params: ReliefFieldParams = {},
+): FusedReliefField {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
+    ...DEFAULTS,
+    ...params,
+  };
+
+  // Group samples by domain — same as multilayer — but we'll fuse the
+  // fields into a single mesh.
+  type Sample = { x: number; y: number; w: number };
+  const byDomain = new Map<string, Sample[]>();
+  const domainNodeCount = new Map<string, number>();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite ?? 0;
+    const domain = typeof n.domain === "string" && n.domain.length > 0
+      ? n.domain
+      : "Unknown";
+    const sample: Sample = { x: p.x, y: p.y, w: nodeWeight(composite) };
+    const arr = byDomain.get(domain);
+    if (arr) arr.push(sample);
+    else byDomain.set(domain, [sample]);
+    domainNodeCount.set(domain, (domainNodeCount.get(domain) ?? 0) + 1);
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  if (byDomain.size === 0 || !Number.isFinite(minX)) {
+    return { ...EMPTY_FIELD, legend: [] };
+  }
+
+  minX -= padding; maxX += padding;
+  minY -= padding; maxY += padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const sigma = Math.max(60, Math.min(width, height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+  const N = resolution;
+  const vertCount = N * N;
+  const positions = new Float32Array(vertCount * 3);
+  const colors = new Float32Array(vertCount * 3);
+
+  // Pre-cache the domain order and per-domain RGB so the inner loop reuses
+  // tiny indexed tuples instead of Map lookups.
+  const domains = Array.from(byDomain.keys());
+  const domainSamples = domains.map((d) => byDomain.get(d)!);
+  const domainRGB = domains.map((d) => hexToLinearRGB(reliefDomainColor(d)));
+
+  // Pass 1 — for every grid cell, evaluate per-domain heights, sum to the
+  // total height, and remember which domain dominated.
+  const totalHeights = new Float32Array(vertCount);
+  const dominantDomain = new Uint8Array(vertCount);
+  let peak = 0;
+  for (let j = 0; j < N; j++) {
+    const y = minY + (j / (N - 1)) * height;
+    for (let i = 0; i < N; i++) {
+      const x = minX + (i / (N - 1)) * width;
+      let total = 0;
+      let bestH = -1;
+      let bestDom = 0;
+      for (let d = 0; d < domains.length; d++) {
+        const samples = domainSamples[d];
+        let h = 0;
+        for (const s of samples) {
+          const dx = x - s.x;
+          const dy = y - s.y;
+          h += s.w * Math.exp(-(dx * dx + dy * dy) / sigma2);
+        }
+        total += h;
+        if (h > bestH) {
+          bestH = h;
+          bestDom = d;
+        }
+      }
+      const idx = j * N + i;
+      totalHeights[idx] = total;
+      dominantDomain[idx] = bestDom;
+      if (total > peak) peak = total;
+    }
+  }
+
+  // Pass 2 — emit positions + colors. Vertex color = domainColor *
+  // elevation tint * iso-contour modulation. The iso-contour band is a
+  // soft sinusoidal pulse on the normalised elevation: bright at band
+  // centres, slightly darker at edges. Reads as the "ringed" topographic
+  // look from the reference image without needing a custom shader.
+  const inv = peak > 0 ? 1 / peak : 0;
+  // Number of elevation bands — each ring spans ~1/BANDS of [0, 1].
+  // 12 reads as crisp without becoming busy on small graphs.
+  const BANDS = 12;
+  for (let j = 0; j < N; j++) {
+    const yWorld = minY + (j / (N - 1)) * height;
+    for (let i = 0; i < N; i++) {
+      const xWorld = minX + (i / (N - 1)) * width;
+      const idx = j * N + i;
+      const rawNorm = totalHeights[idx] * inv;
+      const norm = Number.isFinite(rawNorm)
+        ? Math.max(0, Math.min(1, rawNorm))
+        : 0;
+      const shaped = Math.pow(norm, heightGamma);
+      const z = shaped * heightScale;
+
+      positions[idx * 3 + 0] = xWorld - cx;
+      positions[idx * 3 + 1] = z;
+      positions[idx * 3 + 2] = yWorld - cy;
+
+      const rgb = domainRGB[dominantDomain[idx]];
+      // Fade towards a near-black valley colour so deep regions read as
+      // background. Without this, low elevations still take the dominant
+      // domain colour and the whole mesh looks uniformly bright.
+      const tint = 0.15 + 0.85 * Math.pow(norm, 0.85);
+      // Iso-contour modulation. cos goes 1 at band centre, -1 at the
+      // band edge — we want a gentle dark ring on edges, so map
+      // (1 + cos) / 2 → [0..1] and lerp colour to 0.6× at edges. The
+      // multiplier of 2π × BANDS gives BANDS rings between 0 and 1.
+      const ring = (Math.cos(norm * BANDS * Math.PI * 2) + 1) * 0.5;
+      const ringFactor = 0.6 + 0.4 * ring;
+
+      colors[idx * 3 + 0] = rgb[0] * tint * ringFactor;
+      colors[idx * 3 + 1] = rgb[1] * tint * ringFactor;
+      colors[idx * 3 + 2] = rgb[2] * tint * ringFactor;
+    }
+  }
+
+  // Triangle indices.
+  const cells = (N - 1) * (N - 1);
+  const indices = new Uint32Array(cells * 6);
+  let k = 0;
+  for (let j = 0; j < N - 1; j++) {
+    for (let i = 0; i < N - 1; i++) {
+      const a = j * N + i;
+      const b = j * N + i + 1;
+      const c = (j + 1) * N + i;
+      const d = (j + 1) * N + i + 1;
+      indices[k++] = a; indices[k++] = c; indices[k++] = b;
+      indices[k++] = b; indices[k++] = c; indices[k++] = d;
+    }
+  }
+
+  // Legend ordered by node count desc — biggest contributors first.
+  const legend: FusedReliefLegendEntry[] = domains.map((domain) => ({
+    domain,
+    colorHex: reliefDomainColor(domain),
+    nodeCount: domainNodeCount.get(domain) ?? 0,
+  }));
+  legend.sort((a, b) => b.nodeCount - a.nodeCount);
+
+  return {
+    positions,
+    colors,
+    indices,
+    width,
+    height,
+    resolution: N,
+    peak,
+    cx,
+    cy,
+    legend,
+  };
+}
+
+// ─── Picking — click point → nearest node ────────────────────────────
+
+/**
+ * Given a click point in mesh-local coordinates (X, Z — the same space
+ * positions live in after recentering by `field.cx/cy`), return the node
+ * id whose layout position is closest. Returns null if no candidate is
+ * within `maxDistance` (defaults to roughly half the Gaussian sigma so a
+ * click on flat ground doesn't pick a far-away node).
+ */
+export function pickNearestNode(
+  clickX: number,
+  clickZ: number,
+  nodes: Pick<CausalNode, "id" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  field: ReliefField,
+  params: ReliefFieldParams = {},
+  maxDistance?: number,
+): string | null {
+  if (field.positions.length === 0) return null;
+
+  const { sigmaFraction } = { ...DEFAULTS, ...params };
+  const sigma = Math.max(60, Math.min(field.width, field.height) * sigmaFraction);
+  const cap = maxDistance ?? sigma * 1.5;
+  const cap2 = cap * cap;
+
+  let bestId: string | null = null;
+  let bestD2 = Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const localX = p.x - field.cx;
+    const localZ = p.y - field.cy;
+    const dx = clickX - localX;
+    const dz = clickZ - localZ;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD2 && d2 <= cap2) {
+      bestD2 = d2;
+      bestId = n.id;
+    }
+  }
+  return bestId;
+}

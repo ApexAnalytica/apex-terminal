@@ -64,6 +64,11 @@ export default function SiteFooter() {
                 </a>
               </li>
               <li>
+                <a href={SITE.pricingUrl} className="text-[12px] font-mono text-text-muted hover:text-foreground">
+                  Pricing
+                </a>
+              </li>
+              <li>
                 <a href={SITE.loginUrl} className="text-[12px] font-mono text-text-muted hover:text-foreground">
                   Login
                 </a>

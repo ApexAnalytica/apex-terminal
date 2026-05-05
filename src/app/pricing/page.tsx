@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { PRICING_PLANS } from "@/lib/billing";
+import PricingBackground from "@/components/visuals/PricingBackground";
 
 export const metadata = {
   title: "Pricing — Manifold by Apex Analytica",
@@ -10,8 +11,18 @@ export const metadata = {
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
+    <div className="relative min-h-screen bg-background text-foreground">
+      {/* Ambient causal-graph background — sits behind every section
+          on the page. Fixed so it doesn't scroll, low opacity so it
+          coexists with the price grid and CTA blocks. */}
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10 pointer-events-none opacity-[0.28]"
+      >
+        <PricingBackground />
+      </div>
+
+      <header className="relative border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* Brand mark on /pricing routes back to the marketing home
               (apexanalytica.co), NOT to the platform root — visitors
@@ -42,8 +53,8 @@ export default function PricingPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-16">
-        <div className="text-center mb-14 space-y-3">
+      <main className="relative max-w-6xl mx-auto px-6 py-16">
+        <div className="text-center mb-10 space-y-3">
           <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.3em] text-text-muted">
             INSTITUTIONAL ACCESS
           </div>
@@ -55,6 +66,30 @@ export default function PricingPage() {
             Every deployment starts with a sales conversation and a
             48-hour pilot scoped to your evaluation use case.
           </p>
+        </div>
+
+        {/* "Evaluating Manifold? Pilot first" CTA above the price
+            grid — visitors see the access path before scrolling
+            through the tiers, so the prices feel like a follow-up
+            to the pilot conversation, not a paywall. */}
+        <div className="mb-12 rounded-lg border border-accent-cyan/30 bg-accent-cyan/[0.04] p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan">
+              EVALUATING MANIFOLD?
+            </div>
+            <p className="text-[12.5px] font-mono text-foreground/85 leading-relaxed">
+              Start with a 48-hour pilot before talking pricing. We
+              provision against your real use case and reply within
+              one business day.
+            </p>
+          </div>
+          <Link
+            href="/request-access"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-accent-cyan/15 border border-accent-cyan/60 rounded text-[11px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan hover:bg-accent-cyan/25 transition-colors shrink-0"
+          >
+            <span>REQUEST ACCESS</span>
+            <span aria-hidden>›</span>
+          </Link>
         </div>
 
         <div className="grid md:grid-cols-3 gap-5">
@@ -108,28 +143,22 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <div className="mt-16 border-t border-border pt-10 text-center space-y-3">
-          <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-text-muted">
-            EVALUATING MANIFOLD
-          </div>
-          <p className="text-[12px] font-mono text-text-muted max-w-2xl mx-auto leading-relaxed">
-            We provision a 48-hour pilot for qualified institutional
-            buyers — funds, banks, defense primes, sovereign offices,
-            and research institutions. Tell us who you are and what
-            you&apos;re evaluating; we&apos;ll respond within one business day.
+        <div className="mt-14 border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <p className="text-[11.5px] font-mono text-text-muted leading-relaxed">
+            Funds, banks, defense primes, sovereign offices, research
+            institutions. Pilot first, paperwork second.
           </p>
-          <div className="pt-2">
-            <Link
-              href="/request-access"
-              className="inline-block px-5 py-2.5 bg-accent-cyan/10 border border-accent-cyan/40 rounded text-[11px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan hover:bg-accent-cyan/20"
-            >
-              REQUEST ACCESS
-            </Link>
-          </div>
+          <Link
+            href="/request-access"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-border rounded text-[10px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/60 transition-colors"
+          >
+            <span>REQUEST ACCESS</span>
+            <span aria-hidden>›</span>
+          </Link>
         </div>
       </main>
 
-      <footer className="border-t border-border mt-16 py-8 text-center text-[9px] font-mono text-text-muted">
+      <footer className="relative border-t border-border mt-16 py-8 text-center text-[9px] font-mono text-text-muted">
         © Apex Analytica · Manifold is an institutional research terminal
       </footer>
     </div>

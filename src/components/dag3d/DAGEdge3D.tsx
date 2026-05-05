@@ -233,5 +233,51 @@ function DAGEdge3DInner({
   );
 }
 
-const DAGEdge3D = React.memo(DAGEdge3DInner);
+/**
+ * Custom equality check for the React.memo wrap below. Same problem as in
+ * DAGNode3D — sourcePos / targetPos rebuild fresh `[x, y, z]` tuples each
+ * parent render, epochState is sometimes a fresh object literal, and the
+ * onClick / onScissorsClick / onAblationClick closures are inline. That
+ * defeated default shallow equality and re-rendered all ~323 edges on
+ * every selection change, costing frame budget that the per-frame
+ * particle animations needed.
+ *
+ * Compares value props by content and ignores callback identity (closures
+ * are pure functions of stable bound `edge.id` + store actions).
+ */
+function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
+  if (prev.edge !== next.edge) return false;
+  if (
+    prev.sourcePos[0] !== next.sourcePos[0] ||
+    prev.sourcePos[1] !== next.sourcePos[1] ||
+    prev.sourcePos[2] !== next.sourcePos[2]
+  ) return false;
+  if (
+    prev.targetPos[0] !== next.targetPos[0] ||
+    prev.targetPos[1] !== next.targetPos[1] ||
+    prev.targetPos[2] !== next.targetPos[2]
+  ) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+  if (prev.isDimmed !== next.isDimmed) return false;
+  if (prev.isVerifiedInconsistent !== next.isVerifiedInconsistent) return false;
+  if (prev.isCrossDomain !== next.isCrossDomain) return false;
+  if (prev.isConnectedToSelected !== next.isConnectedToSelected) return false;
+  if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
+  if (prev.isSevered !== next.isSevered) return false;
+  if (prev.isConsequenceEdge !== next.isConsequenceEdge) return false;
+  if (prev.scissorsMode !== next.scissorsMode) return false;
+  if (prev.isAblated !== next.isAblated) return false;
+  if (prev.ablationMode !== next.ablationMode) return false;
+  // epochState — only `propagationSignal` is read (drives shouldAnimate).
+  const pe = prev.epochState;
+  const ne = next.epochState;
+  if (pe !== ne) {
+    if (!pe || !ne) return false;
+    if (pe.propagationSignal !== ne.propagationSignal) return false;
+  }
+  // Intentionally not comparing onScissorsClick / onAblationClick / onEdgeClick.
+  return true;
+}
+
+const DAGEdge3D = React.memo(DAGEdge3DInner, arePropsEqual);
 export default DAGEdge3D;

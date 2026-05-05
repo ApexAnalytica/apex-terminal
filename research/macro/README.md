@@ -225,7 +225,17 @@ within tolerance.
 | China Iron-Ore → Industrial Inputs      |  0.193              | (see fits.json)      | 446 | 1980 – 2017   |
 | DXY → EM FX (monthly, 7-EM mirror)      |  0.381              | [0.27, 0.49]         | 325 | 1999 – 2026   |
 | DXY → EM FX (annual, 15-EM PIMCO)       |  0.520              | [0.10, 0.94]         | 195 | 2011 – 2024   |
+| DXY → EM FX (cap-weighted, 15-EM)       |  0.521              | [0.08, 0.96]         | 195 | 2011 – 2024   |
 | DXY → EM FX reserves (annual, 14-EM)    | −0.478              | [−1.01, +0.05]       | 195 | 2011 – 2024   |
+
+Robustness: the cap-weighted variant (WLS with each country's rows
+weighted by 2011-2024 mean current-USD GDP) lands at β = 0.521,
+indistinguishable from the equal-weighted β = 0.520. The DXY → EM FX
+channel doesn't depend on whether Brazil + Mexico + Turkey carry more
+weight than Sri Lanka + Tunisia + Ghana — Hofmann-Patel-Wu's literature
+0.5-0.7 holds at both weighting schemes. Edge weight stays at the
+0.44 blend (between monthly tier-2 and annual tier-3); confidence stays
+0.85.
 
 Cross-check: Abqaiq-Khurais 2019 attack drove +23% abnormal cumulative
 return on Brent in the 90 days post (t=2.26, p≈0.02) — consistent with
@@ -279,7 +289,7 @@ as audit candidates until they get refit.
 4. **Real-rate refit with TIPS** — shipped in PR #190 with a synthetic proxy; the topology is correct but the proxy is too noisy for monthly returns. Refit with FRED `DFII10` (10y TIPS yield) once FRED key is set; weight tightens, topology unchanged.
 5. ~~**DXY → EM FX / reserves**~~ — empirical refits shipped in PR #221 (monthly 7-EM mirror) and PR #228 (annual 15-EM PIMCO panel including Turkey + Argentina).
 6. ~~**Macro historical sparklines**~~ — `macro_timeseries.json` builder + 14 ip_* node mappings shipped in PR #221. Backfilling the 25 mi_* labor nodes still needs FRED API access (build script runs the same path with `FRED_API_KEY` set).
-7. **Cap-weighted EM FX panel** — current annual fit is equal-weighted across 15 EMs. Cap-weighting (Brazil + Mexico + Turkey carry more than Sri Lanka + Tunisia) would tighten β toward the 0.5–0.7 literature range. Needs World Bank GDP weights, ideally from a sandbox-reachable mirror.
+7. ~~**Cap-weighted EM FX panel**~~ — shipped. World Bank current-USD GDP from `datasets/gdp` mirror; WLS variant in `dxy_em_fits.py:fit_dxy_to_em_fx_cap_weighted`. β = 0.521, indistinguishable from equal-weighted 0.520 — confirms the channel is symmetric across panel composition.
 
 ## Sub-domain audit notes
 

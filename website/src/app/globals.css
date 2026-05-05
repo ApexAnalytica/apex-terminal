@@ -154,19 +154,24 @@ body {
 .drift { animation: drift 6s ease-in-out infinite; }
 
 /* ───────── Intro overlay (first-load brand reveal) ─────────
-   Approach: render the brand at EXACTLY the SiteHeader brand
-   dimensions (44×54 mantis, 12px wordmark, 0.3em tracking, 10px
-   gap), anchored at the SiteHeader's brand position. The animation
-   scales it UP and translates it to viewport center for the intro
-   phase, then returns to identity (scale 1, translate 0). When the
-   overlay fades, the cloned brand is pixel-coincident with the real
-   header brand, so there's no jump cut.
+   Approach: render the brand at INTRO dimensions natively (header
+   size × --intro-scale). The mantis Image is served at 2x intro
+   size (440×540) so it stays crisp on HiDPI displays at intro
+   scale. The animation scales the stage DOWN to header size at the
+   end and translates to the SiteHeader brand anchor — only ever
+   downsampling, never upscaling, so the mantis stays sharp through
+   the whole sequence.
+
+   When the overlay fades, the cloned brand is pixel-coincident with
+   the real header brand (same anchor, same final dimensions), so
+   there's no jump cut.
 
    Tunable: --intro-scale controls how big the mantis appears
-   center-screen. At scale 5, the 44px mantis displays at ~220px.
+   center-screen. At scale 5 the 44px header mantis displays at
+   220px during the intro.
 
    Sequence (~2.8s):
-     0–600ms     mantis fades in + pops to scaled-up size
+     0–600ms     mantis fades in + pops to intro size
      600–1700ms  wordmark types out beside it (per-char delays)
      1700–2200ms hold center
      2200–2800ms scale down + translate to anchor; overlay fades */
@@ -237,13 +242,17 @@ body {
 .apex-intro-stage {
   display: inline-flex;
   align-items: center;
-  gap: 10px;          /* matches SiteHeader gap-2.5 */
+  /* Sized at INTRO dimensions natively (header size × --intro-scale).
+     This way the image is rendered crisp at intro size, and the
+     animation only ever scales DOWN (to header size) — which is a
+     high-quality downsample, never an upscale. */
+  gap: calc(10px * var(--intro-scale));
   transform-origin: 0 0;
   animation: apex-intro-stage 2800ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
-/* Stage flight: scaled up + translated to viewport center initially,
-   shrinks to identity (sitting on top of the real header brand). */
+/* Stage flight: starts at scale 1 (= intro size) translated to viewport
+   center, ends at scale 1/--intro-scale (= header size) at anchor. */
 @keyframes apex-intro-stage {
   0%, 78% {
     transform:
@@ -251,25 +260,27 @@ body {
         calc(50vw - var(--intro-anchor-x) - (var(--intro-half-w) * var(--intro-scale))),
         calc(50vh - var(--intro-anchor-y) - (var(--intro-half-h) * var(--intro-scale)))
       )
-      scale(var(--intro-scale));
+      scale(1);
   }
   100% {
-    transform: translate(0, 0) scale(1);
+    transform: translate(0, 0) scale(calc(1 / var(--intro-scale)));
   }
 }
 
 .apex-intro-mantis-frame {
   display: inline-flex;
   flex-shrink: 0;
-  width: 44px;
-  height: 54px;
+  /* Native dimensions = intro size; CSS scales DOWN to header size
+     at end of animation. */
+  width: calc(44px * var(--intro-scale));
+  height: calc(54px * var(--intro-scale));
   opacity: 0;
   animation: apex-intro-mantis 600ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
 }
 
 .apex-intro-mantis-img {
-  width: 44px;
-  height: 54px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 
@@ -281,7 +292,9 @@ body {
 
 .apex-intro-wordmark {
   font-family: var(--font-michroma);
-  font-size: 12px;        /* matches SiteHeader text-[12px] */
+  /* Native font-size = intro display size; CSS scales DOWN to 12px
+     header size at end of animation via the stage's transform: scale. */
+  font-size: calc(12px * var(--intro-scale));
   letter-spacing: 0.3em;  /* matches tracking-[0.3em] */
   white-space: nowrap;
   color: var(--foreground);

@@ -2411,6 +2411,126 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+
+  // ─── Frontier Science (6 placeholder nodes) ──────────────────────
+  // Scaffold for the Frontier Science card (DomainSelector.tsx). Six
+  // anchor nodes covering the four sub-areas the card description
+  // names: post-Standard Model physics, neutrino frontier, quantum
+  // gravity probes, dark sector detection. All carry
+  // `dataStatus: "blank-needs-data"` — the UI shows a "DATA NEEDED"
+  // badge so they're visibly placeholder rather than mistaken for live
+  // signals.
+  //
+  // Activation pattern (when the teammate physics data drop lands):
+  //   1. Wire each node to its experimental data source (FNAL/CERN
+  //      releases, Particle Data Group fits, LIGO catalogs, Planck
+  //      Legacy archive). Add entries to NODE_TIMESERIES_MAP.
+  //   2. Drop dataStatus override so getDataStatus() infers "live"
+  //      from liveData presence.
+  //   3. Add cross-domain bridge edges where mechanisms exist:
+  //        - Defense (`gpu_supply_itar` → `fs_dark_matter_direct`):
+  //          GPU-bound TPC reconstruction; flagged the same way the
+  //          ATHENA bridges are spliced in DomainSelector.
+  //        - Energy (Aramco/QE → `fs_neutrino_mass_hierarchy`):
+  //          fusion-reactor neutrino flux / nuclear-physics overlap
+  //          for ITER / Wendelstein-7X programs.
+  //   4. Replace these placeholder mechanisms with citations from the
+  //      data drop (PDG / arXiv / experiment paper).
+  //
+  // Until then: the nodes exist so the canvas can render, the legend
+  // includes Frontier Science, and the omega-fragility profiles are
+  // first-pass estimates from facility characteristics (one-of-a-kind
+  // detector ⇒ high irreplaceability + restoration latency).
+  {
+    id: "fs_neutrino_mass_hierarchy",
+    label: "Neutrino Mass Hierarchy",
+    shortLabel: "νMH",
+    category: "science",
+    omegaFragility: omega(8.5, 8.0, 1.0, 6.0, 9, 5.0),
+    globalConcentration: "Distributed: NOvA (Fermilab) + T2K (J-PARC) + JUNO (China) + DUNE (US, in construction)",
+    replacementTime: "10-15 years (single experiment); discovery requires generational facility",
+    physicalConstraint: "Normal vs inverted ordering of m_ν; resolves whether m_3 > m_1 or vice-versa. Critical for neutrinoless double-beta decay sensitivity targeting and CP-violation searches",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_dark_matter_direct",
+    label: "Dark Matter Direct Detection",
+    shortLabel: "DMd",
+    category: "science",
+    omegaFragility: omega(9.0, 9.0, 1.0, 5.5, 9, 4.0),
+    globalConcentration: "LZ (US, SURF) + XENONnT (Italy, LNGS) — two-experiment global frontier",
+    replacementTime: "8-12 years (xenon procurement + underground lab construction)",
+    physicalConstraint: "Spin-independent WIMP-nucleon cross-section limits; current sensitivity ~10⁻⁴⁸ cm² above 30 GeV. Loss of either lab cuts the global exclusion plot by 50%",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_axion_haloscope",
+    label: "Axion Haloscope Search",
+    shortLabel: "Axn",
+    category: "science",
+    omegaFragility: omega(7.5, 6.0, 2.0, 5.0, 8, 4.0),
+    globalConcentration: "ADMX (US) + HAYSTAC (Yale) + CAPP (Korea) + ORGAN (Australia)",
+    replacementTime: "5-8 years per cavity generation",
+    physicalConstraint: "Microwave-cavity searches for axion-photon coupling g_aγγ across 1-100 µeV. Probes QCD-axion band predicted by Peccei-Quinn solutions to the strong-CP problem",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_gravitational_wave_obs",
+    label: "Gravitational Wave Observatory",
+    shortLabel: "GWO",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 2.0, 6.0, 9, 4.5),
+    globalConcentration: "LIGO (US, 2 sites) + Virgo (Italy) + KAGRA (Japan); next-gen Cosmic Explorer + Einstein Telescope in design",
+    replacementTime: "10-15 years (interferometer arms + isolation systems)",
+    physicalConstraint: "Strain sensitivity h ~ 10⁻²² at 100 Hz; binary-merger detections at gigaparsec range. Quantum-gravity probes via merger ringdowns and Lorentz-invariance tests on multi-messenger events (GW170817 + GRB 170817A)",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_proton_decay_search",
+    label: "Proton Decay Search",
+    shortLabel: "p→",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 1.0, 6.0, 9, 4.0),
+    globalConcentration: "Super-Kamiokande (Japan); Hyper-K under construction; DUNE far detector (US) complementary",
+    replacementTime: "15-20 years (giant water-Cherenkov + photomultiplier arrays)",
+    physicalConstraint: "Lifetime limit τ_p > 1.6 × 10³⁴ years (Super-K, 2020). Direct test of GUT predictions; non-observation continues to constrain SU(5), SO(10), and supersymmetric extensions",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_hubble_tension",
+    label: "Hubble Tension (H₀)",
+    shortLabel: "H₀",
+    category: "science",
+    omegaFragility: omega(6.5, 3.0, 1.5, 7.0, 8, 5.5),
+    globalConcentration: "Planck (CMB, ~67 km/s/Mpc) vs SH0ES + JWST local-distance ladder (~73 km/s/Mpc); ~5σ tension since 2019",
+    replacementTime: "Active anomaly; ongoing JWST + Roman + Euclid measurements",
+    physicalConstraint: "5σ disagreement between early-universe (CMB-inferred) and late-universe (Cepheid + Type-Ia ladder) Hubble parameter. Either systematics in distance ladders, new physics in pre-recombination era (early dark energy, extra Neff), or post-recombination modification of expansion history",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: true,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2841,6 +2961,17 @@ const EDGES: CausalEdge[] = [
   { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description)." },
   { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.44, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022). Two empirical refits triangulate the channel: (1) monthly ARDL on 7-EM mirror panel (Brazil, India, Mexico, South Africa, Thailand, Malaysia, Sri Lanka): long-run β = 0.381 [0.27, 0.49], n=325, 1999-02 to 2026-03 — tight CI, excludes high-vol EMs; (2) annual pooled OLS on 15-EM PIMCO panel including Turkey + Argentina + Colombia + Egypt + Pakistan: β = 0.520 [0.10, 0.94], n=195, 2011-2024 — wider CI but captures the literature-anchored EM volatility. Weight 0.44 sits between the two point estimates; confidence 0.85 reflects cross-panel agreement on sign + magnitude." },
   { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.478, lag: 6, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Empirical refit on PIMCO sovereign reserves panel (14 EMs, annual 2011-2024, n=195): pooled OLS Δlog(reserves) ~ Δlog(DXY) yields β = -0.478 [-1.01, +0.05], sign-correct (negative). Lag=6 reflects the gradual annual-cadence response (reserves drain over 6-12 months); fitted_weight is the magnitude. CI just touches zero — channel is real but identification benefits from longer panel." },
+
+  // ─── Frontier Science placeholder edges (4) ──────────────────────
+  // Low-confidence intra-domain links so the canvas renders the
+  // sub-network instead of disconnected nodes. Mechanisms are
+  // textbook (not refit). Refit pending the teammate physics drop —
+  // see graph-data.ts comment block above the fs_* nodes for the
+  // activation pattern. Tarski R-04 won't flag these (intra-domain).
+  { id: "fs_neutrino_mass_hierarchy__fs_proton_decay_search", source: "fs_neutrino_mass_hierarchy", target: "fs_proton_decay_search", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both observables constrain GUT-scale physics: neutrino-mass ordering selects between SU(5)/SO(10) embeddings that predict different proton-decay branching ratios. Confounded by the underlying GUT scale rather than direct causation." },
+  { id: "fs_dark_matter_direct__fs_axion_haloscope", source: "fs_dark_matter_direct", target: "fs_axion_haloscope", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both probe the dark sector but in complementary mass windows: WIMP TPCs cover GeV-TeV; axion haloscopes cover µeV. Coordinated by the global dark-sector exclusion plot — confounded edge reflects shared theoretical motivation, not flow." },
+  { id: "fs_gravitational_wave_obs__fs_hubble_tension", source: "fs_gravitational_wave_obs", target: "fs_hubble_tension", weight: 0.5, lag: 0, type: "directed", confidence: 0.55, isInconsistent: false, physicalMechanism: "Standard-siren H₀ measurements from binary-neutron-star mergers (GW170817-style) provide a third route to the Hubble parameter independent of the CMB and Cepheid ladders. Tension resolution depends on enough sirens to discriminate ~5σ between 67 and 73 km/s/Mpc." },
+  { id: "fs_gravitational_wave_obs__fs_neutrino_mass_hierarchy", source: "fs_gravitational_wave_obs", target: "fs_neutrino_mass_hierarchy", weight: 0.3, lag: 0, type: "confounded", confidence: 0.45, isInconsistent: false, physicalMechanism: "Multi-messenger supernova detection (gravitational waves + IceCube neutrinos) pins down absolute mass scale via flight-time differences — Σm_ν < 0.4 eV from SN1987A. Constrains hierarchy when combined with cosmological Σm_ν bounds. Weak edge: hasn't fired since 1987 and channel uncertainty is high." },
 ];
 
 const METADATA: GraphMetadata = {

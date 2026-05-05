@@ -3,6 +3,8 @@ import { Michroma, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import SiteBackground from "@/components/SiteBackground";
+import IntroOverlay from "@/components/IntroOverlay";
 
 const michroma = Michroma({
   weight: "400",
@@ -36,11 +38,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${michroma.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen flex flex-col`}
+        className={`${michroma.variable} ${geistMono.variable} antialiased text-foreground min-h-screen flex flex-col`}
       >
+        <SiteBackground />
         <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />
+        <IntroOverlay />
       </body>
     </html>
   );

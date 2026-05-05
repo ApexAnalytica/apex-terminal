@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import HeroGraph from "@/components/HeroGraph";
 import EngineFlow from "@/components/visuals/EngineFlow";
-import HeroBackground from "@/components/visuals/HeroBackground";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
@@ -41,9 +40,6 @@ export default function Home() {
       {/* ───────── HERO ───────── */}
       <section className="relative overflow-hidden border-b border-border">
         <div className="absolute inset-0 grid-bg opacity-60 mask-fade-edges" aria-hidden />
-        <div className="absolute inset-0 opacity-50 pointer-events-none" aria-hidden>
-          <HeroBackground />
-        </div>
         {/* Big mantis watermark — bleeds off the right edge, low opacity, behind content */}
         <div
           className="absolute -right-32 top-1/2 -translate-y-1/2 pointer-events-none select-none hidden md:block"

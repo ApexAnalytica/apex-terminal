@@ -47,10 +47,16 @@
   --font-mono: var(--font-geist-mono);
 }
 
-html, body {
+html {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-mono), 'Courier New', monospace;
+}
+
+/* Body is transparent so the fixed SiteBackground (z-index -10)
+   sits visibly behind every page. Base color comes from html. */
+body {
+  background: transparent;
 }
 
 /* Expose design-system font tokens as globally cascadable CSS vars so
@@ -146,3 +152,123 @@ body {
   100% { transform: translate(8px, -12px); opacity: 0.3; }
 }
 .drift { animation: drift 6s ease-in-out infinite; }
+
+/* ───────── Intro overlay (first-load brand reveal) ─────────
+   Total runtime budget: ~2600ms. Suppressed on subsequent navigations
+   within the same session via sessionStorage.
+
+   Phases (driven by `apex-intro-running` class on the root):
+     mantis      0–500ms   fade in + scale up
+     wordmark    500–1500ms char-by-char typewriter (delays inlined per-char)
+     hold        1500–2000ms
+     exit        2000–2600ms shrink + slide composition toward header,
+                             overlay fades out
+*/
+
+.apex-intro-prep {
+  /* Render but invisible — guards against hydration flash. */
+  opacity: 0;
+  pointer-events: none;
+}
+
+.apex-intro-running {
+  animation: apex-intro-overlay 2600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes apex-intro-overlay {
+  0%, 76%   { opacity: 1; }
+  100%      { opacity: 0; }
+}
+
+.apex-intro-stage {
+  /* Composition-level transform: scales down + slides toward the
+     top-left header brand position during the exit phase. The
+     header brand sits roughly at (mx-auto max-w-7xl + px-4) ≈ 24px
+     from left and 24px from top in a 68px header. */
+  animation: apex-intro-stage 2600ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  transform-origin: 0 0;
+}
+
+@keyframes apex-intro-stage {
+  0%      { transform: translate(0, 0) scale(1); }
+  76%     { transform: translate(0, 0) scale(1); }
+  100%    { transform: translate(calc(-50vw + 24px + 0px), calc(-50vh + 30px + 0px)) scale(0.36); }
+}
+
+.apex-intro-mantis {
+  opacity: 0;
+  transform: scale(0.6);
+  animation: apex-intro-mantis 600ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+@keyframes apex-intro-mantis {
+  0%   { opacity: 0; transform: scale(0.6) translateY(8px); }
+  60%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.apex-intro-wordmark {
+  font-size: clamp(18px, 2.6vw, 28px);
+}
+
+.apex-intro-char {
+  display: inline-block;
+  opacity: 0;
+  animation-fill-mode: forwards;
+  animation-name: apex-intro-char-fade;
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.apex-intro-char.apex-intro-a {
+  /* Slight angled-stroke entrance for the two A's — nods at the
+     "mantis arms become A's" idea without a full SVG morph. The A
+     drops down with a vertical-scale wipe so the diagonal strokes
+     read as arms lowering. */
+  animation-name: apex-intro-a-drop;
+  animation-duration: 360ms;
+  transform-origin: 50% 100%;
+}
+
+@keyframes apex-intro-char-fade {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes apex-intro-a-drop {
+  0%   { opacity: 0; transform: scaleY(0.2) translateY(-6px); }
+  60%  { opacity: 1; transform: scaleY(1.08) translateY(0); }
+  100% { opacity: 1; transform: scaleY(1) translateY(0); }
+}
+
+/* Caret sits at the right edge of the wordmark while typing */
+.apex-intro-caret {
+  position: absolute;
+  width: 2px;
+  height: 1em;
+  background: var(--accent-cyan);
+  margin-left: 6px;
+  opacity: 0;
+  animation: apex-intro-caret 2000ms steps(1, end) forwards;
+}
+
+@keyframes apex-intro-caret {
+  0%, 18% { opacity: 0; }
+  20%, 76% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* Skip the entire intro for users who'd rather not have motion */
+@media (prefers-reduced-motion: reduce) {
+  .apex-intro-running,
+  .apex-intro-stage,
+  .apex-intro-mantis,
+  .apex-intro-char,
+  .apex-intro-caret {
+    animation: none !important;
+  }
+  .apex-intro-running {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

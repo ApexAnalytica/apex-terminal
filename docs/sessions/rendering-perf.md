@@ -290,9 +290,30 @@ Remaining map-view perf opportunity if ever needed: the per-frame particle updat
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 696/696 pass (4 new tests).
 
+### 2026-05-03 — Shipped: Relief v3 — fused mesh, iso-contours, picking
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on the v2 multilayer was direct: *"the peaks are not really well differentiated. it's not really good… can't select any of these nodes."* They sent a Reddit reference (r/SideProject — "topographic map of 10 million research papers") showing how a real topographic map should look: discrete mountain ridges, iso-contour rings, dense labels, all clickable. The v2 additive multilayer fundamentally couldn't get there because every domain contributed everywhere, smearing peaks into haze.
+
+**What shipped (v3 — bigger rework).**
+- **Fused single mesh** replaces additive multilayer. New `computeFusedReliefField(nodes, layout, params)` builds ONE BufferGeometry by summing every domain's Gaussians into a total height field, but tracks the *dominant* domain at each grid cell. Vertex color = `dominantDomainColor × elevationTint × isoContourBand`. Each peak now reads as a discrete ridge with a single colour identity ("this peak is mostly Energy"), not the previous translucent pile-up. Returns a populated `legend` field — replaces the old per-layer legend rendering.
+- **Iso-contour bands** baked into the vertex colour. `(cos(norm × BANDS × 2π) + 1) / 2` modulates each vertex's intensity; bands at edge centres are bright, valleys between bands are 0.6× dimmer. 12 bands gives the topographic-map ringed look the user asked for, without needing a custom shader. Sat on top of the elevation tint so darker valleys ringfade gracefully.
+- **Picking.** New `pickNearestNode(clickX, clickZ, nodes, layout, field, params, maxDistance)` does a nearest-node search over mesh-local layout positions, capped at ~1.5 × sigma so a click on flat ground doesn't pick a far-away node. The mesh now has an `onClick` handler that takes the r3f hit point, calls picker, and dispatches `setSelectedNode(id)` into the store. Same selection signal the rest of the app already listens to (3D pillars, ModulePanel, RiskPropagationFlow). Plus a brief "SELECTED: {label}" hint at the bottom of the canvas for 1.4s so the user gets a visible confirmation.
+- **Beefier labels.** Top-K bumped 8 → 12, switched to high-contrast white-on-black-with-shadow cards (the previous bg-surface-elevated/80 read as washed-out against bright peaks), thicker ticks (0.5r × 18h vs 0.6r × 14h), distance factor tuned tighter so labels stay legible at common camera distances.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — new `computeFusedReliefField` + `FusedReliefField` + `FusedReliefLegendEntry` exports, new `pickNearestNode` exporter. Existing `computeReliefField` / `computeReliefLayers` / `computeNodeAnchors` unchanged for back-compat with tests and any future re-use.
+- `src/components/CausalDAGRelief.tsx` — drops `<ReliefLayerMesh>` from the render path entirely (the type stays imported only by tests). New `<ReliefMesh>` accepts `onPick` and routes click events. Pick hint UI element added. Lighting bumped (ambient 0.35→0.45, directional 0.7→0.85) so iso-contours read clearly against the now-tinted vertex colours.
+- `src/lib/__tests__/graph-relief-field.test.ts` — 6 new tests: `computeFusedReliefField` shape + legend ordering, dominant-domain colouring at distant clusters, empty-graph handling; `pickNearestNode` happy path, cap radius, empty field.
+
+**Out of scope.** Replay animation (bind field input to `currentSnapshot`), per-layer Y-stacking (option B from the original choice — moot now that the fused mesh reads cleanly), onboarding tooltip. Filed.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass (6 new in `graph-relief-field.test.ts`).
+
 ### 2026-05-03 — Next up
 
-- Verify the readability pass on production (hard-refresh, click RELIEF, expect tilted camera, top-8 node labels above peaks, grid floor, sharper ridges). If labels are too dense or sparse on real data, the `topK` constant in `CausalDAGReliefInner` is one number to tune. Remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip, per-layer Y-stacking (option B). Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify v3 on production: hard-refresh, click RELIEF, expect (a) discrete mountain ridges with single-domain colours, (b) ringed iso-contour bands, (c) clicking on a peak selects that node and lights up downstream UI (top-Ω list, ModulePanel, etc.), (d) 12 readable labels on the dominant peaks. If the iso-band density is wrong (too busy on small graphs / too sparse on large), `BANDS` constant in `computeFusedReliefField` is one number to tune. Remaining Relief follow-ups: replay animation, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

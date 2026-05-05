@@ -87,19 +87,16 @@ export interface ReliefField {
 
 const DEFAULTS: Required<ReliefFieldParams> = {
   resolution: 80,
-  // Tall enough to read as terrain rather than a pancake on a wide layout.
-  // The combined effect of nodeWeight power-boost + heightGamma already
-  // makes peaks pop, so the linear scale stays modest.
-  heightScale: 90,
+  // Bigger height scale than v3 — the user wanted real vertical drama,
+  // not just colour. Combined with heightGamma 1.6, peaks now stand
+  // visibly above valleys in silhouette, not just in colour.
+  heightScale: 140,
   padding: 80,
-  // Tighter Gaussian than v1 — a quarter-extent bandwidth (0.12) smeared every
-  // node's contribution and merged peaks into one broad lump. ~6% gives local,
-  // legible mountains while still being smooth between adjacent nodes.
-  sigmaFraction: 0.06,
-  // Power applied to normalised height. > 1 flattens valleys and sharpens
-  // peaks. Combined with the WEIGHT_EXPONENT below, makes the multi-domain
-  // mesh read as discrete ridges instead of one soft mound.
-  heightGamma: 1.35,
+  // Tightened from 0.06 to 0.05 — even narrower Gaussian per node, so
+  // adjacent peaks stay separable rather than blending into a ridge.
+  sigmaFraction: 0.05,
+  // Higher gamma → more aggressive valley-flattening + peak-rising.
+  heightGamma: 1.6,
 };
 
 /** Power-law boost applied to each node's composite ΩF before kernel
@@ -682,14 +679,14 @@ export function computeFusedReliefField(
     }
   }
 
-  // Pass 2 — emit positions + colors. Vertex color = domainColor *
-  // elevation tint * iso-contour modulation. The iso-contour band is a
-  // soft sinusoidal pulse on the normalised elevation: bright at band
-  // centres, slightly darker at edges. Reads as the "ringed" topographic
-  // look from the reference image without needing a custom shader.
+  // Pass 2 — emit positions + colors. Vertex color = elevation heatmap
+  // (deep blue → cyan → amber → red) × iso-contour modulation. v3
+  // tinted by dominant domain at each cell, which read as a patchwork
+  // and lost the "brighter = higher" intuition users expect from a
+  // topographic / heatmap visualisation. v4 uses the elevation ramp
+  // for the surface and tints labels by domain instead.
+  void domainRGB; void dominantDomain; // retained for legend; not used in colour pass.
   const inv = peak > 0 ? 1 / peak : 0;
-  // Number of elevation bands — each ring spans ~1/BANDS of [0, 1].
-  // 12 reads as crisp without becoming busy on small graphs.
   const BANDS = 12;
   for (let j = 0; j < N; j++) {
     const yWorld = minY + (j / (N - 1)) * height;
@@ -707,21 +704,18 @@ export function computeFusedReliefField(
       positions[idx * 3 + 1] = z;
       positions[idx * 3 + 2] = yWorld - cy;
 
-      const rgb = domainRGB[dominantDomain[idx]];
-      // Fade towards a near-black valley colour so deep regions read as
-      // background. Without this, low elevations still take the dominant
-      // domain colour and the whole mesh looks uniformly bright.
-      const tint = 0.15 + 0.85 * Math.pow(norm, 0.85);
-      // Iso-contour modulation. cos goes 1 at band centre, -1 at the
-      // band edge — we want a gentle dark ring on edges, so map
-      // (1 + cos) / 2 → [0..1] and lerp colour to 0.6× at edges. The
-      // multiplier of 2π × BANDS gives BANDS rings between 0 and 1.
+      // Elevation heatmap. The same ramp the single-domain path uses, so
+      // both modes read identically — brighter / hotter = higher peak.
+      const [rR, gG, bB] = elevationColor(norm);
+      // Iso-contour modulation. cos goes 1 at band centre, -1 at edge —
+      // map (1 + cos) / 2 → [0..1] and darken edges to 0.55× for the
+      // ringed topographic look.
       const ring = (Math.cos(norm * BANDS * Math.PI * 2) + 1) * 0.5;
-      const ringFactor = 0.6 + 0.4 * ring;
+      const ringFactor = 0.55 + 0.45 * ring;
 
-      colors[idx * 3 + 0] = rgb[0] * tint * ringFactor;
-      colors[idx * 3 + 1] = rgb[1] * tint * ringFactor;
-      colors[idx * 3 + 2] = rgb[2] * tint * ringFactor;
+      colors[idx * 3 + 0] = rR * ringFactor;
+      colors[idx * 3 + 1] = gG * ringFactor;
+      colors[idx * 3 + 2] = bB * ringFactor;
     }
   }
 

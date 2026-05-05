@@ -130,8 +130,10 @@ function CameraSetup({
   useEffect(() => {
     if (framedRef.current) return;
     if (!enabled) return;
+    // Pulled the camera lower (Y multiplier 0.35 → 0.25) — drama is hard
+    // to read at a near-isometric angle when peaks are tall.
     const dist = Math.max(width, height, 200) * 0.7;
-    camera.position.set(dist * 0.95, dist * 0.35, dist * 0.95);
+    camera.position.set(dist * 0.95, dist * 0.25, dist * 0.95);
     camera.lookAt(0, 0, 0);
     framedRef.current = true;
   }, [camera, width, height, enabled]);
@@ -150,39 +152,102 @@ function ReliefGrid({ width, height }: { width: number; height: number }) {
   );
 }
 
+/**
+ * Per-node colour from the same domain map the field uses. Inlined here so
+ * label borders can pick up the domain identity the surface no longer
+ * carries (v4 dropped per-domain surface tinting in favour of the heatmap
+ * ramp). Keep in sync with DOMAIN_COLOR_MAP in graph-relief-field.ts.
+ */
+function labelDomainColor(domain: string): string {
+  switch (domain) {
+    case "Saudi Aramco Energy": return "#00e676";
+    case "QatarEnergy LNG": return "#00e5ff";
+    case "QAFCO Fertilizer": return "#76ff03";
+    case "Ma'aden Phosphate": return "#ffab00";
+    case "Financial Contagion": return "#ff6d00";
+    case "Sovereign Risk": return "#ffab00";
+    case "Supply Chain Food Security": return "#00e5ff";
+    case "Undersea Cable Infrastructure": return "#7c4dff";
+    case "Macro Impact: Labor, Growth & Housing": return "#40c4ff";
+    case "Macro Impact: Inflation & Policy": return "#ff80ab";
+    case "Drone Swarms": return "#ff4081";
+    case "SATCOM": return "#448aff";
+    case "ISR Fusion": return "#ea80fc";
+    case "Chip Embargo": return "#ff9100";
+    case "Secure Compute": return "#69f0ae";
+    case "Kill Chain": return "#ff1744";
+    default: return "#94a3b8";
+  }
+}
+
 function NodeLabels({ anchors }: { anchors: NodeAnchor[] }) {
   if (anchors.length === 0) return null;
   return (
     <>
-      {anchors.map((a) => (
-        <group key={a.id} position={[a.x, a.y + 18, a.z]}>
-          {/* Vertical tick from peak surface to label so each label has a
-              clear visual anchor — without this they float and you can't
-              tell which peak owns which name. */}
-          <mesh position={[0, -9, 0]}>
-            <cylinderGeometry args={[0.5, 0.5, 18, 6]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.55} />
-          </mesh>
-          <Html
-            center
-            distanceFactor={380}
-            zIndexRange={[10, 0]}
-            style={{ pointerEvents: "none" }}
+      {anchors.map((a) => {
+        // Scale font + tick by composite — a top-Ω node gets a bolder
+        // marker than a borderline-3 node, so the user reads "criticality"
+        // directly from the label, not just from terrain elevation.
+        const t = Math.max(0, Math.min(1, (a.composite - 3) / 7));
+        const fontPx = 7.5 + 3 * t;        // 7.5px → 10.5px
+        const subPx = 6.5 + 1.5 * t;       // 6.5px → 8px
+        const tickHeight = 14 + 14 * t;    // 14 → 28
+        const tickRadius = 0.4 + 0.5 * t;
+        const tickOpacity = 0.45 + 0.5 * t;
+        const cardOpacity = 0.7 + 0.25 * t;
+        const borderColor = labelDomainColor(a.domain);
+        return (
+          <group
+            key={a.id}
+            position={[a.x, a.y + tickHeight, a.z]}
           >
-            <div
-              className="px-1.5 py-0.5 rounded bg-black/85 border border-white/30 whitespace-nowrap shadow-[0_0_6px_rgba(0,0,0,0.6)]"
-              style={{ transform: "translateY(-50%)" }}
+            {/* Tick from peak surface to label. Width + opacity scale with
+                Ω so high-criticality labels visually dominate. */}
+            <mesh position={[0, -tickHeight / 2, 0]}>
+              <cylinderGeometry
+                args={[tickRadius, tickRadius, tickHeight, 6]}
+              />
+              <meshBasicMaterial
+                color="#ffffff"
+                transparent
+                opacity={tickOpacity}
+              />
+            </mesh>
+            <Html
+              center
+              distanceFactor={380}
+              zIndexRange={[10, 0]}
+              style={{ pointerEvents: "none" }}
             >
-              <div className="text-[8.5px] font-mono text-white leading-tight">
-                {a.label}
+              <div
+                className="px-1.5 py-0.5 rounded whitespace-nowrap shadow-[0_0_6px_rgba(0,0,0,0.7)]"
+                style={{
+                  transform: "translateY(-50%)",
+                  backgroundColor: `rgba(0, 0, 0, ${cardOpacity})`,
+                  border: `1px solid ${borderColor}`,
+                }}
+              >
+                <div
+                  className="font-mono text-white leading-tight"
+                  style={{ fontSize: `${fontPx}px` }}
+                >
+                  {a.label}
+                </div>
+                <div
+                  className="font-mono leading-tight"
+                  style={{
+                    fontSize: `${subPx}px`,
+                    color: borderColor,
+                    opacity: 0.85,
+                  }}
+                >
+                  Ω {a.composite.toFixed(1)}
+                </div>
               </div>
-              <div className="text-[7px] font-mono text-white/60 leading-tight">
-                Ω {a.composite.toFixed(1)}
-              </div>
-            </div>
-          </Html>
-        </group>
-      ))}
+            </Html>
+          </group>
+        );
+      })}
     </>
   );
 }
@@ -318,7 +383,11 @@ function CausalDAGReliefInner() {
 
   const anchors = useMemo<NodeAnchor[]>(() => {
     if (!activeField || isEmpty) return [];
-    return computeNodeAnchors(graphData.nodes, layout, activeField, {}, 12);
+    // 40 is enough to see most nodes on a typical 100–200-node graph
+    // without the canvas turning into a wall of overlapping labels.
+    // Each label's font + tick scales with composite so low-Ω entries
+    // stay visually subordinate to peaks.
+    return computeNodeAnchors(graphData.nodes, layout, activeField, {}, 40);
   }, [activeField, isEmpty, graphData.nodes, layout]);
 
   // Click handler — convert the mesh-local hit point to nearest node id

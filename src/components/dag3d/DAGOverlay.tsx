@@ -90,13 +90,15 @@ export default function DAGOverlay() {
             viewMode === "3d" ? "WEBGL_3D"
             : viewMode === "2d" ? "REACTFLOW_2D"
             : viewMode === "map" ? "MAPLIBRE_GEO"
-            : "WEBGL_RELIEF"
+            : "WEBGL_TOPO"
           }
         </span>
         <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
           METHOD: DCD / NOTEARS
         </span>
-        {/* View mode cycle buttons */}
+        {/* View mode cycle buttons. Internal id stays "relief" so existing
+            store / type machinery keeps working; the user-facing label is
+            "TOPO" (more recognisable than "RELIEF" for a topographic map). */}
         {(["3d", "2d", "map", "relief"] as const).map((mode) => (
           <button
             key={mode}
@@ -107,7 +109,7 @@ export default function DAGOverlay() {
                 : "border-border text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40"
             }`}
           >
-            {mode === "3d" ? "3D" : mode === "2d" ? "2D" : mode === "map" ? "MAP" : "RELIEF"}
+            {mode === "3d" ? "3D" : mode === "2d" ? "2D" : mode === "map" ? "MAP" : "TOPO"}
           </button>
         ))}
       </div>

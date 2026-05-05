@@ -240,47 +240,29 @@ describe("computeFusedReliefField", () => {
     expect(field.legend[0].nodeCount).toBe(2);
   });
 
-  it("each peak takes its dominant domain's tint (no haze)", () => {
-    // Two distant clusters — the vertex closest to cluster A should be
-    // tinted with A's domain colour, the one near cluster B with B's.
+  it("uses the elevation heatmap (peak vertices brighter than valley)", () => {
+    // Single hot cluster — vertex at the peak should be markedly brighter
+    // (sum of channels) than a vertex far from any source.
     const nodes = [
-      // Cluster A at (0,0), domain X (#00e676 → very green)
       makeNode("a1", "Saudi Aramco Energy", 10),
       makeNode("a2", "Saudi Aramco Energy", 10),
-      // Cluster B far away, domain Y (#ff1744 → very red)
-      makeNode("b1", "Kill Chain", 10),
-      makeNode("b2", "Kill Chain", 10),
     ];
     const layout = new Map([
       ["a1", { x: 0, y: 0 }],
       ["a2", { x: 20, y: 20 }],
-      ["b1", { x: 1000, y: 1000 }],
-      ["b2", { x: 1020, y: 1020 }],
     ]);
     const field = computeFusedReliefField(nodes, layout, { resolution: 32 });
-    // Find vertex closest to cluster A peak (mesh origin minus midpoint).
-    // Easier — just sample a vertex near the corner where A clusters.
-    // A is at (0,0) in layout, recentered to (0 - cx, 0 - cy).
-    // Find vertex closest to that mesh-local point.
-    const targetX = 0 - field.cx;
-    const targetZ = 0 - field.cy;
-    let bestIdx = 0;
-    let bestD2 = Infinity;
-    for (let i = 0; i < field.positions.length; i += 3) {
-      const dx = field.positions[i] - targetX;
-      const dz = field.positions[i + 2] - targetZ;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        bestIdx = i;
-      }
+    // Brightest vertex (max RGB sum) should be near the cluster, dimmest
+    // far from it. We don't care about the colour identity — just that the
+    // ramp is monotonic with elevation.
+    let maxSum = -Infinity;
+    let minSum = Infinity;
+    for (let i = 0; i < field.colors.length; i += 3) {
+      const s = field.colors[i] + field.colors[i + 1] + field.colors[i + 2];
+      if (s > maxSum) maxSum = s;
+      if (s < minSum) minSum = s;
     }
-    // Domain Saudi Aramco (#00e676) → green channel dominates.
-    const r = field.colors[bestIdx];
-    const g = field.colors[bestIdx + 1];
-    const b = field.colors[bestIdx + 2];
-    expect(g).toBeGreaterThan(r);
-    expect(g).toBeGreaterThan(b);
+    expect(maxSum).toBeGreaterThan(minSum + 0.5);
   });
 
   it("returns empty + legend=[] for graphs with no layout entries", () => {

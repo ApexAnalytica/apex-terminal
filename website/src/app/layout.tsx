@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Michroma, Geist_Mono } from "next/font/google";
+import { Michroma, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -12,8 +12,8 @@ const michroma = Michroma({
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -38,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${michroma.variable} ${geistMono.variable} antialiased text-foreground min-h-screen flex flex-col`}
+        className={`${michroma.variable} ${jetbrainsMono.variable} antialiased text-foreground min-h-screen flex flex-col`}
       >
         <SiteBackground />
         <SiteHeader />

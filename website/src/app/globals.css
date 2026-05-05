@@ -15,7 +15,11 @@
   --surface-elevated: #10111a;
   --border: #1a1c2e;
   --border-bright: #2a2d45;
-  --text-muted: #5a5e72;
+  /* Body-copy gray: bumped from #5a5e72 (about WCAG AA edge against
+     #050508) to #8a8e9e for a clear improvement in body-text
+     readability while still reading as a "muted" tone next to the
+     full-strength foreground (#c8ccd0). */
+  --text-muted: #8a8e9e;
 
   /* Category colors (matched to platform) */
   --cat-manufacturing: #00e5ff;
@@ -44,13 +48,13 @@
   --color-border-bright: var(--border-bright);
   --color-text-muted: var(--text-muted);
   --font-sans: var(--font-michroma);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 html {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-mono), 'Courier New', monospace;
+  font-family: var(--font-jetbrains-mono), 'Courier New', monospace;
 }
 
 /* Body is transparent so the fixed SiteBackground (z-index -10)
@@ -63,7 +67,7 @@ body {
    they resolve inside SVG presentation attributes (e.g. <text font-family>).
    Tailwind v4's `@theme inline` does NOT emit these at :root. */
 body {
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-jetbrains-mono);
   --font-sans: var(--font-michroma);
 }
 

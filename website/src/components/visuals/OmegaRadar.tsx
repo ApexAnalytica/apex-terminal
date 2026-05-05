@@ -104,7 +104,7 @@ export default function OmegaRadar({
               key={`scale-${s}`}
               x={v.x + 6}
               y={v.y + 2}
-              fontFamily="var(--font-geist-mono)"
+              fontFamily="var(--font-jetbrains-mono)"
               fontSize="8"
               fill="var(--text-muted)"
               opacity={0.6}
@@ -167,7 +167,7 @@ export default function OmegaRadar({
               <text
                 x={v.x}
                 y={v.y + 22}
-                fontFamily="var(--font-geist-mono)"
+                fontFamily="var(--font-jetbrains-mono)"
                 fontSize="9"
                 fill={p.color}
                 opacity={0.85}
@@ -195,7 +195,7 @@ export default function OmegaRadar({
           x={CX}
           y={CY + 11}
           textAnchor="middle"
-          fontFamily="var(--font-geist-mono)"
+          fontFamily="var(--font-jetbrains-mono)"
           fontSize="14"
           fill="var(--accent-cyan)"
         >

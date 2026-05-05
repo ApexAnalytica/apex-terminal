@@ -272,6 +272,52 @@ describe("computeFusedReliefField", () => {
     expect(field.positions.length).toBe(0);
     expect(field.legend).toEqual([]);
   });
+
+  it("emits per-vertex norms aligned with positions length", () => {
+    const nodes = [
+      makeNode("a", "Saudi Aramco Energy", 8),
+      makeNode("b", "Sovereign Risk", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 100, y: 0 }],
+    ]);
+    const field = computeFusedReliefField(nodes, layout, { resolution: 16 });
+    expect(field.norms.length).toBe(field.positions.length / 3);
+    // norms should range across [0, 1] — the peak vertex hits 1, valley
+    // vertices stay ≈ 0.
+    let max = -Infinity, min = Infinity;
+    for (let i = 0; i < field.norms.length; i++) {
+      if (field.norms[i] > max) max = field.norms[i];
+      if (field.norms[i] < min) min = field.norms[i];
+    }
+    expect(max).toBeGreaterThan(0.5);
+    expect(min).toBeLessThanOrEqual(max);
+    expect(min).toBeGreaterThanOrEqual(0);
+    expect(max).toBeLessThanOrEqual(1);
+  });
+
+  it("field reacts to ΩF changes (replay-aware input → different peak)", () => {
+    // Two nodes at the same positions, but different omega values across
+    // two compute calls — the computed peak should track the input. This
+    // is the contract the replay path relies on: when an EpochSnapshot
+    // overrides composite, the field morphs.
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 80, y: 80 }],
+    ]);
+    const baseline = computeFusedReliefField(
+      [makeNode("a", "X", 4), makeNode("b", "Y", 3)],
+      layout,
+      { resolution: 16 },
+    );
+    const escalated = computeFusedReliefField(
+      [makeNode("a", "X", 9), makeNode("b", "Y", 8)],
+      layout,
+      { resolution: 16 },
+    );
+    expect(escalated.peak).toBeGreaterThan(baseline.peak);
+  });
 });
 
 describe("pickNearestNode", () => {

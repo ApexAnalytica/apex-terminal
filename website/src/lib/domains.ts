@@ -60,37 +60,6 @@ const PILLAR_FOR_ENGINE = {
 
 export const ENGINE_PILLAR_LABEL = PILLAR_FOR_ENGINE;
 
-/**
- * Stub helper — used for domains that haven't been written yet. Keeps
- * the page renderable so all 7 // DOMAINS tiles link somewhere real.
- */
-function stub(args: {
-  slug: string;
-  name: string;
-  color: Color;
-  tagline: string;
-  problemHint: string;
-  personas?: Persona[];
-}): DomainContent {
-  return {
-    slug: args.slug,
-    name: args.name,
-    color: args.color,
-    tagline: args.tagline,
-    problem: [
-      `${args.problemHint} The ${args.name.toLowerCase()} domain page is being written — full problem framing, signal lists, and sample readouts are coming next.`,
-      "If you have specific scenarios you want covered first, tell us and we'll prioritize.",
-    ],
-    mapping: [
-      `Manifold treats ${args.name.toLowerCase()} as a causal graph: each node is an entity that produces or consumes capability, each edge encodes a real dependency. Pillar scores (I, R, J, C, T) and per-node ΩF are computed at import.`,
-    ],
-    personas: args.personas ?? [],
-    engines: ["SPIRTES", "PARETO"],
-    pillars: ["I", "C", "T"],
-    signals: [],
-  };
-}
-
 export const DOMAINS: Record<string, DomainContent> = {
   manufacturing: {
     slug: "manufacturing",
@@ -146,13 +115,23 @@ export const DOMAINS: Record<string, DomainContent> = {
     },
   },
 
-  infrastructure: stub({
+  infrastructure: {
     slug: "infrastructure",
     name: "Infrastructure",
     color: "purple",
     tagline: "Power, water, ports, telecom, and rail — where one node is the system.",
-    problemHint:
-      "Infrastructure cascades follow physics, not procurement. A single substation, a single cable landing, a single rail interchange can take a region offline.",
+    problem: [
+      "Infrastructure cascades follow physics, not procurement. A single substation, a single subsea cable landing, a single rail interchange can take a region offline — and the dependency map that would surface those nodes in advance often only exists in operations databases, not in the models that price the risk.",
+      "Standard contingency analysis (N-1, N-2) is a regulatory floor, not a structural map. It enumerates failure cases but not the cascade depth — which other infrastructures, which counterparties, which downstream production sites fail with the named one. The relevant graph crosses the seams: power into telecom into finance into manufacturing.",
+      "When something does fail, the loss isn't bounded by the asset. It's bounded by everything the asset was carrying. That's the number a CFO, a reinsurance underwriter, or a national-security planner needs, and it's the number nobody computes ahead of time.",
+    ],
+    mapping: [
+      "Manifold ingests the physical-asset graph (substations, lines, transformer banks, cable landings, water mains, pipelines, rail interchanges) and joins it to the dependency layer above (telecom carriers, settlement systems, hospitals, manufacturing plants, defense logistics). Edges encode physical, contractual, or jurisdictional dependency — same schema, different sources.",
+      "PEARL runs counterfactuals on named outage scenarios (this substation goes dark for 72 hours; this cable landing is severed). PARETO simulates the resulting cascade across the joined graph. SPIRTES discovers structural dependencies that operations data implies but no formal map captures.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO"],
+    pillars: ["I", "R", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Operations Planner · ISO / RTO",
@@ -170,15 +149,25 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "I + C ranking on the national infrastructure graph, configurable per strategic objective (continuity of government, defense logistics, financial settlement).",
       },
     ],
-  }),
+  },
 
-  economic: stub({
+  economic: {
     slug: "economic",
     name: "Economic",
     color: "amber",
     tagline: "Trade flows, sectoral GDP, and the exposure hidden in macro aggregates.",
-    problemHint:
-      "Macro aggregates smear over the structural fragility underneath. A sector-weighted view masks which nodes carry the load.",
+    problem: [
+      "Macro aggregates — sectoral GDP, trade balances, headline employment — smear over the structural fragility underneath. A sector grows three percent in print while one node in that sector quietly carries half its productivity, and when that node moves, the print finally agrees, six months late.",
+      "Index-weighted exposure isn't structural exposure. A portfolio that looks balanced by sector or geography can be highly concentrated in the underlying graph — through a single processor, a single trade route, a single financing channel. Standard factor decompositions don't see it.",
+      "The events that actually move macro data are usually graph events: a port closure, a key supplier going offline, a tariff regime that re-routes a flow. Macro models that don't have the graph can't price the event in advance.",
+    ],
+    mapping: [
+      "Manifold treats the economic graph as nodes for sectors, sub-sectors, trade routes, key producers, and major consumers, with edges encoding revealed dependency from trade, payment, and production data. ΩF per node makes the structural concentration explicit.",
+      "PEARL runs counterfactuals on tariff, sanction, and trade-route shocks. PARETO simulates the cascade. SPIRTES discovers dependency structure that the data implies but the official sectoral classification doesn't capture.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO"],
+    pillars: ["I", "J", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Macro Strategist · Multi-Strategy Hedge Fund",
@@ -196,15 +185,25 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "ΩSF on the national economic graph, scenario library spanning trade, sectoral, and external-balance shocks.",
       },
     ],
-  }),
+  },
 
-  finance: stub({
+  finance: {
     slug: "finance",
     name: "Finance",
     color: "orange",
     tagline: "Banks, settlement, and sovereign credit — interconnection as a risk axis.",
-    problemHint:
-      "Banking and settlement networks survive on assumed liquidity that disappears under stress. Bilateral exposure data is incomplete; structural exposure isn't priced.",
+    problem: [
+      "Banking, settlement, and sovereign-credit networks survive on assumed liquidity that disappears under stress. The counterparty graph is monitored bilaterally; the network amplification — second-order exposure through the rest of the book — is hard to size and rarely priced into limits or capital.",
+      "Standard stress tests run firm-by-firm or scenario-by-scenario. They miss the network-amplification term that is the actual mechanism of past crises: 2008's repo run, the 2010 sovereign loop, the 2023 regional-bank cascade. Each was a graph event the firm-level tests didn't see in advance.",
+      "Sovereign credit is the same problem at country level. A single political event can re-price an entire sovereign curve overnight, and the structural setup that made it that fragile wasn't visible in the ratings.",
+    ],
+    mapping: [
+      "Manifold ingests the supervised perimeter (lending exposures, derivatives, settlement flows, payment-rail dependencies) and the sovereign perimeter (cross-border banking claims, FX reserves, debt structure). Edges encode bilateral exposure, settlement flow, and rail dependency.",
+      "PEARL runs counterfactuals on named stress scenarios (this central counterparty is impaired; this rail is unavailable for 24 hours; this sovereign loses access). PARETO simulates the resulting cascade across the supervised graph. SPIRTES surfaces structural dependencies the supervisory data implies but isn't called out.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO", "TARSKI"],
+    pillars: ["I", "J", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Counterparty Risk · Tier-1 Bank",
@@ -222,15 +221,25 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "Jurisdictional hazard + cascade load on the sovereign-finance subgraph. Counterfactual on named regime-change scenarios.",
       },
     ],
-  }),
+  },
 
-  energy: stub({
+  energy: {
     slug: "energy",
     name: "Energy",
     color: "green",
     tagline: "Grid, oil, gas, and transition tech — the supply curve is a graph.",
-    problemHint:
-      "Energy systems span physical infrastructure, commodity flows, and policy regimes. The fragility points sit at the seams.",
+    problem: [
+      "Energy systems span physical infrastructure, commodity flows, and policy regimes — and the fragility points sit at the seams. A single LNG terminal, a single specialist transformer factory, a single straits transit can decide the supply curve for a region. The seam between sectors (gas into power, mining into transition tech) is where the cascade starts.",
+      "Risk is usually modeled in compartments: fuel risk in one team, grid risk in another, offtake-counterparty risk in a third. The interactions — the joint shock that hits all three — aren't priced into capital decisions, even though those are the events that actually move the book.",
+      "Transition adds a second graph on top of the first: critical minerals, refining capacity, battery and electrolyzer manufacturing, charging infrastructure. The transition graph has its own single-source nodes and its own jurisdictional hazards, mostly distinct from the legacy graph.",
+    ],
+    mapping: [
+      "Manifold ingests the physical asset graph (generation, transmission, fuel logistics, refining, transition manufacturing) and the commercial layer above (offtake counterparties, regulatory regimes, sanction and export-control envelopes). Edges encode capacity, contractual obligation, and policy dependency.",
+      "PEARL runs counterfactuals on named scenarios (this strait is closed; this transformer factory loses 12 months of output; this jurisdiction adds export controls on a critical mineral). PARETO simulates the cascade. SPIRTES surfaces structural dependencies operating data implies.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO"],
+    pillars: ["I", "R", "J", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Risk & Scenarios · Integrated Energy Major",
@@ -248,15 +257,25 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "Cross-sector graph. Irreplaceability + cascade ranking. Scenario simulation over import-cutoff and infrastructure-loss events.",
       },
     ],
-  }),
+  },
 
-  geopolitical: stub({
+  geopolitical: {
     slug: "geopolitical",
     name: "Geopolitical",
     color: "red",
     tagline: "Sanctions, conflict, and export controls — fragility under regime change.",
-    problemHint:
-      "Geopolitical risk is usually narrative, rarely structural. A single export-control update can re-price a whole supply chain overnight.",
+    problem: [
+      "Geopolitical risk is usually narrative, rarely structural. A single export-control update, a single sanctions designation, a single tariff schedule can re-price an entire supply chain overnight — but the structural setup that made the chain that exposed wasn't visible in any standard risk view.",
+      "Defensive analysis catches up. Adversary planning runs ahead. Lists of strategic dependencies aren't ranked by leverage; coercion plans are built around named bottlenecks. The asymmetry shows up at exactly the moments where the named bottleneck gets named.",
+      "The relevant graph is messy on purpose: legal entities, beneficial ownership, jurisdictional registration, end-use control, dual-use designation. The graph's edges are written by regulators and regimes, not by procurement. Most risk tooling treats the graph as a list.",
+    ],
+    mapping: [
+      "Manifold ingests the corporate, legal, and trade graphs and joins them to jurisdictional layers (sanctions regimes, export-control schedules, tariff bands, licensing requirements). Edges encode ownership, contractual, and licensing dependency.",
+      "PEARL runs counterfactuals on named regime changes (this export-control list expands; this entity is designated; this jurisdiction enters secondary-sanctions scope). PARETO simulates the resulting cascade. TARSKI verifies which paths through the graph remain compliant under the new regime. SPIRTES discovers ownership and licensing structure the data implies but public filings obscure.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO", "TARSKI"],
+    pillars: ["I", "J", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Global Head of Sanctions · Multinational",
@@ -274,15 +293,25 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "Structural fragility under named scenarios. Tail-depth on jurisdictional-hazard concentration in the holdings graph.",
       },
     ],
-  }),
+  },
 
-  science: stub({
+  science: {
     slug: "science",
     name: "Science",
     color: "magenta",
     tagline: "Research infra, instrumentation, and talent — discovery as a fragile network.",
-    problemHint:
-      "Scientific output depends on a thin layer of unique instruments, facilities, and people. Most of these dependencies are invisible to funders and program managers.",
+    problem: [
+      "Scientific output depends on a thin layer of unique instruments, facilities, and people. Most of these dependencies are invisible to funders and program managers — and to the institutions that depend on them. The cryo-EM facility, the synchrotron beamline, the principal investigator with the technique nobody has reproduced.",
+      "When a key node fails — a facility goes down, a key PI leaves, a grant cycle ends without renewal — the cascade isn't visible until grants stall, papers stop landing, and trainees flow elsewhere. Often that's a year of lost productivity that wasn't accounted for in any portfolio review.",
+      "Funders and institutions both run portfolios. Neither runs a graph. The dependency between bets — shared equipment, shared cores, shared mentors, shared cohorts — gets glossed over until something fails inside it.",
+    ],
+    mapping: [
+      "Manifold ingests the research-infrastructure graph (facilities, instruments, key personnel, training pipelines) and the funding-portfolio layer above (grants, project pipelines, milestone obligations). Edges encode dependency: which projects depend on which instruments, which trainees on which mentors, which programs on which cores.",
+      "PEARL runs counterfactuals on facility outages and personnel departures. PARETO simulates the resulting productivity cascade across the portfolio. SPIRTES surfaces dependencies that publication data implies but org charts don't.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO"],
+    pillars: ["I", "R", "C", "T"],
+    signals: [],
     personas: [
       {
         title: "Research VP · R1 University or National Lab",
@@ -300,7 +329,7 @@ export const DOMAINS: Record<string, DomainContent> = {
         gain: "Graph view of the research supply chain. Cascade simulation on supplier and CRO failure across the pipeline.",
       },
     ],
-  }),
+  },
 };
 
 export const DOMAIN_SLUGS = Object.keys(DOMAINS);

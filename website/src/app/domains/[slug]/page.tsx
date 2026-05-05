@@ -74,7 +74,6 @@ export default async function DomainPage({
   const d = DOMAINS[slug];
   if (!d) notFound();
   const c = colorMap[d.color];
-  const isStub = d.signals.length === 0;
 
   return (
     <>
@@ -101,12 +100,6 @@ export default async function DomainPage({
           <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
             {d.tagline}
           </p>
-          {isStub && (
-            <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 border border-amber-500/30 bg-amber-500/5 rounded text-[10px] font-mono text-accent-amber tracking-wider">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent-amber pulse-ring" />
-              <span>DRAFT · CONTENT IN PROGRESS</span>
-            </div>
-          )}
         </div>
       </section>
 

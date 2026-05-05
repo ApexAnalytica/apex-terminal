@@ -61,7 +61,6 @@ export default function DomainsIndexPage() {
         <div className="grid gap-4 md:gap-5 md:grid-cols-2 lg:grid-cols-3">
           {domains.map((d) => {
             const c = colorMap[d.color];
-            const isStub = d.signals.length === 0;
             return (
               <Link
                 key={d.slug}
@@ -105,16 +104,9 @@ export default function DomainsIndexPage() {
                       </span>
                     ))}
                   </div>
-                  {isStub ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 border border-amber-500/30 bg-amber-500/5 rounded text-[9px] font-mono text-accent-amber tracking-wider">
-                      <span className="h-1 w-1 rounded-full bg-accent-amber" />
-                      DRAFT
-                    </span>
-                  ) : (
-                    <span className="font-mono text-[10px] text-text-muted/70 tracking-wider">
-                      {d.engines.length} ENGINE{d.engines.length === 1 ? "" : "S"}
-                    </span>
-                  )}
+                  <span className="font-mono text-[10px] text-text-muted/70 tracking-wider">
+                    {d.engines.length} ENGINE{d.engines.length === 1 ? "" : "S"}
+                  </span>
                 </div>
               </Link>
             );
@@ -126,9 +118,8 @@ export default function DomainsIndexPage() {
       <Section className="pt-4 pb-16 md:pb-20">
         <div className="border-t border-border pt-6 max-w-2xl">
           <p className="text-[12px] font-mono text-text-muted/80 leading-relaxed">
-            Don&apos;t see your domain? Manifold&apos;s shape is general — the
-            seven above are the ones with the most curated content. If your
-            system is a graph and the failure modes are causal, it fits.{" "}
+            Don&apos;t see your domain? Manifold&apos;s shape is general. If
+            your system is a graph and the failure modes are causal, it fits.{" "}
             <Link href="/contact" className="text-accent-cyan hover:underline">
               Get in touch
             </Link>.

@@ -1147,6 +1147,135 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     label: "CGM TIR Median (D1NAMO)",
   },
 
+  // ─── Macro / Inflation (ip_*) — historical proxies ──────────────
+  //
+  // The geopolitical-macro pillar's ip_* nodes are driven at runtime by
+  // the FRED live feed (src/lib/feeds/fred.ts), which only carries the
+  // last 24 observations forward. To anchor the time-scrubber and give
+  // sparklines decades of context, we map each node to the closest
+  // sandbox-reachable historical proxy from `macro_fred_proxy` (built by
+  // research/macro/scripts/build_macro_timeseries.py: Shiller CPI, IMF
+  // Pink Sheet commodity indices, EIA-mirrored Brent/WTI/HenryHub, US 10y
+  // Treasury). When FRED API is reachable from prod the live tick
+  // overlays the latest value; the historical curve here covers everything
+  // before that.
+  //
+  // Labor-market (mi_*) nodes are FRED-only (BLS isn't on a public mirror
+  // at usable granularity), so they remain on FRED-live coverage until we
+  // run the build with FRED_API_KEY set.
+  ip_cpi_headline_yoy: {
+    source: "macro_fred_proxy",
+    description: "Headline CPI Y/Y — Shiller's monthly CPI level, % change vs 12 months prior. Long historical proxy for the FRED CPIAUCSL pc1 transform; covers every postwar inflation cycle from Volcker through 2023.",
+    metricFilter: { metric_name: "cpi_yoy" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Headline CPI Y/Y",
+  },
+  ip_core_cpi_yoy: {
+    source: "macro_fred_proxy",
+    description: "Core CPI Y/Y proxy — Shiller's headline CPI Y/Y. Lacks the food/energy strip-out of true core (CPILFESL) but tracks the trend through every inflation regime. Live FRED overlays the canonical core series at runtime.",
+    metricFilter: { metric_name: "cpi_yoy" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "CPI Y/Y (Shiller proxy)",
+  },
+  ip_cpi_energy: {
+    source: "macro_fred_proxy",
+    description: "CPI Energy proxy — IMF Pink Sheet Fuel/Energy Index. Composite of crude, natgas, coal — high empirical fit (β≈0.92) to FRED CPIENGSL in the macro fits (research/macro/output/edge_fits.json).",
+    metricFilter: { metric_name: "imf_fuel_energy" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "Energy Price Index",
+  },
+  ip_cpi_food: {
+    source: "macro_fred_proxy",
+    description: "CPI Food proxy — IMF Pink Sheet Food Price Index (cereals, meats, oils, dairy). Same construction the agriculture team uses for sc_global_wheat_price's neighbor anchor.",
+    metricFilter: { metric_name: "imf_food_index" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "Food Price Index",
+  },
+  ip_cpi_goods: {
+    source: "macro_fred_proxy",
+    description: "Goods CPI proxy — IMF All Commodity Index. Goods-CPI inflation is dominated by tradeable-commodity pass-through; the IMF index leads goods CPI by ~3 months.",
+    metricFilter: { metric_name: "imf_all_commodity" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "All Commodity Index",
+  },
+  ip_ppi_all_commodities: {
+    source: "macro_fred_proxy",
+    description: "PPI All Commodities — IMF Pink Sheet All Commodity Index. Direct match to FRED PPIACO methodology (broad upstream price pressure).",
+    metricFilter: { metric_name: "imf_all_commodity" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "PPI All Commodities (IMF proxy)",
+  },
+  ip_ppi_energy: {
+    source: "macro_fred_proxy",
+    description: "PPI Energy — IMF Fuel/Energy Index. Same source as ip_cpi_energy; the producer-price and consumer-price energy components track within a few percent across postwar history.",
+    metricFilter: { metric_name: "imf_fuel_energy" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "PPI Energy (IMF proxy)",
+  },
+  ip_ppi_final_demand: {
+    source: "macro_fred_proxy",
+    description: "PPI Final Demand proxy — IMF All Commodity Index. The final-demand series itself starts in 2009; we backfill the pre-2009 history with the broader commodity index for time-scrubber context.",
+    metricFilter: { metric_name: "imf_all_commodity" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "PPI Final Demand (proxy)",
+  },
+  ip_core_ppi_yoy: {
+    source: "macro_fred_proxy",
+    description: "Core PPI proxy — IMF Industrial Inputs Index (metals + non-fuel raw materials). Strips out the food/energy volatility while preserving the goods-side producer-price signal.",
+    metricFilter: { metric_name: "imf_industrial_inputs" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "Industrial Inputs Index",
+  },
+  ip_ppi_services: {
+    source: "macro_fred_proxy",
+    description: "PPI Services proxy — IMF Industrial Inputs Index. Services PPI starts in 2009; the industrial-inputs index gives a continuous goods-side anchor for historical context.",
+    metricFilter: { metric_name: "imf_industrial_inputs" },
+    valueKey: "metric_value",
+    unit: "index",
+    label: "Industrial Inputs (PPI services proxy)",
+  },
+  ip_core_pce_yoy: {
+    source: "macro_fred_proxy",
+    description: "Core PCE Y/Y proxy — Shiller CPI Y/Y. Core PCE typically runs 30–40 bps below core CPI but tracks the trend; live FRED overlays the canonical PCEPILFE at runtime.",
+    metricFilter: { metric_name: "cpi_yoy" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Core PCE Y/Y (proxy)",
+  },
+  ip_fed_funds_effective: {
+    source: "macro_fred_proxy",
+    description: "Fed Funds proxy — Shiller Long Interest Rate (10y nominal). Funds rate isn't on a public mirror; long-rate gives the policy-stance shape (rises with Volcker tightening, falls into ZIRP, rises post-2022) for sparkline context.",
+    metricFilter: { metric_name: "long_rate_10y" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "10y Long Rate (Fed Funds proxy)",
+  },
+  ip_fed_funds_target: {
+    source: "macro_fred_proxy",
+    description: "Fed Funds Target proxy — Shiller Long Interest Rate. Same proxy as ip_fed_funds_effective; live FRED overlays DFEDTARU at runtime.",
+    metricFilter: { metric_name: "long_rate_10y" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "10y Long Rate (Target proxy)",
+  },
+  ip_real_rate_10y: {
+    source: "macro_fred_proxy",
+    description: "Real 10y rate — US 10y Treasury minus Shiller CPI Y/Y (Fisher decomposition proxy for FRED DFII10). Captures the regime shift from negative real rates 2010–2021 to deeply positive 2023+.",
+    metricFilter: { metric_name: "real_rate_10y_proxy" },
+    valueKey: "metric_value",
+    unit: "%",
+    label: "Real 10y (US10y − CPI Y/Y)",
+  },
+
   // Kill Chain nodes
   ooda_latency: {
     source: "defense_isr",

@@ -27,20 +27,24 @@ let cachedData: TimeseriesJSON | null = null;
 
 async function loadTimeseriesJSON(): Promise<TimeseriesJSON> {
   if (cachedData) return cachedData;
-  const [geoResp, t1dResp] = await Promise.all([
+  const [geoResp, t1dResp, macroResp] = await Promise.all([
     fetch("/datasets/claire/timeseries.json"),
     fetch("/datasets/claire/t1d_timeseries.json"),
+    fetch("/datasets/claire/macro_timeseries.json"),
   ]);
-  const [geo, t1d] = await Promise.all([
+  const [geo, t1d, macro] = await Promise.all([
     geoResp.json() as Promise<TimeseriesJSON>,
     t1dResp.ok
       ? (t1dResp.json() as Promise<TimeseriesJSON>)
       : Promise.resolve({} as TimeseriesJSON),
+    macroResp.ok
+      ? (macroResp.json() as Promise<TimeseriesJSON>)
+      : Promise.resolve({} as TimeseriesJSON),
   ]);
-  // T1D sources live in their own file so the geopolitical 2.3MB payload stays
-  // isolated. Source keys are namespaced (vx880_trial, tn10_teplizumab, …) so
-  // there's no collision with the geopolitical sources.
-  cachedData = { ...geo, ...t1d };
+  // T1D + macro sources live in separate files so each domain's payload can
+  // grow without bloating the others. Source keys are namespaced
+  // (vx880_trial, macro_fred_proxy, …) so there's no collision.
+  cachedData = { ...geo, ...t1d, ...macro };
   return cachedData!;
 }
 

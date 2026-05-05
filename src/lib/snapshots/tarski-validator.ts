@@ -31,6 +31,10 @@ export interface ValidateSnapshotOptions {
   liveGraph?: CausalGraph;
   /** Subset of axiom ids to run (forwarded to runTarskiValidation). */
   enabledAxioms?: Set<string>;
+  /** Active domain profile id (e.g. "geopolitical", "t1d"). When set,
+   *  axioms scoped to other profiles are skipped — prevents cross-profile
+   *  leakage when a t1d snapshot is validated against the full library. */
+  activeProfileId?: string;
 }
 
 /**
@@ -45,7 +49,11 @@ export function validateSnapshot(
   opts: ValidateSnapshotOptions = {},
 ): TarskiValidationResult {
   if (opts.liveGraph) {
-    const report = runTarskiValidation(opts.liveGraph, opts.enabledAxioms);
+    const report = runTarskiValidation(
+      opts.liveGraph,
+      opts.enabledAxioms,
+      opts.activeProfileId,
+    );
     return reportToValidationResult(report);
   }
   return degradedSnapshotValidate(snapshot);

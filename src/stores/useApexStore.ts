@@ -24,6 +24,7 @@ import {
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
   id: string;
@@ -375,7 +376,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     set((s) => {
       // Clear previous flags first
       const cleanGraph = clearTarskiFlags(s.graphData);
-      const report = runTarskiValidation(cleanGraph, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
+      const profileId = resolveDomainProfile(s.selectedDomains).id;
+      const report = runTarskiValidation(
+        cleanGraph,
+        s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        profileId,
+      );
       const flaggedGraph = applyTarskiFlags(cleanGraph, report);
       return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
     }),
@@ -443,9 +449,11 @@ export const useApexStore = create<ApexState>((set, get) => ({
       const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
       if (s.truthFilter === "verified") {
         const cleanGraph = clearTarskiFlags(nextGraph);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
         const report = runTarskiValidation(
           cleanGraph,
           s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
         // ΩF pillar wiring: refresh live deltas after the feed mutation
@@ -462,7 +470,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     set((s) => {
       if (f === "verified") {
         // Dynamically run Tarski validation against the live graph
-        const report = runTarskiValidation(s.graphData, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          s.graphData,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
         const flaggedGraph = applyTarskiFlags(s.graphData, report);
         return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
       } else {

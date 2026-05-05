@@ -85,26 +85,27 @@ const REGISTRY: Record<EstimatorId, EstimatorMeta> = {
     defaultAvailability: "ready",
   },
 
-  // ── Medical estimators (TS-ported, awaiting real data wiring) ──────
+  // ── BOCPD: live on the scoped Ω trajectory (same source as CSD/LPPLS).
+  // Was previously gated to T1D-node series (rarely > 5 points each); now
+  // runs on whatever trajectory the active scope produces, which is the
+  // same substrate the rest of the criticality cards already use.
   bocpd: {
     id: "bocpd",
     abbrev: "BOCPD",
     fullName: "BAYESIAN ONLINE CHANGE-POINT DETECTION",
     shortDesc:
-      "Run-length posterior on a patient trace — flags regime shifts (honeymoon end, DKA onset)",
+      "Run-length posterior on the scoped Ω trajectory — flags regime shifts via P(new run)",
     color: "#00e5ff",
     methodology: [
       "Adams & MacKay (2007) run-length posterior with a Normal-Inverse-Gamma conjugate prior on a Gaussian observation model. For each time step we track P(r_t = k), the probability that the current run began k steps ago.",
-      "Signal of interest is P(r_t < cpWindow) — the probability that a change-point has occurred in the last `cpWindow` observations. Threshold this to flag regime shifts: honeymoon-phase termination, insulin-dose regime changes, DKA precursors, stress-induced excursions.",
-      "TS implementation lives at src/lib/estimators/bocpd.ts with a parity test against the Python reference. Awaiting a patient time-series source — CGM trace, C-peptide AUC sequence, or daily TIR — to be wired into the store before this card can run live.",
+      "Signal of interest is P(r_t < cpWindow) — the probability that a change-point has occurred in the last `cpWindow` observations. The Pareto card surfaces the trailing-window peak of this trace as the criticality readout; F·E·G·S·M's regime gate then weighs it against (1) recent peak above floor and (2) variability of the full posterior so a flat trace does not score as criticality.",
+      "TS implementation at src/lib/estimators/bocpd.ts with a parity test against the Python reference. Same kernel that runs on D1NAMO CGM in the SPIRTES bocpd-hypo-calibration tab (AUROC 0.679 vs hypoglycemic events).",
     ],
     formula:
       "P(r_t | x_{1:t}) ∝ Σ P(x_t | r_{t-1}, x_past) · P(r_t | r_{t-1}) · P(r_{t-1} | x_{1:t-1})",
     placeholderAssessment:
-      "AWAITING DATA — patient trace not yet wired. Once a CGM / C-peptide series is available, this card fits the run-length posterior online and surfaces the P(new run) trajectory with threshold crossings annotated.",
-    defaultAvailability: "awaiting-data",
-    requiredInputs:
-      "A scalar time series per patient — CGM glucose (5-min cadence), C-peptide AUC (per visit), or daily time-in-range. ~50+ observations for a stable posterior.",
+      "STABLE REGIME — posterior is concentrated on the current run; no recent change-point activity above floor.",
+    defaultAvailability: "ready",
   },
   "transfer-entropy": {
     id: "transfer-entropy",

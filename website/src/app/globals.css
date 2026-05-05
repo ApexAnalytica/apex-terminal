@@ -154,61 +154,137 @@ body {
 .drift { animation: drift 6s ease-in-out infinite; }
 
 /* ───────── Intro overlay (first-load brand reveal) ─────────
-   Total runtime budget: ~2600ms. Suppressed on subsequent navigations
-   within the same session via sessionStorage.
+   Approach: render the brand at EXACTLY the SiteHeader brand
+   dimensions (44×54 mantis, 12px wordmark, 0.3em tracking, 10px
+   gap), anchored at the SiteHeader's brand position. The animation
+   scales it UP and translates it to viewport center for the intro
+   phase, then returns to identity (scale 1, translate 0). When the
+   overlay fades, the cloned brand is pixel-coincident with the real
+   header brand, so there's no jump cut.
 
-   Phases (driven by `apex-intro-running` class on the root):
-     mantis      0–500ms   fade in + scale up
-     wordmark    500–1500ms char-by-char typewriter (delays inlined per-char)
-     hold        1500–2000ms
-     exit        2000–2600ms shrink + slide composition toward header,
-                             overlay fades out
-*/
+   Tunable: --intro-scale controls how big the mantis appears
+   center-screen. At scale 5, the 44px mantis displays at ~220px.
+
+   Sequence (~2.8s):
+     0–600ms     mantis fades in + pops to scaled-up size
+     600–1700ms  wordmark types out beside it (per-char delays)
+     1700–2200ms hold center
+     2200–2800ms scale down + translate to anchor; overlay fades */
+
+:root {
+  --intro-scale: 5;
+  /* Header brand layout, measured from the rendered DOM:
+       mantis(44) + gap(10) + wordmark(132 at 12px·0.3em) = 186px
+       height = 54px
+     Halves used to center the visual on the viewport instead of
+     its top-left landing on the viewport center. */
+  --intro-half-w: 93px;
+  --intro-half-h: 27px;
+  /* Where the SiteHeader brand sits inside the header (px-4 padding,
+     vertically centered in a 68px header with 54px mantis). */
+  --intro-anchor-x: 16px;
+  --intro-anchor-y: 7px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    /* SiteHeader: mx-auto max-w-7xl (1280px) + md:px-6 (24px). On
+       viewports < 1280px the container is full-width so the brand is
+       at 24px. On wider viewports the container is centered, so the
+       brand sits at (50vw - 640px) + 24px from the viewport edge. */
+    --intro-anchor-x: calc(max(0px, (100vw - 1280px) / 2) + 24px);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    /* On phones, scale 5 (mantis at 220px) overflows the viewport.
+       Use a smaller scale so the wordmark fits. */
+    --intro-scale: 3.2;
+  }
+}
+
+.apex-intro-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--background);
+  pointer-events: none;
+}
 
 .apex-intro-prep {
   /* Render but invisible — guards against hydration flash. */
   opacity: 0;
-  pointer-events: none;
 }
 
 .apex-intro-running {
-  animation: apex-intro-overlay 2600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: apex-intro-overlay 2800ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes apex-intro-overlay {
-  0%, 76%   { opacity: 1; }
-  100%      { opacity: 0; }
+  0%, 80% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* Anchor: positioned at the EXACT header brand location. The stage
+   inside it, at scale 1, IS the header brand. */
+.apex-intro-anchor {
+  position: absolute;
+  top: var(--intro-anchor-y);
+  left: var(--intro-anchor-x);
 }
 
 .apex-intro-stage {
-  /* Composition-level transform: scales down + slides toward the
-     top-left header brand position during the exit phase. The
-     header brand sits roughly at (mx-auto max-w-7xl + px-4) ≈ 24px
-     from left and 24px from top in a 68px header. */
-  animation: apex-intro-stage 2600ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;          /* matches SiteHeader gap-2.5 */
   transform-origin: 0 0;
+  animation: apex-intro-stage 2800ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
+/* Stage flight: scaled up + translated to viewport center initially,
+   shrinks to identity (sitting on top of the real header brand). */
 @keyframes apex-intro-stage {
-  0%      { transform: translate(0, 0) scale(1); }
-  76%     { transform: translate(0, 0) scale(1); }
-  100%    { transform: translate(calc(-50vw + 24px + 0px), calc(-50vh + 30px + 0px)) scale(0.36); }
+  0%, 78% {
+    transform:
+      translate(
+        calc(50vw - var(--intro-anchor-x) - (var(--intro-half-w) * var(--intro-scale))),
+        calc(50vh - var(--intro-anchor-y) - (var(--intro-half-h) * var(--intro-scale)))
+      )
+      scale(var(--intro-scale));
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
 }
 
-.apex-intro-mantis {
+.apex-intro-mantis-frame {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 44px;
+  height: 54px;
   opacity: 0;
-  transform: scale(0.6);
   animation: apex-intro-mantis 600ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
 }
 
+.apex-intro-mantis-img {
+  width: 44px;
+  height: 54px;
+  object-fit: contain;
+}
+
 @keyframes apex-intro-mantis {
-  0%   { opacity: 0; transform: scale(0.6) translateY(8px); }
-  60%  { opacity: 1; transform: scale(1.06); }
+  0%   { opacity: 0; transform: scale(0.7) translateY(4px); }
+  60%  { opacity: 1; transform: scale(1.05); }
   100% { opacity: 1; transform: scale(1); }
 }
 
 .apex-intro-wordmark {
-  font-size: clamp(18px, 2.6vw, 28px);
+  font-family: var(--font-michroma);
+  font-size: 12px;        /* matches SiteHeader text-[12px] */
+  letter-spacing: 0.3em;  /* matches tracking-[0.3em] */
+  white-space: nowrap;
+  color: var(--foreground);
 }
 
 .apex-intro-char {
@@ -216,55 +292,37 @@ body {
   opacity: 0;
   animation-fill-mode: forwards;
   animation-name: apex-intro-char-fade;
-  animation-duration: 240ms;
+  animation-duration: 260ms;
   animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
-.apex-intro-char.apex-intro-a {
-  /* Slight angled-stroke entrance for the two A's — nods at the
-     "mantis arms become A's" idea without a full SVG morph. The A
-     drops down with a vertical-scale wipe so the diagonal strokes
-     read as arms lowering. */
-  animation-name: apex-intro-a-drop;
-  animation-duration: 360ms;
-  transform-origin: 50% 100%;
-}
-
 @keyframes apex-intro-char-fade {
-  0%   { opacity: 0; transform: translateY(4px); }
+  0%   { opacity: 0; transform: translateY(2px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
+/* The two prominent A's (start of APEX, start of ANALYTICA) drop in
+   with a scaleY-from-top animation that evokes mantis arms folding
+   down. Timing matches the typewriter cadence. */
+.apex-intro-char.apex-intro-a {
+  animation-name: apex-intro-a-drop;
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+  transform-origin: 50% 0;
+}
+
 @keyframes apex-intro-a-drop {
-  0%   { opacity: 0; transform: scaleY(0.2) translateY(-6px); }
-  60%  { opacity: 1; transform: scaleY(1.08) translateY(0); }
-  100% { opacity: 1; transform: scaleY(1) translateY(0); }
+  0%   { opacity: 0; transform: scaleY(0) translateY(-3px); }
+  60%  { opacity: 1; transform: scaleY(1.1); }
+  100% { opacity: 1; transform: scaleY(1); }
 }
 
-/* Caret sits at the right edge of the wordmark while typing */
-.apex-intro-caret {
-  position: absolute;
-  width: 2px;
-  height: 1em;
-  background: var(--accent-cyan);
-  margin-left: 6px;
-  opacity: 0;
-  animation: apex-intro-caret 2000ms steps(1, end) forwards;
-}
-
-@keyframes apex-intro-caret {
-  0%, 18% { opacity: 0; }
-  20%, 76% { opacity: 1; }
-  100%    { opacity: 0; }
-}
-
-/* Skip the entire intro for users who'd rather not have motion */
+/* Reduced motion: skip the whole sequence and just hide the overlay. */
 @media (prefers-reduced-motion: reduce) {
   .apex-intro-running,
   .apex-intro-stage,
-  .apex-intro-mantis,
-  .apex-intro-char,
-  .apex-intro-caret {
+  .apex-intro-mantis-frame,
+  .apex-intro-char {
     animation: none !important;
   }
   .apex-intro-running {

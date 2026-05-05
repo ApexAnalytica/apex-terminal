@@ -3,27 +3,35 @@
 /**
  * IntroOverlay — first-load brand reveal animation.
  *
- * Sequence:
- *   0–500ms     mantis fades in + scales up center-screen
- *   500–1500ms  "APEX ANALYTICA" types out next to the mantis (mono),
- *               with the two A glyphs given a slight angled-stroke
- *               entrance to nod at the mantis-arms → A-strokes idea
- *   1500–2000ms hold
- *   2000–2600ms composition shrinks + slides toward the header brand
- *               position; overlay fades out
- *   2600ms+     unmount
+ * Approach: render the brand at EXACTLY the same dimensions and
+ * position as the real SiteHeader brand mark (44×54 mantis + 12px
+ * wordmark with 0.3em tracking, anchored at the header brand's
+ * fixed position). At intro start, scale it up and translate it to
+ * viewport center. At intro end, return to identity (transform = 0)
+ * so the cloned brand sits exactly on top of the real header brand.
+ * When the overlay fades, the swap is invisible — no jump cut.
  *
- * Suppressed on subsequent navigations within the same browser
- * session via sessionStorage. To re-trigger during testing, run
- * `sessionStorage.removeItem("apex-intro-played")` in the console.
+ * Sequence (~2.8s):
+ *   0–600ms     mantis fades in + pops to its scaled-up size
+ *   600–1700ms  "APEX ANALYTICA" types out alongside it (mono).
+ *               The two prominent A glyphs (start of APEX, start of
+ *               ANALYTICA) drop in with a scaleY-from-top animation
+ *               that evokes mantis arms folding down.
+ *   1700–2200ms hold (full composition visible at intro size)
+ *   2200–2800ms composition shrinks + flies to the exact header
+ *               brand position. Overlay fades out simultaneously.
+ *   2800ms+     unmount; real SiteHeader brand is exactly where the
+ *               intro brand landed, so the user sees no swap.
+ *
+ * Re-trigger in dev: `sessionStorage.removeItem("apex-intro-played")`.
  */
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "apex-intro-played";
-const TOTAL_DURATION_MS = 2600;
-const REMOVE_DELAY_MS = 100; // small grace period before unmount
+const TOTAL_DURATION_MS = 2800;
+const REMOVE_DELAY_MS = 80;
 
 const WORDMARK = "APEX ANALYTICA";
 
@@ -33,12 +41,11 @@ export default function IntroOverlay() {
   const [phase, setPhase] = useState<Phase>("init");
 
   useEffect(() => {
-    // Skip on subsequent loads within the same session.
     let played = false;
     try {
       played = sessionStorage.getItem(STORAGE_KEY) === "1";
     } catch {
-      /* sessionStorage not available — play it. */
+      /* sessionStorage unavailable — play it. */
     }
     if (played) {
       setPhase("done");
@@ -59,54 +66,50 @@ export default function IntroOverlay() {
   }, []);
 
   if (phase === "done") return null;
-
-  // While we wait for the effect to read sessionStorage, render the
-  // overlay invisibly so we don't flash content underneath then
-  // remount the overlay over it. This is a tiny FOUC guard.
   const visible = phase === "playing";
+
+  // The two prominent A glyphs we want to highlight: the leading A of
+  // APEX (index 0) and the leading A of ANALYTICA (index 5).
+  const PROMINENT_A_INDEXES = new Set<number>([0, 5]);
 
   return (
     <div
       aria-hidden
-      className={`apex-intro-root fixed inset-0 z-[60] flex items-center justify-center bg-background ${
-        visible ? "apex-intro-running" : "apex-intro-prep"
-      }`}
+      className={`apex-intro-root ${visible ? "apex-intro-running" : "apex-intro-prep"}`}
     >
-      <div className="apex-intro-stage relative flex items-center gap-3">
-        <span
-          className="apex-intro-mantis relative inline-flex shrink-0"
-          style={{ width: 88, height: 108 }}
-        >
-          <Image
-            src="/mantis.png"
-            alt=""
-            width={88}
-            height={108}
-            priority
-            className="object-contain"
-          />
-        </span>
-        <span className="apex-intro-wordmark font-[family-name:var(--font-michroma)] tracking-[0.22em] text-foreground whitespace-nowrap">
-          {WORDMARK.split("").map((ch, i) => {
-            const isSpace = ch === " ";
-            const isA = ch === "A";
-            return (
-              <span
-                key={`${ch}-${i}`}
-                className={`apex-intro-char ${isA ? "apex-intro-a" : ""}`}
-                style={{
-                  animationDelay: `${500 + i * 60}ms`,
-                  width: isSpace ? "0.45em" : undefined,
-                }}
-              >
-                {isSpace ? " " : ch}
-              </span>
-            );
-          })}
-        </span>
+      {/* Anchor positioned at the EXACT header brand location. The
+          stage at scale 1 IS the header brand, pixel-identical. */}
+      <div className="apex-intro-anchor">
+        <div className="apex-intro-stage">
+          <span className="apex-intro-mantis-frame">
+            <Image
+              src="/mantis.png"
+              alt=""
+              width={44}
+              height={54}
+              priority
+              className="apex-intro-mantis-img"
+            />
+          </span>
+          <span className="apex-intro-wordmark">
+            {WORDMARK.split("").map((ch, i) => {
+              const isSpace = ch === " ";
+              const isProminentA = PROMINENT_A_INDEXES.has(i);
+              return (
+                <span
+                  key={i}
+                  className={`apex-intro-char ${isProminentA ? "apex-intro-a" : ""}`}
+                  style={{
+                    animationDelay: `${600 + i * 70}ms`,
+                  }}
+                >
+                  {isSpace ? " " : ch}
+                </span>
+              );
+            })}
+          </span>
+        </div>
       </div>
-      {/* Caret-style cursor that blinks during the typewriter phase */}
-      <span aria-hidden className="apex-intro-caret" />
     </div>
   );
 }

@@ -311,9 +311,32 @@ Remaining map-view perf opportunity if ever needed: the per-frame particle updat
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass (6 new in `graph-relief-field.test.ts`).
 
+### 2026-05-03 — Shipped: Topo v4 — heatmap palette, dense labels, more drama
+
+**PR:** TBD (about to open).
+
+**Trigger.** v3 user feedback: *"why did you randomly color these across? these are supposed to show colors getting brighter as peaks get larger — that's the whole thing, this is a heatmap. don't know if relief is the correct term either. can't see all the nodes. peaks and troughs still not differentiated."*
+
+The dominant-domain colour scheme from v3 read as patchwork. Users expect a topographic / heatmap visualisation to follow a single ramp where elevation = colour, full stop. Domain identity should live elsewhere (legend, label borders), not on the surface itself.
+
+**What shipped.**
+- **Heatmap palette on the surface.** `computeFusedReliefField` now uses the `elevationColor` ramp (deep blue → cyan → amber → red) for vertex colours instead of the dominant-domain tint. Iso-contour modulation stays — bright at band centres, 0.55× at edges. Result: brighter / hotter = higher peak, full stop. Domain bookkeeping (`legend`, `dominantDomain`) still computed and exposed for downstream UI but no longer drives surface colour.
+- **More vertical drama.** `heightScale 90 → 140`, `sigmaFraction 0.06 → 0.05`, `heightGamma 1.35 → 1.6`. Peaks now stand visibly above valleys in silhouette, not just colour.
+- **Lower camera tilt.** Initial Y multiplier `0.35 → 0.25` so users see real horizon-relative silhouette on first frame.
+- **Many more labels, scaled by Ω.** `topK` bumped 12 → 40. Each label's font size, tick height, tick width, and card opacity all scale linearly with `composite`: a top-Ω node gets 10.5px text + 28-unit tick + 1.0r tick + 0.95 card opacity; a borderline-3 node gets 7.5px text + 14-unit tick + 0.4r tick + 0.7 opacity. Label borders + Ω text get domain colour — that's where domain identity now lives.
+- **Renamed "RELIEF" → "TOPO" in the UI.** Internal `viewMode === "relief"` stays unchanged (would have rippled through types, store, and tests for no real benefit); button label is now "TOPO" and the rendering badge reads "WEBGL_TOPO". User flagged that RELIEF was unfamiliar and "TOPO" is closer to the layperson term for a topographic map.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — DEFAULTS bumped (heightScale 140, sigmaFraction 0.05, heightGamma 1.6); `computeFusedReliefField` colour pass swapped to `elevationColor` ramp.
+- `src/components/CausalDAGRelief.tsx` — `topK` 12 → 40, label-size scaling with composite, domain-coloured label borders, camera Y multiplier 0.35 → 0.25.
+- `src/components/dag3d/DAGOverlay.tsx` — view-mode button label and rendering-badge string updated to "TOPO" / "WEBGL_TOPO".
+- `src/lib/__tests__/graph-relief-field.test.ts` — replaced "dominant domain colour" test with "elevation ramp is monotonic with elevation" test (max-RGB-sum vertex is markedly brighter than min).
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify v3 on production: hard-refresh, click RELIEF, expect (a) discrete mountain ridges with single-domain colours, (b) ringed iso-contour bands, (c) clicking on a peak selects that node and lights up downstream UI (top-Ω list, ModulePanel, etc.), (d) 12 readable labels on the dominant peaks. If the iso-band density is wrong (too busy on small graphs / too sparse on large), `BANDS` constant in `computeFusedReliefField` is one number to tune. Remaining Relief follow-ups: replay animation, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify v4 on production: hard-refresh, click **TOPO**, expect (a) heatmap palette across the surface (cool valleys, hot peaks), (b) iso-contour rings, (c) up to 40 labels with sizes scaling by Ω and borders coloured by domain, (d) more dramatic peak/valley separation in silhouette. Remaining follow-ups: replay animation (bind field input to `currentSnapshot`), onboarding tooltip. Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
 
 ---
 

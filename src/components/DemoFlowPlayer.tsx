@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { buildGraphFromDomains } from "@/components/DomainSelector";
+import { buildGraphFromDomains } from "@/lib/build-domain-graph";
 import { FLOWS, getFlowById, type DemoFlow } from "@/lib/demo-flows";
 import type { CausalGraph, CausalShock } from "@/lib/types";
 import { useApexStore } from "@/stores/useApexStore";

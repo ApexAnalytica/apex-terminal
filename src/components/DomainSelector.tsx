@@ -4,15 +4,28 @@ import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { useUserAccess } from "@/hooks/useUserAccess";
-import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
-import { ATHENA_GRAPH, BRIDGE_EDGES } from "@/lib/athena-graph-data";
-import { T1D_GRAPH } from "@/lib/t1d-graph-data";
-import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
-import { mergeGraphs } from "@/lib/import/merge";
-import type { NodeCategory, CausalGraph } from "@/lib/types";
+import {
+  DOMAIN_CARDS,
+  DOMAIN_GROUPS,
+  PERSONAS,
+  PERSONA_GROUPS,
+  type DomainCard,
+  type Persona,
+} from "@/lib/domains";
+import {
+  buildGraphFromDomains,
+  DATASET_NODE_COUNTS,
+} from "@/lib/build-domain-graph";
+import type { NodeCategory } from "@/lib/types";
 import TTSControls from "@/components/TTSControls";
 import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
 import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
+
+// Re-export catalog/builder from this module's old surface so any
+// straggling caller keeps compiling. Prefer importing directly from
+// `@/lib/domains` / `@/lib/build-domain-graph` for new code.
+export { DOMAIN_CARDS } from "@/lib/domains";
+export { buildGraphFromDomains } from "@/lib/build-domain-graph";
 
 const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
   { id: "economic", label: "ECONOMIC", icon: "📊" },
@@ -32,266 +45,6 @@ const DISCOVERY_SOURCES = [
   { id: "FCI", label: "FCI", desc: "Latent confounders" },
   { id: "merged", label: "MERGED", desc: "Cross-engine" },
 ];
-
-// ─── Grouped domain structure ────────────────────────────────────
-// Each domain knows which dataset it pulls from (for auto-loading)
-
-interface DomainCard {
-  id: string;
-  label: string;
-  icon: string;
-  color: string;
-  colorVar: string;
-  description: string;
-  hasData: boolean;
-  dataset: "main" | "athena" | "t1d" | "vx880"; // which graph to load
-}
-
-interface DomainGroup {
-  label: string;
-  color: string;
-  domains: DomainCard[];
-}
-
-type Persona =
-  | "scientist"
-  | "financial"
-  | "macro"
-  | "geopolitical"
-  | "cross";
-
-const PERSONAS: { id: Persona; label: string; desc: string }[] = [
-  { id: "financial", label: "FINANCIAL", desc: "Markets · Credit · Sovereign" },
-  { id: "macro", label: "MACRO", desc: "Growth · Inflation · Policy" },
-  { id: "geopolitical", label: "GEOPOLITICAL", desc: "Energy · Infra · Defense" },
-  { id: "scientist", label: "SCIENTIST", desc: "Life Sciences" },
-  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · multi-select" },
-];
-
-// Each persona shows a subset of domain groups (by group label).
-// CROSS shows everything and is the only persona allowed to multi-select
-// across different datasets.
-const PERSONA_GROUPS: Record<Persona, Set<string>> = {
-  financial: new Set(["FINANCIAL & SOVEREIGN", "MENA ENERGY & COMMODITIES"]),
-  macro: new Set(["MACRO IMPACT", "FINANCIAL & SOVEREIGN"]),
-  geopolitical: new Set([
-    "MENA ENERGY & COMMODITIES",
-    "INFRASTRUCTURE & DEFENSE",
-    "FINANCIAL & SOVEREIGN",
-  ]),
-  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
-  cross: new Set([
-    "MENA ENERGY & COMMODITIES",
-    "FINANCIAL & SOVEREIGN",
-    "INFRASTRUCTURE & DEFENSE",
-    "MACRO IMPACT",
-    "LIFE SCIENCES",
-    "FRONTIER",
-  ]),
-};
-
-const DOMAIN_GROUPS: DomainGroup[] = [
-  {
-    label: "MENA ENERGY & COMMODITIES",
-    color: "#ff1744",
-    domains: [
-      {
-        id: "energy-systems",
-        label: "Energy Systems",
-        icon: "\u{26A1}",
-        color: "#ff1744",
-        colorVar: "var(--accent-red)",
-        description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "manufacturing",
-        label: "Fertilizer & Agrochemical",
-        icon: "\u{1F3ED}",
-        color: "#448aff",
-        colorVar: "var(--accent-blue)",
-        description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "supply-chain",
-        label: "Supply Chain Shock Risk",
-        icon: "\u{1F517}",
-        color: "#00e5ff",
-        colorVar: "var(--accent-cyan)",
-        description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "FINANCIAL & SOVEREIGN",
-    color: "#ffab00",
-    domains: [
-      {
-        id: "financial-contagion",
-        label: "Financial Contagion Risk",
-        icon: "\u{1F3E6}",
-        color: "#ff6d00",
-        colorVar: "var(--accent-orange)",
-        description: "Systemic banking failures, credit default cascades, liquidity traps",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "sovereign-risk",
-        label: "Emerging Market Sovereign Risk",
-        icon: "\u{1F30D}",
-        color: "#ffab00",
-        colorVar: "var(--accent-amber)",
-        description: "Currency crises, debt restructuring, capital flight contagion",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "INFRASTRUCTURE & DEFENSE",
-    color: "#7c4dff",
-    domains: [
-      {
-        id: "infrastructure",
-        label: "Infrastructure Resilience",
-        icon: "\u{1F3D7}",
-        color: "#7c4dff",
-        colorVar: "var(--accent-purple)",
-        description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "defense-isr",
-        label: "Defense & ISR",
-        icon: "\u{1F6E1}\uFE0F",
-        color: "#00e676",
-        colorVar: "var(--accent-green)",
-        description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
-        hasData: true,
-        dataset: "athena",
-      },
-    ],
-  },
-  {
-    label: "MACRO IMPACT",
-    color: "#40c4ff",
-    domains: [
-      {
-        id: "macro-labor",
-        label: "Labor, Growth & Housing",
-        icon: "\u{1F4CA}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-cyan)",
-        description: "Nonfarm payrolls, unemployment, wages, JOLTS, GDP, retail sales, industrial production, ISM PMI, housing",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "macro-inflation",
-        label: "Inflation & Policy",
-        icon: "\u{1F4B9}",
-        color: "#ff80ab",
-        colorVar: "var(--accent-pink)",
-        description: "CPI/PPI/PCE inflation, breakeven expectations, Fed funds rate, SOFR, Fed policy transmission",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "LIFE SCIENCES",
-    color: "#40c4ff",
-    domains: [
-      {
-        id: "t1d-beta-cell",
-        label: "T1D \u03B2-Cell Restoration",
-        icon: "\u{1F9EC}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-blue)",
-        description: "Autoimmune \u2192 \u03B2-cell loss \u2192 glycemic collapse \u2192 complications; teplizumab / stem-cell intervention paths",
-        hasData: true,
-        dataset: "t1d",
-      },
-      {
-        id: "t1d-vx880",
-        label: "T1D Stem-Cell Transplant (VX-880)",
-        icon: "\u{1F489}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-blue)",
-        description: "Vertex VX-880 trial topology: HLA/autoantibody risk \u2192 dose + immunosuppression \u2192 engraftment \u2192 graft \u03B2-mass \u2192 MMTT / insulin-independence / severe-hypo endpoints",
-        hasData: true,
-        dataset: "vx880",
-      },
-    ],
-  },
-  {
-    label: "FRONTIER",
-    color: "#e040fb",
-    domains: [
-      {
-        id: "frontier-science",
-        label: "Frontier Science",
-        icon: "\u269B\uFE0F",
-        color: "#e040fb",
-        colorVar: "var(--accent-magenta)",
-        description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
-        hasData: false,
-        dataset: "main",
-      },
-    ],
-  },
-];
-
-// Flat list for export (used by HeaderBar etc.)
-export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
-
-// Build the graph from selected domains — auto-includes the right datasets
-export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
-  const selectedDomains = domainIds.map((id) =>
-    DOMAIN_CARDS.find((d) => d.id === id)
-  ).filter(Boolean) as DomainCard[];
-
-  const needsMain = selectedDomains.some((d) => d.dataset === "main");
-  const needsAthena = selectedDomains.some((d) => d.dataset === "athena");
-  const needsT1D = selectedDomains.some((d) => d.dataset === "t1d");
-  const needsVX880 = selectedDomains.some((d) => d.dataset === "vx880");
-
-  let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
-
-  if (needsMain) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: MAIN_GRAPH.nodes, edges: MAIN_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsAthena) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsT1D) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: T1D_GRAPH.nodes, edges: T1D_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsVX880) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: VX880_GRAPH.nodes, edges: VX880_GRAPH.edges });
-    graph = merged;
-  }
-
-  // When both MAIN and ATHENA are loaded, splice in the bridge edges that
-  // wire civilian/energy/financial domains into the defense substrate.
-  // mergeGraphs will silently skip any bridge whose endpoints aren't present.
-  if (needsMain && needsAthena) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: [], edges: BRIDGE_EDGES });
-    graph = merged;
-  }
-
-  return graph;
-}
 
 export default function DomainSelector() {
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
@@ -432,7 +185,11 @@ export default function DomainSelector() {
   const willLoadAthena = selectedCards.some((d) => d.dataset === "athena");
   const willLoadT1D = selectedCards.some((d) => d.dataset === "t1d");
   const willLoadVX880 = selectedCards.some((d) => d.dataset === "vx880");
-  const totalNodes = (willLoadMain ? MAIN_GRAPH.nodes.length : 0) + (willLoadAthena ? ATHENA_GRAPH.nodes.length : 0) + (willLoadT1D ? T1D_GRAPH.nodes.length : 0) + (willLoadVX880 ? VX880_GRAPH.nodes.length : 0);
+  const totalNodes =
+    (willLoadMain ? DATASET_NODE_COUNTS.main : 0) +
+    (willLoadAthena ? DATASET_NODE_COUNTS.athena : 0) +
+    (willLoadT1D ? DATASET_NODE_COUNTS.t1d : 0) +
+    (willLoadVX880 ? DATASET_NODE_COUNTS.vx880 : 0);
 
   return (
     <AnimatePresence>

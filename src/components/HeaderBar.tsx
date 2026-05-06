@@ -9,7 +9,7 @@ import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import TextSizeToggle from "./TextSizeToggle";
 import { ModuleId } from "@/lib/types";
-import { DOMAIN_CARDS } from "./DomainSelector";
+import { DOMAIN_CARDS } from "@/lib/domains";
 import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
 
 // Top-bar tabs are pinned to the four canonical labels regardless of active

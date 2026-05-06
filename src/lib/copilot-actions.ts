@@ -4,7 +4,8 @@
 
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "./omega-engine";
-import { DOMAIN_CARDS, buildGraphFromDomains } from "@/components/DomainSelector";
+import { DOMAIN_CARDS } from "@/lib/domains";
+import { buildGraphFromDomains } from "@/lib/build-domain-graph";
 import { solveInterdiction } from "./interdiction-engine";
 import type { InterdictionCandidate } from "./interdiction-engine";
 

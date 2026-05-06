@@ -256,41 +256,135 @@ export interface ExecutionResult {
 }
 
 /**
+ * Structured per-call trace. One of these is produced for every
+ * <<<ACTION:...>>> tag the LLM emitted. Designed to land in
+ * Supabase as a row in tool_calls[] — the field shape mirrors the
+ * jsonb structure described in supabase-copilot-traces.sql.
+ */
+export interface ToolCallTrace {
+  /** Tool name (e.g. "isolate_nodes"). */
+  name: string;
+  /** Validated, coerced params — what the handler actually saw. */
+  params: Record<string, unknown>;
+  /** Human-readable result string returned by the handler. */
+  result: string;
+  /** Error message if the handler threw or validation failed; null on success. */
+  error: string | null;
+  /** Wall-clock duration of the handler call. */
+  latency_ms: number;
+}
+
+export interface TracedExecutionResult extends ExecutionResult {
+  /** One entry per parsed action tag, in source order. */
+  toolCalls: ToolCallTrace[];
+}
+
+/**
  * Top-level entry point: parse all <<<ACTION:...>>> tags from an
  * LLM response, validate each, run handlers, and return the cleaned
  * display text plus the list of human-readable tool results.
+ *
+ * Back-compat shape — discards the structured trace data. Use
+ * executeActionsWithTrace when you want the trace for logging.
  */
 export function executeActions(
   text: string,
   ctx: ToolContext = defaultContext,
 ): ExecutionResult {
+  const { displayText, toolResults } = executeActionsWithTrace(text, ctx);
+  return { displayText, toolResults };
+}
+
+/**
+ * Same as executeActions, but also returns structured per-call
+ * trace data (params, result, error, latency_ms) for each tag.
+ * SystemCopilot uses this to build a TurnTrace and POST it to
+ * /api/copilot/trace.
+ */
+export function executeActionsWithTrace(
+  text: string,
+  ctx: ToolContext = defaultContext,
+): TracedExecutionResult {
   const tags = parseActionTags(text);
   const displayText = stripActionTags(text);
   const toolResults: string[] = [];
+  const toolCalls: ToolCallTrace[] = [];
 
   for (const tag of tags) {
-    const result = executeTag(tag, ctx);
-    if (result) toolResults.push(result);
+    const traced = executeTagWithTrace(tag, ctx);
+    toolResults.push(traced.result);
+    toolCalls.push(traced);
   }
 
-  return { displayText, toolResults };
+  return { displayText, toolResults, toolCalls };
 }
 
 /** Execute a single parsed action tag. Exported for tests. */
 export function executeTag(tag: ParsedActionTag, ctx: ToolContext = defaultContext): string {
+  return executeTagWithTrace(tag, ctx).result;
+}
+
+/**
+ * Execute a single tag and return both the result string and the
+ * structured trace. Used by executeActionsWithTrace; exported for
+ * targeted unit tests that want to inspect timing/error semantics.
+ */
+export function executeTagWithTrace(
+  tag: ParsedActionTag,
+  ctx: ToolContext = defaultContext,
+): ToolCallTrace {
+  const start = performanceNow();
   const tool = REGISTRY.get(tag.name);
-  if (!tool) return `Unknown action: ${tag.name}`;
+  if (!tool) {
+    return {
+      name: tag.name,
+      params: {},
+      result: `Unknown action: ${tag.name}`,
+      error: `Unknown action: ${tag.name}`,
+      latency_ms: Math.round(performanceNow() - start),
+    };
+  }
 
   const kv = parseKvPayload(tag.payload);
   const validated = coerceAndValidate(tool.params, kv, tool.legacyParam);
-  if (!validated.ok) return `${tag.name}: ${validated.error}`;
+  if (!validated.ok) {
+    return {
+      name: tag.name,
+      params: kv,
+      result: `${tag.name}: ${validated.error}`,
+      error: validated.error,
+      latency_ms: Math.round(performanceNow() - start),
+    };
+  }
 
   try {
-    return tool.handler(validated.params, ctx);
+    const result = tool.handler(validated.params, ctx);
+    return {
+      name: tag.name,
+      params: validated.params as Record<string, unknown>,
+      result,
+      error: null,
+      latency_ms: Math.round(performanceNow() - start),
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return `${tag.name} failed: ${msg}`;
+    return {
+      name: tag.name,
+      params: validated.params as Record<string, unknown>,
+      result: `${tag.name} failed: ${msg}`,
+      error: msg,
+      latency_ms: Math.round(performanceNow() - start),
+    };
   }
+}
+
+// performance.now() in browsers + Node 16+; fall back to Date.now()
+// in obscure runtimes (Cloudflare Workers etc) for safety.
+function performanceNow(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
 }
 
 // ─── Prompt rendering ───────────────────────────────────────────

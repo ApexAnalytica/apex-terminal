@@ -13,7 +13,9 @@ import {
   stripActionTags,
   executeTag,
   executeActions,
+  executeActionsWithTrace,
   type ParsedActionTag,
+  type ToolCallTrace,
 } from "./copilot/tool-registry";
 
 // Side-effect import: registers all built-in tools with the registry.
@@ -53,4 +55,19 @@ export function processLlmActions(text: string): {
 } {
   const { displayText, toolResults } = executeActions(text);
   return { displayText, actionResults: toolResults };
+}
+
+/**
+ * Same as processLlmActions, but also returns the structured
+ * per-call trace data (for trace-logger / Supabase). Use this when
+ * you want to capture timing + params + errors in addition to the
+ * human-readable result strings.
+ */
+export function processLlmActionsWithTrace(text: string): {
+  displayText: string;
+  actionResults: string[];
+  toolCalls: ToolCallTrace[];
+} {
+  const { displayText, toolResults, toolCalls } = executeActionsWithTrace(text);
+  return { displayText, actionResults: toolResults, toolCalls };
 }

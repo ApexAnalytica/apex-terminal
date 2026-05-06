@@ -397,13 +397,41 @@ But the field eval uses `nodeWeight(composite) = composite ^ WEIGHT_EXPONENT (1.
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 711/711 pass.
 
+### 2026-05-03 — Shipped: 2D hover/select stability — custom EmphasizedEdge + Dag2DContext
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the 2D map is doing this weird thing where if I hover over any node, the whole map starts to blink consistently. And when I select any one node, the map just disappears temporarily."*
+
+**Root cause.** Both the `nodes` and `edges` useMemos depended on `emphasisMap` / `emphasisTarget` (= `hoveredNodeId ?? selectedNode`). Every mousemove that hit a node, and every click that selected one, re-fired both memos and produced **brand-new node + edge object arrays**. React Flow then diffs against its internal store, decides everything is new, and tears down + rebuilds every node and edge DOM element. With many edges and a 180ms opacity transition, that read as a canvas-wide blink. The select-then-disappear case was the same mechanism — `emphasisTarget = selectedNode` flipped the entire arrays, RF unmounted before the new tree was mounted.
+
+This was the work deferred in PR #198 with the note *"would need a custom edge component subscribing to emphasisTarget separately."*
+
+**What shipped.**
+- **`Dag2DContext`** — new React Context carrying `{ adjacency, hoveredNodeId, selectedEdgeId }`. The adjacency Map is the same one the parent already builds; it's stable across hovers because it's keyed on graph topology only.
+- **`computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelected, adjacency)`** — pure helper that returns `"focus" | "neighbor" | "dim" | "none"` for a single node. Used by `CausalNode2D` directly. Same logic as the old `emphasisMap` builder, just per-node instead of all-up-front.
+- **`CausalNode2D` consumes context + store directly.** Reads `hoveredNodeId` from `Dag2DContext`, `selectedNode` and `multiSelectedNodes` from `useApexStore`. Computes its own emphasis. The parent's `nodes` useMemo no longer depends on emphasis-derived state, so hover / single-select don't rebuild the array.
+- **New `EmphasizedEdge` custom edge component.** Subscribes to context + store the same way. Carries structural data (`baseColor`, `baseWidth`, `baseOpacity`, propagation signal, isSelected, type flags) on `edge.data` — all stable per graph state, NOT per hover. In render, computes opacity / strokeWidth / dim modulation from current emphasis. Renders via drei's `BaseEdge` + `getBezierPath`.
+- **Parent's `edges` useMemo deps**: dropped `emphasisTarget`; kept `[graphData, truthFilter, currentSnapshot, selectedEdge]`. Hovering no longer rebuilds the edges array; `selectedEdge` (the edge inspector signal — separate from `selectedNode`) still does, which is correct.
+- Registered `edgeTypes = { emphasized: EmphasizedEdge }` and switched the per-edge `type` from `"default"` to `"emphasized"`.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — Context + helper added at top, `CausalNode2D` updated, `EmphasizedEdge` added, parent `nodes`/`edges` useMemos restructured, render wraps in `<Dag2DContext.Provider>`, `edgeTypes` passed to ReactFlow.
+
+**Out of scope (deliberate).**
+- The replay contraction `nodes` useMemo (`graphData, nodePositions, truthFilter, currentSnapshot, adjacency`) still re-fires on each replay tick, which is correct — node positions actually move during replay. The point of this PR was severing the *hover/select* dependency, not the replay dependency.
+- The "map disappears on select" symptom — same root cause as the blink (whole-array rebuild). Both are fixed by the same change.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 723/723 pass.
+
 ### 2026-05-03 — Next up
 
-User flagged three more issues in the same message:
-1. **2D map blinks on hover; map disappears briefly on selection.** Known item — deferred from PR #198 with the note *"the `edges` useMemo (`:478–541`) still rebuilds on every hover because `emphasisTarget` is in its deps. Splitting structural edge data from emphasis-derived style would need a custom edge component subscribing to `emphasisTarget` separately."* That's the fix. The "map disappears on select" piece is new info — could be `useEdgesState` or React Flow's internal remount on a different signal — needs a quick repro and a focused fix in the same PR.
-2. **3D diagram looks busy / hard to track.** User got cut off mid-sentence about the orbs — pending clarification on whether they want smaller orbs, simpler labels, fewer visible items, or all three.
+3D diagram cleanup (user clarified after this PR was scoped):
+- Remove permanent labels on every orb; show label only on hover/select. Currently looks like a hodgepodge of overlapping text.
+- Make orbs more visible (current style is "near invisible").
+- Toggle to map orb size to a network metric (eigenvector / betweenness centrality) rather than a fixed size — currently size is constant. The right-panel network analysis already exposes the metrics; surface them visually.
 
-Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+Outside this: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

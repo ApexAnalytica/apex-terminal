@@ -14,7 +14,7 @@ const TEAM = [
     scholar: null,
     expertise: "Leadership in tech, Bayesian models, COVID-19 analytics, reinsurance risk.",
     background:
-      "Ex-General Partner at Pareto Technologies. Former CTO at MARK LABS. Chair of the Board at Emerita.",
+      "Ex-General Partner at Pareto Technologies. Former CTO at MARK LABS. Chair of the Board at Emerta.",
     education: "Doctor of Engineering, Johns Hopkins University.",
   },
   {

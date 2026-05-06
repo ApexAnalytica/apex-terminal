@@ -443,9 +443,29 @@ This was the work deferred in PR #198 with the note *"would need a custom edge c
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass. (Three pre-existing lint warnings outside the diff.)
 
+### 2026-05-03 — Shipped: 2D floating edges + node-size toggle parity
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the 3D readability pass: *"some 2D lines are still all curvy. It almost seems like they have to be pointing to the bottom or top of any node. Can't we have them just pointing straight from whatever direction makes the most sense? Also the size differences should also be available in 2D rendering."*
+
+**Floating edges.** The previous `EmphasizedEdge` used `getBezierPath` against React Flow's handle-anchored `sourceX/Y` / `targetX/Y` — every line had to pass through one of the four invisible handles (top/bottom/left/right) on each circle, so a node placed to the left of another would still draw a line that detoured up to the top handle and curved back down. Replaced with the "floating edge" pattern from the RF docs: read the source/target `nodeInternals` via `useReactFlowStore`, compute centre-to-centre direction, trim each end to the circle perimeter, draw a single straight `M…L…` SVG path. Now lines go in the geometrically natural direction, no curvature, no detours. Arrowhead lands on the circle perimeter cleanly.
+
+**Node-size toggle parity.** The 3D `SIZE: ΩF / EIG / BTW` toggle now drives 2D node diameter too:
+- `CausalDAG2D` computes `networkMetrics` via the existing `computeNetworkMetrics` util (same one 3D uses) and caches on `graphSignature`. Replay scrubs / hover don't re-run the centrality sweep.
+- Each node's `data` now carries `metrics: NodeMetrics`.
+- `CausalNode2D` reads `nodeSizeMetric` from the store and maps the chosen signal into a 14–34 px diameter range.
+- `DAGOverlay` SIZE toggle visibility extended from `viewMode === "3d"` to `(viewMode === "3d" || viewMode === "2d")`. MAP / TOPO stay hidden since their visual primitive isn't a sized node.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — `EmphasizedEdge` switched to floating straight path via `useReactFlowStore`; `CausalNode2D` accepts `metrics` and reads `nodeSizeMetric`; parent `nodes` useMemo passes per-node metrics; `networkMetrics` useMemo cached on `sig`.
+- `src/components/dag3d/DAGOverlay.tsx` — SIZE toggle now visible in 2D as well.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify 3D readability on production: hard-refresh, switch to 3D — expect (a) no labels at idle, only on hover or selection, (b) orbs visibly larger and brighter, (c) `SIZE: ΩF / EIG / BTW` toggle in the top-right strip switches the orb-radius metric live.
+- Verify on production: hard-refresh, switch to 2D — expect (a) edges drawing as straight lines between circle perimeters in whatever direction makes geometric sense (no more "always entering top/bottom"), (b) the same `SIZE: ΩF / EIG / BTW` toggle in the top-right resizing the 2D circles live.
 - Outside this: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---

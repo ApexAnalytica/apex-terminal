@@ -17,7 +17,7 @@ import ReactFlow, {
   MarkerType,
   EdgeProps,
   BaseEdge,
-  getBezierPath,
+  useStore as useReactFlowStore,
   useReactFlow,
   ReactFlowProvider,
 } from "reactflow";
@@ -37,6 +37,7 @@ import {
   type LiveSimulation,
   type Position2D,
 } from "@/lib/graph-layout-2d";
+import { computeNetworkMetrics, type NodeMetrics } from "@/lib/graph-layout";
 import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
@@ -94,10 +95,19 @@ function computeNodeEmphasis(
 }
 
 function CausalNode2D({ data, selected, id }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity } = data;
+  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics } = data as {
+    label: string;
+    category: string;
+    omegaComposite: number;
+    isRestricted: boolean;
+    datasetColor?: string;
+    shockIntensity?: number;
+    metrics?: NodeMetrics;
+  };
   const { adjacency, hoveredNodeId } = useContext(Dag2DContext);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+  const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
   const emphasis = useMemo(
     () => computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency),
     [id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency],
@@ -111,8 +121,22 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
   const isFocus = nodeEmphasis === "focus";
   const isRinged = selected || isFocus;
 
-  // Diameter scales with \u03A9F: low-risk nodes are small, high-risk are larger.
-  const diameter = 14 + Math.min(10, Math.max(0, omegaComposite)) * 2;
+  // Diameter scales with the user-selected metric. Same toggle the 3D
+  // view honours (`nodeSizeMetric` in the store): "omega" \u2192 \u03A9F
+  // composite (criticality), "eigenvector" \u2192 influence-hub centrality,
+  // "betweenness" \u2192 bridge centrality. All paths normalise to a 0..1
+  // unit and map into a 14..34 px range so the visual delta between
+  // smallest and largest stays consistent across metrics.
+  const ec = metrics?.eigenvectorCentrality ?? 0.5;
+  const bc = metrics?.betweennessCentrality ?? 0.5;
+  const omegaUnit = Math.min(1, Math.max(0, omegaComposite / 10));
+  const sizeUnit =
+    nodeSizeMetric === "betweenness"
+      ? Math.min(1, Math.max(0, bc))
+      : nodeSizeMetric === "eigenvector"
+        ? Math.min(1, Math.max(0, ec))
+        : omegaUnit;
+  const diameter = 14 + sizeUnit * 20;
 
   // Layered box-shadow: selection ring (sharp), shock glow (pulsing), base
   // omega glow (soft halo). All applied to the same circle element.
@@ -352,12 +376,6 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
     id,
     source,
     target,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
     data,
     markerEnd,
   } = props;
@@ -365,14 +383,45 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
 
-  const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  // "Floating" edge geometry. The earlier path used getBezierPath against
+  // RF's handle-anchored sourceX/Y/targetX/Y, which forced every line to
+  // route through one of the four invisible handles (top/bottom/left/right)
+  // and gave the curvy "always entering top or bottom" look the user
+  // flagged. Reading the actual node centres from the RF store and
+  // trimming the line to each circle's perimeter draws a straight edge
+  // in whatever direction makes geometric sense.
+  const sourceNode = useReactFlowStore((s) => s.nodeInternals.get(source));
+  const targetNode = useReactFlowStore((s) => s.nodeInternals.get(target));
+
+  let edgePath: string | null = null;
+  if (sourceNode && targetNode) {
+    const sw = sourceNode.width ?? 30;
+    const sh = sourceNode.height ?? 30;
+    const tw = targetNode.width ?? 30;
+    const th = targetNode.height ?? 30;
+    const sxC = (sourceNode.positionAbsolute?.x ?? sourceNode.position.x) + sw / 2;
+    const syC = (sourceNode.positionAbsolute?.y ?? sourceNode.position.y) + sh / 2;
+    const txC = (targetNode.positionAbsolute?.x ?? targetNode.position.x) + tw / 2;
+    const tyC = (targetNode.positionAbsolute?.y ?? targetNode.position.y) + th / 2;
+    const dx = txC - sxC;
+    const dy = tyC - syC;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0.5) {
+      const ndx = dx / dist;
+      const ndy = dy / dist;
+      // Trim each endpoint to the node's circle perimeter (radius = half
+      // the rendered diameter). Without trimming, the line passes through
+      // the orb and overruns the arrow head.
+      const sr = sw / 2;
+      const tr = tw / 2;
+      const x1 = sxC + ndx * sr;
+      const y1 = syC + ndy * sr;
+      const x2 = txC - ndx * tr;
+      const y2 = tyC - ndy * tr;
+      edgePath = `M ${x1} ${y1} L ${x2} ${y2}`;
+    }
+  }
+  if (!edgePath) return null;
 
   // Emphasis: an edge is "in scope" if either endpoint is the current
   // emphasis target (hover or single-select). When something IS in scope
@@ -532,9 +581,18 @@ function CausalDAG2DInner() {
     return map;
   }, [graphData.edges]);
 
+  // Network metrics (eigenvector / betweenness / degree). Same util the 3D
+  // view uses; cached on graph signature so replay scrubs / hover don't
+  // re-run the (O(E) for degree, O(N×E) for centrality) sweep. Drives
+  // the 2D node-size toggle.
   const sig = useMemo(
     () => graphSignature(graphData.nodes, graphData.edges),
     [graphData.nodes, graphData.edges],
+  );
+  const networkMetrics = useMemo(
+    () => computeNetworkMetrics(graphData.nodes, graphData.edges),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pin to sig
+    [sig],
   );
   const [prevSig, setPrevSig] = useState<string>("");
   const [cachedLayout, setCachedLayout] = useState<Map<string, Position2D>>(
@@ -675,10 +733,11 @@ function CausalDAG2DInner() {
           isRestricted: truthFilter === "verified" && n.isRestricted,
           datasetColor: n.datasetColor,
           shockIntensity: epochShock,
+          metrics: networkMetrics[n.id],
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {

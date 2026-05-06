@@ -91,11 +91,13 @@ export default function DAGOverlay() {
           the corner stays clean. View labels still say which view is
           active via the highlighted button. */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
-        {/* 3D-only: orb-size metric toggle. ΩF reads as "criticality"; the
-            two centralities reveal structure (eigenvector → influence
-            hubs; betweenness → bridges). Hidden in other views since the
-            orbs only exist in 3D. */}
-        {viewMode === "3d" && (
+        {/* Node-size metric toggle. ΩF reads as "criticality"; the two
+            centralities reveal structure (eigenvector → influence hubs;
+            betweenness → bridges). Visible in both 3D and 2D since the
+            same store slot drives orb radius in 3D and circle diameter
+            in 2D. Hidden in MAP/TOPO where the visual primitive isn't a
+            sized node. */}
+        {(viewMode === "3d" || viewMode === "2d") && (
           <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-surface-elevated">
             <span className="text-[8px] font-mono text-text-muted pr-0.5">SIZE:</span>
             {(
@@ -113,7 +115,7 @@ export default function DAGOverlay() {
                     ? "text-accent-cyan bg-accent-cyan/15"
                     : "text-text-muted hover:text-accent-cyan"
                 }`}
-                title={`Map orb size to ${opt.label}`}
+                title={`Map node size to ${opt.label}`}
               >
                 {opt.label}
               </button>

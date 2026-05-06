@@ -380,7 +380,31 @@ function CausalDAG2DInner() {
     setCachedLayout(compute2DForceLayout(graphData.nodes, graphData.edges));
     setLivePositions(null);
   }
-  const nodePositions = livePositions ?? cachedLayout;
+  // Defensive selector. The simple `livePositions ?? cachedLayout` was
+  // vulnerable to two edge cases that left every node rendered at
+  // (0, 0) — a stack-of-169-nodes-at-origin which reads as "empty
+  // canvas" because they all overlap (0,0 is also outside the default
+  // viewport):
+  //
+  //  (a) Empty live positions — `livePositions = new Map()` is non-null
+  //      and shadows the cachedLayout fallback, but `.get(n.id)` always
+  //      misses, so every node falls to `{ x: 0, y: 0 }`.
+  //  (b) Stale live positions — when the graph swaps (persona / domain
+  //      change), the rAF tick from the *old* simulation can fire after
+  //      the new graph loads and call `setLivePositions(staleMap)`. The
+  //      stale map's keys are the OLD graph's node IDs; new graph nodes
+  //      miss the lookup and stack at the origin.
+  //
+  // Falling back to cachedLayout in either case keeps the canvas
+  // populated until the new live sim catches up (which it will, since
+  // the useEffect below rebuilds it from the freshly-computed
+  // cachedLayout for the new graph).
+  const nodePositions = useMemo(() => {
+    if (!livePositions || livePositions.size === 0) return cachedLayout;
+    if (graphData.nodes.length === 0) return cachedLayout;
+    if (!livePositions.has(graphData.nodes[0].id)) return cachedLayout;
+    return livePositions;
+  }, [livePositions, cachedLayout, graphData.nodes]);
 
   // Build the live (perturbable) simulation whenever the cached layout swaps.
   // No setState here — only ref + rAF management.

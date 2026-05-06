@@ -34,7 +34,7 @@ Available actions:
 - <<<ACTION:set_truth_filter:raw|verified>>> — Toggle Tarski truth filter
 - <<<ACTION:set_domains:domain1,domain2>>> — Filter to specific domains
 
-You can include multiple actions in a single response. Always explain what you're doing alongside the action. Available shock IDs: hormuz_closure, abqaiq_strike, lng_train_failure, fertilizer_export_ban, phosphate_contamination, gas_grid_overload, food_price_shock.`;
+You can include multiple actions in a single response. Always explain what you're doing alongside the action. The preset shock library is empty by default — only emit add_shock when the user has supplied a custom scenario set or the active profile registers preset IDs.`;
 
 // ─── Anthropic streaming ────────────────────────────────────────
 

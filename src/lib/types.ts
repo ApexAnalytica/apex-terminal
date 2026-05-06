@@ -331,6 +331,13 @@ export interface RiskPropagationCard {
 // ─── View State ──────────────────────────────────────────────────
 export type ViewMode = "2d" | "3d" | "map" | "relief";
 export type TruthFilter = "raw" | "verified";
+/**
+ * Which signal the 3D orbs encode in their radius. `omega` reads as
+ * "criticality" (the most actionable signal for typical users), the two
+ * centrality options reveal network structure (which nodes are influence
+ * hubs vs. bridges).
+ */
+export type NodeSizeMetric = "omega" | "eigenvector" | "betweenness";
 
 // ─── Regime & Doomsday ──────────────────────────────────────────
 export type RegimeType = "STABLE" | "MELT_UP" | "CRASH" | "PHASE_TRANSITION" | "STAGNATION";

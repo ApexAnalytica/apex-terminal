@@ -424,14 +424,29 @@ This was the work deferred in PR #198 with the note *"would need a custom edge c
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 723/723 pass.
 
+### 2026-05-03 — Shipped: 3D readability — labels-on-demand, brighter orbs, size-metric toggle
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on the 3D diagram: *"looks busy / hard to track. Rather than every node labeled, only show labels when I select one. The orbs themselves are near invisible — make them easier to identify. Should we link the orb size to a network feature shown on the right? Maybe a toggle?"*
+
+**What shipped.**
+- **Labels on demand only.** `DAGNode3D` previously rendered every node's label permanently (hidden only during active orbit). Now the label only shows when the node is hovered, single-selected, or a neighbour of the selected node. The hover detail card (full ΩF profile + radar + network metrics) still surfaces full info on demand. Removes the "hodgepodge of overlapping text" the user flagged.
+- **Brighter orbs.** Three changes in concert: (a) base radius range 0.20–0.75 → 0.45–1.05 (≈ 2× across the board, lifts the floor so peripheral nodes still read as orbs not dots); (b) idle emissive intensity floor 0.4 → 0.7 (and hover 0.8 → 0.95); (c) outer glow-sphere opacity 0.06 / 0.12 → 0.16 / 0.32; (d) ΩF colour ring opacity 0.15 / 0.35 → 0.32 / 0.55. Orbs now have visible presence at idle, not just when hovered.
+- **`nodeSizeMetric` toggle.** New `NodeSizeMetric = "omega" | "eigenvector" | "betweenness"` type added to `lib/types.ts`. Store carries `nodeSizeMetric` (default `"eigenvector"` — same as before, just now selectable) + `setNodeSizeMetric` action. `DAGOverlay` exposes a small `SIZE: ΩF / EIG / BTW` button trio in the top-right control strip, only visible in 3D view. `DAGNode3D` reads the store value and computes radius from the chosen metric — `omega` maps `composite/10` to the unit interval; the centralities are passed through directly. Hover-card footer reflects the active metric ("size ∝ ΩF composite", etc.).
+
+**Files.**
+- `src/lib/types.ts` — new `NodeSizeMetric` type.
+- `src/stores/useApexStore.ts` — `nodeSizeMetric` slot + setter, default `"eigenvector"`.
+- `src/components/dag3d/DAGOverlay.tsx` — 3D-only `SIZE:` toggle wired to the store.
+- `src/components/dag3d/DAGNode3D.tsx` — radius formula honours the toggle, label conditional gate, glow / emissive intensity bumps, hover-card footer text.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass. (Three pre-existing lint warnings outside the diff.)
+
 ### 2026-05-03 — Next up
 
-3D diagram cleanup (user clarified after this PR was scoped):
-- Remove permanent labels on every orb; show label only on hover/select. Currently looks like a hodgepodge of overlapping text.
-- Make orbs more visible (current style is "near invisible").
-- Toggle to map orb size to a network metric (eigenvector / betweenness centrality) rather than a fixed size — currently size is constant. The right-panel network analysis already exposes the metrics; surface them visually.
-
-Outside this: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+- Verify 3D readability on production: hard-refresh, switch to 3D — expect (a) no labels at idle, only on hover or selection, (b) orbs visibly larger and brighter, (c) `SIZE: ΩF / EIG / BTW` toggle in the top-right strip switches the orb-radius metric live.
+- Outside this: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

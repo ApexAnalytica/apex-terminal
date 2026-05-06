@@ -135,12 +135,19 @@ function DAGEdge3DInner({
     (isTemporalFlow || propSignal > 0.3);
   const animSpeed = isTemporalFlow ? 0.4 : 0.3 + propSignal * 0.5;
 
-  // Animate particle along curve for temporal/causal edges
+  // Animate particle along curve for temporal/causal edges.
+  // Reads from the pre-cached curvePoints array (allocated once per
+  // posKey change) instead of re-evaluating the bezier each frame —
+  // saves ~one Vector3 allocation + a sqrt per animating edge per
+  // frame. With ~100 animating edges at 60fps that's ~6k fewer
+  // allocations/sec and noticeably less GC pressure during replay.
   useFrame((_, delta) => {
     if (!particleRef.current || !shouldAnimate) return;
     particleT.current = (particleT.current + delta * animSpeed) % 1;
-    const pos = curve.getPoint(particleT.current);
-    particleRef.current.position.set(pos.x, pos.y, pos.z);
+    const samples = curvePoints.length;
+    const i = Math.min(samples - 1, Math.floor(particleT.current * samples));
+    const [x, y, z] = curvePoints[i];
+    particleRef.current.position.set(x, y, z);
   });
 
   return (
@@ -169,7 +176,10 @@ function DAGEdge3DInner({
           }
         }}
       >
-        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 8, 8]} />
+        {/* Invisible hitbox — raycast cost scales with triangle count,
+            so keep the tessellation low. 4×4 segments = 8 triangles
+            vs 8×8 = 64 with no visual difference (it's transparent). */}
+        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 4, 4]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
@@ -193,7 +203,10 @@ function DAGEdge3DInner({
           small glowing sphere that travels source → target along the curve */}
       {shouldAnimate && (
         <mesh ref={particleRef}>
-          <sphereGeometry args={[0.25, 8, 8]} />
+          {/* 6×6 segments = 36 triangles, indistinguishable from 8×8
+              (64 tri) at this radius (0.25). Saves vertex work
+              proportional to active orb count. */}
+          <sphereGeometry args={[0.25, 6, 6]} />
           <meshBasicMaterial
             color={color}
             transparent

@@ -1049,18 +1049,21 @@ function ParetoPanel({
     const N = graphData.nodes.length;
     const avgOmega = N > 0 ? graphData.nodes.reduce((s, nd) => s + nd.omegaFragility.composite, 0) / N : 0;
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-    const phase = avgOmega * 0.3;
+    // Seed phase from the previous panel-derived heuristic — the grid is
+    // free to override but starts somewhere reasonable rather than at 0.
+    const seedPhase = avgOmega * 0.3;
 
     // Template values that used to be used verbatim; now a seed into the grid.
     const seed = {
       tc: 1 + csdEpochs / Math.max(1, csdEpochs + 50),
       omega: 6.36 + shockPressure * 2.1,
       m: 0.33 + shockPressure * 0.1,
+      phase: seedPhase,
     };
 
     if (n < 5) {
       // Not enough points to fit — show the seed curve over a 60-point preview.
-      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, phase);
+      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, seedPhase);
       return {
         timeSeries: observed,
         modelSeries: modelPoints,
@@ -1072,12 +1075,15 @@ function ParetoPanel({
         omega: seed.omega,
         m: seed.m,
         tc: seed.tc,
+        phase: seedPhase,
         fitted: false as const,
         evaluations: 0,
       };
     }
 
-    const fit = fitLppls(observed, { phase, seed });
+    // Fit all four free parameters (tc, ω, m, φ). The seed phase carries the
+    // panel's prior heuristic into the grid as a known-good starting point.
+    const fit = fitLppls(observed, { seed });
     const samplePenalty = Math.min(1, n / 30);
     const confidence = Math.max(0, Math.min(0.99, fit.rSquared * samplePenalty));
 
@@ -1092,6 +1098,7 @@ function ParetoPanel({
       omega: fit.omega,
       m: fit.m,
       tc: fit.tc,
+      phase: fit.phase,
       fitted: true as const,
       evaluations: fit.evaluations,
     };
@@ -1380,13 +1387,13 @@ function ParetoPanel({
               shortDesc: meta.shortDesc,
               methodology: [
                 `Fits the LPPLS model y(t) = A + B(tc\u2212t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc\u2212t) + \u03C6)] (Sornette 2003) to the same scoped mean-\u03A9 trajectory as CSD \u2014 ${scopeLabel}, n=${lpplsData.sampleSize}.`,
-                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure).`}`,
-                `Phase \u03C6 = mean-\u03A9 \u00D7 0.3 is tied to graph fragility; A=1, B=\u22121, C=0.2 held fixed. tc, \u03C9, m are free parameters fit against the observed window. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
+                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m, \u03C6) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure, \u03C6 seeded from graph fragility).`}`,
+                `Free parameters: tc (critical time), \u03C9 (angular frequency), m (power-law exponent), \u03C6 (phase \u2208 [\u2212\u03C0, \u03C0]). A=1, B=\u22121, C=0.2 held fixed. \u03C6 is now data-fit instead of hardcoded \u2014 the grid finds the actual best alignment of the log-periodic oscillation against the observed trajectory. Increasing-frequency oscillations signal an approaching regime transition.`,
               ],
-              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)}${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
+              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | \u03C6 = ${lpplsData.phase.toFixed(2)} rad${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
               assessment: lpplsData.sampleSize < 5
                 ? `INSUFFICIENT DATA \u2014 only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
-                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}.`,
+                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}, \u03C6 = ${lpplsData.phase.toFixed(2)} rad.`,
             };
           }
           // ── BOCPD (live as a fourth criticality estimator on the

@@ -106,7 +106,8 @@ Append a row each time a perf-relevant change ships. Keep entries terse; cite PR
 
 | Date | PR | Action | Outcome / notes |
 |---|---|---|---|
-| 2026-05-01 | (this PR) | Wired `@vercel/speed-insights` into root layout + `@next/bundle-analyzer` into `next.config.ts`. Removed dead `@react-three/postprocessing` (zero source references). | Establishes baseline. Speed Insights data starts accumulating on next prod deploy. Bundle analyzer runs locally only via `ANALYZE=true npm run build`. |
+| 2026-05-01 | #222 | Wired `@vercel/speed-insights` into root layout + `@next/bundle-analyzer` into `next.config.ts`. Removed dead `@react-three/postprocessing` (zero source references). | Establishes baseline. Speed Insights data starts accumulating on next prod deploy. Bundle analyzer runs locally only via `ANALYZE=true npm run build`. |
+| 2026-05-06 | (this PR) | `DAGEdge3D` orb animation: replaced per-frame `curve.getPoint(t)` (allocates Vector3 + bezier eval) with O(1) lookup into the existing 32-point `curvePoints` cache. Dropped invisible-hitbox sphere tessellation 8×8→4×4 and orb tessellation 8×8→6×6. | No measurement run; based on code inspection. Expected savings: ~6k Vector3 allocations/sec at ~100 animating edges + lower raycast cost on hover. Visual diff at 0.25 orb radius is imperceptible. Re-measure during next perf audit; if still slow during cascade replay, the next ladder rung is `<instancedMesh>` for orbs. |
 
 Future entries: copy the row template above.
 

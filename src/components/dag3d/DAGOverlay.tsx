@@ -12,6 +12,8 @@ export default function DAGOverlay() {
   const activeModule = useApexStore((s) => s.activeModule);
   const viewMode = useApexStore((s) => s.viewMode);
   const setViewMode = useApexStore((s) => s.setViewMode);
+  const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
+  const setNodeSizeMetric = useApexStore((s) => s.setNodeSizeMetric);
   const truthFilter = useApexStore((s) => s.truthFilter);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
@@ -89,6 +91,35 @@ export default function DAGOverlay() {
           the corner stays clean. View labels still say which view is
           active via the highlighted button. */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
+        {/* 3D-only: orb-size metric toggle. ΩF reads as "criticality"; the
+            two centralities reveal structure (eigenvector → influence
+            hubs; betweenness → bridges). Hidden in other views since the
+            orbs only exist in 3D. */}
+        {viewMode === "3d" && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-surface-elevated">
+            <span className="text-[8px] font-mono text-text-muted pr-0.5">SIZE:</span>
+            {(
+              [
+                { id: "omega", label: "ΩF" },
+                { id: "eigenvector", label: "EIG" },
+                { id: "betweenness", label: "BTW" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setNodeSizeMetric(opt.id)}
+                className={`text-[8px] font-mono px-1.5 py-0.5 rounded transition-colors ${
+                  nodeSizeMetric === opt.id
+                    ? "text-accent-cyan bg-accent-cyan/15"
+                    : "text-text-muted hover:text-accent-cyan"
+                }`}
+                title={`Map orb size to ${opt.label}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </span>
+        )}
         {/* View mode cycle buttons. Internal id stays "relief" so existing
             store / type machinery keeps working; the user-facing label is
             "TOPO" (more recognisable than "RELIEF" for a topographic map). */}

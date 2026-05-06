@@ -5,7 +5,7 @@ import { SITE } from "@/lib/site";
 
 const TEAM = [
   {
-    name: "Junaid Ghauri",
+    name: "Dr. Junaid Ghauri",
     role: "Principal Scientist · CEO",
     color: "cyan",
     initials: "JG",
@@ -18,7 +18,7 @@ const TEAM = [
     education: "Doctor of Engineering, Johns Hopkins University.",
   },
   {
-    name: "Georgios Korpas",
+    name: "Dr. Georgios Korpas",
     role: "Head of Research",
     color: "amber",
     initials: "GK",

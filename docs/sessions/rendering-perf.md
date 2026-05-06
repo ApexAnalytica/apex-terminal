@@ -373,9 +373,37 @@ The framework is fine — three.js / r3f is exactly what those reference platfor
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 704/704 pass (2 new in `graph-relief-field.test.ts`).
 
+### 2026-05-03 — Shipped: Topo label-on-peak fix + Ω intensity legend
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the way nodes render on top of it is really hard to follow. Right now they seem to be sitting at the bottom on a flat map. Also could we have a vertical scale showing what each striation is in terms of Ω."*
+
+**The bug.** `computeNodeAnchors` was sampling each node's height with the raw `composite` value:
+```ts
+h += s.composite * Math.exp(-(...) / sigma2);
+```
+But the field eval uses `nodeWeight(composite) = composite ^ WEIGHT_EXPONENT (1.5)`. For composite=10, that's 10 vs 31.6 — the anchor's `h / field.peak` ratio was ~0.3 of the actual mesh-vertex norm at that point, so `pow(norm, heightGamma) * heightScale` came out at ~20 when the surface peak was at 140. Labels rendered close to y=0 — exactly the "sitting at the bottom" the user reported. One-line fix: anchor sampling now mirrors the field-eval kernel.
+
+**What shipped.**
+- **Anchor height fix.** `computeNodeAnchors` now uses `nodeWeight(s.composite)` to match the field eval. Labels now float at the true peak height.
+- **`<ElevationLegend>` component.** Vertical heatmap-gradient strip on the right edge of the canvas, ~180px tall, with five label stops (Ω peak / HIGH / MID / LOW / Ω 0). Uses 14 horizontal tick lines that mirror the shader's `uBands = 14`, so the strip's tick density visually maps to the iso-rings on the surface. Right-side rotated "Ω INTENSITY" text. Pulls `peakOmega` from `fieldNodes` (replay-aware), so the top label updates as ΩF changes during a replay.
+- **`elevationColorJS`** small helper in the component — JS mirror of the shader's GLSL elevationColor ramp, used to paint the CSS gradient stops so the legend visually matches the surface palette. Comment ties them together; keep in sync if the ramp ever changes.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `computeNodeAnchors` height kernel uses `nodeWeight()` instead of raw `composite`. Comment explaining the contract.
+- `src/components/CausalDAGRelief.tsx` — adds `<ElevationLegend>`, `elevationColorJS()` helper, `peakOmega` useMemo, render call site below the domain legend.
+- `src/lib/__tests__/graph-relief-field.test.ts` — new regression test "anchor y matches the actual mesh-vertex height at the node position": for an isolated source the anchor should reach ≥ 95% of the global mesh-vertex max-Y (was previously sitting at <30% of it).
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 711/711 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify replay animation on production: load any demo flow → hit play → watch the topo surface morph as epochs advance. Expect the REPLAY · EPOCH N pill in the top-right and label Ω values updating in sync. Remaining follow-ups: onboarding tooltip (most users still won't intuit the topographic mental model on first glance), real-time scrub perf (preview-resolution-during-drag or compute-shader port). Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+User flagged three more issues in the same message:
+1. **2D map blinks on hover; map disappears briefly on selection.** Known item — deferred from PR #198 with the note *"the `edges` useMemo (`:478–541`) still rebuilds on every hover because `emphasisTarget` is in its deps. Splitting structural edge data from emphasis-derived style would need a custom edge component subscribing to `emphasisTarget` separately."* That's the fix. The "map disappears on select" piece is new info — could be `useEdgesState` or React Flow's internal remount on a different signal — needs a quick repro and a focused fix in the same PR.
+2. **3D diagram looks busy / hard to track.** User got cut off mid-sentence about the orbs — pending clarification on whether they want smaller orbs, simpler labels, fewer visible items, or all three.
+
+Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

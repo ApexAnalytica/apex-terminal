@@ -531,11 +531,16 @@ export function computeNodeAnchors(
 
   const anchors: NodeAnchor[] = [];
   for (const pick of picks) {
+    // CRITICAL: use the same kernel weight the field eval uses
+    // (`nodeWeight = composite^WEIGHT_EXPONENT`). v1 used the raw
+    // composite here, so `h / field.peak` was a wildly different ratio
+    // from the actual mesh-vertex norm — labels rendered at ≤ 20% of
+    // their true peak height and looked like they sat on the floor.
     let h = 0;
     for (const s of sources) {
       const dx = pick.x - s.x;
       const dy = pick.y - s.y;
-      h += s.composite * Math.exp(-(dx * dx + dy * dy) / sigma2);
+      h += nodeWeight(s.composite) * Math.exp(-(dx * dx + dy * dy) / sigma2);
     }
     const norm = Math.max(0, Math.min(1, h / field.peak));
     const shaped = Math.pow(norm, heightGamma);

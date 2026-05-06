@@ -209,6 +209,26 @@ describe("computeNodeAnchors", () => {
     expect(anchor.y).toBeGreaterThan(0);
   });
 
+  it("anchor y matches the actual mesh-vertex height at the node position", () => {
+    // Regression for the "labels look like they sit on the floor" bug —
+    // computeNodeAnchors must use the same nodeWeight kernel as the field
+    // eval, otherwise the normalised height diverges from the surface.
+    // For a single isolated source, the anchor at the source position is
+    // the global peak, so its norm should be ~1 and y ≈ heightScale.
+    const nodes = [makeNode("a", "X", 9)];
+    const layout = new Map([["a", { x: 0, y: 0 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 32 });
+    const [anchor] = computeNodeAnchors(nodes, layout, field, {}, 1);
+    // Find the maximum vertex height in the field — anchor must reach
+    // at least 95% of it (small floor-level slop from the discrete grid).
+    let maxY = 0;
+    for (let i = 1; i < field.positions.length; i += 3) {
+      if (field.positions[i] > maxY) maxY = field.positions[i];
+    }
+    expect(maxY).toBeGreaterThan(0);
+    expect(anchor.y).toBeGreaterThan(maxY * 0.95);
+  });
+
   it("returns [] when the field is empty", () => {
     const nodes = [makeNode("a", "X", 5)];
     const empty = new Map<string, { x: number; y: number }>();

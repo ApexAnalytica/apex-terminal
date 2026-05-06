@@ -395,6 +395,88 @@ function DomainLegend({ field }: { field: FusedReliefField }) {
   );
 }
 
+/**
+ * Vertical Ω-intensity legend on the right edge — answers "what does each
+ * iso-contour band represent?". Maps the same elevationColor() ramp the
+ * surface uses to a visible scale, with the maximum-composite contributor
+ * shown as the "PEAK Ω" reference. The mapping isn't strictly linear
+ * (kernel sums + heightGamma both bend it) but it's the right qualitative
+ * read: cooler colour = quieter region, hotter = more critical cluster.
+ */
+function ElevationLegend({ peakOmega }: { peakOmega: number }) {
+  // Ramp built from the JS elevationColor() at 21 stops — gives a smooth
+  // CSS gradient that matches what the shader paints.
+  const stops: string[] = [];
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    const [r, g, b] = elevationColorJS(t);
+    stops.push(
+      `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}) ${i * 5}%`,
+    );
+  }
+  // 14 ticks matches the shader's BANDS uniform (default 14) so the
+  // strip's tick density mirrors the rings on the surface.
+  const ticks = 14;
+  return (
+    <div className="absolute top-1/2 right-4 -translate-y-1/2 z-10 flex items-stretch gap-2 pointer-events-none">
+      <div className="flex flex-col justify-between text-[8px] font-mono text-text-muted py-0.5">
+        <span style={{ color: "#ff5566" }}>Ω {peakOmega.toFixed(1)}</span>
+        <span>HIGH</span>
+        <span>MID</span>
+        <span>LOW</span>
+        <span>Ω 0</span>
+      </div>
+      <div className="relative w-2 h-44 rounded overflow-hidden border border-border">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(to top, ${stops.join(", ")})`,
+          }}
+        />
+        {/* Tick marks aligned with shader bands — the user can read
+            "this iso-ring on the surface = roughly this elevation". */}
+        {Array.from({ length: ticks - 1 }).map((_, i) => {
+          const top = ((i + 1) / ticks) * 100;
+          return (
+            <div
+              key={i}
+              className="absolute left-0 right-0 h-px"
+              style={{ top: `${top}%`, backgroundColor: "rgba(0,0,0,0.45)" }}
+            />
+          );
+        })}
+      </div>
+      <div className="flex items-end pb-0 pl-1">
+        <div
+          className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted"
+          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+        >
+          Ω INTENSITY
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** JS-side mirror of the shader's elevationColor — keep in lockstep with the
+ *  ramp baked into TOPO_FRAGMENT_SHADER and graph-relief-field's
+ *  elevationColor(). Used by the legend to paint a CSS gradient that visually
+ *  matches the surface. */
+function elevationColorJS(t: number): [number, number, number] {
+  const n = Math.max(0, Math.min(1, t));
+  const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+  if (n < 0.25) {
+    const k = n / 0.25;
+    return [lerp(0.04, 0.0, k), lerp(0.05, 0.9, k), lerp(0.18, 1.0, k)];
+  }
+  if (n < 0.55) {
+    const k = (n - 0.25) / 0.3;
+    return [lerp(0.0, 1.0, k), lerp(0.9, 0.67, k), lerp(1.0, 0.0, k)];
+  }
+  const k = Math.min(1, (n - 0.55) / 0.45);
+  return [1.0, lerp(0.67, 0.09, k), lerp(0.0, 0.27, k)];
+}
+
 function SelectionMarkers({
   layout,
   field,
@@ -546,6 +628,18 @@ function CausalDAGReliefInner() {
     (multilayer ? fusedField : singleField) ?? null;
   const isEmpty = !activeField || activeField.positions.length === 0;
 
+  // Max Ω composite across the visible (replay-aware) graph — drives
+  // the elevation legend's "PEAK Ω" label so users have a numeric
+  // anchor for the heatmap.
+  const peakOmega = useMemo(() => {
+    let max = 0;
+    for (const n of fieldNodes) {
+      const c = n.omegaFragility?.composite;
+      if (typeof c === "number" && Number.isFinite(c) && c > max) max = c;
+    }
+    return max;
+  }, [fieldNodes]);
+
   const anchors = useMemo<NodeAnchor[]>(() => {
     if (!activeField || isEmpty) return [];
     // Use fieldNodes (replay-aware) so label Ω values match what the
@@ -639,6 +733,9 @@ function CausalDAGReliefInner() {
       </Canvas>
       {!isEmpty && multilayer && fusedField && (
         <DomainLegend field={fusedField} />
+      )}
+      {!isEmpty && peakOmega > 0 && (
+        <ElevationLegend peakOmega={peakOmega} />
       )}
       {currentSnapshot && (
         <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded border border-accent-amber/60 bg-surface-elevated/90 backdrop-blur-sm pointer-events-none">

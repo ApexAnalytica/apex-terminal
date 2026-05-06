@@ -35,9 +35,69 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md space-y-8">
-        {/* Logo */}
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Marketing-site nav so visitors landing on the login page can
+          still navigate back to /product, /framework, /domains, etc.
+          on the public site. Brand mark goes to the new marketing
+          site (apex-analytica-website.vercel.app); other nav items
+          point at subpages on the same. Login + Request Access are
+          intentionally omitted — visitor is already on /login. */}
+      <header className="border-b border-border">
+        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-4 md:px-6">
+          <a
+            href="https://apex-analytica-website.vercel.app/"
+            className="group flex items-center gap-2.5"
+          >
+            <Image
+              src="/logo.png"
+              alt="Apex Analytica"
+              width={44}
+              height={54}
+              className="object-contain shrink-0"
+              priority
+            />
+            <span className="font-[family-name:var(--font-michroma)] text-[12px] tracking-[0.3em] text-foreground group-hover:text-accent-cyan transition-colors">
+              APEX ANALYTICA
+            </span>
+          </a>
+          <nav className="hidden md:flex items-center gap-7">
+            <a
+              href="https://apex-analytica-website.vercel.app/product"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
+            >
+              PRODUCT
+            </a>
+            <a
+              href="https://apex-analytica-website.vercel.app/framework"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
+            >
+              FRAMEWORK
+            </a>
+            <a
+              href="https://apex-analytica-website.vercel.app/domains"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
+            >
+              DOMAINS
+            </a>
+            <a
+              href="https://apex-analytica-website.vercel.app/team"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
+            >
+              TEAM
+            </a>
+            <a
+              href="https://apex-analytica-website.vercel.app/contact"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
+            >
+              CONTACT
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md space-y-8">
+          {/* Logo */}
         <div className="text-center space-y-2">
           <Image
             src="/logo.png"
@@ -147,6 +207,7 @@ export default function LoginPage() {
             info@apexanalytica.co
           </a>
         </p>
+        </div>
       </div>
     </div>
   );

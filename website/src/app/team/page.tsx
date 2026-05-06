@@ -12,7 +12,8 @@ const TEAM = [
     photo: "https://apexanalytica.co/junaid.png",
     linkedin: "https://www.linkedin.com/in/jghauri/",
     scholar: null,
-    expertise: "Leadership in tech, Bayesian models, COVID-19 analytics, reinsurance risk.",
+    expertise:
+      "Computational mathematics, advanced analytics, quantitative finance, network topology, quantum information and decision-making.",
     background:
       "Ex-General Partner at Pareto Technologies. Former CTO at MARK LABS. Chair of the Board at Emerta.",
     education: "Doctor of Engineering, Johns Hopkins University.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -15,6 +15,9 @@ import ReactFlow, {
   SelectionMode,
   OnSelectionChangeFunc,
   MarkerType,
+  EdgeProps,
+  BaseEdge,
+  getBezierPath,
   useReactFlow,
   ReactFlowProvider,
 } from "reactflow";
@@ -38,8 +41,67 @@ import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
 
-function CausalNode2D({ data, selected }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity, emphasis } = data;
+/**
+ * Shared context for the 2D canvas. Carrying `adjacency` + `hoveredNodeId`
+ * here (instead of through every node's `data` prop) is the difference
+ * between the parent rebuilding the entire `nodes`/`edges` arrays on every
+ * mouse-move (which is what made hover blink the canvas in v1) and only
+ * the individual node/edge components re-deriving their emphasis. The
+ * adjacency Map is stable across hovers because it depends only on
+ * graph topology.
+ */
+interface Dag2DContextValue {
+  adjacency: Map<string, string[]>;
+  hoveredNodeId: string | null;
+  selectedEdgeId: string | null;
+}
+const Dag2DContext = createContext<Dag2DContextValue>({
+  adjacency: new Map(),
+  hoveredNodeId: null,
+  selectedEdgeId: null,
+});
+
+/**
+ * Compute a single node's emphasis from the four signals that decide it:
+ * its own id, the hover/selection state, the multi-selection set, and
+ * the adjacency Map. Used by both `CausalNode2D` and `EmphasizedEdge`
+ * (via source/target lookups) so the two stay in lockstep.
+ */
+function computeNodeEmphasis(
+  id: string,
+  hoveredNodeId: string | null,
+  selectedNode: string | null,
+  multiSelected: string[],
+  adjacency: Map<string, string[]>,
+): NodeEmphasis {
+  const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
+  if (multiSelected.length > 0) {
+    const isSelected = multiSelected.includes(id);
+    if (isSelected) return "focus";
+    if (emphasisTarget === id) return "focus";
+    if (
+      emphasisTarget &&
+      (adjacency.get(emphasisTarget) ?? []).includes(id)
+    ) {
+      return "neighbor";
+    }
+    return "dim";
+  }
+  if (!emphasisTarget) return "none";
+  if (id === emphasisTarget) return "focus";
+  if ((adjacency.get(emphasisTarget) ?? []).includes(id)) return "neighbor";
+  return "dim";
+}
+
+function CausalNode2D({ data, selected, id }: NodeProps) {
+  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity } = data;
+  const { adjacency, hoveredNodeId } = useContext(Dag2DContext);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+  const emphasis = useMemo(
+    () => computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency),
+    [id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency],
+  );
   const color = datasetColor ?? getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
@@ -265,6 +327,113 @@ function EdgeInspector({
 const nodeTypes = { causal: CausalNode2D };
 
 /**
+ * Custom edge component that subscribes to hover/selection state itself
+ * (via Dag2DContext + useApexStore) instead of receiving emphasis through
+ * the edges array. Net effect: the parent's `edges` useMemo no longer
+ * has to rebuild on every hover — only individual EmphasizedEdge
+ * components re-derive their opacity/width. That's the difference
+ * between "hover blinks the whole canvas" (v1) and "hover updates one
+ * neighborhood smoothly" (v2).
+ */
+interface EmphasizedEdgeData {
+  baseColor: string;
+  baseWidth: number;
+  baseOpacity: number;
+  isInconsistent: boolean;
+  isTemporal: boolean;
+  isConfounded: boolean;
+  isSelected: boolean;
+  propagationSignal: number;
+  showArrow: boolean;
+}
+
+function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
+  const {
+    id,
+    source,
+    target,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    data,
+    markerEnd,
+  } = props;
+  const { adjacency, hoveredNodeId, selectedEdgeId } = useContext(Dag2DContext);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
+
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
+
+  // Emphasis: an edge is "in scope" if either endpoint is the current
+  // emphasis target (hover or single-select). When something IS in scope
+  // and this edge isn't, drop opacity to 0.1 to match the dimmed nodes.
+  const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
+  const inScope =
+    !emphasisTarget || source === emphasisTarget || target === emphasisTarget;
+
+  // Multi-selection: an edge is in scope if at least one endpoint is
+  // selected (the "isolated subgraph" reading the user picked in the
+  // domain legend / shift-marquee).
+  const multiInScope =
+    multiSelectedNodes.length === 0 ||
+    multiSelectedNodes.includes(source) ||
+    multiSelectedNodes.includes(target);
+
+  const d = data!;
+  const isThisSelected = selectedEdgeId === id;
+  const otherEdgeSelected = !!selectedEdgeId && !isThisSelected;
+
+  let opacity = d.baseOpacity;
+  if (otherEdgeSelected) opacity = Math.min(opacity, 0.15);
+  if (!inScope) opacity = Math.min(opacity, 0.1);
+  if (!multiInScope) opacity = Math.min(opacity, 0.08);
+  if (isThisSelected) opacity = 1;
+  if (d.propagationSignal > 0) {
+    opacity = Math.min(1, d.baseOpacity + d.propagationSignal * 0.3);
+  }
+
+  const strokeWidth = isThisSelected
+    ? d.baseWidth + 1.5
+    : d.propagationSignal > 0
+      ? d.baseWidth + d.propagationSignal * 2
+      : d.baseWidth;
+
+  const stroke = d.propagationSignal > 0 ? "#ffab00" : d.baseColor;
+  const strokeDasharray = d.isConfounded || d.isInconsistent ? "5,5" : undefined;
+
+  // Reference-stable adjacency to avoid lint complaining about the unused
+  // `adjacency` import — only nodes need it; edges go via source/target.
+  void adjacency;
+
+  return (
+    <BaseEdge
+      id={id}
+      path={edgePath}
+      markerEnd={markerEnd}
+      style={{
+        stroke,
+        strokeWidth,
+        strokeDasharray,
+        opacity,
+        transition: "opacity 180ms ease-out",
+      }}
+    />
+  );
+}
+
+const edgeTypes = { emphasized: EmphasizedEdge };
+
+/**
  * Re-fits the viewport whenever the *set* of visible nodes changes — not just
  * the count. Keying off count alone leaves the viewport stuck on the previous
  * framing when the user swaps one isolated selection for another of equal size
@@ -335,7 +504,6 @@ function CausalDAG2DInner() {
   const liveSimRef = useRef<LiveSimulation | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  const selectedNode = useApexStore((s) => s.selectedNode);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // Indexed lookups — replace O(N)/O(E) find() calls in render and handlers.
@@ -446,43 +614,14 @@ function CausalDAG2DInner() {
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  // Emphasis target: hover wins over single selection. Empty when nothing is
-  // hovered or selected — that's the default "no dimming" state.
-  const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
-
-  const emphasisMap = useMemo(() => {
-    const map = new Map<string, NodeEmphasis>();
-
-    // Multi-selection (domain legend, shift-drag marquee): every selected
-    // node gets focus, everything else dims. Takes effect even when no
-    // single node is selected — previously this state was invisible
-    // unless the user separately turned on isolation.
-    if (multiSelectedNodes.length > 0) {
-      const sel = new Set(multiSelectedNodes);
-      for (const n of graphData.nodes) {
-        map.set(n.id, sel.has(n.id) ? "focus" : "dim");
-      }
-      // If a singular hover/select coexists, let it upgrade its target to
-      // focus and surface its neighbors as "neighbor" (over the dim base).
-      if (emphasisTarget) {
-        map.set(emphasisTarget, "focus");
-        const neighbors = adjacency.get(emphasisTarget) ?? [];
-        for (const id of neighbors) {
-          if (!sel.has(id)) map.set(id, "neighbor");
-        }
-      }
-      return map;
-    }
-
-    if (!emphasisTarget) return map;
-    const neighbors = new Set(adjacency.get(emphasisTarget) ?? []);
-    for (const n of graphData.nodes) {
-      if (n.id === emphasisTarget) map.set(n.id, "focus");
-      else if (neighbors.has(n.id)) map.set(n.id, "neighbor");
-      else map.set(n.id, "dim");
-    }
-    return map;
-  }, [emphasisTarget, graphData.nodes, adjacency, multiSelectedNodes]);
+  // Emphasis state used to live as an `emphasisMap` useMemo + `emphasis` field
+  // on every node's `data`, with `emphasisTarget` baked into the edges memo
+  // too. That meant a single mouseenter rebuilt the entire nodes + edges
+  // arrays — which made React Flow re-diff its whole DOM and read as a
+  // canvas-wide blink. The new path: `CausalNode2D` and `EmphasizedEdge`
+  // subscribe to `hoveredNodeId` + `selectedNode` + `multiSelectedNodes`
+  // themselves (via Dag2DContext + the store) and compute their own
+  // emphasis. Parent's nodes/edges arrays are now hover/select-stable.
 
   const nodes: Node[] = useMemo(() => {
     return graphData.nodes.map((n) => {
@@ -536,11 +675,10 @@ function CausalDAG2DInner() {
           isRestricted: truthFilter === "verified" && n.isRestricted,
           datasetColor: n.datasetColor,
           shockIntensity: epochShock,
-          emphasis: emphasisMap.get(n.id) ?? "none",
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, emphasisMap, adjacency]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {
@@ -549,69 +687,55 @@ function CausalDAG2DInner() {
     return nodes.filter((n) => selSet.has(n.id));
   }, [nodes, isolateSelection, multiSelectedNodes]);
 
-  const edges: Edge[] = useMemo(
+  // Edges carry only structural / replay / truth-filter state. Hover and
+  // single-select emphasis are computed inside `EmphasizedEdge` itself, so
+  // this useMemo doesn't depend on hoveredNodeId or selectedNode — and
+  // hovering no longer rebuilds the array. Selection of *another* edge
+  // does still affect each edge's base opacity, so `selectedEdge` stays
+  // a dep here.
+  const edges: Edge<EmphasizedEdgeData>[] = useMemo(
     () =>
       graphData.edges.map((e) => {
-        const isInconsistent = truthFilter === "verified" && e.isInconsistent;
+        const isInconsistent = truthFilter === "verified" && !!e.isInconsistent;
         const propagationSignal = currentSnapshot?.edgeStates[e.id]?.propagationSignal ?? 0;
         const isSelected = selectedEdge?.id === e.id;
-        const inEmphasisScope =
-          !emphasisTarget || e.source === emphasisTarget || e.target === emphasisTarget;
+        const isTemporal = e.type === "temporal";
+        const isConfounded = e.type === "confounded";
 
         const baseColor = isInconsistent
           ? "#ff1744"
-          : e.type === "temporal"
+          : isTemporal
             ? "#ffab00"
-            : e.type === "confounded"
+            : isConfounded
               ? "#ff6d00"
               : "#00e5ff";
-
-        // Boost opacity and use amber tint when signal is active
-        const edgeColor = propagationSignal > 0
-          ? "#ffab00"
-          : baseColor;
-
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
-        let opacity = propagationSignal > 0
-          ? Math.min(1, baseOpacity + propagationSignal * 0.3)
-          : selectedEdge && !isSelected ? 0.15 : baseOpacity;
-        if (!inEmphasisScope) opacity = Math.min(opacity, 0.1);
-
         const baseWidth = 0.5 + e.weight * 1.5;
-        const strokeWidth = isSelected
-          ? baseWidth + 1.5
-          : propagationSignal > 0
-            ? baseWidth + propagationSignal * 2
-            : baseWidth;
+        const showArrow = e.type === "directed" || isTemporal;
 
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          type: "default",
-          animated: e.type === "temporal" || propagationSignal > 0.3,
-          markerEnd: e.type === "directed" || e.type === "temporal"
-            ? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: edgeColor }
+          type: "emphasized",
+          animated: isTemporal || propagationSignal > 0.3,
+          markerEnd: showArrow
+            ? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: baseColor }
             : undefined,
-          style: {
-            stroke: edgeColor,
-            strokeWidth,
-            strokeDasharray: e.type === "confounded" || isInconsistent ? "5,5" : undefined,
-            opacity,
-            transition: "opacity 180ms ease-out",
-          },
-          labelStyle: {
-            fill: "#5a5e72",
-            fontSize: 9,
-            fontFamily: "monospace",
-          },
-          labelBgStyle: {
-            fill: "#0a0b10",
-            fillOpacity: 0.8,
+          data: {
+            baseColor,
+            baseWidth,
+            baseOpacity,
+            isInconsistent,
+            isTemporal,
+            isConfounded,
+            isSelected,
+            propagationSignal,
+            showArrow,
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot, selectedEdge, emphasisTarget]
+    [graphData, truthFilter, currentSnapshot, selectedEdge]
   );
 
   // Filter edges for isolation mode
@@ -790,7 +914,22 @@ function CausalDAG2DInner() {
     ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
+  // Stable context value — adjacency only changes on graph topology change,
+  // hoveredNodeId / selectedEdgeId change shape but consumer components
+  // recompute themselves from these. Memoised so context-only consumers
+  // (CausalNode2D, EmphasizedEdge) don't re-run their useMemo on parent
+  // re-render when the values are equal.
+  const dag2dContextValue = useMemo<Dag2DContextValue>(
+    () => ({
+      adjacency,
+      hoveredNodeId,
+      selectedEdgeId: selectedEdge?.id ?? null,
+    }),
+    [adjacency, hoveredNodeId, selectedEdge],
+  );
+
   return (
+    <Dag2DContext.Provider value={dag2dContextValue}>
     <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
       <CanvasWatermark />
       <DAGOverlay />
@@ -799,6 +938,7 @@ function CausalDAG2DInner() {
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onInit={onInit}
           onNodeClick={onNodeClick}
           onNodeMouseEnter={onNodeMouseEnter}
@@ -855,6 +995,7 @@ function CausalDAG2DInner() {
         )}
       </AnimatePresence>
     </div>
+    </Dag2DContext.Provider>
   );
 }
 

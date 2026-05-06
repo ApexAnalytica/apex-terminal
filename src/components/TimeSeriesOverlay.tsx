@@ -282,6 +282,31 @@ export default function TimeSeriesOverlay() {
     return scales;
   }, [curves]);
 
+  // Per-curve RAW range — used by the legend chip so it reads in the
+  // actual unit (e.g. "0.50–11.20 %" for food inflation) instead of
+  // pasting the omega-scale min/max next to the raw unit. Falls back
+  // to curveScales when a curve has no rawValue (synthetic-omega
+  // nodes, edges with derived omega histories).
+  const curveRawScales = useMemo(() => {
+    const scales = new Map<string, { min: number; max: number }>();
+    for (const curve of curves) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const h of curve.history) {
+        if (h.rawValue === undefined) continue;
+        if (h.rawValue < lo) lo = h.rawValue;
+        if (h.rawValue > hi) hi = h.rawValue;
+      }
+      if (!Number.isFinite(lo)) continue; // no rawValue → omit; legend will fall through
+      if (lo === hi) {
+        hi = lo + Math.max(Math.abs(lo) * 0.01, 1e-6);
+        lo = lo - Math.max(Math.abs(lo) * 0.01, 1e-6);
+      }
+      scales.set(curve.nodeId, { min: lo, max: hi });
+    }
+    return scales;
+  }, [curves]);
+
   // Compute dynamic y-axis range from actual data with padding.
   // (When normalized, the chart axis is 0..1; gridLines reflect that.)
   // Kept for the rare single-curve case where global scale is meaningful.
@@ -760,16 +785,18 @@ export default function TimeSeriesOverlay() {
                   </span>
                   {/* Per-curve value-range chip — shows the actual unit-bearing
                       range so the normalized 0-100% chart isn't ambiguous about
-                      what shape corresponds to what magnitude. */}
+                      what shape corresponds to what magnitude. Prefers the raw
+                      range when the curve carries underlying values (food
+                      inflation %, oil $/bbl); falls back to the omega range. */}
                   {(() => {
-                    const scale = curveScales.get(curve.nodeId);
+                    const rawScale = curveRawScales.get(curve.nodeId);
+                    const scale = rawScale ?? curveScales.get(curve.nodeId);
                     if (!scale) return null;
-                    const u = curve.sourceUnit ?? "";
-                    const fmt = (n: number) =>
-                      Number.isInteger(n) ? n.toString() : n.toFixed(2);
+                    const u = rawScale ? (curve.sourceUnit ?? "") : "";
+                    const unitSep = u ? " " : "";
                     return (
                       <span className="text-[7px] font-mono text-text-muted/70 tabular-nums shrink-0">
-                        {fmt(scale.min)}–{fmt(scale.max)}{u}
+                        {formatRawValue(scale.min)}–{formatRawValue(scale.max)}{unitSep}{u}
                       </span>
                     );
                   })()}

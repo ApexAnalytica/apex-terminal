@@ -92,7 +92,7 @@ const PARTNERS: {
   mono?: boolean;
 }[] = [
   { name: "AWS",                     logo: "/partners/aws.svg",    alt: "Amazon Web Services",      naturalW: 304, naturalH: 182, mono: true },
-  { name: "JOHNS HOPKINS UNIVERSITY", logo: "/partners/jhu.svg",    alt: "Johns Hopkins University", naturalW: 624, naturalH: 309, mono: true },
+  { name: "JOHNS HOPKINS UNIVERSITY", logo: "/partners/jhu.svg",    alt: "Johns Hopkins University", naturalW: 375, naturalH: 65,  mono: true },
   { name: "NVIDIA",                  logo: "/partners/nvidia.svg", alt: "NVIDIA",                   naturalW: 656, naturalH: 120 },
 ];
 

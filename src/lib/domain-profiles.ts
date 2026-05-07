@@ -277,6 +277,121 @@ export const T1D_PROFILE: DomainProfile = {
   ],
 };
 
+// ─── AI Safety / IDS — endogenous catastrophic failure in AI systems ─
+//
+// Demonstrates the Ω-Robustness framework from Ghauri (2025) JHU D.Eng.
+// dissertation as a third profile alongside Geopolitical and T1D. Failure
+// mode is endogenous (catastrophic forgetting, χ★-bridge cascade,
+// adversarial drift) rather than exogenous shock. Initial empirical
+// substrate: CICIDS-2017, UNSW-NB15, AWID-H23Q intrusion-detection
+// benchmarks (Chapters 5–8 of the dissertation).
+
+const AI_SAFETY_MODULES: ManifoldModule[] = [
+  {
+    id: "spirtes",
+    name: "TOPOLOGY",
+    subtitle: "Architecture Discovery",
+    description:
+      "Causal DAG learning across attention layers, replay buffers, and training dependencies",
+    icon: "◇",
+    color: "var(--accent-cyan)",
+    status: "ACTIVE",
+  },
+  {
+    id: "tarski",
+    name: "INVARIANTS",
+    subtitle: "Threat-Model Verification",
+    description:
+      "Formal threat-model and deployment-axiom verification — reject inconsistent claims",
+    icon: "⊢",
+    color: "var(--accent-green)",
+    status: "ACTIVE",
+  },
+  {
+    id: "pearl",
+    name: "INTERVENTION",
+    subtitle: "Architectural Counterfactual",
+    description:
+      "do-calculus on architecture — which mechanism if compromised, what fallback restores capability",
+    icon: "⟐",
+    color: "var(--accent-amber)",
+    status: "STANDBY",
+  },
+  {
+    id: "pareto",
+    name: "FRAGILITY",
+    subtitle: "Endogenous Failure Detection",
+    description:
+      "Catastrophic forgetting, adversarial bridging, χ⋆-edge cascade analysis",
+    icon: "⚠",
+    color: "var(--accent-red)",
+    status: "ALERT",
+  },
+];
+
+const AI_SAFETY_PILLARS: PillarLabels = {
+  composite: "ENDOGENOUS FRAGILITY",
+  irreplaceability: "MECHANISM RARITY",
+  restorationLatency: "FORGETTING LATENCY",
+  jurisdictionalHazard: "THREAT-MODEL EXPOSURE",
+  cascadeLoad: "CASCADE SUSCEPTIBILITY",
+  tailDepth: "ADVERSARIAL TAIL DEPTH",
+};
+
+const AI_SAFETY_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
+  irreplaceability: {
+    label: AI_SAFETY_PILLARS.irreplaceability,
+    short: "How rare is this AI mechanism — can a deployed alternative substitute under compromise?",
+    detail:
+      "Measures architectural substitutability. A unique attention pattern, training paradigm, or capability scoring 10 means no alternative architecture preserves the function if this mechanism is compromised. A commodity component scoring 2 has many drop-in replacements. Derived from architecture diversity in the model registry, capability uniqueness benchmarks, and Pearl-engine counterfactual substitution analysis.",
+    formula: "I = f(architecture_uniqueness, capability_diversity, drop_in_alternatives)",
+  },
+  restorationLatency: {
+    label: AI_SAFETY_PILLARS.restorationLatency,
+    short: "How costly is recovery from catastrophic forgetting onset?",
+    detail:
+      "Captures the rate of knowledge decay (Forgetting Rate, FR) and reinforcement cost to restore the model after catastrophic forgetting. Nodes with high FR need long retraining cycles or significant rehearsal; nodes with low FR are stable. Drawn from continual-learning evaluation: peak-task performance vs current performance, replay-buffer recovery curves, EWC regularisation cost. Per Ghauri (2025) Chapter 4.",
+    formula: "R = g(forgetting_rate, replay_cost, retraining_horizon)",
+  },
+  jurisdictionalHazard: {
+    label: AI_SAFETY_PILLARS.jurisdictionalHazard,
+    short: "How exposed is this deployment to regulatory, adversarial, or operational threat-models?",
+    detail:
+      "Reflects threat-model exposure: jurisdictions where the model is deployed (EU AI Act, NIST AI RMF), classes of adversaries assumed by the threat model, and regulatory tier. A healthcare deployment under EU AI Act with adversarial-injection threat model scores high; internal-tooling under assumed-friendly users scores low. Tarski engine verifies formal threat-model claims as axioms.",
+    formula: "J = h(regulatory_tier, adversary_class, axiom_verification_score)",
+  },
+  cascadeLoad: {
+    label: AI_SAFETY_PILLARS.cascadeLoad,
+    short: "How structurally vulnerable is this architecture to cross-component cascade failure?",
+    detail:
+      "Topological vulnerability to cross-component cascade. Measured by χ⋆ bridge density (top-5% high-betweenness, CVaR-impact edges identified by Ω-Robustness solvers) and BES (Bridge-Edge Strength) as a temporal indicator that model attention is concentrating on χ⋆ edges — predictive of cascade onset by 0–1 windows in continual-learning settings (Ghauri 2025, Chapter 8 §4.1). Spirtes topology metrics provide the structural baseline; χ⋆ and BES extend it.",
+    formula: "C = density(χ⋆) + temporal_BES(χ⋆) + spirtes_topology",
+  },
+  tailDepth: {
+    label: AI_SAFETY_PILLARS.tailDepth,
+    short: "How severe is the worst-case adversarial outcome under distributional ambiguity?",
+    detail:
+      "Conditional Value-at-Risk under Wasserstein-1 ambiguity ball over plausible adversarial-attack distributions. Captures worst-α% adversarial outcomes (e.g., α = 0.05 for worst 5% of attack scenarios). Strong-duality reformulation gives a tractable convex program even for non-trivial sample sizes (Mohajerin Esfahani & Kuhn 2018; Ghauri 2025 §5.3).",
+    formula: "T = inf_t { t + (1/(αN)) Σ max{ℓ(x, ξ_i) − t, 0} + δ ‖x‖_* }",
+  },
+};
+
+const AI_SAFETY_METHODOLOGY =
+  "The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. AI-domain weights skew toward C(0.30) and T(0.30) — cascade and tail are the dominant failure modes per Ghauri (2025) — with I(0.10) + R(0.20) + J(0.10) summing the remainder. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.";
+
+export const AI_SAFETY_PROFILE: DomainProfile = {
+  id: "ai-safety",
+  displayName: "AI Safety / Endogenous Catastrophe",
+  modules: AI_SAFETY_MODULES,
+  pillarLabels: AI_SAFETY_PILLARS,
+  pillarDetails: AI_SAFETY_PILLAR_DETAILS,
+  compositeMethodology: AI_SAFETY_METHODOLOGY,
+  // v1 reuses geopolitical's criticality estimator set as a working fallback.
+  // AI-domain-specific estimators (FR, BES temporal monitoring) arrive in
+  // Phase 3 once Pearl session wires them up.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
+};
+
 // ─── Resolution ─────────────────────────────────────────────────────
 
 const PROFILES_BY_DOMAIN_ID: Record<string, DomainProfile> = {
@@ -295,6 +410,8 @@ const PROFILES_BY_DOMAIN_ID: Record<string, DomainProfile> = {
   // Life sciences
   "t1d-beta-cell": T1D_PROFILE,
   "t1d-vx880": T1D_PROFILE,
+  // AI Safety / endogenous catastrophe (Ghauri 2025 D.Eng. dissertation)
+  "ai-safety-ids": AI_SAFETY_PROFILE,
 };
 
 export function resolveDomainProfile(

@@ -21,10 +21,15 @@ import { getAllEstimatorMeta } from "../criticality-registry";
 import {
   GEOPOLITICAL_PROFILE,
   T1D_PROFILE,
+  AI_SAFETY_PROFILE,
   type EstimatorId,
 } from "../domain-profiles";
 
-const PRODUCTION_PROFILES = [GEOPOLITICAL_PROFILE, T1D_PROFILE];
+const PRODUCTION_PROFILES = [
+  GEOPOLITICAL_PROFILE,
+  T1D_PROFILE,
+  AI_SAFETY_PROFILE,
+];
 
 /**
  * Estimators allowed to be "ready" in the registry without being

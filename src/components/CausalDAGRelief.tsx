@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -683,6 +683,115 @@ function SelectionMarkers({
   );
 }
 
+/**
+ * Shift+drag lasso for the topology canvas. Same pattern as the 3D and
+ * 2D views: attach pointer listeners on the WebGL canvas DOM element,
+ * track a screen-space rect, project each node's ground-plane position
+ * (layout.xy minus the field origin offset) into screen coordinates on
+ * release, and hit-test against the rect.
+ *
+ * Lives inside the Canvas so it can grab `useThree` (camera + canvas
+ * size). Renders nothing — selection rect is drawn as a DOM overlay by
+ * the parent.
+ */
+function TopoShiftMarquee({
+  layout,
+  field,
+  graphNodes,
+  selectionBoxRef,
+  setSelectionRect,
+  setShiftDragging,
+  onSelect,
+}: {
+  layout: Map<string, { x: number; y: number }>;
+  field: ReliefField | null | undefined;
+  graphNodes: { id: string }[];
+  selectionBoxRef: React.MutableRefObject<{ x1: number; y1: number; x2: number; y2: number } | null>;
+  setSelectionRect: (r: { x1: number; y1: number; x2: number; y2: number } | null) => void;
+  setShiftDragging: (b: boolean) => void;
+  onSelect: (ids: string[]) => void;
+}) {
+  const { camera, gl, size: canvasSize } = useThree();
+  const dragging = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const onDown = (e: PointerEvent) => {
+      if (!e.shiftKey) return;
+      dragging.current = true;
+      setShiftDragging(true);
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      startRef.current = { x, y };
+      selectionBoxRef.current = { x1: x, y1: y, x2: x, y2: y };
+      setSelectionRect({ x1: x, y1: y, x2: x, y2: y });
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const x2 = e.clientX - rect.left;
+      const y2 = e.clientY - rect.top;
+      const box = { x1: startRef.current.x, y1: startRef.current.y, x2, y2 };
+      selectionBoxRef.current = box;
+      setSelectionRect(box);
+    };
+
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      setShiftDragging(false);
+      const b = selectionBoxRef.current;
+      if (!b) return;
+
+      const minX = Math.min(b.x1, b.x2);
+      const maxX = Math.max(b.x1, b.x2);
+      const minY = Math.min(b.y1, b.y2);
+      const maxY = Math.max(b.y1, b.y2);
+
+      selectionBoxRef.current = null;
+      setSelectionRect(null);
+
+      // Ignore tiny drags so a normal shift-click doesn't clobber state.
+      if (maxX - minX < 5 && maxY - minY < 5) return;
+      if (!field) return;
+
+      // Project each node's ground-plane position to NDC, then to pixels.
+      // The TOPO scene places nodes at (layout.x - field.cx, 0, layout.y -
+      // field.cy) — same translation `SelectionMarkers` uses — so peaks
+      // rise vertically above their xz base. We hit-test the base, which
+      // is what the user visually associates with the node.
+      const ids: string[] = [];
+      const vec = new THREE.Vector3();
+      for (const node of graphNodes) {
+        const p = layout.get(node.id);
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+        vec.set(p.x - field.cx, 0, p.y - field.cy).project(camera);
+        const sx = ((vec.x + 1) / 2) * canvasSize.width;
+        const sy = ((-vec.y + 1) / 2) * canvasSize.height;
+        if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+          ids.push(node.id);
+        }
+      }
+      onSelect(ids);
+    };
+
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    return () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+    };
+  }, [gl, layout, field, graphNodes, camera, canvasSize, onSelect, selectionBoxRef, setSelectionRect, setShiftDragging]);
+
+  return null;
+}
+
 export default function CausalDAGRelief() {
   return (
     <ReliefErrorBoundary>
@@ -694,7 +803,22 @@ export default function CausalDAGRelief() {
 function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const [pickHint, setPickHint] = useState<string | null>(null);
+
+  // Shift+drag marquee state — mirrors the pattern in CausalDAG3D /
+  // CausalDAG2D / CausalDAGMap so the user can lasso a region of the
+  // topology and have those nodes selected across views (2D / 3D /
+  // TOPO / Map all read the same `selectedNodes` slice in the store).
+  const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [shiftDragging, setShiftDragging] = useState(false);
+  const handleShiftSelect = useCallback(
+    (ids: string[]) => {
+      if (ids.length > 0) setSelectedNodes(ids);
+    },
+    [setSelectedNodes],
+  );
 
   // Replay state — when a cascade is being scrubbed, the current epoch's
   // snapshot drives the topo's height field instead of the static node
@@ -926,8 +1050,33 @@ function CausalDAGReliefInner() {
           minDistance={20}
           maxDistance={3000}
           maxPolarAngle={Math.PI * 0.49}
+          // Disable orbit while shift-dragging so the camera doesn't
+          // rotate alongside the marquee gesture.
+          enabled={!shiftDragging}
         />
+        {!isEmpty && activeField && (
+          <TopoShiftMarquee
+            layout={layout}
+            field={activeField}
+            graphNodes={graphData.nodes}
+            selectionBoxRef={selectionBoxRef}
+            setSelectionRect={setSelectionRect}
+            setShiftDragging={setShiftDragging}
+            onSelect={handleShiftSelect}
+          />
+        )}
       </Canvas>
+      {selectionRect && (
+        <div
+          className="absolute pointer-events-none border border-accent-cyan/80 bg-accent-cyan/10 z-50"
+          style={{
+            left: Math.min(selectionRect.x1, selectionRect.x2),
+            top: Math.min(selectionRect.y1, selectionRect.y2),
+            width: Math.abs(selectionRect.x2 - selectionRect.x1),
+            height: Math.abs(selectionRect.y2 - selectionRect.y1),
+          }}
+        />
+      )}
       {!isEmpty && multilayer && fusedField && (
         <DomainLegend field={fusedField} />
       )}

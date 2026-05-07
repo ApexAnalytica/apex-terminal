@@ -10,6 +10,7 @@ Manifold development is split across focused sessions. Each session owns a slice
 | Platform | [`platform.md`](./platform.md) | Auth, Supabase plumbing, middleware, webhooks, admin/feedback triage backend, account provisioning |
 | Payments | [`payments.md`](./payments.md) | Billing, tier gating logic, payment flows |
 | Rendering | [`rendering.md`](./rendering.md) | 2D/3D/MAP canvas, layout algorithms, viewport, selection, render performance |
+| Copilot | [`copilot.md`](./copilot.md) | Chat-as-platform-control: tool registry, system prompt, trace store, LLM provider, conversation memory |
 | SPIRTES | [`spirtes.md`](./spirtes.md) | Causal-discovery engine (DCD/NOTEARS, PCMCI+, FCI) |
 | TARSKI | [`tarski.md`](./tarski.md) | Constraint-verification engine (PHYSICAL / REGULATORY / HEURISTIC axioms) |
 | PEARL | [`pearl.md`](./pearl.md) | Do-calculus interventions, ablations, CASCADE DEFENSE auto-interdiction |

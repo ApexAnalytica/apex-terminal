@@ -37,6 +37,7 @@ Owns the engine that discovers causal structure from data. Runs three discovery 
 - All four panels (DCD/PCMCI+/FCI + StructuralMetrics) currently render **precomputed** discovery tags from `src/lib/graph-data.ts` (`discoverySource: "DCD" | "PCMCI+" | "FCI" | "merged"` on each `CausalNode`, `lag` on edges, `isConfounded` on nodes). The panels do layout + temporal-window deltas, not real algorithm execution.
 - "Spirtes-live" — running real DCD/PCMCI+/FCI on rolling windows — is a phase-2 effort that hasn't started. Needs separate scoping (in-browser library vs server-side with streamed results).
 - Network metrics (eigenvector centrality, betweenness, clustering, density, community structure, spectral stability) computed live in StructuralMetrics from the current `graphData`.
+- **Communities are now real.** Previously the "Communities" zone in `ModulePanel.tsx` was just a relabeling of `node.domain` — a fake "label propagation, 10 iterations" comment masked a one-line domain regroup. As of the modularity-greedy work, `src/lib/community-detection.ts` runs Louvain phase 1 (local-move modularity optimization) on the actual edge topology. The panel now surfaces emergent groupings, the modularity-proxy intra-edge fraction, and badges cross-domain communities (the interesting cases — communities the topology says belong together that the curator-assigned domain partition splits).
 
 ## Cross-references to TARSKI live-feed work
 
@@ -48,6 +49,8 @@ The TARSKI session has shipped two live API feeds (EIA Persian Gulf throughput, 
 - Hardening of latent-confounder detection (FCI) for production graphs.
 - Confidence/uncertainty surfacing in the right panel.
 - Wiring network metrics → ΩF pillar **C** (systemic cascade load) — verify present and quantitatively sane.
+- **Communities on the canvas (Rendering follow-up).** `detectCommunities` returns a stable `membership: Map<nodeId, communityId>`. Rendering can pick this up and add a "color-by-community" toggle alongside the existing color-by-domain mode (in 2D, 3D, and Relief views). Optionally a translucent hull overlay around each community. SPIRTES side is done; the work is in the Rendering session.
+- **Louvain phase 2 (multilevel).** Current implementation is single-pass — communities found, but no super-node aggregation + recursion. For larger graphs this can leave the modularity below optimum. Phase 2 would aggregate communities into super-nodes and re-run, repeating until modularity stops improving. Defer until graph size warrants it.
 
 ## How to start a task
 

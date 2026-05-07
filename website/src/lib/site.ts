@@ -16,6 +16,13 @@ export const SITE = {
  * Junaid after Stripe + Tally are wired. The string literal is
  * deliberately ALL-CAPS-TBD so it's grep-able and obviously fake to
  * anyone reading the code.
+ *
+ * Until the real URLs are dropped in, all CTAs that would normally
+ * route to Stripe instead route to the existing /access form via
+ * `offerCheckoutHref()` below. Visitors who try to claim a seat or
+ * order an audit get a working form that emails Junaid, with a
+ * `?source=...` query param so we can tell which offer they came
+ * in on.
  */
 export const OFFERS = {
   /** Founding 10: $1,500 year-1 locked at $9,000/yr forever. 10 seats. */
@@ -29,6 +36,28 @@ export const OFFERS = {
   foundingSeatsLeft: 6,
   foundingTotalSeats: 10,
 };
+
+/**
+ * Returns the URL the offer's primary CTA should route to:
+ * - if the configured URL is the all-caps placeholder, returns
+ *   `/access?source=<source>` so visitors hit the working access
+ *   form instead of a dead URL;
+ * - if the URL has been swapped to a real Stripe / Tally URL,
+ *   returns it unchanged.
+ *
+ * Use the companion `isPlaceholderUrl()` to decide whether the
+ * resulting href should be treated as `external` (real Stripe URL)
+ * or internal (the /access fallback).
+ */
+export function offerCheckoutHref(url: string, source: string): string {
+  return isPlaceholderUrl(url)
+    ? `/access?source=${encodeURIComponent(source)}`
+    : url;
+}
+
+export function isPlaceholderUrl(url: string): boolean {
+  return url.startsWith("STRIPE_") || url.startsWith("TALLY_");
+}
 
 export const NAV = [
   { href: "/product", label: "Product" },

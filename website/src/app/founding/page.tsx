@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
-import { OFFERS } from "@/lib/site";
+import { OFFERS, offerCheckoutHref, isPlaceholderUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Founding 10 · Apex Analytica",
@@ -36,6 +36,13 @@ export default function FoundingPage() {
   const totalSeats = OFFERS.foundingTotalSeats;
   const soldOut = seatsLeft <= 0;
 
+  // Until Junaid wires the real Stripe Payment Link, route the
+  // primary CTA at /access?source=founding-10 (working form). After
+  // the URL is dropped into OFFERS.foundingStripeUrl, this resolves
+  // to the real Stripe URL and the button becomes external.
+  const claimHref = offerCheckoutHref(OFFERS.foundingStripeUrl, "founding-10");
+  const claimIsExternal = !isPlaceholderUrl(OFFERS.foundingStripeUrl);
+
   return (
     <>
       {/* Hero */}
@@ -66,7 +73,7 @@ export default function FoundingPage() {
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
             {!soldOut ? (
-              <CTAButton href={OFFERS.foundingStripeUrl} external>
+              <CTAButton href={claimHref} external={claimIsExternal}>
                 CLAIM A FOUNDING SEAT
               </CTAButton>
             ) : (
@@ -124,7 +131,7 @@ export default function FoundingPage() {
             title="Direct line to the team"
             blurb={
               // COPY: pull the founder-perks paragraph from the source doc.
-              "Quarterly office hours with the founders. Influence on the roadmap. Early access to new engines and domains as they ship."
+              "Quarterly office hours with the founder. Influence on the roadmap. Early access to new engines and domains as they ship."
             }
           />
         </div>
@@ -207,7 +214,7 @@ export default function FoundingPage() {
           </div>
           <div className="flex flex-col gap-3 shrink-0">
             {!soldOut ? (
-              <CTAButton href={OFFERS.foundingStripeUrl} external>
+              <CTAButton href={claimHref} external={claimIsExternal}>
                 CLAIM A FOUNDING SEAT
               </CTAButton>
             ) : (
@@ -300,18 +307,18 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 const FAQ_PLACEHOLDERS = [
   {
     q: "What does the price actually lock?",
-    a: "[COPY] $9,000/year for as long as the seat is active. The lock survives renewal cycles — institutional rate increases don't apply.",
+    a: "$9,000/year for as long as the seat is active. The lock survives renewal cycles — institutional rate increases don't apply.",
   },
   {
     q: "What happens if I cancel and try to come back?",
-    a: "[COPY] The lock dies with the seat. Re-joining means buying at the prevailing institutional rate.",
+    a: "The lock dies with the seat. Re-joining means buying at the prevailing institutional rate.",
   },
   {
     q: "How is this different from the regular institutional seat?",
-    a: "[COPY] Same Manifold access. Different price floor and a direct line to the founders.",
+    a: "Same Manifold access. Different price floor and a direct line to the founder.",
   },
   {
     q: "Is the Stripe checkout the same as a sales contract?",
-    a: "[COPY] For Founding seats, yes — single-seat purchases use Stripe; multi-seat or org contracts go through standard procurement.",
+    a: "For Founding seats, yes — single-seat purchases use Stripe; multi-seat or org contracts go through standard procurement.",
   },
 ];

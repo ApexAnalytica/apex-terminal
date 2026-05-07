@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
-import { OFFERS } from "@/lib/site";
+import { OFFERS, offerCheckoutHref, isPlaceholderUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "ΩF Mini-Audit · Apex Analytica",
@@ -33,6 +33,13 @@ export const metadata: Metadata = {
  * will produce the sanitized sample later.
  */
 export default function AuditPage() {
+  // Until Junaid wires the real Stripe Payment Link, route the
+  // ORDER AUDIT CTAs at /access?source=mini-audit. Once the URL is
+  // dropped into OFFERS.auditStripeUrl, this resolves to the real
+  // Stripe URL and the button becomes external.
+  const orderHref = offerCheckoutHref(OFFERS.auditStripeUrl, "mini-audit");
+  const orderIsExternal = !isPlaceholderUrl(OFFERS.auditStripeUrl);
+
   return (
     <>
       {/* Hero */}
@@ -67,7 +74,7 @@ export default function AuditPage() {
           </p>
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <CTAButton href={OFFERS.auditStripeUrl} external>
+            <CTAButton href={orderHref} external={orderIsExternal}>
               ORDER AUDIT — $1,500
             </CTAButton>
             <Link
@@ -281,7 +288,7 @@ export default function AuditPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3 shrink-0">
-            <CTAButton href={OFFERS.auditStripeUrl} external>
+            <CTAButton href={orderHref} external={orderIsExternal}>
               ORDER AUDIT — $1,500
             </CTAButton>
             <CTAButton href="/founding" variant="secondary">
@@ -369,18 +376,18 @@ const AUDIT_TEAM = [
 const FAQ_PLACEHOLDERS = [
   {
     q: "What data do I need to send?",
-    a: "[COPY] One CSV per layer of your graph (nodes + edges). The intake form walks you through the shape. We have templates for manufacturing, finance, and infrastructure.",
+    a: "One CSV per layer of your graph (nodes + edges). The intake form walks you through the shape. We have templates for manufacturing, finance, and infrastructure.",
   },
   {
     q: "What if my data isn't tabular?",
-    a: "[COPY] Get in touch first — for non-tabular data we either scope a brief data-prep step or recommend you start with the institutional engagement.",
+    a: "Get in touch first — for non-tabular data we either scope a brief data-prep step or recommend you start with the institutional engagement.",
   },
   {
     q: "Is the readout signed by the team?",
-    a: "[COPY] Yes. Junaid and Georgios both review and sign. The 12-page report includes a one-page executive summary you can hand to a board.",
+    a: "Yes. Junaid and Georgios both review and sign. The 12-page report includes a one-page executive summary you can hand to a board.",
   },
   {
     q: "Can I expense this and use it as a pilot?",
-    a: "[COPY] Yes. The audit is invoiced as a fixed-price engagement and credits toward your first year of an institutional seat if you sign within 90 days.",
+    a: "Yes. The audit is invoiced as a fixed-price engagement and credits toward your first year of an institutional seat if you sign within 90 days.",
   },
 ];

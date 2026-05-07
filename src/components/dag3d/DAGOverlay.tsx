@@ -149,7 +149,7 @@ function EncodingLegend({
         />
         <LegendRow
           label="DISTANCE"
-          help="Force-directed: stronger correlation ⇒ shorter spring ⇒ closer in space."
+          help="Soft signal: force-directed layout pulls strongly-weighted pairs closer (link length 65 + 100·(1−weight)). Other forces (charge, collision) compete, so distance is approximate, not literal."
           swatch={
             <div className="relative w-10 h-3">
               <span className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-accent-cyan" />
@@ -160,24 +160,57 @@ function EncodingLegend({
         />
         <LegendRow
           label="EDGE THICKNESS"
-          help="Correlation magnitude. Thicker = stronger relationship."
+          help="Correlation / causal magnitude — power-scaled so the typical 0.4–0.8 weight range reads as ~3× spread on screen."
           swatch={
-            <div className="flex flex-col gap-0.5 w-10">
+            <div className="flex flex-col gap-0.5 w-10 items-stretch">
               <span className="h-px bg-accent-cyan" />
-              <span className="h-0.5 bg-accent-cyan" />
               <span className="h-1 bg-accent-cyan" />
+              <span className="h-1.5 bg-accent-cyan" />
             </div>
           }
         />
         <LegendRow
-          label="EDGE COLOUR"
-          help="Causal (cyan) · temporal/lag (amber) · confounded (orange) · Tarski-violation (red)."
+          label="CAUSAL (cyan →)"
+          help="Direct cause: A → B. Arrowed."
           swatch={
-            <div className="flex gap-0.5">
-              <span className="h-2 w-2.5" style={{ backgroundColor: "#00e5ff" }} />
-              <span className="h-2 w-2.5" style={{ backgroundColor: "#ffab00" }} />
-              <span className="h-2 w-2.5" style={{ backgroundColor: "#ff6d00" }} />
-              <span className="h-2 w-2.5" style={{ backgroundColor: "#ff1744" }} />
+            <div className="flex items-center gap-0.5">
+              <span className="h-0.5 w-6" style={{ backgroundColor: "#00e5ff" }} />
+              <span className="text-[8px]" style={{ color: "#00e5ff" }}>▶</span>
+            </div>
+          }
+        />
+        <LegendRow
+          label="TEMPORAL (amber, animated)"
+          help="Lag-correlation: A leads B by some delay. Particles flow source → target."
+          swatch={
+            <div className="flex items-center gap-0.5">
+              <span className="h-0.5 w-6" style={{ backgroundColor: "#ffab00" }} />
+              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: "#ffab00", boxShadow: "0 0 4px #ffab00" }} />
+            </div>
+          }
+        />
+        <LegendRow
+          label="CONFOUNDED (orange, dashed)"
+          help="A and B share a hidden common cause, no direct link. Dashed to flag the latent variable."
+          swatch={
+            <div className="flex items-center">
+              <span
+                className="h-0.5 w-7"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, #ff6d00 50%, transparent 50%)",
+                  backgroundSize: "4px 100%",
+                }}
+              />
+            </div>
+          }
+        />
+        <LegendRow
+          label="INCONSISTENT (red)"
+          help="Tarski filter: edge violates a domain-aware axiom. Only visible when the verified-truth filter is on."
+          swatch={
+            <div className="flex items-center">
+              <span className="h-0.5 w-6" style={{ backgroundColor: "#ff1744" }} />
             </div>
           }
         />

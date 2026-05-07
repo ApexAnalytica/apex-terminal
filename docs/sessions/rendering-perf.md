@@ -527,9 +527,38 @@ The cryptic three-letter labels surfaced no meaning, and three other visual enco
 
 **Verification.** `tsc --noEmit` clean; lint clean; vitest 729/729 pass.
 
+### 2026-05-03 — Shipped: edge thickness power-scale + plain-English edge legend
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the LEGEND landed: *"have we actually implemented edge thickness? They all seem to have pretty much the same thickness. The distance — is that actually being calculated appropriately? Also our blue lines vs yellow lines — I thought there were correlation and causal analytics. Please clarify."*
+
+**Diagnosis.**
+- Edge thickness *was* implemented: linear `0.5 + weight * 1.5`. But real edge weights cluster between **0.4 and 0.8** (86 at 0.6, 70 at 0.7, 37 at 0.8) → visible width range was **1.1–1.7 px** = barely distinguishable. Code was right, calibration was wrong.
+- Distance *is* implemented: 2D layout uses `distance = 65 + (1 - weight) * 100`, so weight 0.4 → 125, weight 0.8 → 85. Force-directed layout also balances charge / collision / centering, so distance is a *soft* signal that gets partially drowned out — not a literal weight readout.
+- Edge colours are correct but the legend was cryptic. Three real edge types in the dataset: `directed` = direct causal (cyan, 183 edges), `temporal` = lag-correlation (amber + animated particles, 135 edges), `confounded` = latent common cause (orange, dashed, 9 edges). Plus Tarski-violation overlay (red).
+
+**What shipped.**
+- **Edge thickness power-scale.** Both `CausalDAG2D` (`EmphasizedEdge`'s `baseWidth`) and `DAGEdge3D` switched from `0.5 + weight * 1.5` to `0.7 + pow(weight, 2.4) * 3.3`. The 0.4–0.8 weight band now produces 0.46–1.34 (multiplied by the constant), giving ~3× spread between thin and thick edges at typical weights. Min 0.7 floor keeps very weak edges still drawable.
+- **Legend rewritten** with plain-English edge type names. The single `EDGE COLOUR` row split into four:
+  - `CAUSAL (cyan →)` — Direct cause: A → B. Arrowed.
+  - `TEMPORAL (amber, animated)` — Lag-correlation: A leads B by some delay. Particles flow source → target.
+  - `CONFOUNDED (orange, dashed)` — A and B share a hidden common cause, no direct link.
+  - `INCONSISTENT (red)` — Tarski filter: edge violates a domain-aware axiom (only visible with verified-truth filter on).
+- **Distance row updated** to call out that the signal is *approximate* — force-directed layout, with charge / collision / centering forces competing.
+- **Edge thickness row updated** to match the new power-scale wording: "Correlation / causal magnitude — power-scaled so the typical 0.4–0.8 weight range reads as ~3× spread on screen."
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — `baseWidth` formula in the `edges` useMemo.
+- `src/components/dag3d/DAGEdge3D.tsx` — `lineWidth` formula at the top of the inner component.
+- `src/components/dag3d/DAGOverlay.tsx` — legend rows updated.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 732/732 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify the LEGEND popover on production: hard-refresh, switch to 2D or 3D — expect a single `LEGEND` button next to the view-mode buttons; clicking opens a 5-row encoding key with the size-metric toggle inline.
+- Verify edge thickness contrast on production: hard-refresh, switch to 2D or 3D — strong-correlation edges should now read visibly thicker than weak ones.
+- LEGEND popover should now have 4 separate edge-type rows (causal / temporal / confounded / inconsistent) instead of the single colour-strip row.
 - Backlog: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---

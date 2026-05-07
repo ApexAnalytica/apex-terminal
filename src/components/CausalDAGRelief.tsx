@@ -53,6 +53,11 @@ const TOPO_FRAGMENT_SHADER = /* glsl */ `
   uniform vec3 uLightDir;
   uniform float uBands;
   uniform float uLineWidth;
+  // Multiplied into the final colour. Drives the "dim the surface to
+  // foreground a multi-selection" mode — at 1.0 the surface renders
+  // normally, at 0.4 mountains read as faded context behind the
+  // selection's pillars.
+  uniform float uSurfaceTint;
 
   // Mirror of elevationColor() in graph-relief-field.ts. Keep in sync.
   vec3 elevationColor(float t) {
@@ -98,7 +103,7 @@ const TOPO_FRAGMENT_SHADER = /* glsl */ `
     float lambert = max(dot(N, L), 0.0);
     float light = 0.45 + 0.55 * lambert;
 
-    gl_FragColor = vec4(surface * light, 1.0);
+    gl_FragColor = vec4(surface * light * uSurfaceTint, 1.0);
   }
 `;
 import CanvasWatermark from "./CanvasWatermark";
@@ -149,12 +154,18 @@ function ReliefMesh({
   field,
   norms,
   onPick,
+  surfaceTint = 1,
 }: {
   field: ReliefField;
   /** Per-vertex normalised height. Present for fused-mode renders; the
    *  single-domain path falls back to vertex-colour rendering. */
   norms?: Float32Array;
   onPick?: (clickX: number, clickZ: number) => void;
+  /** 0..1 multiplier on final surface colour. Parent passes 0.4 when a
+   *  multi-selection is active without isolate mode, so the mountains
+   *  fade into context while the cyan selection pillars stay vivid.
+   *  Default 1 = normal rendering. */
+  surfaceTint?: number;
 }) {
   const useShader = !!(norms && norms.length === field.positions.length / 3);
 
@@ -183,15 +194,22 @@ function ReliefMesh({
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  // Uniforms — recreated only on first mount; values are stable.
-  const uniforms = useMemo(
-    () => ({
-      uLightDir: { value: new THREE.Vector3(0.45, 1.0, 0.6).normalize() },
-      uBands: { value: 14 },
-      uLineWidth: { value: 0.04 },
-    }),
-    [],
-  );
+  // Uniforms — built once via lazy useState so the GPU-side reference
+  // is stable. The `uSurfaceTint` field is mutated imperatively below
+  // via an attached ref to the shaderMaterial; that's the canonical
+  // r3f pattern for cheap per-frame uniform updates and avoids
+  // rebuilding the shader pipeline on every tint change.
+  const [uniforms] = useState(() => ({
+    uLightDir: { value: new THREE.Vector3(0.45, 1.0, 0.6).normalize() },
+    uBands: { value: 14 },
+    uLineWidth: { value: 0.04 },
+    uSurfaceTint: { value: 1 },
+  }));
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  useEffect(() => {
+    const mat = materialRef.current;
+    if (mat) mat.uniforms.uSurfaceTint.value = surfaceTint;
+  }, [surfaceTint]);
 
   if (field.positions.length === 0) return null;
 
@@ -210,6 +228,7 @@ function ReliefMesh({
     >
       {useShader ? (
         <shaderMaterial
+          ref={materialRef}
           vertexShader={TOPO_VERTEX_SHADER}
           fragmentShader={TOPO_FRAGMENT_SHADER}
           uniforms={uniforms}
@@ -223,6 +242,8 @@ function ReliefMesh({
           metalness={0.05}
           side={THREE.DoubleSide}
           flatShading={false}
+          transparent={surfaceTint < 1}
+          opacity={surfaceTint}
         />
       )}
     </mesh>
@@ -699,25 +720,46 @@ function CausalDAGReliefInner() {
     [sig],
   );
 
+  // Multi-select / isolate state. TOPO mirrors the spotlight semantics
+  // of 2D / 3D / Map: a multi-selection focuses the user's attention on
+  // a subset, and the rest of the canvas is contextual. Two modes:
+  //   - isolate ON  → recompute the field using ONLY the selected
+  //     subset, so non-selected mountains literally don't render.
+  //   - isolate OFF → keep all mountains, but tint the surface to ~0.4
+  //     so the cyan selection pillars (and the new neighbour pillars)
+  //     read as the foreground.
+  const selectedNodesArr = useApexStore((s) => s.selectedNodes);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const multiSelectedSet = useMemo(
+    () => new Set(selectedNodesArr),
+    [selectedNodesArr],
+  );
+
   // Field-input nodes. When a replay snapshot is active, override each
   // node's `omegaFragility.composite` with the snapshot's per-node
   // ΩF — the mountain at node N now grows / shrinks as the cascade
   // propagates. When no snapshot is active, fall through to graphData
   // unchanged so the static view stays cheap.
   const fieldNodes = useMemo(() => {
-    if (!currentSnapshot) return graphData.nodes;
-    return graphData.nodes.map((n) => {
-      const state = currentSnapshot.nodeStates[n.id];
-      if (!state) return n;
-      return {
-        ...n,
-        omegaFragility: {
-          ...n.omegaFragility,
-          composite: state.omegaComposite,
-        },
-      };
-    });
-  }, [graphData.nodes, currentSnapshot]);
+    let nodes = graphData.nodes;
+    if (currentSnapshot) {
+      nodes = nodes.map((n) => {
+        const state = currentSnapshot.nodeStates[n.id];
+        if (!state) return n;
+        return {
+          ...n,
+          omegaFragility: { ...n.omegaFragility, composite: state.omegaComposite },
+        };
+      });
+    }
+    if (isolateSelection && multiSelectedSet.size > 0) {
+      nodes = nodes.filter((n) => multiSelectedSet.has(n.id));
+    }
+    return nodes;
+  }, [graphData.nodes, currentSnapshot, isolateSelection, multiSelectedSet]);
+
+  const surfaceTint =
+    !isolateSelection && multiSelectedSet.size > 0 ? 0.4 : 1;
 
   const uniqueDomains = useMemo(() => {
     const set = new Set<string>();
@@ -825,6 +867,7 @@ function CausalDAGReliefInner() {
             field={activeField}
             norms={fusedField?.norms}
             onPick={handlePick}
+            surfaceTint={surfaceTint}
           />
         )}
         {!isEmpty && (

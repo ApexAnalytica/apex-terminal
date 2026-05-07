@@ -677,6 +677,19 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
 
+### 2026-05-07 — Shipped: 3D Canvas pointer-move invalidates coalesced to one per rAF
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog item from PR #199 follow-up. The Canvas-level `onPointerMove` was an inline arrow that called `window.dispatchEvent(new Event("dag3d-invalidate"))` on every pointer-pixel-move. At typical 120Hz mouse polling that's ~120 dispatches/sec, each routing through `StoreInvalidator`'s listener and calling R3F's `invalidate()`. R3F coalesces frames internally so we weren't *rendering* 120Hz, but the per-event JS work (Event allocation + listener fire + invalidate bookkeeping) was non-trivial overhead just for keeping demand-mode responsive.
+
+**What shipped.** rAF-coalesced handler in `CausalDAG3D`. An `invalidatePendingRef` flag gates dispatches: first move sets the flag and schedules a rAF; the rAF callback clears the flag and dispatches the invalidate. Subsequent moves before the rAF fires are no-ops. Worst case is now 60 dispatches/sec (or display rate, whichever is lower), regardless of mouse polling.
+
+**Files.**
+- `src/components/CausalDAG3D.tsx` — `onCanvasPointerMove` callback replacing the inline arrow.
+
+**Verification.** `tsc --noEmit` clean; lint clean; vitest 793/793 pass.
+
 ---
 
 ## How a fresh session resumes

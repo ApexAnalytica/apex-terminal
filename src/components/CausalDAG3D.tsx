@@ -965,6 +965,26 @@ export default function CausalDAG3D() {
     ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
+  // Throttle Canvas-level pointer-move invalidates to one per animation
+  // frame. The earlier inline arrow dispatched a `dag3d-invalidate` Event
+  // on every pointer-pixel-move — at typical 120Hz mouse polling that's
+  // ~120 dispatches/sec, each calling invalidate() through the
+  // StoreInvalidator listener. R3F coalesces frames internally, but the
+  // per-event JS work (Event allocation + listener fire + invalidate
+  // bookkeeping) was ~half of the cost of an actual render frame at
+  // idle. A rAF-coalesced ref keeps the worst case to 60 dispatches/sec
+  // (or the display rate, whichever is lower) regardless of how fast
+  // the mouse moves. PR #199 follow-up.
+  const invalidatePendingRef = useRef(false);
+  const onCanvasPointerMove = useCallback(() => {
+    if (invalidatePendingRef.current) return;
+    invalidatePendingRef.current = true;
+    requestAnimationFrame(() => {
+      invalidatePendingRef.current = false;
+      window.dispatchEvent(new Event("dag3d-invalidate"));
+    });
+  }, []);
+
   return (
     <div style={{ position: "absolute", inset: 0 }} onContextMenu={(e) => e.preventDefault()}>
       <CanvasWatermark />
@@ -1007,7 +1027,7 @@ export default function CausalDAG3D() {
           if (selectedNode) setSelectedNode(null);
           window.dispatchEvent(new Event("dag3d-invalidate"));
         }}
-        onPointerMove={() => window.dispatchEvent(new Event("dag3d-invalidate"))}
+        onPointerMove={onCanvasPointerMove}
       >
           <ambientLight intensity={0.4} />
           <pointLight position={[80, 80, 80]} intensity={0.8} color="#00e5ff" />

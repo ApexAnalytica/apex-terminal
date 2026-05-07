@@ -48,7 +48,7 @@ export const DATASET_COLORS = [
 ];
 import { mergeGraphs } from "@/lib/import/merge";
 import { EMPTY_GRAPH } from "@/lib/graph-data";
-import { simulateCascade } from "@/lib/cascade-simulator";
+import { simulateCascade, simulateCascadeAsync } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
 import { generateTemporalData } from "@/lib/temporal-data";
@@ -582,29 +582,35 @@ export const useApexStore = create<ApexState>((set, get) => ({
     }),
   resetAblation: () =>
     set({ ablatedNodeIds: [], ablatedEdgeIds: [], ablationMode: false }),
-  startAblationReplay: () =>
-    set((s) => {
-      // Build ablated graph by removing ablated nodes and edges
-      const ablatedGraph = {
-        ...s.graphData,
-        nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
-        edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
-        metadata: {
-          ...s.graphData.metadata,
-          totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
-          totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
-        },
-      };
-      const epochs = simulateCascade(ablatedGraph, s.shocks, s.severedEdges);
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        replayBranchEpoch: null,
-      };
-    }),
+  startAblationReplay: () => {
+    const s = get();
+    const ablatedGraph = {
+      ...s.graphData,
+      nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
+      edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
+      metadata: {
+        ...s.graphData.metadata,
+        totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
+        totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
+      },
+    };
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      replayBranchEpoch: null,
+    });
+
+    void simulateCascadeAsync(ablatedGraph, shocks, severedEdges).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ interventionEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   // Tarski axiom filter
   // Interdiction (chat-based)
@@ -875,19 +881,35 @@ export const useApexStore = create<ApexState>((set, get) => ({
   activeTimeline: "baseline",
   replayBranchEpoch: null,
 
-  startReplay: () =>
-    set((s) => {
-      const epochs = simulateCascade(s.graphData, s.shocks, s.severedEdges);
-      return {
-        baselineEpochs: epochs,
-        interventionEpochs: [],
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        activeTimeline: "baseline",
-        replayBranchEpoch: null,
-      };
-    }),
+  startReplay: () => {
+    // Snapshot inputs synchronously so a later state mutation can't
+    // change the substrate the simulation is running against.
+    const s = get();
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    // Phase 1: enter "computing" state immediately so the UI can show
+    // a starting indicator without waiting for the full 200-epoch run.
+    // replayPlaying stays false until the snapshots arrive.
+    set({
+      baselineEpochs: [],
+      interventionEpochs: [],
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      activeTimeline: "baseline" as TimelineId,
+      replayBranchEpoch: null,
+    });
+
+    // Phase 2: chunked simulation across idle frames (keeps the UI thread
+    // unblocked); flip to playing when results land. Bail if the user
+    // stopped the replay mid-flight.
+    void simulateCascadeAsync(graphData, shocks, severedEdges).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ baselineEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   stopReplay: () =>
     set({
@@ -926,27 +948,41 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setActiveTimeline: (id) => set({ activeTimeline: id, currentEpoch: 0 }),
 
-  branchFromCurrentEpoch: () =>
-    set((s) => {
-      if (!s.replayActive || s.baselineEpochs.length === 0) return s;
-      const branchSnapshot = s.baselineEpochs[s.currentEpoch];
-      if (!branchSnapshot) return s;
-      const epochs = simulateCascade(
-        s.graphData,
-        s.shocks,
-        s.severedEdges,
-        undefined,
-        undefined,
-        branchSnapshot.nodeStates
-      );
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayBranchEpoch: s.currentEpoch,
-        currentEpoch: 0,
-        replayPlaying: true,
-      };
-    }),
+  branchFromCurrentEpoch: () => {
+    const s = get();
+    if (!s.replayActive || s.baselineEpochs.length === 0) return;
+    const branchSnapshot = s.baselineEpochs[s.currentEpoch];
+    if (!branchSnapshot) return;
+
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+    const initialStates = branchSnapshot.nodeStates;
+    // Capture the branch point before we reset currentEpoch — the
+    // intervention timeline restarts at 0 but we need the original
+    // baseline epoch index for the side-by-side comparison UI.
+    const branchEpoch = s.currentEpoch;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayBranchEpoch: branchEpoch,
+      currentEpoch: 0,
+      replayPlaying: false,
+    });
+
+    void simulateCascadeAsync(
+      graphData,
+      shocks,
+      severedEdges,
+      undefined,
+      undefined,
+      initialStates,
+    ).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ interventionEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   // Timeline / Time Dial
   timelinePosition: Date.now(),

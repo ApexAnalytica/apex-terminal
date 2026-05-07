@@ -39,6 +39,10 @@ export const DOMAIN_MAP: Record<string, string[]> = {
   // VX-880 stem-cell islet transplant subgraph — every node in
   // t1d-vx880-graph-data.ts carries domain "T1D VX-880".
   "t1d-vx880": ["T1D VX-880"],
+  // AI Safety / IDS — continual-learning intrusion detection substrate
+  // from Ghauri 2025 D.Eng. dissertation. 17 nodes (3 datasets, 9 attack
+  // classes, 5 IDS components) all carry domain "AI Safety / IDS".
+  "ai-safety-ids": ["AI Safety / IDS"],
 };
 
 /**

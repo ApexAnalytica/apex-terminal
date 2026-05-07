@@ -179,7 +179,12 @@ function PillarRadar({
 // / future verticals each carry their own vocabulary without branching here.
 
 export default function NodeInspector() {
-  const [expandedPillar, setExpandedPillar] = useState<PillarKey | null>(null);
+  // expandedPillar lifted to the zustand store so the onboarding tour
+  // can gate its "click a pillar vertex" step on real interaction.
+  // The store resets it to null whenever selectedNode changes, so we
+  // don't carry an explanation card from a previous node forward.
+  const expandedPillar = useApexStore((s) => s.expandedPillar);
+  const setExpandedPillar = useApexStore((s) => s.setExpandedPillar);
   const [showMethodology, setShowMethodology] = useState(false);
   const [showDataExplainer, setShowDataExplainer] = useState(false);
   const selectedNode = useApexStore((s) => s.selectedNode);

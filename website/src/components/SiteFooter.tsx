@@ -2,6 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { NAV, SITE } from "@/lib/site";
 
+/* Per the spec the time-bound offers (Founding 10 / Mini-Audit) live
+   in the footer ACCESS column ONLY — they don't go in the top nav. */
+
 export default function SiteFooter() {
   return (
     <footer className="border-t border-border bg-surface/40">
@@ -57,6 +60,16 @@ export default function SiteFooter() {
                 <a href={SITE.trialUrl} className="text-[12px] font-mono text-text-muted hover:text-foreground">
                   Request trial
                 </a>
+              </li>
+              <li>
+                <Link href="/founding" className="text-[12px] font-mono text-text-muted hover:text-foreground">
+                  Founding 10
+                </Link>
+              </li>
+              <li>
+                <Link href="/audit" className="text-[12px] font-mono text-text-muted hover:text-foreground">
+                  ΩF Mini-Audit
+                </Link>
               </li>
               <li>
                 <a href={SITE.trustedUrl} className="text-[12px] font-mono text-text-muted hover:text-foreground">

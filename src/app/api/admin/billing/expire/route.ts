@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy service-client construction — calling createServiceClient at module
+// load tripped Next.js's build-time page-data collection when env vars
+// were absent (`Error: supabaseUrl is required.`), failing the entire
+// production build. Defer to request time so the build never instantiates
+// it; missing-env failures still surface, just as a runtime 500 instead
+// of breaking deploy.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,7 +34,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { error } = await service
+  const { error } = await getService()
     .from("profiles")
     .update({
       tier: "expired",

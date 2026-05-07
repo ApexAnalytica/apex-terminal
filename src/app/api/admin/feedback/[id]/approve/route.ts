@@ -3,10 +3,14 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 import { createFeedbackIssue } from "@/lib/github";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +32,7 @@ export async function POST(
   const adminNotes = body.admin_notes?.trim() || null;
 
   // Load the feedback row
+  const service = getService();
   const { data: row, error: selectErr } = await service
     .from("feedback")
     .select("id, type, message, email, status")

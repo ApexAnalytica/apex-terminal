@@ -8,18 +8,25 @@ import { Resend } from "resend";
 // RLS predictably (the policy already allows anon inserts, this is
 // belt-and-suspenders).
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`. Eager init at module
+// load was breaking the production build's page-data collection.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 // Resend is optional — if RESEND_API_KEY isn't set (dev environments,
 // preview deploys without the secret) we skip the notification email
 // and the lead still lands in public.leads. Admins fall back to
-// /admin/leads in that case.
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+// /admin/leads in that case. Lazy-init for the same build-time reason.
+function getResend(): Resend | null {
+  return process.env.RESEND_API_KEY
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
+}
 
 const NOTIFY_TO =
   process.env.RESEND_NOTIFY_TO ?? "info@apexanalytica.co";
@@ -133,7 +140,7 @@ export async function POST(req: NextRequest) {
 
   const lowercaseEmail = email.toLowerCase();
 
-  const { error } = await service.from("leads").insert({
+  const { error } = await getService().from("leads").insert({
     name,
     email: lowercaseEmail,
     organization,
@@ -153,6 +160,7 @@ export async function POST(req: NextRequest) {
   // point; an email failure should not roll the request back. We
   // await the send so Vercel doesn't kill the function before the
   // request hits Resend, but catch any error and log it.
+  const resend = getResend();
   if (resend) {
     const lead: NotificationLead = {
       name,

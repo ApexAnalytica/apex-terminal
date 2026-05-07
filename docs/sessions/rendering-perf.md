@@ -463,10 +463,45 @@ This was the work deferred in PR #198 with the note *"would need a custom edge c
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass.
 
+### 2026-05-03 — Hotfix (out-of-scope but blocking prod): lazy-init Supabase clients in API routes
+
+**PR:** TBD (about to open).
+
+**Trigger.** User reported `manifold.apexanalytica.co` → Vercel **404 DEPLOYMENT_NOT_FOUND**. Local `npm run build` reproduced: `Error: supabaseUrl is required.` at the "Collecting page data" step, dying on `/api/admin/billing/expire`. Bisected — none of the rendering/perf commits touched these routes; the failure is structural.
+
+**Root cause.** Ten API route files were instantiating service-role Supabase clients (and one Resend client) **at module-load time** at the top of the file:
+
+```ts
+const service = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+```
+
+Next.js 16's Turbopack production builder is more aggressive about evaluating route modules during page-data collection, so any missing env var at build time crashes the entire build. On Vercel that took out the production deployment alias and produced the user-facing DEPLOYMENT_NOT_FOUND.
+
+**Fix.** All 10 routes wrapped the client creation in a `function getService() { return createClient(...) }` and switched callsites to call `getService()` (or `getSupabase()` / `getResend()`) inside the request handler. Module-load no longer touches env vars; the client is constructed at request time when env vars are guaranteed present (or fails with a clearer 500).
+
+**Files touched.**
+- `src/app/api/admin/billing/expire/route.ts`
+- `src/app/api/admin/billing/grant-tier/route.ts`
+- `src/app/api/admin/billing/customers/route.ts`
+- `src/app/api/admin/feedback/[id]/approve/route.ts`
+- `src/app/api/admin/feedback/[id]/reject/route.ts`
+- `src/app/api/admin/leads/[id]/route.ts`
+- `src/app/api/request-access/route.ts` (also lazy-inits Resend)
+- `src/app/api/feedback/route.ts`
+- `src/app/api/webhooks/github/route.ts`
+- `src/app/api/trusted-signup/route.ts`
+
+**Verification.** Local `npm run build` now passes the "Collecting page data" step (where it was failing). Static page pre-rendering still requires env vars present (e.g. `/forgot-password` uses `@supabase/ssr`); that's expected on Vercel where the env vars exist and was always working there.
+
+**Out of scope (deliberate).** This is auth/platform code, not rendering/perf. Logging the hotfix here because it's the only session that's been touching the codebase today and prod was down.
+
 ### 2026-05-03 — Next up
 
-- Verify on production: hard-refresh, switch to 2D — expect (a) edges drawing as straight lines between circle perimeters in whatever direction makes geometric sense (no more "always entering top/bottom"), (b) the same `SIZE: ΩF / EIG / BTW` toggle in the top-right resizing the 2D circles live.
-- Outside this: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+- Verify production deploys past the build step. If still 404, the next likely failure mode is `/forgot-password` or another auth-page pre-render — that would need its own investigation.
+- Resume rendering work: 2D floating-edge verification, plus deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

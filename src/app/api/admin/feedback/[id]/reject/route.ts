@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 export async function POST(
   request: NextRequest,
@@ -26,7 +30,7 @@ export async function POST(
   };
   const adminNotes = body.admin_notes?.trim() || null;
 
-  const { error } = await service
+  const { error } = await getService()
     .from("feedback")
     .update({ status: "rejected", admin_notes: adminNotes })
     .eq("id", feedbackId)

@@ -25,6 +25,18 @@ const DOMAIN_OPTIONS = new Set([
   "other",
 ]);
 
+/**
+ * Recognized `source` values forwarded from the form's hidden field
+ * (populated client-side from `?source=` in the URL on /founding +
+ * /audit pages). Used to flag the email subject + body so Junaid
+ * can immediately see which offer the request came from. Mirrors
+ * SOURCE_LABELS in AccessForm.tsx — keep in sync.
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  "founding-10": "Founding 10",
+  "mini-audit": "ΩF Mini-Audit",
+};
+
 function s(value: FormDataEntryValue | null, max = 2000): string {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
@@ -46,6 +58,8 @@ export async function submitAccessRequest(
   const org = s(formData.get("org"), 200);
   const domain = s(formData.get("domain"), 64).toLowerCase();
   const useCase = s(formData.get("useCase"), 4000);
+  const sourceRaw = s(formData.get("source"), 64);
+  const sourceLabel = SOURCE_LABELS[sourceRaw] ?? "";
 
   if (!name) return { ok: false, error: "Please enter your name." };
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -57,7 +71,7 @@ export async function submitAccessRequest(
   if (!apiKey) {
     console.error(
       "[access] RESEND_API_KEY not set — email NOT sent. Submission:",
-      { name, email, org, domain: safeDomain, useCase },
+      { name, email, org, domain: safeDomain, useCase, source: sourceLabel || sourceRaw },
     );
     return {
       ok: false,
@@ -65,8 +79,17 @@ export async function submitAccessRequest(
     };
   }
 
-  const subject = `[Manifold] Access request — ${org || name}`;
+  // Subject line gets a [Founding 10] / [ΩF Mini-Audit] prefix when
+  // the visitor came in via one of those offer pages, so the inbox
+  // sorts cleanly without having to read the body.
+  const subjectPrefix = sourceLabel ? `[${sourceLabel}] ` : "[Manifold] ";
+  const subject = `${subjectPrefix}Access request — ${org || name}`;
+
   const lines = [
+    sourceLabel
+      ? `>> ROUTING: ${sourceLabel} (visitor clicked the primary CTA on /${sourceRaw === "founding-10" ? "founding" : "audit"})`
+      : "",
+    sourceLabel ? "" : null,
     `Name: ${name}`,
     `Email: ${email}`,
     `Organization: ${org || "(not provided)"}`,
@@ -76,8 +99,10 @@ export async function submitAccessRequest(
     useCase || "(not provided)",
     "",
     "—",
-    `Submitted via ${SITE.platformUrl} access form.`,
-  ];
+    sourceLabel
+      ? `Submitted via the ${sourceLabel} order CTA on apexanalytica.co. Stripe checkout for this offer is not yet wired — handle this submission manually (send Stripe invoice or similar).`
+      : `Submitted via ${SITE.platformUrl} access form.`,
+  ].filter((line): line is string => line !== null);
 
   try {
     const res = await fetch("https://api.resend.com/emails", {

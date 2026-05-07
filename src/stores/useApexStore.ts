@@ -92,7 +92,7 @@ function prunePinsToGraph(graph: CausalGraph, pins: string[]): string[] {
   return filtered.length === pins.length ? pins : filtered;
 }
 
-interface ApexState {
+export interface ApexState {
   // Module navigation
   activeModule: ModuleId;
   setActiveModule: (id: ModuleId) => void;

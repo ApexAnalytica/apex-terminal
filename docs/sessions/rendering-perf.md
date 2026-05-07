@@ -634,6 +634,25 @@ The cryptic three-letter labels surfaced no meaning, and three other visual enco
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 778/778 pass.
 
+### 2026-05-07 — Shipped: 2D click no longer reheats the layout sim
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"Click any one of the nodes under 2D, and then everything disappears … it disappears for, like, a few seconds, and then it rerenders again. But it's weird because when it rerenders, nothing is selected."*
+
+**Diagnosis.** RF fires `onNodeDragStart` on mousedown — even for a pure click. The handler called `sim.reheat(0.5)` + `startSimLoop()`, so every click ran the force-directed layout for ~1.5s while alpha decayed from 0.5 to 0.005. The orbs drifted (sometimes far enough to leave the viewport) and settled back, which the user perceived as "everything disappeared then re-rendered." The selection ring was technically still applied but invisible because the selected orb had moved off-frame mid-drift.
+
+**What shipped.** Click-vs-drag distinction in `CausalDAG2D`:
+- `onNodeDragStart` now only pins the node (cheap). No reheat, no sim loop.
+- `onNodeDrag` (which fires only when actual movement occurs) reheats and starts the sim on its first tick, then keeps re-pinning to the cursor.
+- `onNodeDragStop` only calls `sim.cool()` if a drag actually happened — pure-click → pin/unpin pair is a no-op for the simulator.
+A `draggedRef` tracks whether motion fired between drag start/stop.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — drag-vs-click handlers.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 782/782 pass.
+
 ---
 
 ## How a fresh session resumes

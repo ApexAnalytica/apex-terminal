@@ -50,8 +50,9 @@ export const PERSONA_GROUPS: Record<Persona, Set<string>> = {
     "MENA ENERGY & COMMODITIES",
     "INFRASTRUCTURE & DEFENSE",
     "FINANCIAL & SOVEREIGN",
+    "AI SAFETY",
   ]),
-  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
+  scientist: new Set(["LIFE SCIENCES", "FRONTIER", "AI SAFETY"]),
   cross: new Set([
     "MENA ENERGY & COMMODITIES",
     "FINANCIAL & SOVEREIGN",
@@ -59,6 +60,7 @@ export const PERSONA_GROUPS: Record<Persona, Set<string>> = {
     "MACRO IMPACT",
     "LIFE SCIENCES",
     "FRONTIER",
+    "AI SAFETY",
   ]),
 };
 
@@ -200,6 +202,22 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         description: "Vertex VX-880 trial topology: HLA/autoantibody risk → dose + immunosuppression → engraftment → graft β-mass → MMTT / insulin-independence / severe-hypo endpoints",
         hasData: true,
         dataset: "vx880",
+      },
+    ],
+  },
+  {
+    label: "AI SAFETY",
+    color: "#7B68EE",
+    domains: [
+      {
+        id: "ai-safety-ids",
+        label: "AI Safety / Endogenous Catastrophe",
+        icon: "\u{1F9E0}",
+        color: "#7B68EE",
+        colorVar: "var(--accent-violet)",
+        description: "Catastrophic forgetting in continual-learning IDS, χ★-bridge cascade, adversarial drift — built from CICIDS-2017 / UNSW-NB15 / AWID-H23Q substrate (Ghauri 2025 D.Eng.)",
+        hasData: true,
+        dataset: "main",
       },
     ],
   },

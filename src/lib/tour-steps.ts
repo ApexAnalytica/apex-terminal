@@ -135,6 +135,10 @@ const FIRST_RUN_STEPS: TourStep[] = [
           "The inspector centerpiece is a criticality radar pentagon. Composite score (0–10) sits at the center; each vertex carries a pillar letter — I (Irreplaceability of mechanism), R (Restoration latency), J (Regulatory exposure), C (Complication load), T (Outcome tail) — and its score. Click any vertex letter to drop in that pillar's explanation, detail, and formula inline.",
       },
     },
+    awaitInteraction: {
+      hint: "Click any pillar letter (I, R, J, C, T) on the radar to continue.",
+      predicate: (s) => s.expandedPillar !== null,
+    },
   },
   {
     id: "engines-overview",

@@ -25,7 +25,7 @@ import {
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
   id: string;
@@ -142,6 +142,15 @@ export interface ApexState {
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
+
+  // Which pillar (if any) is expanded inside NodeInspector. Lifted from
+  // NodeInspector local state to the store so the onboarding tour can
+  // gate the "click a pillar vertex" step on real interaction (the
+  // node-inspector step's awaitInteraction predicate reads this).
+  // Reset to null whenever the selected node changes — explanation card
+  // is per-node, not per-app.
+  expandedPillar: PillarKey | null;
+  setExpandedPillar: (key: PillarKey | null) => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -505,7 +514,17 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // Selected node
   selectedNode: null,
-  setSelectedNode: (nodeId) => set({ selectedNode: nodeId }),
+  setSelectedNode: (nodeId) =>
+    set((s) => ({
+      selectedNode: nodeId,
+      // Reset the expanded pillar when the selected node changes; the
+      // explanation card belongs to the previous node and would read
+      // misleadingly against fresh ΩF values.
+      expandedPillar: nodeId === s.selectedNode ? s.expandedPillar : null,
+    })),
+
+  expandedPillar: null,
+  setExpandedPillar: (key) => set({ expandedPillar: key }),
 
   // Selected edge
   selectedEdgeId: null,

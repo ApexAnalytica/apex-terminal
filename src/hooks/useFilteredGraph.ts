@@ -2,48 +2,12 @@ import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { useTemporalGraph } from "./useTemporalGraph";
 import type { CausalGraph } from "@/lib/types";
+import { DOMAIN_MAP } from "@/lib/domains";
 
-/**
- * Maps DomainSelector IDs → graph node `domain` field values.
- * A selector ID can match multiple graph domains.
- *
- * Exported so tests can assert that every DomainSelector card id with
- * `hasData: true` has a corresponding entry whose values actually match
- * real node domains in the loaded dataset. Missing entries cause the
- * 3D canvas to render empty even though the dataset is loaded.
- */
-export const DOMAIN_MAP: Record<string, string[]> = {
-  "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
-  "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
-  "financial-contagion": ["Financial Contagion"],
-  "sovereign-risk": ["Sovereign Risk"],
-  "supply-chain": ["Supply Chain Food Security"],
-  "infrastructure": ["Undersea Cable Infrastructure"],
-  // Macro Impact domains
-  "macro-labor": ["Macro Impact: Labor, Growth & Housing"],
-  "macro-inflation": ["Macro Impact: Inflation & Policy"],
-  // Athena ISR domains
-  "defense-isr": ["Drone Swarms", "SATCOM", "ISR Fusion", "Chip Embargo", "Secure Compute", "Kill Chain"],
-  // Frontier-science placeholder scaffold (PR #229). Six fs_* nodes
-  // tagged "Frontier Science" live in graph-data.ts with
-  // dataStatus: "blank-needs-data" until the teammate physics drop.
-  "frontier-science": ["Frontier Science"],
-  // Life sciences
-  "t1d-beta-cell": [
-    "T1D Autoimmune",
-    "T1D \u03B2-cell Biology",
-    "T1D Metabolic",
-    "T1D Intervention",
-    "T1D Complications",
-  ],
-  // VX-880 stem-cell islet transplant subgraph — every node in
-  // t1d-vx880-graph-data.ts carries domain "T1D VX-880".
-  "t1d-vx880": ["T1D VX-880"],
-  // AI Safety / IDS — continual-learning intrusion detection substrate
-  // from Ghauri 2025 D.Eng. dissertation. 17 nodes (3 datasets, 9 attack
-  // classes, 5 IDS components) all carry domain "AI Safety / IDS".
-  "ai-safety-ids": ["AI Safety / IDS"],
-};
+// DOMAIN_MAP now lives next to DOMAIN_CARDS / DOMAIN_GROUPS in
+// `@/lib/domains`. Re-exported here so existing callers (DAGOverlay,
+// dataset tests, etc.) don't break.
+export { DOMAIN_MAP };
 
 /**
  * Returns graph data filtered to only the domains selected in the

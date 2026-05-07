@@ -8,6 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
+import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
@@ -167,7 +168,12 @@ function CausalDAGMapInner() {
         node.globalConcentration ?? "",
         node.domain,
       );
-      const domainColor = node.datasetColor || getDomainColor(node.domain);
+      // Color priority: domain-card colour (panel ↔ canvas alignment) →
+      // node.datasetColor → raw-domain palette. Same precedence as 2D / 3D.
+      const domainColor =
+        getDomainCardColor(node.domain) ??
+        node.datasetColor ??
+        getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
       // Two dim modes:
       //  - isolate ON  → opacity 0.15 (existing behaviour)
@@ -582,19 +588,25 @@ function CausalDAGMapInner() {
     );
   }, [fitKey]);
 
-  // Dark map style matching the app theme. Switched from CARTO's
-  // `dark_all` to `dark_nolabels` so the basemap shows continents,
-  // coastlines, and admin boundaries but skips the street labels and
-  // city names that made the canvas read as busy when the user is
-  // looking at high-level causal flows. `maxzoom: 6` caps the tile
-  // detail at country / sub-region scale — the user can still pinch-
-  // zoom further but the basemap stops loading new tiles, so streets
-  // never appear underneath the nodes. This keeps the view "globe-like"
-  // and stops the basemap from competing with the graph at any zoom.
+  // Dark map style matching the app theme.
+  //   - `projection: { type: "globe" }` renders the world as a 3D
+  //     sphere at low zoom, smoothly transitioning to mercator as the
+  //     user zooms in. Gives the "dimension map" / globe look the user
+  //     asked for and stops the basemap reading as a flat sheet.
+  //   - `dark_nolabels` strips street labels / city names so the
+  //     basemap doesn't compete with the causal graph.
+  //   - Tile maxzoom is back at 19 so the user can drill down to
+  //     street level when they need it (the previous cap at 6 was
+  //     correct for the "less busy" complaint but conflicted with the
+  //     "we need street-level when the analysis demands it" follow-up).
+  //     At low zoom the globe projection naturally hides street
+  //     density, so the busy-ness only appears when the user
+  //     deliberately zooms in.
   const mapStyle = useMemo(
     () => ({
       version: 8 as const,
       name: "Apex Dark",
+      projection: { type: "globe" as const },
       sources: {
         "osm-tiles": {
           type: "raster" as const,
@@ -612,7 +624,7 @@ function CausalDAGMapInner() {
           type: "raster" as const,
           source: "osm-tiles",
           minzoom: 0,
-          maxzoom: 6,
+          maxzoom: 19,
         },
       ],
     }),

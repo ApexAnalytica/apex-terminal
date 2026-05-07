@@ -246,3 +246,83 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
 
 // Flat list for export (used by HeaderBar etc.)
 export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
+
+/**
+ * Maps DomainSelector IDs → graph-node `domain` field values.
+ * A selector ID can match multiple node-domain strings.
+ *
+ * Lives next to DOMAIN_CARDS / DOMAIN_GROUPS because it's the third leg
+ * of the catalog: card definition (DOMAIN_CARDS), group structure
+ * (DOMAIN_GROUPS), and the projection from card.id onto the raw
+ * `n.domain` strings present in the loaded graph data. Earlier this
+ * lived inside `hooks/useFilteredGraph.ts`, which forced anyone wanting
+ * to colour-resolve a node by domain to import a hook module just for
+ * a static map.
+ *
+ * `useFilteredGraph` re-exports this so existing callers keep working.
+ */
+export const DOMAIN_MAP: Record<string, string[]> = {
+  "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
+  "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
+  "financial-contagion": ["Financial Contagion"],
+  "sovereign-risk": ["Sovereign Risk"],
+  "supply-chain": ["Supply Chain Food Security"],
+  "infrastructure": ["Undersea Cable Infrastructure"],
+  "macro-labor": ["Macro Impact: Labor, Growth & Housing"],
+  "macro-inflation": ["Macro Impact: Inflation & Policy"],
+  "defense-isr": [
+    "Drone Swarms",
+    "SATCOM",
+    "ISR Fusion",
+    "Chip Embargo",
+    "Secure Compute",
+    "Kill Chain",
+  ],
+  "frontier-science": ["Frontier Science"],
+  "t1d-beta-cell": [
+    "T1D Autoimmune",
+    "T1D β-cell Biology",
+    "T1D Metabolic",
+    "T1D Intervention",
+    "T1D Complications",
+  ],
+  "t1d-vx880": ["T1D VX-880"],
+  // AI Safety / IDS — continual-learning intrusion detection substrate
+  // from Ghauri 2025 D.Eng. dissertation. 17 nodes (3 datasets, 9 attack
+  // classes, 5 IDS components) all carry domain "AI Safety / IDS".
+  "ai-safety-ids": ["AI Safety / IDS"],
+};
+
+/**
+ * Reverse lookup: raw `n.domain` string → the DomainCard whose mapped
+ * raw-domain set contains it. Built once at module load. O(1) lookup.
+ *
+ * Used by the canvas color resolver below so every node renders with
+ * its card.color — matching the bottom-left domain panel's card-rolled
+ * row colour. Earlier the canvas used `getCategoryColor(node.category)`
+ * (per-category palette) which had no relationship to the card colour
+ * shown in the panel; clicking a card row could highlight orbs that
+ * rendered in a totally different colour.
+ */
+const DOMAIN_TO_CARD: Map<string, DomainCard> = (() => {
+  const m = new Map<string, DomainCard>();
+  const cardById = new Map(DOMAIN_CARDS.map((c) => [c.id, c]));
+  for (const [cardId, rawDomains] of Object.entries(DOMAIN_MAP)) {
+    const card = cardById.get(cardId);
+    if (!card) continue;
+    for (const raw of rawDomains) m.set(raw, card);
+  }
+  return m;
+})();
+
+/**
+ * Returns the card color for a raw `n.domain` string, or undefined if
+ * the domain doesn't belong to any catalog card (cross-domain
+ * connectors like "Geopolitical" / "Energy Grid" fall through).
+ *
+ * Consumers: 2D / 3D / Map node renderers and the bottom-left domain
+ * panel use this so colours stay consistent across surfaces.
+ */
+export function getDomainCardColor(rawDomain: string): string | undefined {
+  return DOMAIN_TO_CARD.get(rawDomain)?.color;
+}

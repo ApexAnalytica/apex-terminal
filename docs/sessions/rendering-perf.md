@@ -690,6 +690,28 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; lint clean; vitest 793/793 pass.
 
+### 2026-05-07 — Shipped: panel-canvas colour alignment + globe projection
+
+**PR:** TBD (about to open).
+
+**Trigger.** Two interlocking complaints:
+1. *"The colours for the nodes aren't really matching what we have as colour coding for the main domains. Select any of the domains. It's not always the same colours rendering on the map. We should make them match."* — clicking a row in the bottom-left DOMAINS panel selected nodes that on canvas rendered in completely different colours from the panel row.
+2. *"For the map I've kinda seen these dimension-map outline approaches — I like that idea. So if we [had] a 3D map instead, you'd have the same ability to zoom in/out. Would be great. … We do need to address the ability to … zoom in down to the street type of thing if you need to."* — the 2D mercator basemap with `maxzoom: 6` (from PR #270) was correct for "less busy" but cut off the street-level option entirely.
+
+**What shipped.**
+
+- **Unified colour resolver.** New `getDomainCardColor(rawDomain)` in `@/lib/domains` reverse-maps raw `n.domain` strings → `DomainCard.color` via the existing `DOMAIN_MAP`. `DOMAIN_MAP` itself moved out of `useFilteredGraph.ts` into `@/lib/domains` (its natural home alongside `DOMAIN_CARDS` / `DOMAIN_GROUPS`); `useFilteredGraph` now re-exports it for back-compat. 2D / 3D / Map node renderers all resolve colour via `getDomainCardColor → datasetColor → getDomainColor → getCategoryColor` so a click on the panel's "Energy Systems" row now selects orbs that render in the same red the row shows. Trade-off: nodes within a multi-domain card (e.g. all `defense-isr` sub-domains) collapse to a single card colour; per-sub-domain colour signal is lost on the canvas. Side-panel chips (NodeInspector, ModulePanel, TimeSeriesOverlay) keep their per-domain palette since those views are detail-oriented.
+- **Globe projection on the Map view.** Added `projection: { type: "globe" }` to the maplibre style. Renders the world as a 3D sphere at low zoom and smoothly transitions to mercator as the user zooms in (built-in MapLibre v4 behaviour). Restored `maxzoom: 19` so street-level detail returns when the analysis demands it; the globe + `dark_nolabels` combination keeps the basemap visually quiet at typical zoom levels but doesn't hide the option to drill down.
+
+**Files.**
+- `src/lib/domains.ts` — new `DOMAIN_MAP`, `DOMAIN_TO_CARD`, `getDomainCardColor`.
+- `src/hooks/useFilteredGraph.ts` — `DOMAIN_MAP` re-export.
+- `src/components/CausalDAG2D.tsx` — colour resolver chain in `CausalNode2D`.
+- `src/components/dag3d/DAGNode3D.tsx` — same chain on `baseColor`.
+- `src/components/CausalDAGMap.tsx` — same chain on `domainColor`; `projection: globe`; `maxzoom` restored.
+
+**Verification.** `tsc --noEmit` clean; lint clean (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
+
 ---
 
 ## How a fresh session resumes

@@ -14,6 +14,7 @@ import {
   type TourStep,
   type DeepDiveTrack,
 } from "@/lib/tour-steps";
+import { logTourEvent, newTourSessionId } from "@/lib/onboarding/metrics";
 import TTSControls from "@/components/TTSControls";
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -197,6 +198,13 @@ export default function SpotlightTour() {
   const tooltipHeightRef = useRef(200);
   const preTourModuleRef = useRef<string | null>(null);
 
+  // Telemetry. tourSessionId is a fresh uuid per tour-open, reused
+  // across all events inside that open. tourSessionStartRef gives us
+  // an elapsedMs base for funnel analysis. Both reset on the rising
+  // edge of tourActive — see the effect a few blocks below.
+  const tourSessionIdRef = useRef<string>("");
+  const tourSessionStartRef = useRef<number>(0);
+
   const track = trackForPersona(activePersona);
 
   // Active step list driven by mode. Memoized so step indices stay stable.
@@ -269,15 +277,27 @@ export default function SpotlightTour() {
 
   // When the tour is re-opened externally (the "?" button), reset to first-run.
   // Without this, re-opening after a deep-dive ended in the same session would
-  // start mid-track.
+  // start mid-track. Also fires the `tour_started` telemetry event and stamps
+  // a fresh tourSessionId for downstream events to share.
   const prevActiveRef = useRef(tourActive);
   useEffect(() => {
     if (tourActive && !prevActiveRef.current) {
       setMode("first-run");
       setTourStep(0);
+      tourSessionIdRef.current = newTourSessionId();
+      tourSessionStartRef.current = Date.now();
+      void logTourEvent({
+        event: "tour_started",
+        stepId: null,
+        phase: "first-run",
+        track,
+        persona: activePersona ?? null,
+        tourSessionId: tourSessionIdRef.current,
+        elapsedMs: 0,
+      });
     }
     prevActiveRef.current = tourActive;
-  }, [tourActive, setTourStep]);
+  }, [tourActive, setTourStep, track, activePersona]);
 
   // Run a step's onEnter side effect (e.g. switch active module).
   useEffect(() => {
@@ -391,6 +411,23 @@ export default function SpotlightTour() {
   // ─── Navigation ──────────────────────────────────────────────────────
 
   const close = useCallback(() => {
+    // Fire BEFORE we wipe state so phase / step are still meaningful.
+    if (tourSessionIdRef.current) {
+      void logTourEvent({
+        event: "tour_closed",
+        stepId: step?.id ?? null,
+        phase: mode === "first-run" ? "first-run" : mode === "deep-dive-menu" ? "menu" : "deep-dive",
+        track:
+          mode === "first-run"
+            ? track
+            : mode === "deep-dive-menu"
+              ? null
+              : (mode as DeepDiveTrack),
+        persona: activePersona ?? null,
+        tourSessionId: tourSessionIdRef.current,
+        elapsedMs: Date.now() - tourSessionStartRef.current,
+      });
+    }
     if (preTourModuleRef.current) {
       useApexStore.getState().setActiveModule(preTourModuleRef.current as "spirtes" | "tarski" | "pearl" | "pareto");
     }
@@ -402,7 +439,7 @@ export default function SpotlightTour() {
     setMode("first-run");
     setTourStep(0);
     setTourActive(false);
-  }, [setTourActive, setTourStep]);
+  }, [setTourActive, setTourStep, step, mode, track, activePersona]);
 
   const next = useCallback(() => {
     if (step?.id === "welcome-and-domain") {
@@ -427,11 +464,34 @@ export default function SpotlightTour() {
     }
     if (step?.id === "first-run-finish") {
       // First-run done → show the deep-dive menu instead of closing.
+      void logTourEvent({
+        event: "first_run_completed",
+        stepId: step.id,
+        phase: "first-run",
+        track,
+        persona: activePersona ?? null,
+        tourSessionId: tourSessionIdRef.current,
+        elapsedMs: Date.now() - tourSessionStartRef.current,
+      });
       setMode("deep-dive-menu");
       setTourStep(0);
       return;
     }
     if (isLast) {
+      // Last step of a deep-dive track. Fire deep_dive_completed before
+      // close() fires its own tour_closed — funnel readers can tell whether
+      // the user finished the track or bailed mid-track from the pair.
+      if (mode !== "first-run" && mode !== "deep-dive-menu") {
+        void logTourEvent({
+          event: "deep_dive_completed",
+          stepId: step?.id ?? null,
+          phase: "deep-dive",
+          track: mode as DeepDiveTrack,
+          persona: activePersona ?? null,
+          tourSessionId: tourSessionIdRef.current,
+          elapsedMs: Date.now() - tourSessionStartRef.current,
+        });
+      }
       close();
     } else {
       setTourStep(tourStep + 1);
@@ -445,6 +505,9 @@ export default function SpotlightTour() {
     close,
     setTourStep,
     tourStep,
+    mode,
+    track,
+    activePersona,
   ]);
 
   const back = useCallback(() => {
@@ -452,11 +515,20 @@ export default function SpotlightTour() {
   }, [isFirst, setTourStep, tourStep]);
 
   const launchDeepDive = useCallback(
-    (track: DeepDiveTrack) => {
-      setMode(track);
+    (deepDiveTrack: DeepDiveTrack) => {
+      void logTourEvent({
+        event: "deep_dive_launched",
+        stepId: null,
+        phase: "deep-dive",
+        track: deepDiveTrack,
+        persona: activePersona ?? null,
+        tourSessionId: tourSessionIdRef.current,
+        elapsedMs: Date.now() - tourSessionStartRef.current,
+      });
+      setMode(deepDiveTrack);
       setTourStep(0);
     },
-    [setTourStep],
+    [setTourStep, activePersona],
   );
 
   // Keyboard navigation. Disabled on the menu (no step to advance).

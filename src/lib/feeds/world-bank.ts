@@ -101,6 +101,72 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 50, // 50% of GDP from imports = high dependency regime
     mockValue: 35.5,
   },
+  // Phase 12 — promote 6 historical-only Financial Contagion nodes to
+  // live ongoing pulls. Country picks mirror the existing
+  // NODE_TIMESERIES_MAP conventions (Saudi for the EM-aggregate proxy,
+  // Mexico for external debt, Turkey for current account, Pakistan for
+  // debt-to-GDP, Egypt + Argentina for FX). All free, no key, annual
+  // cadence — refresh once a year vs the static PIMCO snapshot.
+  {
+    country: "SAU",
+    indicator: "FI.RES.TOTL.CD",
+    label: "Saudi Arabia Total Reserves (USD)",
+    labelPatterns: ["em fx reserves"],
+    scale: 1e9,
+    unit: "$B",
+    capacity: 600,
+    mockValue: 437,
+  },
+  {
+    country: "MEX",
+    indicator: "DT.DOD.DECT.CD",
+    label: "Mexico External Debt Stocks (USD)",
+    labelPatterns: ["external debt stock"],
+    scale: 1e9,
+    unit: "$B",
+    capacity: 700,
+    mockValue: 605,
+  },
+  {
+    country: "PAK",
+    indicator: "GC.DOD.TOTL.GD.ZS",
+    label: "Pakistan Central Government Debt (% of GDP)",
+    labelPatterns: ["debt-to-gdp ratio", "debt to gdp"],
+    scale: 1,
+    unit: "%",
+    capacity: 80,
+    mockValue: 76,
+  },
+  {
+    country: "TUR",
+    indicator: "BN.CAB.XOKA.CD",
+    label: "Turkey Current Account Balance (USD)",
+    labelPatterns: ["current account balance"],
+    scale: 1e9,
+    unit: "$B",
+    capacity: 0,
+    mockValue: -45,
+  },
+  {
+    country: "EGY",
+    indicator: "PA.NUS.FCRF",
+    label: "Egypt Official Exchange Rate (LCU per USD)",
+    labelPatterns: ["exchange rate pressure index", "fx pressure"],
+    scale: 1,
+    unit: "EGP/$",
+    capacity: 50,
+    mockValue: 48,
+  },
+  {
+    country: "ARG",
+    indicator: "PA.NUS.FCRF",
+    label: "Argentina Official Exchange Rate (LCU per USD)",
+    labelPatterns: ["argentina fx"],
+    scale: 1,
+    unit: "ARS/$",
+    capacity: 1500,
+    mockValue: 1100,
+  },
 ];
 
 export interface WbObservation {

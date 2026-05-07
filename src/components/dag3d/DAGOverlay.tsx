@@ -261,6 +261,10 @@ export default function DAGOverlay() {
   const isLive = useApexStore((s) => s.isLive);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
+  // Domain panel collapses by default — the full list (often 6–10 rows
+  // with counts) was eating real estate on every canvas. The chevron
+  // header always stays visible so the affordance is discoverable.
+  const [domainPanelOpen, setDomainPanelOpen] = useState(false);
   // The encoding key (size + colour + glow + edge meanings) used to live
   // as a cryptic `SIZE: ΩF / EIG / BTW` button trio next to the view-mode
   // buttons. Users couldn't tell what BTW meant, and there was no
@@ -529,51 +533,71 @@ export default function DAGOverlay() {
         </div>
       )}
 
-      {/* Bottom Left: Domain legend (interactive) */}
+      {/* Bottom Left: Domain legend (interactive, collapsible) */}
       <div className="absolute bottom-12 left-3 pointer-events-auto">
         <div className="text-[8px] font-mono px-2 py-1.5 rounded border border-border bg-surface-elevated/80">
-          <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
-            DOMAINS <span className="text-text-muted/40">— click to highlight</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {domainCounts.map(([domain, count]) => {
-              const isActive = activeDomain === domain;
-              const domainColor = getDomainColor(domain);
-              return (
-                <div
-                  key={domain}
-                  className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 py-0.5 transition-colors hover:bg-white/5"
-                  style={{
-                    backgroundColor: isActive ? `${domainColor}15` : undefined,
-                    borderLeft: isActive ? `2px solid ${domainColor}` : "2px solid transparent",
-                  }}
-                  onClick={() => {
-                    if (isActive) {
-                      setActiveDomain(null);
-                      setSelectedNodes([]);
-                    } else {
-                      setActiveDomain(domain);
-                      const nodeIds = activeGraph.nodes
-                        .filter((n) => n.domain === domain)
-                        .map((n) => n.id);
-                      setSelectedNodes(nodeIds);
-                    }
-                  }}
-                >
+          <button
+            onClick={() => setDomainPanelOpen((p) => !p)}
+            className="flex items-center gap-1.5 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-accent-cyan transition-colors w-full"
+            aria-expanded={domainPanelOpen}
+            title={domainPanelOpen ? "Collapse domains" : "Expand domains"}
+          >
+            <span
+              className="inline-block transition-transform"
+              style={{ transform: domainPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}
+            >
+              ▶
+            </span>
+            DOMAINS
+            <span className="text-text-muted/40">
+              {activeDomain
+                ? `· ${activeDomain}`
+                : domainPanelOpen
+                  ? "— click to highlight"
+                  : `(${domainCounts.length})`}
+            </span>
+          </button>
+          {domainPanelOpen && (
+            <div className="flex flex-col gap-0.5 mt-1">
+              {domainCounts.map(([domain, count]) => {
+                const isActive = activeDomain === domain;
+                const domainColor = getDomainColor(domain);
+                return (
                   <div
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: domainColor }}
-                  />
-                  <span className="text-[8px]" style={{ color: isActive ? domainColor : "var(--text-muted)" }}>
-                    {domain}
-                  </span>
-                  <span className="text-[7px] text-text-muted/50">
-                    ({count})
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                    key={domain}
+                    className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 py-0.5 transition-colors hover:bg-white/5"
+                    style={{
+                      backgroundColor: isActive ? `${domainColor}15` : undefined,
+                      borderLeft: isActive ? `2px solid ${domainColor}` : "2px solid transparent",
+                    }}
+                    onClick={() => {
+                      if (isActive) {
+                        setActiveDomain(null);
+                        setSelectedNodes([]);
+                      } else {
+                        setActiveDomain(domain);
+                        const nodeIds = activeGraph.nodes
+                          .filter((n) => n.domain === domain)
+                          .map((n) => n.id);
+                        setSelectedNodes(nodeIds);
+                      }
+                    }}
+                  >
+                    <div
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: domainColor }}
+                    />
+                    <span className="text-[8px]" style={{ color: isActive ? domainColor : "var(--text-muted)" }}>
+                      {domain}
+                    </span>
+                    <span className="text-[7px] text-text-muted/50">
+                      ({count})
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

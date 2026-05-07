@@ -258,9 +258,16 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     tooltipPosition: "left",
     copy: {
-      title: "SPIRTES — STRUCTURE DISCOVERY",
-      description:
-        "SPIRTES runs three causal-discovery algorithms in parallel. DCD/NOTEARS for nonlinear structure, PCMCI+ for time-lagged effects across T-2/T-1/T-0 columns, and FCI for hidden-confounder detection (dashed edges with '?' markers mean a latent common cause). The cascade header shows spectral radius λmax — below 1.0 the network is contractive and stable.",
+      analyst: {
+        title: "SPIRTES — STRUCTURE DISCOVERY",
+        description:
+          "SPIRTES runs three causal-discovery algorithms in parallel. DCD/NOTEARS for nonlinear structure, PCMCI+ for time-lagged effects across T-2/T-1/T-0 columns, and FCI for hidden-confounder detection — dashed edges with '?' markers mean a latent common cause (sanctions cycle, hidden policy lever, off-record trade flow). The cascade header shows spectral radius λmax — below 1.0 the network is contractive and stable.",
+      },
+      scientist: {
+        title: "SPIRTES — PATHWAY DISCOVERY",
+        description:
+          "SPIRTES runs three causal-discovery algorithms in parallel against the multi-omic / clinical signal stack. DCD/NOTEARS for nonlinear pathway structure, PCMCI+ for time-lagged effects across T-2/T-1/T-0 visit windows (e.g. C-peptide MMTT, AAB titer, HbA1c), and FCI for hidden-confounder detection — dashed edges with '?' markers mean a latent variable not in the measured panel (an unsampled cytokine, an unmeasured genotype, an unobserved exposure). The cascade header shows spectral radius λmax — below 1.0 the network is contractive and stable.",
+      },
     },
     onEnter: () => useApexStore.getState().setActiveModule("spirtes"),
   },
@@ -271,9 +278,16 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     tooltipPosition: "left",
     copy: {
-      title: "TARSKI — CONSTRAINT VERIFICATION",
-      description:
-        "TARSKI audits every edge against domain-aware axioms in three tiers: PHYSICAL (immutable laws), REGULATORY (sanctions, export controls, treaties; for life sciences: trial protocols and IRB constraints), and HEURISTIC (anomaly flags). Constraints are auto-ranked by relevance to your active domain. Toggle any axiom, hit VERIFY, and the canvas recolors — violating edges turn red, with clickable proof traces.",
+      analyst: {
+        title: "TARSKI — CONSTRAINT VERIFICATION",
+        description:
+          "TARSKI audits every edge against domain-aware axioms in three tiers: PHYSICAL (immutable laws — pipeline throughput, cable capacity, vessel transit time), REGULATORY (sanctions, export controls, treaties), and HEURISTIC (anomaly flags). Constraints are auto-ranked by relevance to your active domain. Toggle any axiom, hit VERIFY, and the canvas recolors — violating edges turn red, with clickable proof traces.",
+      },
+      scientist: {
+        title: "TARSKI — BIOLOGICAL CONSTRAINT VERIFICATION",
+        description:
+          "TARSKI audits every edge against domain-aware axioms in three tiers: PHYSICAL (immutable biology — glucose / insulin / C-peptide stoichiometry, half-lives, mass balance), REGULATORY (FDA accelerated-approval gates, IRB constraints, trial-protocol windows, pediatric pathways), and HEURISTIC (anomaly flags — implausible effect sizes, protocol-impossible timings). Constraints are auto-ranked by relevance to the active domain. Toggle any axiom, hit VERIFY, and the canvas recolors — biologically infeasible edges turn red, with clickable proof traces.",
+      },
     },
     onEnter: () => useApexStore.getState().setActiveModule("tarski"),
   },
@@ -284,9 +298,16 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     tooltipPosition: "left",
     copy: {
-      title: "PEARL — DO-CALCULUS & CASCADE DEFENSE",
-      description:
-        "PEARL implements structural interventions. do(X) isolates a node from its causes. SEVER cuts individual edges (amber — functionally removed, physically possible); ABLATE deletes nodes/edges entirely. Below the manual tools, CASCADE DEFENSE runs minimax optimization to find the cheapest set of edges whose removal maximally reduces downstream damage, with automatic Monte Carlo damage forecasts.",
+      analyst: {
+        title: "PEARL — DO-CALCULUS & CASCADE DEFENSE",
+        description:
+          "PEARL implements structural interventions. do(X) isolates a node from its causes. SEVER cuts individual edges (amber — functionally removed, physically possible); ABLATE deletes nodes/edges entirely. Below the manual tools, CASCADE DEFENSE runs minimax optimisation to find the cheapest set of edges whose removal maximally reduces downstream damage — adversary picks the worst shock, defender picks the cheapest cut. Automatic Monte Carlo damage forecasts on every recommendation.",
+      },
+      scientist: {
+        title: "PEARL — INTERVENTION & TARGET PRIORITISATION",
+        description:
+          "PEARL implements structural interventions on the causal graph. do(X) isolates a node from its causes — the foundational operator for asking 'what happens if we directly modulate this mechanism?' SEVER cuts individual edges (amber — functionally blocked, biologically reversible); ABLATE removes nodes / edges entirely. Below the manual tools, INTERVENTION TARGET SEARCH runs minimax optimisation to find the smallest mechanism set whose modulation maximally reduces downstream complication load — implicit adversary is disease progression. Monte Carlo outcome forecasts run on every recommendation.",
+      },
     },
     onEnter: () => useApexStore.getState().setActiveModule("pearl"),
   },
@@ -297,9 +318,16 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     tooltipPosition: "left",
     copy: {
-      title: "PARETO — CRITICALITY HORIZONS",
-      description:
-        "PARETO tracks a domain-tuned set of criticality estimators with per-card T-N countdowns and confidence. Geopolitical/financial: CSD (λmax → 1), Persistent Homology, LPPLS (Sornette crash). Life Sciences / T1D: BOCPD changepoints, Cox proportional hazards, transfer entropy, NLME C-peptide decay, Moran's I, HTE meta-analysis. Each card exposes observed vs. model signal, formula, and live assessment.",
+      analyst: {
+        title: "PARETO — CRITICALITY HORIZONS",
+        description:
+          "PARETO tracks four criticality estimators against the scoped Ω trajectory: CSD (lag-1 autocorrelation rising as λmax → 1), Persistent Homology (β₁ filtration over fragility thresholds), LPPLS (Sornette super-exponential + log-periodic crash), and BOCPD (Bayesian online change-point detection). Each card carries a T-N countdown, observed-vs-model trace, formula, live assessment, and an F·E·G·S·M relevance breakdown with bootstrap ± band so you can see *why* a model scores the way it does.",
+      },
+      scientist: {
+        title: "PARETO — REGIME-SHIFT DETECTION",
+        description:
+          "PARETO tracks four regime-shift estimators against the scoped CRITICALITY trajectory: CSD (slowing recovery as the system loses resilience — honeymoon-end, tipping-point precursor), Persistent Homology (β₁ holes across fragility thresholds — disconnected pathway clusters), LPPLS (super-exponential growth with log-periodic structure — runaway dynamics), BOCPD (Bayesian change-point posterior — abrupt regime transitions on CGM, C-peptide, AAB titer). Each card carries a T-N countdown, observed-vs-model trace, formula, live assessment, and an F·E·G·S·M relevance breakdown with bootstrap ± band so you can see *why* a model scores the way it does.",
+      },
     },
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },
@@ -325,9 +353,16 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="module-panel"]',
     tooltipPosition: "left",
     copy: {
-      title: "CASCADE DEFENSE — AUTO-INTERDICTION",
-      description:
-        "When an attacker-defender min-cut is solvable, CASCADE DEFENSE proposes the cheapest edge set whose removal maximally reduces downstream damage, with explicit SEVER / ABLATE buttons per recommended cut. When the min-cut isn't solvable, the panel falls back to a structural-vulnerability ranking. Every recommendation auto-triggers a Monte Carlo forecast so you see the expected damage distribution before committing.",
+      analyst: {
+        title: "CASCADE DEFENSE — AUTO-INTERDICTION",
+        description:
+          "When an attacker-defender min-cut is solvable, CASCADE DEFENSE proposes the cheapest edge set whose removal maximally reduces downstream damage, with explicit SEVER / ABLATE buttons per recommended cut. When the min-cut isn't solvable, the panel falls back to a structural-vulnerability ranking. Every recommendation auto-triggers a Monte Carlo forecast so you see the expected damage distribution before committing.",
+      },
+      scientist: {
+        title: "INTERVENTION TARGET SEARCH — AUTOMATED RANKING",
+        description:
+          "When a target-set optimisation problem is solvable, this panel proposes the smallest mechanism set whose modulation maximally reduces downstream complication load — implicit adversary is disease progression. Each recommendation comes with explicit SEVER / ABLATE buttons (functionally block vs. structurally remove) and an automatic Monte Carlo outcome forecast so you see the expected effect distribution before committing. When the optimisation isn't solvable, the panel falls back to a structural-vulnerability ranking.",
+      },
     },
     onEnter: () => useApexStore.getState().setActiveModule("pearl"),
   },

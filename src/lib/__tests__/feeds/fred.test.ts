@@ -96,9 +96,13 @@ describe("mockFredFeed", () => {
     }
   });
 
-  it("seriesIds are unique", () => {
-    const ids = FRED_SERIES.map((s) => s.id);
-    expect(new Set(ids).size).toBe(ids.length);
+  it("transform-aware routing keys are unique", () => {
+    // Two FRED entries can intentionally share an `id` when they pull
+    // the same series with different `units` transforms (e.g. PAYEMS
+    // as level + chg, CES0500000003 as Y/Y + M/M). The proxy and
+    // provider both key off `{id}_{units?}` to keep them distinct.
+    const keys = FRED_SERIES.map((s) => (s.units ? `${s.id}_${s.units}` : s.id));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("includes the Phase 4 expansion series (Labor Force, EmRatio, GDP QoQ, PPI, Forward Inflation, Wheat)", () => {

@@ -11,12 +11,18 @@ import {
 import type { FeedDispatchBatch, FeedProvider } from "./types";
 
 /** Find the first node whose label matches any of the series' labelPatterns
- *  (case-insensitive substring). */
+ *  (case-insensitive substring). The lookup uses the transform-aware
+ *  routing key (`{seriesId}_{units?}`) so duplicate FRED ids with
+ *  different transforms (PAYEMS level + chg, CES0500000003 Y/Y + M/M)
+ *  resolve to their respective configs. */
 function matchSeriesToNode(
   obs: FredObservation,
   nodes: ReadonlyArray<CausalNode>,
 ): CausalNode | undefined {
-  const config = FRED_SERIES.find((s) => s.id === obs.seriesId);
+  const config = FRED_SERIES.find((s) => {
+    const key = s.units ? `${s.id}_${s.units}` : s.id;
+    return key === obs.seriesId;
+  });
   if (!config) return undefined;
   for (const pattern of config.labelPatterns) {
     const needle = pattern.toLowerCase();

@@ -5,7 +5,8 @@ import type { CausalGraph } from "@/lib/types";
 import { DOMAIN_MAP } from "@/lib/domains";
 
 // DOMAIN_MAP now lives next to DOMAIN_CARDS / DOMAIN_GROUPS in
-// @/lib/domains. Re-exported here so existing callers don't break.
+// `@/lib/domains`. Re-exported here so existing callers (DAGOverlay,
+// dataset tests, etc.) don't break.
 export { DOMAIN_MAP };
 
 /**

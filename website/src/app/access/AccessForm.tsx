@@ -1,7 +1,18 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { submitAccessRequest, type AccessResult } from "./actions";
+
+/**
+ * Recognized `?source=` values surfaced in the form submission so
+ * the inbound email tells Junaid which offer the visitor came in
+ * on. Values not in this map are dropped (defense against random
+ * URL-injected source strings landing in inboxes).
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  "founding-10": "Founding 10 (apex.founding)",
+  "mini-audit": "ΩF Mini-Audit (apex.audit)",
+};
 
 const DOMAINS = [
   { value: "", label: "Select a domain (optional)" },
@@ -20,6 +31,25 @@ export default function AccessForm() {
     submitAccessRequest,
     null,
   );
+
+  // Read `?source=` from the URL on mount and stash it in a hidden
+  // input below. Server action picks it up and includes it in the
+  // email body so we know whether the visitor came in via /founding,
+  // /audit, or directly. Whitelist-validated against SOURCE_LABELS
+  // so random / injected values don't propagate.
+  const [source, setSource] = useState<string>("");
+  const [sourceLabel, setSourceLabel] = useState<string>("");
+  useEffect(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("source") ?? "";
+      if (raw && SOURCE_LABELS[raw]) {
+        setSource(raw);
+        setSourceLabel(SOURCE_LABELS[raw]);
+      }
+    } catch {
+      /* SSR / no-window — leave empty. */
+    }
+  }, []);
 
   if (state?.ok) {
     return (
@@ -44,6 +74,25 @@ export default function AccessForm() {
 
   return (
     <form action={formAction} className="space-y-5" noValidate>
+      {/* Source hidden field — captured from ?source= URL param above
+          and posted with the form so the email tells Junaid which
+          offer brought the visitor in (Founding 10, Mini-Audit). */}
+      <input type="hidden" name="source" value={source} />
+
+      {/* Visible source banner — confirms to the visitor that we
+          know they came in from the offer they clicked, so the form
+          doesn't feel like a generic dead-end. */}
+      {sourceLabel && (
+        <div className="flex items-center gap-2 px-3 py-2 border border-accent-cyan/30 bg-accent-cyan/5 rounded">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan" />
+          <span className="font-mono text-[11px] text-accent-cyan/90 leading-tight">
+            Coming in from{" "}
+            <span className="text-accent-cyan">{sourceLabel}</span> — we&apos;ll
+            handle the next step manually until checkout is wired.
+          </span>
+        </div>
+      )}
+
       {/* Honeypot — hidden from humans, bots fill it in */}
       <div aria-hidden className="hidden" style={{ display: "none" }}>
         <label>

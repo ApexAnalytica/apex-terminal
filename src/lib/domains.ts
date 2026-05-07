@@ -50,8 +50,9 @@ export const PERSONA_GROUPS: Record<Persona, Set<string>> = {
     "MENA ENERGY & COMMODITIES",
     "INFRASTRUCTURE & DEFENSE",
     "FINANCIAL & SOVEREIGN",
+    "AI SAFETY",
   ]),
-  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
+  scientist: new Set(["LIFE SCIENCES", "FRONTIER", "AI SAFETY"]),
   cross: new Set([
     "MENA ENERGY & COMMODITIES",
     "FINANCIAL & SOVEREIGN",
@@ -59,6 +60,7 @@ export const PERSONA_GROUPS: Record<Persona, Set<string>> = {
     "MACRO IMPACT",
     "LIFE SCIENCES",
     "FRONTIER",
+    "AI SAFETY",
   ]),
 };
 
@@ -204,6 +206,22 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     ],
   },
   {
+    label: "AI SAFETY",
+    color: "#7B68EE",
+    domains: [
+      {
+        id: "ai-safety-ids",
+        label: "AI Safety / Endogenous Catastrophe",
+        icon: "\u{1F9E0}",
+        color: "#7B68EE",
+        colorVar: "var(--accent-violet)",
+        description: "Catastrophic forgetting in continual-learning IDS, χ★-bridge cascade, adversarial drift — built from CICIDS-2017 / UNSW-NB15 / AWID-H23Q substrate (Ghauri 2025 D.Eng.)",
+        hasData: true,
+        dataset: "main",
+      },
+    ],
+  },
+  {
     label: "FRONTIER",
     color: "#e040fb",
     domains: [
@@ -269,6 +287,10 @@ export const DOMAIN_MAP: Record<string, string[]> = {
     "T1D Complications",
   ],
   "t1d-vx880": ["T1D VX-880"],
+  // AI Safety / IDS — continual-learning intrusion detection substrate
+  // from Ghauri 2025 D.Eng. dissertation. 17 nodes (3 datasets, 9 attack
+  // classes, 5 IDS components) all carry domain "AI Safety / IDS".
+  "ai-safety-ids": ["AI Safety / IDS"],
 };
 
 /**

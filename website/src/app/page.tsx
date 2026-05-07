@@ -122,6 +122,88 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ───────── // WORK WITH MANIFOLD — two-card surface for the
+          time-bound offers. Sits between Hero and DOMAINS so it
+          shows up before visitors get into the domain catalog. */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// WORK WITH MANIFOLD"
+          path="apex.offers"
+          right="TWO WAYS IN"
+          color="amber"
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          {/* Founding 10 */}
+          <Link
+            href="/founding"
+            className="group relative bg-surface border border-accent-cyan/30 rounded-lg p-6 md:p-7 hover:bg-surface-elevated transition-colors flex flex-col gap-4 min-h-[200px]"
+          >
+            <div className="absolute top-0 left-0 h-0.5 w-16 bg-accent-cyan opacity-80" />
+            <div className="absolute inset-0 grid-bg opacity-15 pointer-events-none" aria-hidden />
+
+            <div className="relative flex items-center justify-between">
+              <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] text-accent-cyan/90">
+                // FOUNDING 10
+              </span>
+              <span className="font-mono text-[10px] text-text-muted/70 tracking-wider group-hover:text-accent-cyan transition-colors">
+                EXPLORE ›
+              </span>
+            </div>
+            <h3 className="relative font-[family-name:var(--font-michroma)] text-2xl md:text-[26px] tracking-[0.04em] leading-[1.15] text-accent-cyan text-glow-cyan">
+              $1,500/year, locked forever.
+            </h3>
+            <p className="relative text-[12.5px] md:text-[13px] font-mono text-text-muted leading-relaxed flex-1">
+              Ten founding seats at year-one pricing, locked at
+              $9,000/year for the lifetime of the seat. Same Manifold,
+              less than half the institutional rate, frozen.
+            </p>
+            <div className="relative pt-3 border-t border-border/60 flex items-center justify-between gap-3">
+              <span className="font-mono text-[10px] text-text-muted/70 tracking-wider">
+                10 SEATS · TIME-BOUND
+              </span>
+              <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-accent-cyan group-hover:text-glow-cyan transition-colors">
+                CLAIM ONE ›
+              </span>
+            </div>
+          </Link>
+
+          {/* Mini-Audit */}
+          <Link
+            href="/audit"
+            className="group relative bg-surface border border-accent-amber/30 rounded-lg p-6 md:p-7 hover:bg-surface-elevated transition-colors flex flex-col gap-4 min-h-[200px]"
+          >
+            <div className="absolute top-0 left-0 h-0.5 w-16 bg-accent-amber opacity-80" />
+            <div className="absolute inset-0 grid-bg opacity-15 pointer-events-none" aria-hidden />
+
+            <div className="relative flex items-center justify-between">
+              <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.3em] text-accent-amber/90">
+                // ΩF MINI-AUDIT
+              </span>
+              <span className="font-mono text-[10px] text-text-muted/70 tracking-wider group-hover:text-accent-amber transition-colors">
+                EXPLORE ›
+              </span>
+            </div>
+            <h3 className="relative font-[family-name:var(--font-michroma)] text-2xl md:text-[26px] tracking-[0.04em] leading-[1.15] text-accent-amber text-glow-amber">
+              $1,500 flat. 5-day readout.
+            </h3>
+            <p className="relative text-[12.5px] md:text-[13px] font-mono text-text-muted leading-relaxed flex-1">
+              Send your data, get back a 12-page causal-fragility
+              report on your graph. Decisive nodes named, top-three
+              counterfactuals run, signed by the team. No platform
+              commitment.
+            </p>
+            <div className="relative pt-3 border-t border-border/60 flex items-center justify-between gap-3">
+              <span className="font-mono text-[10px] text-text-muted/70 tracking-wider">
+                FIXED PRICE · 5 DAYS
+              </span>
+              <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-accent-amber group-hover:text-glow-amber transition-colors">
+                ORDER ONE ›
+              </span>
+            </div>
+          </Link>
+        </div>
+      </Section>
+
       {/* ───────── // DOMAINS ───────── */}
       <Section id="domains" className="py-10 md:py-14 border-t border-border">
         <TerminalHeader label="// DOMAINS" path="manifold.domains" right="08 CONFIGURED · CLICK TO EXPLORE" />
@@ -131,7 +213,13 @@ export default function Home() {
           for it — in plain terms, before any of the math.
         </p>
 
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        {/* 8 tiles in 2 rows of 4 at lg (was lg:grid-cols-7 with 7
+            tiles — now we have 8 with insurance added, so the
+            7-col layout was wrapping the 8th tile to a row of its
+            own AND squeezing every tile to ~167px which clipped the
+            longer labels MANUFACTURING / INFRASTRUCTURE). 4 cols
+            gives each tile ~290px and the labels breathe. */}
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
           {DOMAINS.map((d) => (
             <Link
               key={d.label}

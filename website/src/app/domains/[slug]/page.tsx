@@ -34,6 +34,24 @@ const ENGINE_COLOR: Record<string, Color> = {
   PARETO: "orange",
 };
 
+/**
+ * Domain-flavored Mini-Audit CTA copy. Each entry pairs a per-slug
+ * action verb with the kind of graph the audit will actually hit
+ * for that domain. Falls back to a generic "Audit your graph" if a
+ * slug isn't covered (e.g. a future domain added without updating
+ * this map).
+ */
+const AUDIT_CTA_BY_SLUG: Record<string, string> = {
+  manufacturing: "Audit your supplier graph — $1,500",
+  infrastructure: "Audit your infrastructure graph — $1,500",
+  economic: "Audit your trade-flow graph — $1,500",
+  finance: "Audit your counterparty graph — $1,500",
+  energy: "Audit your grid / supply graph — $1,500",
+  geopolitical: "Audit your sanctions exposure — $1,500",
+  science: "Audit your research portfolio — $1,500",
+  insurance: "Audit your treaty / exposure graph — $1,500",
+};
+
 const colorMap: Record<
   Color,
   { text: string; border: string; bg: string; soft: string; glow: string }
@@ -258,6 +276,18 @@ export default async function DomainPage({
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
               <CTAButton href="/access" variant="secondary">REQUEST INVITE</CTAButton>
+              {/* Domain-flavored Mini-Audit CTA — productized $1,500
+                  alternative to the trial / invite paths. Phrasing
+                  comes from AUDIT_CTA_BY_SLUG above. */}
+              <Link
+                href="/audit"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded text-[11px] font-[family-name:var(--font-michroma)] tracking-[0.18em] bg-accent-amber/10 border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/20 hover:border-accent-amber/60 transition-all"
+              >
+                <span>
+                  {AUDIT_CTA_BY_SLUG[d.slug] ?? "Audit your graph — $1,500"}
+                </span>
+                <span aria-hidden>›</span>
+              </Link>
               <a
                 href={SITE.pricingUrl}
                 className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted/70 hover:text-foreground inline-flex items-center justify-center gap-2 pt-1"

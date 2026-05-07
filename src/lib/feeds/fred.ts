@@ -119,6 +119,13 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "PAYEMS", label: "Headline Nonfarm Payroll Change", labelPatterns: ["headline nonfarm payroll change", "nonfarm payroll change"], unit: "K", capacity: 250, units: "chg", mockValue: 175 },
   { id: "DTWEXBGS", label: "Nominal Broad U.S. Dollar Index", labelPatterns: ["us dollar index (dxy)", "dollar index", "dxy"], unit: "", capacity: 130, mockValue: 122 },
   { id: "CES0500000003", label: "Average Hourly Earnings M/M %", labelPatterns: ["average hourly earnings mom", "average hourly earnings m/m"], unit: "%", capacity: 0.5, units: "pch", mockValue: 0.3 },
+  // Phase 13 — promote 3 historical-only Supply Chain / Fertilizer food
+  // nodes to live ongoing pulls. PFOODINDEXM is the IMF Food Price
+  // Index (cereals, meats, oils, dairy, sugar) republished on FRED;
+  // monthly cadence; same shape the analyst snapshot used. Two transforms:
+  // level for the stress nodes, pc1 (Y/Y %) for the inflation node.
+  { id: "PFOODINDEXM", label: "IMF Food Price Index (level)", labelPatterns: ["global food price", "global food-price stress", "global food prices", "food price / farm-input"], unit: "index", capacity: 200, mockValue: 132 },
+  { id: "PFOODINDEXM", label: "IMF Food Price Index Y/Y %", labelPatterns: ["food price inflation"], unit: "%", capacity: 15, units: "pc1", mockValue: 4.2 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and

@@ -355,14 +355,14 @@ const AUDIT_TEAM = [
     role: "Principal Scientist · CEO",
     blurb:
       "Doctor of Engineering, Johns Hopkins. Computational mathematics, advanced analytics, quantitative finance.",
-    photo: "https://apexanalytica.co/junaid.png",
+    photo: "/team/junaid.png",
   },
   {
     name: "Dr. Georgios Korpas",
     role: "Head of Research",
     blurb:
       "PhD, Trinity College Dublin. Quantum algorithms, hybrid optimization, applied mathematics.",
-    photo: "https://apexanalytica.co/gergios.png",
+    photo: "/team/gergios.png",
   },
 ];
 

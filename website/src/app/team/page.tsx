@@ -9,7 +9,7 @@ const TEAM = [
     role: "Principal Scientist · CEO",
     color: "cyan",
     initials: "JG",
-    photo: "https://apexanalytica.co/junaid.png",
+    photo: "/team/junaid.png",
     linkedin: "https://www.linkedin.com/in/jghauri/",
     scholar: null,
     expertise:
@@ -23,7 +23,7 @@ const TEAM = [
     role: "Head of Research",
     color: "amber",
     initials: "GK",
-    photo: "https://apexanalytica.co/gergios.png",
+    photo: "/team/gergios.png",
     linkedin: "https://www.linkedin.com/in/georgios-korpas/",
     scholar: "https://scholar.google.com/citations?user=pOcS2dkAAAAJ",
     expertise:

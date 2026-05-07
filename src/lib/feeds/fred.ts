@@ -30,9 +30,12 @@ export interface FredSeriesConfig {
   /** "Elevated" threshold; ratio is shown as the qualifier in the card row.
    *  0 = no qualifier shown. */
   capacity: number;
-  /** FRED `units` URL parameter for transformations (pc1 = % change YoY).
-   *  Omitted = level. */
-  units?: "pc1" | "pch" | "lin";
+  /** FRED `units` URL parameter for transformations.
+   *    pc1 = % change Y/Y (12-month)
+   *    pch = % change period-over-period
+   *    pca = % change at compounded annual rate (Q/Q annualized)
+   *    lin = level (default if omitted) */
+  units?: "pc1" | "pch" | "pca" | "lin";
   /** Plausible mock value for dev mode. */
   mockValue: number;
 }
@@ -93,6 +96,15 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "ECIALLCIV", label: "Employment Cost Index Q/Q", labelPatterns: ["employment cost index"], unit: "%", capacity: 1.5, units: "pch", mockValue: 1.0 },
   { id: "TCU", label: "Capacity Utilization", labelPatterns: ["capacity utilization"], unit: "%", capacity: 85, mockValue: 78.5 },
   { id: "MICH", label: "UMich 1Y Inflation Expectations", labelPatterns: ["umich consumer inflation expectations"], unit: "%", capacity: 5, mockValue: 3.2 },
+  // Phase 10 — close the bare-modeled gap on the labor / growth pillar.
+  // Nodes already exist in graph-data.ts with these labels but no FRED
+  // series was registered, so they showed as static modeled instead of
+  // live. All five series are free, monthly/quarterly, and on FRED today.
+  { id: "HOUST", label: "Housing Starts (thousands, SAAR)", labelPatterns: ["housing starts"], unit: "K", capacity: 1800, mockValue: 1380 },
+  { id: "RSAFS", label: "Retail Sales M/M %", labelPatterns: ["retail sales mom", "retail sales"], unit: "%", capacity: 2, units: "pch", mockValue: 0.4 },
+  { id: "ULCNFB", label: "Unit Labor Costs Q/Q Annualized", labelPatterns: ["unit labor costs qoq annualized", "unit labor costs"], unit: "%", capacity: 5, units: "pca", mockValue: 2.8 },
+  { id: "CUSR0000SEHC", label: "CPI Owners' Equivalent Rent Y/Y", labelPatterns: ["owners' equivalent rent (oer)", "owners equivalent rent", "oer"], unit: "%", capacity: 8, units: "pc1", mockValue: 4.5 },
+  { id: "JTSHIR", label: "JOLTS Hires Rate", labelPatterns: ["hiring rate", "hires rate"], unit: "%", capacity: 5, mockValue: 3.4 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and

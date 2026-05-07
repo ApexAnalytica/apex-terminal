@@ -971,28 +971,45 @@ function CausalDAG2DInner() {
     setHoveredNodeId(null);
   }, []);
 
-  const onNodeDragStart: NodeMouseHandler = useCallback(
+  // RF fires onNodeDragStart on mousedown — even for a pure click. The
+  // earlier path called `sim.reheat(0.5)` here, which made every click
+  // run the layout sim for ~1.5s while alpha decayed from 0.5 to 0.005.
+  // Visually that read as the canvas blanking and re-rendering "with
+  // nothing selected" because the orbs drifted before settling back.
+  // Now: pin immediately (cheap), but don't reheat or start the sim
+  // loop until actual drag motion fires `onNodeDrag`. A pure click
+  // pins → unpins, no ticks, no layout disturbance.
+  const draggedRef = useRef(false);
+  const onNodeDragStart: NodeMouseHandler = useCallback((_event, rfNode) => {
+    const sim = liveSimRef.current;
+    if (!sim) return;
+    draggedRef.current = false;
+    sim.pin(rfNode.id, rfNode.position.x, rfNode.position.y);
+  }, []);
+
+  const onNodeDrag: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
       const sim = liveSimRef.current;
       if (!sim) return;
+      if (!draggedRef.current) {
+        draggedRef.current = true;
+        sim.reheat(0.5);
+        startSimLoop();
+      }
       sim.pin(rfNode.id, rfNode.position.x, rfNode.position.y);
-      sim.reheat(0.5);
-      startSimLoop();
     },
     [startSimLoop],
   );
-
-  const onNodeDrag: NodeMouseHandler = useCallback((_event, rfNode) => {
-    const sim = liveSimRef.current;
-    if (!sim) return;
-    sim.pin(rfNode.id, rfNode.position.x, rfNode.position.y);
-  }, []);
 
   const onNodeDragStop: NodeMouseHandler = useCallback((_event, rfNode) => {
     const sim = liveSimRef.current;
     if (!sim) return;
     sim.unpin(rfNode.id);
-    sim.cool();
+    // Only cool the sim if we actually heated it. A pure click never
+    // reheated, so calling cool() here would needlessly tick the
+    // simulation toward a colder state from already-cold.
+    if (draggedRef.current) sim.cool();
+    draggedRef.current = false;
   }, []);
 
   // Resolve labels for edge inspector — O(1) via nodeById Map.

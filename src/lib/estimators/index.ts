@@ -37,3 +37,6 @@ export type {
   BettiAtEpsilon,
   PersistenceBar,
 } from "./persistent-homology";
+
+export { cvarW1, tailDepthScore } from "./cvar-w1";
+export type { CvarW1Options, CvarW1Result } from "./cvar-w1";

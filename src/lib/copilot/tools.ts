@@ -10,6 +10,7 @@ import { DOMAIN_CARDS } from "@/lib/domains";
 import { buildGraphFromDomains } from "@/lib/build-domain-graph";
 import { solveInterdiction, type InterdictionCandidate } from "../interdiction-engine";
 import type { ApexState } from "@/stores/useApexStore";
+import type { CausalNode, CausalGraph } from "../types";
 
 // ─── Selection ──────────────────────────────────────────────────
 
@@ -444,5 +445,177 @@ defineTool({
     return applied.length > 0
       ? `Applied interdictions: ${applied.join(", ")}`
       : `No valid intervention indices: ${targets}`;
+  },
+});
+
+// ─── Node analysis ──────────────────────────────────────────────
+
+/**
+ * Resolve a node ref (id, shortLabel, or label) on the active
+ * graph. Returns null if no match. Shared between explain_node
+ * and compare_nodes so they treat references the same way the
+ * other tools do.
+ */
+function resolveNode(graph: CausalGraph, ref: string): CausalNode | null {
+  const target = ref.toLowerCase();
+  return (
+    graph.nodes.find(
+      (n) =>
+        n.id === ref ||
+        n.shortLabel.toLowerCase() === target ||
+        n.label.toLowerCase() === target,
+    ) ?? null
+  );
+}
+
+/** Compact analysis text for an LLM context window. */
+function nodeAnalysisText(node: CausalNode, graph: CausalGraph): string {
+  const omega = node.omegaFragility;
+  const tier =
+    omega.composite > 9
+      ? "OMEGA-CRITICAL"
+      : omega.composite >= 7
+        ? "HIGH RISK"
+        : omega.composite >= 5
+          ? "ELEVATED"
+          : "MODERATE";
+  const inEdges = graph.edges.filter((e) => e.target === node.id);
+  const outEdges = graph.edges.filter((e) => e.source === node.id);
+  const upstreamLabels = inEdges
+    .slice(0, 8)
+    .map((e) => graph.nodes.find((n) => n.id === e.source)?.shortLabel ?? e.source)
+    .join(", ");
+  const downstreamLabels = outEdges
+    .slice(0, 8)
+    .map((e) => graph.nodes.find((n) => n.id === e.target)?.shortLabel ?? e.target)
+    .join(", ");
+
+  const flags: string[] = [];
+  if (node.isConfounded) flags.push("CONFOUNDED");
+  if (node.isRestricted) flags.push("TARSKI-RESTRICTED");
+
+  return [
+    `${node.label} [${node.id}] — ${node.domain} / ${node.category} — ${tier}`,
+    `  Ω composite ${omega.composite.toFixed(1)}/10 ` +
+      `(irr ${omega.irreplaceability.toFixed(1)}, rest ${omega.restorationLatency.toFixed(1)}, ` +
+      `jur ${omega.jurisdictionalHazard.toFixed(1)}, casc ${omega.cascadeLoad.toFixed(1)}, ` +
+      `tail ${omega.tailDepth.toFixed(1)})`,
+    `  Concentration: ${node.globalConcentration} | Replacement: ${node.replacementTime}`,
+    node.physicalConstraint ? `  Physical: ${node.physicalConstraint}` : null,
+    flags.length > 0 ? `  Flags: ${flags.join(", ")}` : null,
+    `  Upstream (${inEdges.length}): ${upstreamLabels || "none"}`,
+    `  Downstream (${outEdges.length}): ${downstreamLabels || "none"}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+defineTool({
+  name: "explain_node",
+  description:
+    "Return a compact Ω-fragility breakdown + upstream/downstream summary for a single node. Useful when the user asks 'what is X?' or 'why does X matter?'.",
+  params: {
+    node: { type: "string", required: true, description: "Node id, shortLabel, or label" },
+  },
+  legacyParam: "node",
+  handler: ({ node }, ctx) => {
+    const graph = ctx.getStore().graphData;
+    const found = resolveNode(graph, node);
+    if (!found) return `Node not found: ${node}`;
+    return nodeAnalysisText(found, graph);
+  },
+});
+
+defineTool({
+  name: "compare_nodes",
+  description:
+    "Side-by-side Ω-fragility comparison of two or more nodes. Useful when the user asks 'how does X compare to Y?' or 'which is more critical?'.",
+  guidance:
+    "Pass at least 2 nodes (ids=A|B or ids=A|B|C). The handler emits each node's compact analysis followed by a delta on Ω composite — that's enough for the LLM to reason about which is more fragile and on which dimension.",
+  params: {
+    ids: {
+      type: "string[]",
+      required: true,
+      description: "Two or more node ids — separated with `|` (ids=USA_GRID|EU_GRID)",
+    },
+  },
+  legacyParam: "ids",
+  handler: ({ ids }, ctx) => {
+    if (ids.length < 2) {
+      return `compare_nodes needs at least two ids; got ${ids.length}.`;
+    }
+    const graph = ctx.getStore().graphData;
+    const resolved = ids.map((ref) => ({ ref, node: resolveNode(graph, ref) }));
+    const missing = resolved.filter((r) => r.node === null).map((r) => r.ref);
+    if (missing.length > 0) return `Nodes not found: ${missing.join(", ")}`;
+
+    const blocks = resolved
+      .map((r) => nodeAnalysisText(r.node as CausalNode, graph))
+      .join("\n\n");
+
+    // Highlight the delta on Ω composite — the most-asked dimension.
+    const sortedByOmega = resolved
+      .map((r) => r.node as CausalNode)
+      .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite);
+    const winner = sortedByOmega[0];
+    const loser = sortedByOmega[sortedByOmega.length - 1];
+    const delta = winner.omegaFragility.composite - loser.omegaFragility.composite;
+
+    return (
+      blocks +
+      `\n\nDelta: ${winner.shortLabel} is ${delta.toFixed(1)} Ω points more fragile than ${loser.shortLabel}.`
+    );
+  },
+});
+
+// ─── Tarski validation ─────────────────────────────────────────
+
+defineTool({
+  name: "run_tarski",
+  description:
+    "Re-run Tarski axiom validation against the current graph. Returns inconsistent-edge / restricted-node counts so the LLM can talk about the result.",
+  params: {},
+  handler: (_params, ctx) => {
+    const store = ctx.getStore();
+    store.runTarskiWithAxioms();
+    // After the synchronous re-run the report is back on the store.
+    const report = ctx.getStore().tarskiReport;
+    if (!report) return "Tarski validation ran but produced no report.";
+    return (
+      `Tarski validation complete: ${report.inconsistentEdgeIds.size} inconsistent edge(s), ` +
+      `${report.restrictedNodeIds.size} restricted node(s), ${report.proofTraces.length} proof trace(s).`
+    );
+  },
+});
+
+// ─── Visualization controls ─────────────────────────────────────
+
+defineTool({
+  name: "set_node_size_metric",
+  description:
+    "Change what the 3D orb sizes encode. omega = Ω-fragility composite (default). eigenvector / betweenness = network-centrality metrics from layout.",
+  params: {
+    metric: {
+      type: "enum",
+      values: ["omega", "eigenvector", "betweenness"] as const,
+      required: true,
+    },
+  },
+  legacyParam: "metric",
+  handler: ({ metric }, ctx) => {
+    ctx.getStore().setNodeSizeMetric(metric);
+    return `Node size metric set to: ${metric}`;
+  },
+});
+
+// ─── Ablation reset (symmetric with reset_severed) ──────────────
+
+defineTool({
+  name: "reset_ablation",
+  description: "Clear all ablated nodes and edges. Symmetric with reset_severed.",
+  params: {},
+  handler: (_params, ctx) => {
+    ctx.getStore().resetAblation();
+    return "Reset all ablations";
   },
 });

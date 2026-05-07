@@ -3244,6 +3244,15 @@ const EDGES: CausalEdge[] = [
   { id: "ais_replay_buffer__ais_gat", source: "ais_replay_buffer", target: "ais_gat", weight: 0.65, lag: 1, type: "temporal", confidence: 0.8, isInconsistent: false, physicalMechanism: "Replay buffer feeds rehearsal samples back into the next-window training batch. Closes the topology-aware-replay loop; halves catastrophic forgetting in Ch 8 §6 experiments." },
   { id: "ais_gat__ais_eval_harness", source: "ais_gat", target: "ais_eval_harness", weight: 0.85, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Evaluation harness reads GAT predictions per window and computes FR, BES, HES, and F1 trajectories." },
   { id: "ais_eval_harness__ais_replay_buffer", source: "ais_eval_harness", target: "ais_replay_buffer", weight: 0.6, lag: 1, type: "temporal", confidence: 0.75, isInconsistent: false, physicalMechanism: "FR / BES outputs inform the next-window replay-buffer sampling weights — closing the structure-aware feedback loop between evaluation and training." },
+
+  // ── AI Safety / IDS ↔ Infrastructure / Financial cross-domain links (3) ──
+  // The IDS attack classes aren't only academic — they're the realised
+  // threat vectors that drive systemic-risk events in the geopolitical
+  // graph. DDoS targets telecom hubs → cascading latency; MITM targets
+  // cross-border banking → financial-message integrity loss.
+  { id: "ais_attack_ddos__ic_telecom_egypt", source: "ais_attack_ddos", target: "ic_telecom_egypt", weight: 0.55, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "DDoS attacks target telecom-aggregation hubs (Telecom Egypt's 10 landing stations are a high-value target by traffic concentration). Successful saturation cascades to all transit cables landing there." },
+  { id: "ais_attack_ddos__ic_latency_risk", source: "ais_attack_ddos", target: "ic_latency_risk", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Volumetric DDoS against transit infrastructure produces measurable latency spikes — the same risk surface measured by ic_latency_risk for cable-failure scenarios." },
+  { id: "ais_attack_mitm__fc_cross_border_banking", source: "ais_attack_mitm", target: "fc_cross_border_banking", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "MITM attacks targeting interbank message integrity (SWIFT, downgrade, downgrade-after-handshake) erode the trust assumptions cross-border settlement depends on. Manifests as latency + reconciliation drift in the financial-contagion graph." },
 ];
 
 const METADATA: GraphMetadata = {

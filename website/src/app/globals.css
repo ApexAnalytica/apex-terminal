@@ -1,0 +1,349 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050508;
+  --foreground: #c8ccd0;
+  --accent-cyan: #00e5ff;
+  --accent-red: #ff1744;
+  --accent-amber: #ffab00;
+  --accent-green: #00e676;
+  --accent-purple: #7c4dff;
+  --accent-orange: #ff6d00;
+  --accent-blue: #448aff;
+  --accent-magenta: #e040fb;
+  --surface: #0a0b10;
+  --surface-elevated: #10111a;
+  --border: #1a1c2e;
+  --border-bright: #2a2d45;
+  /* Body-copy gray: bumped from #5a5e72 (about WCAG AA edge against
+     #050508) to #8a8e9e for a clear improvement in body-text
+     readability while still reading as a "muted" tone next to the
+     full-strength foreground (#c8ccd0). */
+  --text-muted: #8a8e9e;
+
+  /* Category colors (matched to platform) */
+  --cat-manufacturing: #00e5ff;
+  --cat-infrastructure: #7c4dff;
+  --cat-economic: #ffab00;
+  --cat-finance: #ff6d00;
+  --cat-energy: #00e676;
+  --cat-geopolitical: #ff1744;
+  --cat-science: #e040fb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-accent-red: var(--accent-red);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-green: var(--accent-green);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-magenta: var(--accent-magenta);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border: var(--border);
+  --color-border-bright: var(--border-bright);
+  --color-text-muted: var(--text-muted);
+  --font-sans: var(--font-michroma);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-jetbrains-mono), 'Courier New', monospace;
+}
+
+/* Body is transparent so the fixed SiteBackground (z-index -10)
+   sits visibly behind every page. Base color comes from html. */
+body {
+  background: transparent;
+}
+
+/* Expose design-system font tokens as globally cascadable CSS vars so
+   they resolve inside SVG presentation attributes (e.g. <text font-family>).
+   Tailwind v4's `@theme inline` does NOT emit these at :root. */
+body {
+  --font-mono: var(--font-jetbrains-mono);
+  --font-sans: var(--font-michroma);
+}
+
+/* Scrollbar styling matches platform */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-cyan); }
+
+/* Glow effects */
+.glow-cyan { box-shadow: 0 0 8px rgba(0, 229, 255, 0.3), 0 0 24px rgba(0, 229, 255, 0.1); }
+.glow-red { box-shadow: 0 0 8px rgba(255, 23, 68, 0.3), 0 0 24px rgba(255, 23, 68, 0.1); }
+.glow-amber { box-shadow: 0 0 8px rgba(255, 171, 0, 0.3), 0 0 24px rgba(255, 171, 0, 0.1); }
+.glow-purple { box-shadow: 0 0 8px rgba(124, 77, 255, 0.3), 0 0 24px rgba(124, 77, 255, 0.1); }
+
+.text-glow-cyan { text-shadow: 0 0 8px rgba(0, 229, 255, 0.5); }
+.text-glow-amber { text-shadow: 0 0 8px rgba(255, 171, 0, 0.5); }
+
+/* Subtle scanline overlay for hero/feature surfaces */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.04) 2px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Subtle grid background for hero */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: -1px -1px;
+}
+
+/* Radial fade mask helper */
+.mask-fade-edges {
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+/* Blinking cursor */
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+.cursor-blink { animation: blink 1.1s step-end infinite; }
+
+/* Pulse ring */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.pulse-ring { animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+
+/* Edge stream animation (used decoratively in hero) */
+@keyframes edge-flow {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+.edge-animated { animation: edge-flow 1.4s linear infinite; }
+
+/* Hero animated graph background */
+@keyframes hero-edge-flow {
+  0%   { stroke-dashoffset: 200; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes hero-node-pulse {
+  0%   { transform: scale(1);   opacity: 0.5; }
+  50%  { transform: scale(2.6); opacity: 0;   }
+  100% { transform: scale(1);   opacity: 0;   }
+}
+
+/* Slow drift for floating particles */
+@keyframes drift {
+  0%   { transform: translate(0, 0); opacity: 0.3; }
+  50%  { opacity: 0.7; }
+  100% { transform: translate(8px, -12px); opacity: 0.3; }
+}
+.drift { animation: drift 6s ease-in-out infinite; }
+
+/* ───────── Intro overlay (first-load brand reveal) ─────────
+   Approach: render the brand at INTRO dimensions natively (header
+   size × --intro-scale). The mantis Image is served at 2x intro
+   size (440×540) so it stays crisp on HiDPI displays at intro
+   scale. The animation scales the stage DOWN to header size at the
+   end and translates to the SiteHeader brand anchor — only ever
+   downsampling, never upscaling, so the mantis stays sharp through
+   the whole sequence.
+
+   When the overlay fades, the cloned brand is pixel-coincident with
+   the real header brand (same anchor, same final dimensions), so
+   there's no jump cut.
+
+   Tunable: --intro-scale controls how big the mantis appears
+   center-screen. At scale 5 the 44px header mantis displays at
+   220px during the intro.
+
+   Sequence (~2.8s):
+     0–600ms     mantis fades in + pops to intro size
+     600–1700ms  wordmark types out beside it (per-char delays)
+     1700–2200ms hold center
+     2200–2800ms scale down + translate to anchor; overlay fades */
+
+:root {
+  --intro-scale: 5;
+  /* Header brand layout, measured from the rendered DOM:
+       mantis(44) + gap(10) + wordmark(132 at 12px·0.3em) = 186px
+       height = 54px
+     Halves used to center the visual on the viewport instead of
+     its top-left landing on the viewport center. */
+  --intro-half-w: 93px;
+  --intro-half-h: 27px;
+  /* Where the SiteHeader brand sits inside the header (px-4 padding,
+     vertically centered in a 68px header with 54px mantis). */
+  --intro-anchor-x: 16px;
+  --intro-anchor-y: 7px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    /* SiteHeader: mx-auto max-w-7xl (1280px) + md:px-6 (24px). On
+       viewports < 1280px the container is full-width so the brand is
+       at 24px. On wider viewports the container is centered, so the
+       brand sits at (50vw - 640px) + 24px from the viewport edge. */
+    --intro-anchor-x: calc(max(0px, (100vw - 1280px) / 2) + 24px);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    /* On phones, scale 5 (mantis at 220px) overflows the viewport.
+       Use a smaller scale so the wordmark fits. */
+    --intro-scale: 3.2;
+  }
+}
+
+.apex-intro-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--background);
+  pointer-events: none;
+}
+
+.apex-intro-prep {
+  /* Render but invisible — guards against hydration flash. */
+  opacity: 0;
+}
+
+.apex-intro-running {
+  animation: apex-intro-overlay 2800ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes apex-intro-overlay {
+  0%, 80% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* Anchor: positioned at the EXACT header brand location. The stage
+   inside it, at scale 1, IS the header brand. */
+.apex-intro-anchor {
+  position: absolute;
+  top: var(--intro-anchor-y);
+  left: var(--intro-anchor-x);
+}
+
+.apex-intro-stage {
+  display: inline-flex;
+  align-items: center;
+  /* Sized at INTRO dimensions natively (header size × --intro-scale).
+     This way the image is rendered crisp at intro size, and the
+     animation only ever scales DOWN (to header size) — which is a
+     high-quality downsample, never an upscale. */
+  gap: calc(10px * var(--intro-scale));
+  transform-origin: 0 0;
+  animation: apex-intro-stage 2800ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+/* Stage flight: starts at scale 1 (= intro size) translated to viewport
+   center, ends at scale 1/--intro-scale (= header size) at anchor. */
+@keyframes apex-intro-stage {
+  0%, 78% {
+    transform:
+      translate(
+        calc(50vw - var(--intro-anchor-x) - (var(--intro-half-w) * var(--intro-scale))),
+        calc(50vh - var(--intro-anchor-y) - (var(--intro-half-h) * var(--intro-scale)))
+      )
+      scale(1);
+  }
+  100% {
+    transform: translate(0, 0) scale(calc(1 / var(--intro-scale)));
+  }
+}
+
+.apex-intro-mantis-frame {
+  display: inline-flex;
+  flex-shrink: 0;
+  /* Native dimensions = intro size; CSS scales DOWN to header size
+     at end of animation. */
+  width: calc(44px * var(--intro-scale));
+  height: calc(54px * var(--intro-scale));
+  opacity: 0;
+  animation: apex-intro-mantis 600ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+.apex-intro-mantis-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@keyframes apex-intro-mantis {
+  0%   { opacity: 0; transform: scale(0.7) translateY(4px); }
+  60%  { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.apex-intro-wordmark {
+  font-family: var(--font-michroma);
+  /* Native font-size = intro display size; CSS scales DOWN to 12px
+     header size at end of animation via the stage's transform: scale. */
+  font-size: calc(12px * var(--intro-scale));
+  letter-spacing: 0.3em;  /* matches tracking-[0.3em] */
+  white-space: nowrap;
+  color: var(--foreground);
+}
+
+.apex-intro-char {
+  display: inline-block;
+  opacity: 0;
+  animation-fill-mode: forwards;
+  animation-name: apex-intro-char-fade;
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes apex-intro-char-fade {
+  0%   { opacity: 0; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* The two prominent A's (start of APEX, start of ANALYTICA) drop in
+   with a scaleY-from-top animation that evokes mantis arms folding
+   down. Timing matches the typewriter cadence. */
+.apex-intro-char.apex-intro-a {
+  animation-name: apex-intro-a-drop;
+  animation-duration: 480ms;
+  animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
+  transform-origin: 50% 0;
+}
+
+@keyframes apex-intro-a-drop {
+  0%   { opacity: 0; transform: scaleY(0) translateY(-3px); }
+  60%  { opacity: 1; transform: scaleY(1.1); }
+  100% { opacity: 1; transform: scaleY(1); }
+}
+
+/* Reduced motion: skip the whole sequence and just hide the overlay. */
+@media (prefers-reduced-motion: reduce) {
+  .apex-intro-running,
+  .apex-intro-stage,
+  .apex-intro-mantis-frame,
+  .apex-intro-char {
+    animation: none !important;
+  }
+  .apex-intro-running {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

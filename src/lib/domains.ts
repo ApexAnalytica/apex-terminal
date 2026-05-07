@@ -214,7 +214,12 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         color: "#e040fb",
         colorVar: "var(--accent-magenta)",
         description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
-        hasData: false,
+        // 6 placeholder nodes shipped in graph-data.ts with
+        // dataStatus: "blank-needs-data" — UI shows the "DATA NEEDED"
+        // badge per node. Activation pattern (drop physics data + wire
+        // NODE_TIMESERIES_MAP entries) is documented inline in
+        // graph-data.ts above the fs_* node block.
+        hasData: true,
         dataset: "main",
       },
     ],

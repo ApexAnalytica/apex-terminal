@@ -24,6 +24,10 @@ export const DOMAIN_MAP: Record<string, string[]> = {
   "macro-inflation": ["Macro Impact: Inflation & Policy"],
   // Athena ISR domains
   "defense-isr": ["Drone Swarms", "SATCOM", "ISR Fusion", "Chip Embargo", "Secure Compute", "Kill Chain"],
+  // Frontier-science placeholder scaffold (PR #229). Six fs_* nodes
+  // tagged "Frontier Science" live in graph-data.ts with
+  // dataStatus: "blank-needs-data" until the teammate physics drop.
+  "frontier-science": ["Frontier Science"],
   // Life sciences
   "t1d-beta-cell": [
     "T1D Autoimmune",

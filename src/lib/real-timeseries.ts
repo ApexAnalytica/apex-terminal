@@ -165,6 +165,10 @@ function realDataToHistory(
     return {
       timestamp: dp.date.getTime(),
       omegaComposite: omega,
+      // Stash the raw value so TimeSeriesOverlay can plot the actual
+      // metric (e.g. food inflation %) instead of duplicating the
+      // per-card sparkline's omega-normalized curve.
+      rawValue: dp.value,
       omegaProfile: {
         composite: omega,
         irreplaceability: Math.round(baseProfile.irreplaceability * profileScale * 100) / 100,

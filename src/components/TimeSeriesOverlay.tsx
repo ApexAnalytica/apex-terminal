@@ -89,6 +89,21 @@ function getLineColor(value: number): string {
   return "#00e676";
 }
 
+/**
+ * Format a raw underlying metric for the tooltip.
+ *  - Big numbers (≥ 1000) get thousands separators, no decimals.
+ *  - Small magnitudes (< 1) keep 3 sig figs.
+ *  - Everything else: 2 decimal places, which works for percentages,
+ *    indices, USD/bbl, USD/T, etc.
+ */
+function formatRawValue(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (abs >= 1) return value.toFixed(2);
+  if (abs >= 0.01) return value.toFixed(3);
+  return value.toExponential(2);
+}
+
 export default function TimeSeriesOverlay() {
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
@@ -163,17 +178,22 @@ export default function TimeSeriesOverlay() {
         const dataDesc = getNodeDataDescription(nodeId);
 
         // Live-data path: any liveData entry → plot live values.
+        // For the live path the value IS the raw underlying metric
+        // (FRED CPI %, oil $/bbl, etc.), so we mirror it into rawValue
+        // for the tooltip — same treatment as the temporal-data path.
         const liveSignal = node.liveData?.[0];
         if (liveSignal) {
           const liveHistory: NodeTemporalState[] = [
             ...(liveSignal.history ?? []).map((h) => ({
               timestamp: new Date(h.observedAt).getTime(),
               omegaComposite: h.value,
+              rawValue: h.value,
               omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
             })),
             {
               timestamp: new Date(liveSignal.observedAt).getTime(),
               omegaComposite: liveSignal.value,
+              rawValue: liveSignal.value,
               omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
             },
           ];
@@ -262,6 +282,31 @@ export default function TimeSeriesOverlay() {
     return scales;
   }, [curves]);
 
+  // Per-curve RAW range — used by the legend chip so it reads in the
+  // actual unit (e.g. "0.50–11.20 %" for food inflation) instead of
+  // pasting the omega-scale min/max next to the raw unit. Falls back
+  // to curveScales when a curve has no rawValue (synthetic-omega
+  // nodes, edges with derived omega histories).
+  const curveRawScales = useMemo(() => {
+    const scales = new Map<string, { min: number; max: number }>();
+    for (const curve of curves) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const h of curve.history) {
+        if (h.rawValue === undefined) continue;
+        if (h.rawValue < lo) lo = h.rawValue;
+        if (h.rawValue > hi) hi = h.rawValue;
+      }
+      if (!Number.isFinite(lo)) continue; // no rawValue → omit; legend will fall through
+      if (lo === hi) {
+        hi = lo + Math.max(Math.abs(lo) * 0.01, 1e-6);
+        lo = lo - Math.max(Math.abs(lo) * 0.01, 1e-6);
+      }
+      scales.set(curve.nodeId, { min: lo, max: hi });
+    }
+    return scales;
+  }, [curves]);
+
   // Compute dynamic y-axis range from actual data with padding.
   // (When normalized, the chart axis is 0..1; gridLines reflect that.)
   // Kept for the rare single-curve case where global scale is meaningful.
@@ -337,19 +382,28 @@ export default function TimeSeriesOverlay() {
       xStart +
       ((tooltipAnchor.x - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
         xRange;
-    const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
+    const values: {
+      nodeId: string;
+      label: string;
+      color: string;
+      omega: number;
+      rawValue?: number;
+      unit?: string | null;
+    }[] = [];
     for (const curve of curves) {
       const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
       let omega: number;
+      let rawValue: number | undefined;
       if (isSparse) {
         // Hold-forward: return the last published value at or before ts.
         // If ts is before the first point, return the first point's value.
-        let held = curve.history[0].omegaComposite;
+        let held = curve.history[0];
         for (const h of curve.history) {
-          if (h.timestamp <= ts) held = h.omegaComposite;
+          if (h.timestamp <= ts) held = h;
           else break;
         }
-        omega = held;
+        omega = held.omegaComposite;
+        rawValue = held.rawValue;
       } else {
         // Dense series: find closest timestamp (original behaviour)
         let closest = curve.history[0];
@@ -359,12 +413,15 @@ export default function TimeSeriesOverlay() {
           }
         }
         omega = closest.omegaComposite;
+        rawValue = closest.rawValue;
       }
       values.push({
         nodeId: curve.nodeId,
         label: curve.label,
         color: curve.color,
         omega,
+        rawValue,
+        unit: curve.sourceUnit,
       });
     }
     return { ts, values };
@@ -662,23 +719,35 @@ export default function TimeSeriesOverlay() {
                         year: "numeric",
                       })}
                     </div>
-                    {tooltipValues.values.map((v) => (
-                      <div key={v.nodeId} className="flex items-center gap-2 text-[8px] font-mono">
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: v.color }}
-                        />
-                        <span className="text-foreground truncate max-w-[120px]">
-                          {v.label}
-                        </span>
-                        <span
-                          className="font-bold ml-auto"
-                          style={{ color: getLineColor(v.omega) }}
-                        >
-                          {v.omega.toFixed(1)}
-                        </span>
-                      </div>
-                    ))}
+                    {tooltipValues.values.map((v) => {
+                      // Prefer raw underlying metric (e.g. 6.76 % food
+                      // inflation) over the omega-normalized value when
+                      // the temporal data carries it. Without this the
+                      // tooltip just repeats the per-card sparkline's
+                      // 0-10 omega scale, leaving the user without any
+                      // sense of the actual quantity being tracked.
+                      const showRaw = v.rawValue !== undefined;
+                      const display = showRaw
+                        ? `${formatRawValue(v.rawValue!)}${v.unit ? ` ${v.unit}` : ""}`
+                        : v.omega.toFixed(1);
+                      return (
+                        <div key={v.nodeId} className="flex items-center gap-2 text-[8px] font-mono">
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: v.color }}
+                          />
+                          <span className="text-foreground truncate max-w-[120px]">
+                            {v.label}
+                          </span>
+                          <span
+                            className="font-bold ml-auto"
+                            style={{ color: getLineColor(v.omega) }}
+                          >
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 );
@@ -716,16 +785,18 @@ export default function TimeSeriesOverlay() {
                   </span>
                   {/* Per-curve value-range chip — shows the actual unit-bearing
                       range so the normalized 0-100% chart isn't ambiguous about
-                      what shape corresponds to what magnitude. */}
+                      what shape corresponds to what magnitude. Prefers the raw
+                      range when the curve carries underlying values (food
+                      inflation %, oil $/bbl); falls back to the omega range. */}
                   {(() => {
-                    const scale = curveScales.get(curve.nodeId);
+                    const rawScale = curveRawScales.get(curve.nodeId);
+                    const scale = rawScale ?? curveScales.get(curve.nodeId);
                     if (!scale) return null;
-                    const u = curve.sourceUnit ?? "";
-                    const fmt = (n: number) =>
-                      Number.isInteger(n) ? n.toString() : n.toFixed(2);
+                    const u = rawScale ? (curve.sourceUnit ?? "") : "";
+                    const unitSep = u ? " " : "";
                     return (
                       <span className="text-[7px] font-mono text-text-muted/70 tabular-nums shrink-0">
-                        {fmt(scale.min)}–{fmt(scale.max)}{u}
+                        {formatRawValue(scale.min)}–{formatRawValue(scale.max)}{unitSep}{u}
                       </span>
                     );
                   })()}

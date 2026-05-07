@@ -67,6 +67,11 @@ const Dag2DContext = createContext<Dag2DContextValue>({
  * its own id, the hover/selection state, the multi-selection set, and
  * the adjacency Map. Used by both `CausalNode2D` and `EmphasizedEdge`
  * (via source/target lookups) so the two stay in lockstep.
+ *
+ * Both hover and click drive a "focus + neighbours" spotlight here so the
+ * effect is consistent across the four canvas surfaces (2D / 3D / Map /
+ * TOPO). The DIFFERENCE between hover and click is the dim *strength* —
+ * see the consumers below for the per-source opacity choice.
  */
 function computeNodeEmphasis(
   id: string,
@@ -149,13 +154,21 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
     : "";
   const boxShadow = [selectionRing, shockShadow, baseShadow].filter(Boolean).join(", ") || "none";
 
+  // Hover-driven dim is dramatic (0.18 → strong spotlight); click-driven
+  // dim is gentle (0.5 → non-neighbour orbs still legible) so a pinned
+  // selection doesn't read as a blacked-out canvas. The pinned node
+  // itself is "focus" via the emphasis path above, so it stays vivid
+  // either way.
+  const isHoverDriven = hoveredNodeId !== null;
+  const dimOpacity = isHoverDriven ? 0.18 : 0.5;
+
   return (
     <motion.div
       className="relative"
       style={{
         width: diameter,
         height: diameter,
-        opacity: isDim ? 0.18 : 1,
+        opacity: isDim ? dimOpacity : 1,
         transition: "opacity 180ms ease-out",
       }}
       animate={isRinged ? { scale: 1.1 } : { scale: 1 }}
@@ -424,9 +437,13 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   if (!edgePath) return null;
 
   // Emphasis: an edge is "in scope" if either endpoint is the current
-  // emphasis target (hover or single-select). When something IS in scope
-  // and this edge isn't, drop opacity to 0.1 to match the dimmed nodes.
+  // emphasis target (hover or single-select). The dim STRENGTH below
+  // differs based on whether hover or click is driving — hover stays
+  // dramatic (matches the user's "kinda cool" framing) while click
+  // softens to keep non-neighbour edges legible (earlier 0.1 click-dim
+  // read as "the canvas went black").
   const emphasisTarget = hoveredNodeId ?? selectedNode ?? null;
+  const isHoverDriven = hoveredNodeId !== null;
   const inScope =
     !emphasisTarget || source === emphasisTarget || target === emphasisTarget;
 
@@ -442,10 +459,16 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   const isThisSelected = selectedEdgeId === id;
   const otherEdgeSelected = !!selectedEdgeId && !isThisSelected;
 
+  // Hover-driven dim is dramatic (0.1 → strong spotlight); click-driven
+  // dim is gentle (0.35 → non-neighbour edges still legible). Same idea
+  // for the multi-select "isolation" dim — slightly softer when no hover
+  // is active so the persistent state feels like context, not erasure.
+  const dimOutOfScope = isHoverDriven ? 0.1 : 0.35;
+  const dimMultiOutOfScope = isHoverDriven ? 0.08 : 0.25;
   let opacity = d.baseOpacity;
   if (otherEdgeSelected) opacity = Math.min(opacity, 0.15);
-  if (!inScope) opacity = Math.min(opacity, 0.1);
-  if (!multiInScope) opacity = Math.min(opacity, 0.08);
+  if (!inScope) opacity = Math.min(opacity, dimOutOfScope);
+  if (!multiInScope) opacity = Math.min(opacity, dimMultiOutOfScope);
   if (isThisSelected) opacity = 1;
   if (d.propagationSignal > 0) {
     opacity = Math.min(1, d.baseOpacity + d.propagationSignal * 0.3);

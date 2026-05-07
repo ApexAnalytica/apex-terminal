@@ -573,6 +573,35 @@ The cryptic three-letter labels surfaced no meaning, and three other visual enco
 - Verify on production: hover a 3D orb → only the small label appears. Click an orb → the full detail card appears (and stays until you click elsewhere or hit ESC).
 - Backlog: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
+### 2026-05-07 — Shipped: 2D click-dim softened, TOPO neighbour pillars, in-scene Ω legend, collapsible domain panel
+
+**PR:** TBD (about to open).
+
+**Trigger.** Four-item feedback batch from the user, in order:
+1. *"If you click on it, the screen all the notes disappear, so it kinda goes black. That needs to fixed."* — 2D click was producing a permanent dim (0.18 node, 0.10 edge) that read as a blacked-out canvas.
+2. *"Anytime you select the node … it should be persistent across all ball mapping options. … The same thing in topology as well."* — node + neighbours highlight existed in 2D and 3D, but TOPO only marked the selected node itself.
+3. *"It could be nice if that gradient identifier was actually hung up above the or around the mountains and so you could easily use it as a comparison element. Rather than … on the side of the screen."* — TOPO Ω legend was a DOM strip pinned to the right edge with no relationship to actual peak heights.
+4. *"The bottom-left domain selector … takes too much room. I think it should be a collapsible menu."*
+
+**What shipped.**
+
+- **Click-dim softened, hover-dim untouched.** In `CausalDAG2D` (the same `computeNodeEmphasis` + `EmphasizedEdge` path) the dim *strength* now branches on whether `hoveredNodeId` is set:
+  - Hover-driven (transient): nodes 0.18, edges 0.10 / multi 0.08 — full spotlight, what the user said is "kinda cool".
+  - Click-driven (persistent): nodes 0.50, edges 0.35 / multi 0.25 — non-neighbour orbs and edges still legible, no "black canvas" feel.
+  The clicked node itself is still "focus" via the existing emphasis path, so it stays vivid.
+- **TOPO neighbour pillars.** `SelectionMarkers` now also receives `edges` and renders a second "neighbour" tier: shorter, thinner, dimmer cyan pillars at every node adjacent to a primary selection. Same spotlight semantics as 2D and 3D — clicking a node in any view now lights up the same neighbourhood across all three.
+- **In-scene Ω elevation legend.** `ElevationLegend` (right-edge DOM strip) replaced by `InSceneElevationLegend` rendered inside the `<Canvas>` at the SE corner of the field. The column is a 1×128 `CanvasTexture` standing 140 world units tall — the same `heightScale` the surface uses — so the user can compare a peak's height directly to the legend's Ω ticks. Tick labels (`Ω 0`, two intermediates, `Ω peak`) are placed on the gamma-shaped curve (`pow(t, heightGamma=1.6) * 140`) so they line up with what the eye reads off a mountain at the same height.
+- **Collapsible bottom-left DOMAINS panel.** `DAGOverlay` got a `domainPanelOpen` state (default closed). Header is always visible with a chevron toggle and a count summary; the body (per-domain rows with click-to-highlight) only mounts when expanded.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — node + edge dim splits on `isHoverDriven`.
+- `src/components/CausalDAGRelief.tsx` — neighbour-pillar tier in `SelectionMarkers`, new `InSceneElevationLegend`, removed DOM-side `ElevationLegend`.
+- `src/components/dag3d/DAGOverlay.tsx` — chevron toggle on the DOMAINS panel.
+
+**Out of scope (flagged to data/engines).** "Nodes from unselected domains still appear" (likely a `selectedDomains` filter bug) and "domain grouping looks apples-to-oranges" (sovereign risk vs Saudi/Iran co-energy in the same group) — both belong with the engines team's domain-data layer, not with rendering.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 778/778 pass.
+
 ---
 
 ## How a fresh session resumes

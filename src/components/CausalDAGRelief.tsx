@@ -395,68 +395,10 @@ function DomainLegend({ field }: { field: FusedReliefField }) {
   );
 }
 
-/**
- * Vertical Ω-intensity legend on the right edge — answers "what does each
- * iso-contour band represent?". Maps the same elevationColor() ramp the
- * surface uses to a visible scale, with the maximum-composite contributor
- * shown as the "PEAK Ω" reference. The mapping isn't strictly linear
- * (kernel sums + heightGamma both bend it) but it's the right qualitative
- * read: cooler colour = quieter region, hotter = more critical cluster.
- */
-function ElevationLegend({ peakOmega }: { peakOmega: number }) {
-  // Ramp built from the JS elevationColor() at 21 stops — gives a smooth
-  // CSS gradient that matches what the shader paints.
-  const stops: string[] = [];
-  for (let i = 0; i <= 20; i++) {
-    const t = i / 20;
-    const [r, g, b] = elevationColorJS(t);
-    stops.push(
-      `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}) ${i * 5}%`,
-    );
-  }
-  // 14 ticks matches the shader's BANDS uniform (default 14) so the
-  // strip's tick density mirrors the rings on the surface.
-  const ticks = 14;
-  return (
-    <div className="absolute top-1/2 right-4 -translate-y-1/2 z-10 flex items-stretch gap-2 pointer-events-none">
-      <div className="flex flex-col justify-between text-[8px] font-mono text-text-muted py-0.5">
-        <span style={{ color: "#ff5566" }}>Ω {peakOmega.toFixed(1)}</span>
-        <span>HIGH</span>
-        <span>MID</span>
-        <span>LOW</span>
-        <span>Ω 0</span>
-      </div>
-      <div className="relative w-2 h-44 rounded overflow-hidden border border-border">
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(to top, ${stops.join(", ")})`,
-          }}
-        />
-        {/* Tick marks aligned with shader bands — the user can read
-            "this iso-ring on the surface = roughly this elevation". */}
-        {Array.from({ length: ticks - 1 }).map((_, i) => {
-          const top = ((i + 1) / ticks) * 100;
-          return (
-            <div
-              key={i}
-              className="absolute left-0 right-0 h-px"
-              style={{ top: `${top}%`, backgroundColor: "rgba(0,0,0,0.45)" }}
-            />
-          );
-        })}
-      </div>
-      <div className="flex items-end pb-0 pl-1">
-        <div
-          className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted"
-          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-        >
-          Ω INTENSITY
-        </div>
-      </div>
-    </div>
-  );
-}
+/* The previous DOM-side `ElevationLegend` (right-edge vertical strip)
+ * was replaced by `InSceneElevationLegend` below — see its docstring for
+ * why the in-canvas placement makes the gradient directly comparable to
+ * the actual mountain heights instead of just being a screen-space chip. */
 
 /** JS-side mirror of the shader's elevationColor — keep in lockstep with the
  *  ramp baked into TOPO_FRAGMENT_SHADER and graph-relief-field's
@@ -477,38 +419,203 @@ function elevationColorJS(t: number): [number, number, number] {
   return [1.0, lerp(0.67, 0.09, k), lerp(0.0, 0.27, k)];
 }
 
+/**
+ * In-scene elevation legend. Stands vertically inside the canvas at the
+ * SE edge of the field so its physical height (= 0..heightScale, the
+ * exact same world-space units the surface lives in) lets the user
+ * eyeball any mountain peak's Ω by tracing horizontally to the column.
+ *
+ * Earlier this was a DOM strip pinned to the right edge of the screen;
+ * the user pointed out it was disconnected from the math because the
+ * pixel positions had no relationship to the actual peak heights.
+ *
+ * Texture is a 1×128 vertical CanvasTexture sampling elevationColorJS
+ * at every row — same ramp the fragment shader paints onto the surface.
+ */
+function InSceneElevationLegend({
+  field,
+  peakOmega,
+}: {
+  field: ReliefField;
+  peakOmega: number;
+}) {
+  const HEIGHT = 140; // matches DEFAULT_OPTIONS.heightScale in graph-relief-field
+  const HEIGHT_GAMMA = 1.6; // matches heightGamma — keep in sync
+
+  // 1×N gradient texture. Memoised on peakOmega? No — the ramp is constant
+  // (it's purely a function of normalised t), so build once.
+  const texture = useMemo(() => {
+    const N = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = N;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    for (let i = 0; i < N; i++) {
+      const t = (N - 1 - i) / (N - 1); // bottom = 0, top = 1
+      const [r, g, b] = elevationColorJS(t);
+      ctx.fillStyle = `rgb(${(r * 255) | 0}, ${(g * 255) | 0}, ${(b * 255) | 0})`;
+      ctx.fillRect(0, i, 1, 1);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  // Park the column at the SE corner of the field, pulled out far enough
+  // that it doesn't clip into the surface mesh edge. Y rests on the
+  // ground plane (y=0) so its base aligns with mountain bases.
+  const cornerX = field.width / 2 + 30;
+  const cornerZ = field.height / 2 + 30;
+
+  // Convert tick Ω values back to the world height the surface would
+  // assign them. Peak label sits at top of column (Ω = peakOmega), Ω 0
+  // at base. Two intermediate ticks (1/3, 2/3) match the surface's
+  // gamma-shaped elevation curve so they line up with what the eye reads
+  // off a mountain at the same height.
+  const ticks = [
+    { omega: 0, y: 0, label: "0" },
+    {
+      omega: peakOmega / 3,
+      y: Math.pow(1 / 3, HEIGHT_GAMMA) * HEIGHT,
+      label: (peakOmega / 3).toFixed(1),
+    },
+    {
+      omega: (2 * peakOmega) / 3,
+      y: Math.pow(2 / 3, HEIGHT_GAMMA) * HEIGHT,
+      label: ((2 * peakOmega) / 3).toFixed(1),
+    },
+    { omega: peakOmega, y: HEIGHT, label: peakOmega.toFixed(1) },
+  ];
+
+  if (!texture) return null;
+
+  return (
+    <group position={[cornerX, 0, cornerZ]}>
+      {/* Column — a thin upright plane facing the camera arc. Width is
+          small (4 world units) so it reads as a totem, not a wall. */}
+      <mesh position={[0, HEIGHT / 2, 0]}>
+        <planeGeometry args={[4, HEIGHT]} />
+        <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Tick marks — thin horizontal bars at each Ω level. Drawn as
+          slightly oversized planes so they protrude past the column. */}
+      {ticks.map((t) => (
+        <mesh key={t.omega} position={[0, t.y, 0]}>
+          <planeGeometry args={[6.5, 0.6]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.55} />
+        </mesh>
+      ))}
+      {/* Labels — Html drei billboards. Project from world space so they
+          stay anchored to their Ω level even as the camera orbits. */}
+      {ticks.map((t) => (
+        <Html
+          key={`l-${t.omega}`}
+          position={[5, t.y, 0]}
+          center={false}
+          distanceFactor={120}
+          style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-mono, ui-monospace, monospace)",
+              fontSize: 11,
+              color: t.omega === peakOmega ? "#ff5566" : "rgba(220,220,230,0.85)",
+              textShadow: "0 0 4px rgba(0,0,0,0.85)",
+            }}
+          >
+            {"Ω "}
+            {t.label}
+          </span>
+        </Html>
+      ))}
+      <Html
+        position={[0, HEIGHT + 12, 0]}
+        center
+        distanceFactor={120}
+        style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-michroma, sans-serif)",
+            fontSize: 9,
+            letterSpacing: "0.15em",
+            color: "rgba(180,180,200,0.8)",
+            textShadow: "0 0 4px rgba(0,0,0,0.85)",
+          }}
+        >
+          Ω INTENSITY
+        </span>
+      </Html>
+    </group>
+  );
+}
+
 function SelectionMarkers({
   layout,
   field,
+  edges,
 }: {
   layout: Map<string, { x: number; y: number }>;
   field: ReliefField | null | undefined;
+  edges: { source: string; target: string }[];
 }) {
   const selectedNode = useApexStore((s) => s.selectedNode);
   const selectedNodes = useApexStore((s) => s.selectedNodes);
 
-  const markers = useMemo(() => {
-    if (!field || layout.size === 0) return [];
-    const ids = new Set<string>(selectedNodes);
-    if (selectedNode) ids.add(selectedNode);
-    const out: { id: string; x: number; z: number }[] = [];
-    for (const id of ids) {
-      const p = layout.get(id);
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-      out.push({ id, x: p.x - field.cx, z: p.y - field.cy });
-    }
-    return out;
-  }, [layout, field, selectedNode, selectedNodes]);
+  // Two marker tiers so TOPO matches the spotlight semantics of 2D/3D:
+  //   - "primary" — explicitly selected (single-click or marquee). Tall,
+  //     bright cyan pillar with a glowing sphere on top.
+  //   - "neighbour" — adjacent to a primary selection. Shorter, dimmer
+  //     pillar without the sphere cap. Mirrors the "select node + its
+  //     nearest neighbours" effect the user already gets in 2D and 3D.
+  const { primary, neighbours } = useMemo(() => {
+    if (!field || layout.size === 0) return { primary: [], neighbours: [] };
+    const primaryIds = new Set<string>(selectedNodes);
+    if (selectedNode) primaryIds.add(selectedNode);
 
-  if (markers.length === 0 || !field) return null;
+    const neighbourIds = new Set<string>();
+    if (primaryIds.size > 0) {
+      for (const e of edges) {
+        if (primaryIds.has(e.source) && !primaryIds.has(e.target)) {
+          neighbourIds.add(e.target);
+        } else if (primaryIds.has(e.target) && !primaryIds.has(e.source)) {
+          neighbourIds.add(e.source);
+        }
+      }
+    }
+
+    const project = (id: string) => {
+      const p = layout.get(id);
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+      return { id, x: p.x - field.cx, z: p.y - field.cy };
+    };
+    const primary: { id: string; x: number; z: number }[] = [];
+    for (const id of primaryIds) {
+      const m = project(id);
+      if (m) primary.push(m);
+    }
+    const neighbours: { id: string; x: number; z: number }[] = [];
+    for (const id of neighbourIds) {
+      const m = project(id);
+      if (m) neighbours.push(m);
+    }
+    return { primary, neighbours };
+  }, [layout, field, edges, selectedNode, selectedNodes]);
+
+  if (primary.length === 0 || !field) return null;
 
   const PILLAR_HEIGHT = 140;
   const PILLAR_RADIUS = 1.4;
+  const NEIGHBOUR_HEIGHT = 70;
+  const NEIGHBOUR_RADIUS = 0.8;
 
   return (
     <group>
-      {markers.map((m) => (
-        <group key={m.id} position={[m.x, 0, m.z]}>
+      {primary.map((m) => (
+        <group key={`p-${m.id}`} position={[m.x, 0, m.z]}>
           <mesh position={[0, PILLAR_HEIGHT / 2, 0]}>
             <cylinderGeometry args={[PILLAR_RADIUS, PILLAR_RADIUS, PILLAR_HEIGHT, 10]} />
             <meshBasicMaterial color="#00e5ff" transparent opacity={0.65} />
@@ -524,6 +631,18 @@ function SelectionMarkers({
           <mesh position={[0, PILLAR_HEIGHT, 0]}>
             <sphereGeometry args={[5.5, 14, 14]} />
             <meshBasicMaterial color="#00e5ff" transparent opacity={0.25} />
+          </mesh>
+        </group>
+      ))}
+      {neighbours.map((m) => (
+        <group key={`n-${m.id}`} position={[m.x, 0, m.z]}>
+          <mesh position={[0, NEIGHBOUR_HEIGHT / 2, 0]}>
+            <cylinderGeometry args={[NEIGHBOUR_RADIUS, NEIGHBOUR_RADIUS, NEIGHBOUR_HEIGHT, 8]} />
+            <meshBasicMaterial color="#00e5ff" transparent opacity={0.32} />
+          </mesh>
+          <mesh position={[0, NEIGHBOUR_HEIGHT, 0]}>
+            <sphereGeometry args={[1.4, 10, 10]} />
+            <meshBasicMaterial color="#00e5ff" transparent opacity={0.55} />
           </mesh>
         </group>
       ))}
@@ -709,7 +828,10 @@ function CausalDAGReliefInner() {
           />
         )}
         {!isEmpty && (
-          <SelectionMarkers layout={layout} field={activeField} />
+          <SelectionMarkers layout={layout} field={activeField} edges={graphData.edges} />
+        )}
+        {!isEmpty && activeField && peakOmega > 0 && (
+          <InSceneElevationLegend field={activeField} peakOmega={peakOmega} />
         )}
         {!isEmpty && <NodeLabels anchors={anchors} />}
         {!isEmpty && activeField && (
@@ -734,9 +856,12 @@ function CausalDAGReliefInner() {
       {!isEmpty && multilayer && fusedField && (
         <DomainLegend field={fusedField} />
       )}
-      {!isEmpty && peakOmega > 0 && (
-        <ElevationLegend peakOmega={peakOmega} />
-      )}
+      {/* ElevationLegend (DOM, right edge) has been replaced by
+          InSceneElevationLegend, which renders a vertical column
+          inside the Canvas at the SE corner of the field. The column's
+          physical height matches the surface's heightScale, so the
+          user can compare a peak's height directly to the legend's
+          Ω ticks. */}
       {currentSnapshot && (
         <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded border border-accent-amber/60 bg-surface-elevated/90 backdrop-blur-sm pointer-events-none">
           <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">

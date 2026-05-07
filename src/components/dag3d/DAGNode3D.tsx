@@ -5,10 +5,9 @@ import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
-import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+import { getCategoryColor } from "@/lib/graph-data";
 import { NodeMetrics } from "@/lib/graph-layout";
 import { useApexStore } from "@/stores/useApexStore";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
 
 // Shared reactive flag: set by CameraRig when orbit controls are actively dragging.
 // Uses a subscription pattern so nodes re-render when orbiting starts/stops.
@@ -38,12 +37,6 @@ interface DAGNode3DProps {
   // True if this node is the singular click-selected node OR a member of
   // a marquee/domain multi-selection. Drives ring + scale + label.
   isSelected: boolean;
-  // True ONLY when this node is the singular `selectedNode` (ie. user
-  // clicked it directly). Drives the heavy "ΩF profile + metrics" card —
-  // earlier the card mounted for every `isSelected` node, so a 25-node
-  // domain pick popped 25 cards into the canvas. Multi-selected nodes
-  // get the small floating label, not the heavy card.
-  isSingleSelected: boolean;
   isNeighborOfSelected: boolean;
   anyNodeSelected: boolean;
   isConsequence?: boolean;
@@ -62,27 +55,12 @@ function getOmegaGlowColor(composite: number): string {
   return "#00e676";
 }
 
-function getBarColor(value: number): string {
-  if (value > 9) return "#ff1744";
-  if (value >= 7) return "#ffab00";
-  if (value >= 5) return "#ff6d00";
-  return "#00e676";
-}
-
-function getCentralityLabel(ec: number): string {
-  if (ec >= 0.8) return "CRITICAL HUB";
-  if (ec >= 0.5) return "HIGH INFLUENCE";
-  if (ec >= 0.2) return "MODERATE";
-  return "PERIPHERAL";
-}
-
 function DAGNode3DInner({
   node,
   position,
   isInterventionTarget,
   isVerifiedRestricted,
   isSelected,
-  isSingleSelected,
   isNeighborOfSelected,
   anyNodeSelected,
   isConsequence = false,
@@ -95,10 +73,7 @@ function DAGNode3DInner({
   onDoubleClick,
 }: DAGNode3DProps) {
   const isOrbiting = useOrbitActive();
-  const selectedDomains = useApexStore((s) => s.selectedDomains);
   const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
-  const profile = resolveDomainProfile(selectedDomains);
-  const pillarLabels = profile.pillarLabels;
   const meshRef = useRef<THREE.Mesh>(null);
   const selectionRingRef = useRef<THREE.Mesh>(null);
   const birthProgress = useRef(isConsequence ? 0 : 1);
@@ -163,14 +138,6 @@ function DAGNode3DInner({
       mat.opacity = ringPulse;
     }
   });
-
-  const axes = [
-    { label: pillarLabels.irreplaceability, value: node.omegaFragility.irreplaceability },
-    { label: pillarLabels.restorationLatency, value: node.omegaFragility.restorationLatency },
-    { label: pillarLabels.jurisdictionalHazard, value: node.omegaFragility.jurisdictionalHazard },
-    { label: pillarLabels.cascadeLoad, value: node.omegaFragility.cascadeLoad },
-    { label: pillarLabels.tailDepth, value: node.omegaFragility.tailDepth },
-  ];
 
   return (
     <group position={position} onClick={onClick} onDoubleClick={onDoubleClick}>
@@ -268,10 +235,14 @@ function DAGNode3DInner({
         </mesh>
       )}
 
-      {/* Label — only visible on hover, single-select, or multi-select.
-           v1 painted a label on every orb permanently and dense graphs read
-           as a hodgepodge of overlapping text. The hover detail card below
-           still surfaces full info on demand. */}
+      {/* Label — only visible on hover, single-select, neighbour-of-
+           select, or multi-select. v1 painted a label on every orb
+           permanently and dense graphs read as a hodgepodge of overlapping
+           text. The earlier path also rendered a heavy in-canvas detail
+           card on click; that's been removed because the user wants 3D to
+           match 2D — small floating label + neighbour spotlight, with the
+           full ΩF profile / network metrics surfacing in NodeInspector
+           and ModulePanel side panels rather than over the canvas. */}
       {!dimmed && !isOrbiting && (hovered || isSelected || isNeighborOfSelected) && (
         <Html
           position={[0, size * 1.6 + 0.6, 0]}
@@ -311,155 +282,6 @@ function DAGNode3DInner({
         </Html>
       )}
 
-      {/* Detail Card — full ΩF profile + network metrics. Gated on
-           `isSingleSelected`, NOT `isSelected`: when the user picks a
-           domain (or shift-marquees a region) every node in that set
-           reads as `isSelected=true`, and the earlier gate popped the
-           heavy card on every one of them — a wall of overlapping
-           boxes. Only the singular click-selected node opens the card;
-           multi-selected nodes still get the small floating label
-           above. Mirrors the 2D hover-vs-click split. */}
-      {isSingleSelected && !dimmed && (
-        <Html
-          position={[0, size + (isSelected ? 3.5 : 2.5), 0]}
-          center
-          style={{ pointerEvents: "none" }}
-        >
-          <div
-            style={{
-              background: "rgba(10, 11, 16, 0.95)",
-              border: `1px solid ${isSelected ? "rgba(0, 229, 255, 0.6)" : "rgba(90, 94, 114, 0.4)"}`,
-              borderRadius: "6px",
-              padding: "12px 14px",
-              fontFamily: "monospace",
-              fontSize: "11px",
-              color: "#c8cad0",
-              width: "280px",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <div style={{ fontWeight: "bold", color: "#ffffff", fontSize: "12px" }}>
-                {node.label}
-              </div>
-              <div
-                style={{
-                  fontSize: "9px",
-                  padding: "2px 6px",
-                  borderRadius: "3px",
-                  backgroundColor: `${getDomainColor(node.domain)}15`,
-                  color: getDomainColor(node.domain),
-                  border: `1px solid ${getDomainColor(node.domain)}40`,
-                }}
-              >
-                {node.domain.toUpperCase()}
-              </div>
-            </div>
-
-            {/* Omega Composite */}
-            <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "10px" }}>
-              <span style={{ fontSize: "22px", fontWeight: "bold", color: getBarColor(composite) }}>
-                {"\u03A9"} {composite.toFixed(1)}
-              </span>
-              <span style={{ fontSize: "9px", color: "#5a5e72" }}>/ 10.0</span>
-            </div>
-
-            {/* 5-axis bars */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
-              {axes.map((axis) => (
-                <div key={axis.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <div style={{ width: "90px", fontSize: "8px", color: "#5a5e72", flexShrink: 0 }}>
-                    {axis.label}
-                  </div>
-                  <div
-                    style={{
-                      flex: 1,
-                      height: "4px",
-                      backgroundColor: "rgba(90, 94, 114, 0.2)",
-                      borderRadius: "2px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${(axis.value / 10) * 100}%`,
-                        height: "100%",
-                        backgroundColor: getBarColor(axis.value),
-                        borderRadius: "2px",
-                      }}
-                    />
-                  </div>
-                  <div style={{ width: "28px", fontSize: "9px", color: getBarColor(axis.value), textAlign: "right" }}>
-                    {axis.value.toFixed(1)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Network Position Metrics — explains SIZE and DISTANCE */}
-            {metrics && (
-              <div style={{
-                borderTop: "1px solid rgba(90, 94, 114, 0.2)",
-                paddingTop: "8px",
-                marginBottom: "8px",
-              }}>
-                <div style={{ fontSize: "8px", color: "#5a5e72", marginBottom: "6px", letterSpacing: "1px" }}>
-                  NETWORK POSITION
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" }}>
-                  <div style={{ fontSize: "9px" }}>
-                    <span style={{ color: "#5a5e72" }}>CENTRALITY: </span>
-                    <span style={{ color: ec >= 0.5 ? "#ffab00" : "#c8cad0", fontWeight: ec >= 0.5 ? "bold" : "normal" }}>
-                      {(ec * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "9px" }}>
-                    <span style={{ color: "#5a5e72" }}>DEGREE: </span>
-                    <span style={{ color: "#c8cad0" }}>{metrics.degree}</span>
-                  </div>
-                  <div style={{ fontSize: "9px" }}>
-                    <span style={{ color: "#5a5e72" }}>BETWEENNESS: </span>
-                    <span style={{ color: metrics.betweennessCentrality >= 0.3 ? "#00e5ff" : "#c8cad0" }}>
-                      {(metrics.betweennessCentrality * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "9px" }}>
-                    <span style={{ color: "#5a5e72" }}>CLUSTERING: </span>
-                    <span style={{ color: "#c8cad0" }}>{metrics.clusteringCoeff.toFixed(2)}</span>
-                  </div>
-                </div>
-                <div style={{ fontSize: "8px", color: "#5a5e72", marginTop: "5px", fontStyle: "italic" }}>
-                  {getCentralityLabel(ec)} — size ∝{" "}
-                  {nodeSizeMetric === "omega"
-                    ? "ΩF composite"
-                    : nodeSizeMetric === "betweenness"
-                      ? "betweenness centrality"
-                      : "eigenvector centrality"}
-                </div>
-              </div>
-            )}
-
-            {/* Metadata */}
-            <div style={{ borderTop: "1px solid rgba(90, 94, 114, 0.2)", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "3px" }}>
-              <div style={{ fontSize: "9px" }}>
-                <span style={{ color: "#5a5e72" }}>CONCENTRATION: </span>
-                <span style={{ color: "#c8cad0" }}>{node.globalConcentration}</span>
-              </div>
-              <div style={{ fontSize: "9px" }}>
-                <span style={{ color: "#5a5e72" }}>REPLACEMENT: </span>
-                <span style={{ color: "#c8cad0" }}>{node.replacementTime}</span>
-              </div>
-              {node.physicalConstraint && (
-                <div style={{ fontSize: "9px" }}>
-                  <span style={{ color: "#5a5e72" }}>CONSTRAINT: </span>
-                  <span style={{ color: "#ff6d00" }}>{node.physicalConstraint}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </Html>
-      )}
     </group>
   );
 }
@@ -495,7 +317,6 @@ function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
   if (prev.isInterventionTarget !== next.isInterventionTarget) return false;
   if (prev.isVerifiedRestricted !== next.isVerifiedRestricted) return false;
   if (prev.isSelected !== next.isSelected) return false;
-  if (prev.isSingleSelected !== next.isSingleSelected) return false;
   if (prev.isNeighborOfSelected !== next.isNeighborOfSelected) return false;
   if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
   if (prev.isConsequence !== next.isConsequence) return false;

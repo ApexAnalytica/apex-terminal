@@ -25,7 +25,8 @@ import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { getCategoryColor } from "@/lib/graph-data";
+import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+import { getDomainCardColor } from "@/lib/domains";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
@@ -100,9 +101,10 @@ function computeNodeEmphasis(
 }
 
 function CausalNode2D({ data, selected, id }: NodeProps) {
-  const { label, category, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics } = data as {
+  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics } = data as {
     label: string;
     category: string;
+    domain: string;
     omegaComposite: number;
     isRestricted: boolean;
     datasetColor?: string;
@@ -117,7 +119,17 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
     () => computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency),
     [id, hoveredNodeId, selectedNode, multiSelectedNodes, adjacency],
   );
-  const color = datasetColor ?? getCategoryColor(category);
+  // Color priority: domain-card colour (matches the bottom-left domain
+  // panel's row colour) → per-node datasetColor → category palette
+  // fallback. Earlier the node went straight to datasetColor / category,
+  // which left the panel showing card.color while the orb on canvas
+  // rendered in a totally different colour. Now both surfaces resolve
+  // through `getDomainCardColor`, so panel ↔ canvas colours align.
+  const color =
+    getDomainCardColor(domain) ??
+    datasetColor ??
+    getDomainColor(domain) ??
+    getCategoryColor(category);
   const isFractured = omegaComposite > 9;
   const isStressed = omegaComposite > 7;
   const shockGlow = shockIntensity ?? 0;

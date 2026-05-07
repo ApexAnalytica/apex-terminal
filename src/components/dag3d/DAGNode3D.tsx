@@ -6,6 +6,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
 import { getCategoryColor } from "@/lib/graph-data";
+import { getDomainCardColor } from "@/lib/domains";
 import { NodeMetrics } from "@/lib/graph-layout";
 import { useApexStore } from "@/stores/useApexStore";
 
@@ -79,7 +80,13 @@ function DAGNode3DInner({
   const birthProgress = useRef(isConsequence ? 0 : 1);
   const displayOmega = useRef(node.omegaFragility.composite);
   const [hovered, setHovered] = useState(false);
-  const baseColor = node.datasetColor ?? getCategoryColor(node.category);
+  // Color priority: domain-card colour (matches the bottom-left panel
+  // row colour) → per-node datasetColor → category palette fallback.
+  // See parallel resolution in CausalDAG2D / CausalDAGMap.
+  const baseColor =
+    getDomainCardColor(node.domain) ??
+    node.datasetColor ??
+    getCategoryColor(node.category);
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
 

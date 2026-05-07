@@ -135,12 +135,19 @@ function DAGEdge3DInner({
     (isTemporalFlow || propSignal > 0.3);
   const animSpeed = isTemporalFlow ? 0.4 : 0.3 + propSignal * 0.5;
 
-  // Animate particle along curve for temporal/causal edges
+  // Animate particle along curve for temporal/causal edges.
+  // Reads from the pre-cached curvePoints array (allocated once per
+  // posKey change) instead of re-evaluating the bezier each frame —
+  // saves ~one Vector3 allocation + a sqrt per animating edge per
+  // frame. With ~100 animating edges at 60fps that's ~6k fewer
+  // allocations/sec and noticeably less GC pressure during replay.
   useFrame((_, delta) => {
     if (!particleRef.current || !shouldAnimate) return;
     particleT.current = (particleT.current + delta * animSpeed) % 1;
-    const pos = curve.getPoint(particleT.current);
-    particleRef.current.position.set(pos.x, pos.y, pos.z);
+    const samples = curvePoints.length;
+    const i = Math.min(samples - 1, Math.floor(particleT.current * samples));
+    const [x, y, z] = curvePoints[i];
+    particleRef.current.position.set(x, y, z);
   });
 
   return (
@@ -169,7 +176,10 @@ function DAGEdge3DInner({
           }
         }}
       >
-        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 8, 8]} />
+        {/* Invisible hitbox — raycast cost scales with triangle count,
+            so keep the tessellation low. 4×4 segments = 8 triangles
+            vs 8×8 = 64 with no visual difference (it's transparent). */}
+        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 4, 4]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
@@ -193,7 +203,10 @@ function DAGEdge3DInner({
           small glowing sphere that travels source → target along the curve */}
       {shouldAnimate && (
         <mesh ref={particleRef}>
-          <sphereGeometry args={[0.25, 8, 8]} />
+          {/* 6×6 segments = 36 triangles, indistinguishable from 8×8
+              (64 tri) at this radius (0.25). Saves vertex work
+              proportional to active orb count. */}
+          <sphereGeometry args={[0.25, 6, 6]} />
           <meshBasicMaterial
             color={color}
             transparent
@@ -233,5 +246,51 @@ function DAGEdge3DInner({
   );
 }
 
-const DAGEdge3D = React.memo(DAGEdge3DInner);
+/**
+ * Custom equality check for the React.memo wrap below. Same problem as in
+ * DAGNode3D — sourcePos / targetPos rebuild fresh `[x, y, z]` tuples each
+ * parent render, epochState is sometimes a fresh object literal, and the
+ * onClick / onScissorsClick / onAblationClick closures are inline. That
+ * defeated default shallow equality and re-rendered all ~323 edges on
+ * every selection change, costing frame budget that the per-frame
+ * particle animations needed.
+ *
+ * Compares value props by content and ignores callback identity (closures
+ * are pure functions of stable bound `edge.id` + store actions).
+ */
+function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
+  if (prev.edge !== next.edge) return false;
+  if (
+    prev.sourcePos[0] !== next.sourcePos[0] ||
+    prev.sourcePos[1] !== next.sourcePos[1] ||
+    prev.sourcePos[2] !== next.sourcePos[2]
+  ) return false;
+  if (
+    prev.targetPos[0] !== next.targetPos[0] ||
+    prev.targetPos[1] !== next.targetPos[1] ||
+    prev.targetPos[2] !== next.targetPos[2]
+  ) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+  if (prev.isDimmed !== next.isDimmed) return false;
+  if (prev.isVerifiedInconsistent !== next.isVerifiedInconsistent) return false;
+  if (prev.isCrossDomain !== next.isCrossDomain) return false;
+  if (prev.isConnectedToSelected !== next.isConnectedToSelected) return false;
+  if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
+  if (prev.isSevered !== next.isSevered) return false;
+  if (prev.isConsequenceEdge !== next.isConsequenceEdge) return false;
+  if (prev.scissorsMode !== next.scissorsMode) return false;
+  if (prev.isAblated !== next.isAblated) return false;
+  if (prev.ablationMode !== next.ablationMode) return false;
+  // epochState — only `propagationSignal` is read (drives shouldAnimate).
+  const pe = prev.epochState;
+  const ne = next.epochState;
+  if (pe !== ne) {
+    if (!pe || !ne) return false;
+    if (pe.propagationSignal !== ne.propagationSignal) return false;
+  }
+  // Intentionally not comparing onScissorsClick / onAblationClick / onEdgeClick.
+  return true;
+}
+
+const DAGEdge3D = React.memo(DAGEdge3DInner, arePropsEqual);
 export default DAGEdge3D;

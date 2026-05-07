@@ -47,6 +47,8 @@ There is no automated payment integration. The admin (currently Junaid) is the b
 | `/request-access` | `src/app/request-access/page.tsx` (server) + `RequestAccessForm.tsx` (client behind `<Suspense>`) | Lead capture form. Pre-fills the use-case textarea when arriving from a tier CTA. POSTs to `/api/request-access`. |
 | `/expired` | `src/app/expired/page.tsx` (server) + `SignOutButton.tsx` (client) | Auth-aware upgrade wall. Loads the user's tier and copy adapts (trial vs paid lapsed vs admin-flipped expired). Primary CTA via [`UpgradeCTA`](#7-shared-components). |
 
+> ⚠ **`/pricing` visual chrome is co-owned with the website session.** The page imports `PricingBackground` from `src/components/visuals/` and the header / CTA cards have been polished by a parallel "website" Claude-Code session (see PR #231 for the canonical example). If you're modifying `src/app/pricing/page.tsx`, **stick to changes that route through `PRICING_PLANS` in `src/lib/billing.ts`** (tier names, prices, blurbs, features, CTA labels) — that's the safe, non-overlapping seam. Visual styling and layout may be touched by either session, so coordinate via `MEMORY.md` / session notes before bigger restructures. The form on `/request-access`, the API at `/api/request-access`, and the `leads` table are billing-session-only and not touched by the website work.
+
 The middleware allowlist for these routes lives in `src/lib/supabase/middleware.ts`:
 
 ```ts

@@ -209,6 +209,26 @@ describe("computeNodeAnchors", () => {
     expect(anchor.y).toBeGreaterThan(0);
   });
 
+  it("anchor y matches the actual mesh-vertex height at the node position", () => {
+    // Regression for the "labels look like they sit on the floor" bug —
+    // computeNodeAnchors must use the same nodeWeight kernel as the field
+    // eval, otherwise the normalised height diverges from the surface.
+    // For a single isolated source, the anchor at the source position is
+    // the global peak, so its norm should be ~1 and y ≈ heightScale.
+    const nodes = [makeNode("a", "X", 9)];
+    const layout = new Map([["a", { x: 0, y: 0 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 32 });
+    const [anchor] = computeNodeAnchors(nodes, layout, field, {}, 1);
+    // Find the maximum vertex height in the field — anchor must reach
+    // at least 95% of it (small floor-level slop from the discrete grid).
+    let maxY = 0;
+    for (let i = 1; i < field.positions.length; i += 3) {
+      if (field.positions[i] > maxY) maxY = field.positions[i];
+    }
+    expect(maxY).toBeGreaterThan(0);
+    expect(anchor.y).toBeGreaterThan(maxY * 0.95);
+  });
+
   it("returns [] when the field is empty", () => {
     const nodes = [makeNode("a", "X", 5)];
     const empty = new Map<string, { x: number; y: number }>();
@@ -271,6 +291,52 @@ describe("computeFusedReliefField", () => {
     const field = computeFusedReliefField(nodes, empty);
     expect(field.positions.length).toBe(0);
     expect(field.legend).toEqual([]);
+  });
+
+  it("emits per-vertex norms aligned with positions length", () => {
+    const nodes = [
+      makeNode("a", "Saudi Aramco Energy", 8),
+      makeNode("b", "Sovereign Risk", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 100, y: 0 }],
+    ]);
+    const field = computeFusedReliefField(nodes, layout, { resolution: 16 });
+    expect(field.norms.length).toBe(field.positions.length / 3);
+    // norms should range across [0, 1] — the peak vertex hits 1, valley
+    // vertices stay ≈ 0.
+    let max = -Infinity, min = Infinity;
+    for (let i = 0; i < field.norms.length; i++) {
+      if (field.norms[i] > max) max = field.norms[i];
+      if (field.norms[i] < min) min = field.norms[i];
+    }
+    expect(max).toBeGreaterThan(0.5);
+    expect(min).toBeLessThanOrEqual(max);
+    expect(min).toBeGreaterThanOrEqual(0);
+    expect(max).toBeLessThanOrEqual(1);
+  });
+
+  it("field reacts to ΩF changes (replay-aware input → different peak)", () => {
+    // Two nodes at the same positions, but different omega values across
+    // two compute calls — the computed peak should track the input. This
+    // is the contract the replay path relies on: when an EpochSnapshot
+    // overrides composite, the field morphs.
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 80, y: 80 }],
+    ]);
+    const baseline = computeFusedReliefField(
+      [makeNode("a", "X", 4), makeNode("b", "Y", 3)],
+      layout,
+      { resolution: 16 },
+    );
+    const escalated = computeFusedReliefField(
+      [makeNode("a", "X", 9), makeNode("b", "Y", 8)],
+      layout,
+      { resolution: 16 },
+    );
+    expect(escalated.peak).toBeGreaterThan(baseline.peak);
   });
 });
 

@@ -12,6 +12,8 @@ export default function DAGOverlay() {
   const activeModule = useApexStore((s) => s.activeModule);
   const viewMode = useApexStore((s) => s.viewMode);
   const setViewMode = useApexStore((s) => s.setViewMode);
+  const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
+  const setNodeSizeMetric = useApexStore((s) => s.setNodeSizeMetric);
   const truthFilter = useApexStore((s) => s.truthFilter);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
@@ -83,19 +85,43 @@ export default function DAGOverlay() {
         </div>
       </div>
 
-      {/* Top Right: Method badges + controls */}
+      {/* Top Right: View-mode cycle buttons. The previous RENDERING /
+          METHOD info badges (WEBGL_3D / REACTFLOW_2D / DCD / NOTEARS) were
+          internal stack details that didn't help end users — removed so
+          the corner stays clean. View labels still say which view is
+          active via the highlighted button. */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
-        <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
-          RENDERING: {
-            viewMode === "3d" ? "WEBGL_3D"
-            : viewMode === "2d" ? "REACTFLOW_2D"
-            : viewMode === "map" ? "MAPLIBRE_GEO"
-            : "WEBGL_TOPO"
-          }
-        </span>
-        <span className="text-[8px] font-mono px-2 py-0.5 rounded border border-border text-text-muted bg-surface-elevated">
-          METHOD: DCD / NOTEARS
-        </span>
+        {/* Node-size metric toggle. ΩF reads as "criticality"; the two
+            centralities reveal structure (eigenvector → influence hubs;
+            betweenness → bridges). Visible in both 3D and 2D since the
+            same store slot drives orb radius in 3D and circle diameter
+            in 2D. Hidden in MAP/TOPO where the visual primitive isn't a
+            sized node. */}
+        {(viewMode === "3d" || viewMode === "2d") && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-surface-elevated">
+            <span className="text-[8px] font-mono text-text-muted pr-0.5">SIZE:</span>
+            {(
+              [
+                { id: "omega", label: "ΩF" },
+                { id: "eigenvector", label: "EIG" },
+                { id: "betweenness", label: "BTW" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setNodeSizeMetric(opt.id)}
+                className={`text-[8px] font-mono px-1.5 py-0.5 rounded transition-colors ${
+                  nodeSizeMetric === opt.id
+                    ? "text-accent-cyan bg-accent-cyan/15"
+                    : "text-text-muted hover:text-accent-cyan"
+                }`}
+                title={`Map node size to ${opt.label}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </span>
+        )}
         {/* View mode cycle buttons. Internal id stays "relief" so existing
             store / type machinery keeps working; the user-facing label is
             "TOPO" (more recognisable than "RELIEF" for a topographic map). */}
@@ -309,7 +335,23 @@ export default function DAGOverlay() {
         </div>
       </div>
 
-      {/* Bottom Left (lower): Structural metrics */}
+      {/* Bottom Left: Control hints (above) + structural metrics (below).
+          Previously the hints sat at bottom-3 right-3, which the CLIENT
+          DEPLOYMENT CTA on the same edge clipped over. Moved to the
+          opposite corner and stacked above the metrics so neither
+          overlaps the deploy link.
+          The "NODE SIZE = EIGENVECTOR CENTRALITY | DISTANCE = EDGE WEIGHT"
+          sub-text was removed — too cryptic to help end users, and most
+          of that meaning is conveyed by the visual itself. */}
+      {(viewMode === "3d" || viewMode === "map") && (
+        <div className="absolute bottom-9 left-3 pointer-events-none">
+          <div className="text-[8px] font-mono text-text-muted/50">
+            {viewMode === "3d"
+              ? "DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | SHIFT+DRAG: SELECT | DOUBLE-CLICK: FOCUS | ESC: DESELECT"
+              : "DRAG: PAN | SCROLL: ZOOM | CLICK: SELECT | SHIFT+CLICK: MULTI-SELECT | HOVER: INSPECT"}
+          </div>
+        </div>
+      )}
       <div className="absolute bottom-3 left-3">
         <div className="flex gap-4 text-[9px] font-mono text-text-muted">
           <span>NODES: {meta.totalNodes}</span>
@@ -318,27 +360,6 @@ export default function DAGOverlay() {
           <span>CONSTRAINT: {meta.constraintType.split("+")[0].trim()}</span>
         </div>
       </div>
-
-      {/* Bottom Right: Control hints + layout legend */}
-      {viewMode === "3d" && (
-        <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1">
-          <div className="text-[8px] font-mono text-text-muted/40 flex gap-3">
-            <span>NODE SIZE = EIGENVECTOR CENTRALITY</span>
-            <span>|</span>
-            <span>DISTANCE = EDGE WEIGHT (CORRELATION)</span>
-          </div>
-          <div className="text-[8px] font-mono text-text-muted/50">
-            DRAG: ORBIT | SCROLL: ZOOM | RIGHT-CLICK: PAN | SHIFT+DRAG: SELECT | DOUBLE-CLICK: FOCUS | ESC: DESELECT
-          </div>
-        </div>
-      )}
-      {viewMode === "map" && (
-        <div className="absolute bottom-3 right-3">
-          <div className="text-[8px] font-mono text-text-muted/50">
-            DRAG: PAN | SCROLL: ZOOM | CLICK: SELECT | SHIFT+CLICK: MULTI-SELECT | HOVER: INSPECT
-          </div>
-        </div>
-      )}
     </div>
   );
 }

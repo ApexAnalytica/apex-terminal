@@ -3,10 +3,15 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 import type { SubscriptionStatus, Tier } from "@/lib/billing";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`. Eager init at module
+// load was failing the production build's page-data collection.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const VALID_TIERS = new Set<Tier>([
   "trial",
@@ -127,7 +132,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { error } = await service
+  const { error } = await getService()
     .from("profiles")
     .update(update)
     .eq("id", body.userId);

@@ -87,6 +87,7 @@ function DAGNode3DInner({
 }: DAGNode3DProps) {
   const isOrbiting = useOrbitActive();
   const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
   const profile = resolveDomainProfile(selectedDomains);
   const pillarLabels = profile.pillarLabels;
   const meshRef = useRef<THREE.Mesh>(null);
@@ -98,10 +99,22 @@ function DAGNode3DInner({
   const color = isGreyedOut ? "#3a3d50" : isConsequence ? "#ff6d00" : baseColor;
   const composite = epochState ? epochState.omegaComposite : node.omegaFragility.composite;
 
-  // Node size driven by EIGENVECTOR CENTRALITY (network importance)
-  // Higher centrality = larger node (more influential in the network)
+  // Node radius driven by the user-selected metric. v1 was hardwired to
+  // eigenvector centrality at 0.2 → 0.75; users complained the orbs were
+  // "near invisible" at the low end. New range 0.45 → 1.05 (≈ 2× bigger
+  // across the board) keeps small/large differentiation but lifts the
+  // floor enough that even peripheral nodes read as orbs, not dots.
   const ec = metrics?.eigenvectorCentrality ?? 0.5;
-  const size = 0.2 + ec * 0.55; // range 0.2–0.75
+  const bc = metrics?.betweennessCentrality ?? 0.5;
+  // Map composite (0..10) → 0..1 for the omega path.
+  const omegaUnit = Math.max(0, Math.min(1, composite / 10));
+  const sizeUnit =
+    nodeSizeMetric === "omega"
+      ? omegaUnit
+      : nodeSizeMetric === "betweenness"
+        ? Math.max(0, Math.min(1, bc))
+        : Math.max(0, Math.min(1, ec));
+  const size = 0.45 + sizeUnit * 0.6;
 
   const glowColor = isConsequence ? "#ff6d00" : getOmegaGlowColor(composite);
   const shockGlow = epochState ? epochState.shockIntensity : 0;
@@ -178,24 +191,27 @@ function DAGNode3DInner({
         </mesh>
       )}
 
-      {/* Omega glow ring */}
+      {/* Omega glow ring — opacity floor lifted so the ΩF colour signal
+           reads at idle (was 0.15 / 0.35; now 0.32 / 0.55). */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
         <ringGeometry args={[size * 1.3, size * 1.5, 32]} />
         <meshBasicMaterial
           color={glowColor}
           transparent
-          opacity={(hovered ? 0.35 : 0.15) * (dimmed ? 0.3 : 1)}
+          opacity={(hovered ? 0.55 : 0.32) * (dimmed ? 0.3 : 1)}
           side={THREE.DoubleSide}
         />
       </mesh>
 
-      {/* Glow sphere (outer) */}
+      {/* Glow sphere (outer) — bumped from 0.06/0.12 to 0.16/0.32 so the
+           orb has visible presence at idle, not just on hover. v1 was
+           "near invisible" against the dark background. */}
       <mesh>
         <sphereGeometry args={[size * 1.6, 16, 16]} />
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={(hovered ? 0.12 : 0.06) * (dimmed ? 0.3 : 1)}
+          opacity={(hovered ? 0.32 : 0.16) * (dimmed ? 0.3 : 1)}
         />
       </mesh>
 
@@ -219,7 +235,9 @@ function DAGNode3DInner({
         <meshStandardMaterial
           color={color}
           emissive={isGreyedOut ? "#1a1a2e" : isSelected ? "#00e5ff" : color}
-          emissiveIntensity={isGreyedOut ? 0.02 : isSelected ? 1.0 : hovered ? 0.8 : (0.4 + (composite / 10) * 0.3 + shockGlow * 0.6)}
+          // Idle floor lifted from 0.4 to 0.7 so orbs are clearly emissive
+          // out of the box, not just when hovered.
+          emissiveIntensity={isGreyedOut ? 0.02 : isSelected ? 1.0 : hovered ? 0.95 : (0.7 + (composite / 10) * 0.3 + shockGlow * 0.6)}
           transparent
           opacity={nodeOpacity}
         />
@@ -241,9 +259,11 @@ function DAGNode3DInner({
         </mesh>
       )}
 
-      {/* Label — hidden during active orbit rotation to prevent DOM overhead
-           that causes GPU timeout with 100+ nodes */}
-      {!dimmed && !isOrbiting && (
+      {/* Label — only visible on hover, single-select, or multi-select.
+           v1 painted a label on every orb permanently and dense graphs read
+           as a hodgepodge of overlapping text. The hover detail card below
+           still surfaces full info on demand. */}
+      {!dimmed && !isOrbiting && (hovered || isSelected || isNeighborOfSelected) && (
         <Html
           position={[0, size * 1.6 + 0.6, 0]}
           center
@@ -394,7 +414,12 @@ function DAGNode3DInner({
                   </div>
                 </div>
                 <div style={{ fontSize: "8px", color: "#5a5e72", marginTop: "5px", fontStyle: "italic" }}>
-                  {getCentralityLabel(ec)} — size ∝ eigenvector centrality
+                  {getCentralityLabel(ec)} — size ∝{" "}
+                  {nodeSizeMetric === "omega"
+                    ? "ΩF composite"
+                    : nodeSizeMetric === "betweenness"
+                      ? "betweenness centrality"
+                      : "eigenvector centrality"}
                 </div>
               </div>
             )}
@@ -423,5 +448,58 @@ function DAGNode3DInner({
   );
 }
 
-const DAGNode3D = React.memo(DAGNode3DInner);
+/**
+ * Custom equality check for the React.memo wrap below. The default shallow
+ * comparator was being defeated for every node on every parent re-render
+ * because three props rebuild fresh refs each time:
+ *
+ *   - `position`: a new `[x, y, z]` tuple from posMap[node.id]
+ *   - `epochState`: a fresh object literal in the non-snapshot fallback path
+ *     (see CausalDAG3D.tsx, where the parent maps the nodes)
+ *   - `onClick` / `onDoubleClick`: inline closures
+ *
+ * That meant ~169 nodes re-rendering on every parent update — each with its
+ * own framer-motion / R3F work — which competed with the per-frame edge
+ * particle animations and made the orbs glitch when domain selection
+ * touched many nodes at once.
+ *
+ * This comparator compares the value-bearing props by content (not by ref)
+ * and ignores callback identity. Closures are functionally pure (they close
+ * over `node.id` + stable store actions), so re-render isn't required when
+ * only their reference flips.
+ */
+function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
+  if (prev.node !== next.node) return false;
+  // position is a tuple — compare element-wise
+  if (
+    prev.position[0] !== next.position[0] ||
+    prev.position[1] !== next.position[1] ||
+    prev.position[2] !== next.position[2]
+  ) return false;
+  if (prev.isInterventionTarget !== next.isInterventionTarget) return false;
+  if (prev.isVerifiedRestricted !== next.isVerifiedRestricted) return false;
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isNeighborOfSelected !== next.isNeighborOfSelected) return false;
+  if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
+  if (prev.isConsequence !== next.isConsequence) return false;
+  if (prev.isGreyedOut !== next.isGreyedOut) return false;
+  if (prev.isAblated !== next.isAblated) return false;
+  if (prev.ablationMode !== next.ablationMode) return false;
+  if (prev.metrics !== next.metrics) return false;
+  // epochState fields actually read by the component (omegaComposite +
+  // shockIntensity). The object reference often changes per render even when
+  // the contents don't, so reference compare would always invalidate.
+  const pe = prev.epochState;
+  const ne = next.epochState;
+  if (pe !== ne) {
+    if (!pe || !ne) return false;
+    if (pe.omegaComposite !== ne.omegaComposite) return false;
+    if (pe.shockIntensity !== ne.shockIntensity) return false;
+  }
+  // Intentionally not comparing onClick / onDoubleClick — closures rebuild
+  // every parent render but their behavior is stable per node.id.
+  return true;
+}
+
+const DAGNode3D = React.memo(DAGNode3DInner, arePropsEqual);
 export default DAGNode3D;

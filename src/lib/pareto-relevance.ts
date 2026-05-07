@@ -61,6 +61,19 @@ export const PARETO_RELEVANCE_CONSTANTS = {
   // PH gate
   PH_MID_FILTRATION_INDEX: 30, // midpoint of 60-step filtration
 
+  // BOCPD gate
+  // ----------------------------------------------------------------------
+  // Adams & MacKay (2007) BOCPD outputs `newRunProb[t]` ∈ [0,1], the
+  // probability of a change-point in the trailing window. The regime gate
+  // fires when there is *meaningful change-point activity* — either a
+  // recent peak above BOCPD_PEAK_THRESHOLD, or a non-degenerate run-length
+  // posterior (high entropy/uncertainty in run-length distribution). A
+  // flatline series (BOCPD output ≈ hazard everywhere) scores low, since
+  // BOCPD has nothing to say about that regime — exactly the contextual
+  // veto F·E·G·S·M's gates are designed to apply.
+  BOCPD_PEAK_THRESHOLD: 0.3, // newRunProb above this counts as a peak
+  BOCPD_PEAK_WINDOW: 10,     // recent window over which to scan for a peak
+
   // Likelihood floors (avoid −∞ when residuals are degenerate)
   MIN_RESIDUAL_VARIANCE: 1e-6,
 
@@ -387,6 +400,63 @@ export function lpplsRegimeGate(args: {
   return {
     score,
     detail: `accel ${accel01.toFixed(2)}, residual sign-changes ${signChanges} → ${oscillation01.toFixed(2)}.`,
+  };
+}
+
+/**
+ * G — BOCPD regime gate.
+ *
+ * BOCPD is meaningful when there's *something for it to detect* — a series
+ * with no detectable change-points just gives newRunProb ≈ hazard
+ * everywhere, and the model is contributing nothing beyond its prior.
+ *
+ * Score combines two signals:
+ *   (1) recent peak — max newRunProb in the trailing window above floor.
+ *       Maps any peak above BOCPD_PEAK_THRESHOLD to peak01 ∈ [0, 1].
+ *   (2) variability — coefficient of variation of newRunProb across the
+ *       full history. A flat trace (all values within a hazard-level band)
+ *       contributes near-zero; a trace that rises and falls contributes 1.
+ *
+ * Equal-weight average. Returns score=0 when the series is too short for
+ * BOCPD to produce a meaningful posterior (n < 6).
+ */
+export function bocpdRegimeGate(args: {
+  newRunProb: number[];
+}): SubScore {
+  const { newRunProb } = args;
+  const n = newRunProb.length;
+  if (n < 6) {
+    return { score: 0, detail: `n=${n}; need ≥6 for posterior.` };
+  }
+
+  // (1) Recent peak signal.
+  const windowStart = Math.max(0, n - C.BOCPD_PEAK_WINDOW);
+  let recentPeak = 0;
+  for (let t = windowStart; t < n; t++) {
+    if (newRunProb[t] > recentPeak) recentPeak = newRunProb[t];
+  }
+  const peak01 = clamp01(
+    Math.max(0, recentPeak - C.BOCPD_PEAK_THRESHOLD) /
+      Math.max(1e-6, 1 - C.BOCPD_PEAK_THRESHOLD),
+  );
+
+  // (2) Variability of the full posterior trace. Coefficient of variation
+  // (σ / μ) clamped — anything below ~10% CV reads as flatline.
+  let mean = 0;
+  for (const v of newRunProb) mean += v;
+  mean /= n;
+  let variance = 0;
+  for (const v of newRunProb) variance += (v - mean) ** 2;
+  variance /= n;
+  const std = Math.sqrt(variance);
+  const cv = mean > 0 ? std / mean : 0;
+  // CV ≈ 0 (flat) → 0; CV ≈ 1+ (rises and falls) → 1.
+  const variability01 = clamp01(cv);
+
+  const score = (peak01 + variability01) / 2;
+  return {
+    score,
+    detail: `peak ${recentPeak.toFixed(2)} → ${peak01.toFixed(2)}, CV ${cv.toFixed(2)} → ${variability01.toFixed(2)}.`,
   };
 }
 

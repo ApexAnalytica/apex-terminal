@@ -157,7 +157,11 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   pillarLabels: GEOPOLITICAL_PILLARS,
   pillarDetails: GEOPOLITICAL_PILLAR_DETAILS,
   compositeMethodology: GEOPOLITICAL_METHODOLOGY,
-  criticalityEstimators: ["csd", "ph", "lppls"],
+  // BOCPD is now live as a fourth criticality estimator (PR #234) — it
+  // runs on the same scoped Ω trajectory CSD/LPPLS already use and produces
+  // a regular F·E·G·S·M breakdown. Including it here makes the analyst
+  // Pareto card show all four tabs by default.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────

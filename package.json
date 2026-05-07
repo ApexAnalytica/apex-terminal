@@ -34,6 +34,7 @@
     "react-dom": "19.2.3",
     "react-map-gl": "^8.1.0",
     "reactflow": "^11.11.4",
+    "resend": "^6.12.2",
     "three": "^0.183.1",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.11"

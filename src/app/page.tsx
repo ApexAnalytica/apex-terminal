@@ -12,13 +12,42 @@ import RiskPropagationFlow from "@/components/RiskPropagationFlow";
 import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import CausalDAG2D from "@/components/CausalDAG2D";
-import ImportModal from "@/components/import/ImportModal";
-import SpotlightTour from "@/components/SpotlightTour";
 import TimeDial from "@/components/TimeDial";
-import DomainSelector from "@/components/DomainSelector";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import { DemoFlowPlayerHost } from "@/components/DemoFlowPlayer";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
+
+// Lazy-loaded modals — neither is on the critical path. Both render
+// nothing visible until the user explicitly opens them, so deferring
+// their JS chunks costs nothing on first paint:
+//   - ImportModal pulls parsers + framer-motion + sub-components.
+//   - SpotlightTour pulls framer-motion + onboarding logic.
+const ImportModal = dynamic(
+  () => import("@/components/import/ImportModal"),
+  { ssr: false }
+);
+const SpotlightTour = dynamic(
+  () => import("@/components/SpotlightTour"),
+  { ssr: false }
+);
+
+// DomainSelector + DemoFlowPlayerHost both transitively pull the
+// four large graph-data modules (~3000 lines combined) via
+// `@/lib/build-domain-graph`. They render nothing until the user
+// opens the picker / runs a demo, so defer their chunks. The catalog
+// surface used elsewhere (HeaderBar's tab labels, copilot context)
+// imports from the lighter `@/lib/domains` module which is unaffected
+// by this lazy load.
+const DomainSelector = dynamic(
+  () => import("@/components/DomainSelector"),
+  { ssr: false }
+);
+const DemoFlowPlayerHost = dynamic(
+  () =>
+    import("@/components/DemoFlowPlayer").then((m) => ({
+      default: m.DemoFlowPlayerHost,
+    })),
+  { ssr: false }
+);
 
 // Dynamic import for 3D canvas (no SSR)
 const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {

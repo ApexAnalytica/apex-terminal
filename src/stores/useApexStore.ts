@@ -5,6 +5,7 @@ import {
   CausalEdge,
   ModuleId,
   ViewMode,
+  NodeSizeMetric,
   TruthFilter,
   CopilotMessage,
   CausalGraph,
@@ -109,6 +110,17 @@ interface ApexState {
   // View
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+
+  /**
+   * Drives 3D orb size. The 3D view can map the radius to either the
+   * static ΩF composite or to one of the live network-analysis metrics
+   * (eigenvector / betweenness centrality). Both centrality metrics are
+   * already computed during layout and surfaced in the right-side
+   * Network Analysis panel; this toggle lets the user swap which signal
+   * the orbs encode without leaving the canvas.
+   */
+  nodeSizeMetric: NodeSizeMetric;
+  setNodeSizeMetric: (metric: NodeSizeMetric) => void;
 
   // Truth filter
   truthFilter: TruthFilter;
@@ -366,6 +378,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // View
   viewMode: "3d",
   setViewMode: (mode) => set({ viewMode: mode }),
+
+  // Default to eigenvector — that's what the 3D view shipped with before
+  // the toggle. Surfacing the choice as a visible UI control is the
+  // change; the existing read stays the default.
+  nodeSizeMetric: "eigenvector",
+  setNodeSizeMetric: (metric) => set({ nodeSizeMetric: metric }),
 
   // Truth filter
   truthFilter: "raw",

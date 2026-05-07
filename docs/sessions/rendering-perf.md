@@ -354,9 +354,154 @@ The framework is fine — three.js / r3f is exactly what those reference platfor
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
 
+### 2026-05-03 — Shipped: Topo replay animation — terrain morphs as the cascade runs
+
+**PR:** TBD (about to open).
+
+**Trigger.** User picked option 1 — turn TOPO from a static topology view into a scenario tool that morphs as the cascade replay advances. Bind the field input to `currentSnapshot.nodeStates[id].omegaComposite` so peaks rise / fall in sync with the replay scrubber.
+
+**What shipped.**
+- **Replay-aware field input.** `CausalDAGRelief` now reads `replayActive`, `activeTimeline`, `baselineEpochs` / `interventionEpochs`, and `currentEpoch` from the store. Derives a `currentSnapshot: EpochSnapshot | null` (clamped to range, like `CausalDAG2D` does). When non-null, builds a `fieldNodes` array that overrides each node's `omegaFragility.composite` with the snapshot's per-node ΩF. The fused / single field, the anchors, and the labels all read from `fieldNodes` — so the surface, the elevation, and the label Ω text all morph in lockstep as the user scrubs.
+- **Stable layout under scrub.** Switched the layout `useMemo` from `[graphData.nodes, graphData.edges]` (re-fires every scrub tick because `useTemporalGraph` allocates fresh arrays + node objects) to `[sig]` where `sig = graphSignature(nodes, edges)` (sorted node + edge id string). Topology changes still re-run the force-directed simulation; replay scrubs don't. Same pattern `CausalDAG2D` uses (`graphSignature` from `graph-layout-2d.ts`). Without this fix, scrubbing would also shuffle the canvas, which would compete with the field eval for the main thread and look terrible.
+- **REPLAY · EPOCH N / M pill** in the top-right. Amber-bordered, only renders when `currentSnapshot` is active. Tells users at a glance that the surface they're seeing is a replay frame, not the static graph.
+
+**Files.**
+- `src/components/CausalDAGRelief.tsx` — adds replay-state selectors, `currentSnapshot` derive, `fieldNodes` override, sig-keyed layout cache, REPLAY pill. Also adds imports: `graphSignature` from `graph-layout-2d`, `EpochSnapshot` type from `lib/types`.
+- `src/lib/__tests__/graph-relief-field.test.ts` — added 2 tests: `norms` length matches `positions/3` and ranges across [0,1]; replay contract — same nodes/layout, escalated ΩF → strictly higher peak.
+
+**Out of scope.** Throttling field recompute during fast scrubbing — at 128² × 169 samples × N domains the eval is ~100ms per frame, which is fine for click-stepping through epochs but would feel laggy for a real-time slider drag. If users actually scrub at 60fps, the right fix is either (a) lower-resolution preview during drag + full res on settle, or (b) port the kernel sum to a compute shader. Filed for later.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 704/704 pass (2 new in `graph-relief-field.test.ts`).
+
+### 2026-05-03 — Shipped: Topo label-on-peak fix + Ω intensity legend
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the way nodes render on top of it is really hard to follow. Right now they seem to be sitting at the bottom on a flat map. Also could we have a vertical scale showing what each striation is in terms of Ω."*
+
+**The bug.** `computeNodeAnchors` was sampling each node's height with the raw `composite` value:
+```ts
+h += s.composite * Math.exp(-(...) / sigma2);
+```
+But the field eval uses `nodeWeight(composite) = composite ^ WEIGHT_EXPONENT (1.5)`. For composite=10, that's 10 vs 31.6 — the anchor's `h / field.peak` ratio was ~0.3 of the actual mesh-vertex norm at that point, so `pow(norm, heightGamma) * heightScale` came out at ~20 when the surface peak was at 140. Labels rendered close to y=0 — exactly the "sitting at the bottom" the user reported. One-line fix: anchor sampling now mirrors the field-eval kernel.
+
+**What shipped.**
+- **Anchor height fix.** `computeNodeAnchors` now uses `nodeWeight(s.composite)` to match the field eval. Labels now float at the true peak height.
+- **`<ElevationLegend>` component.** Vertical heatmap-gradient strip on the right edge of the canvas, ~180px tall, with five label stops (Ω peak / HIGH / MID / LOW / Ω 0). Uses 14 horizontal tick lines that mirror the shader's `uBands = 14`, so the strip's tick density visually maps to the iso-rings on the surface. Right-side rotated "Ω INTENSITY" text. Pulls `peakOmega` from `fieldNodes` (replay-aware), so the top label updates as ΩF changes during a replay.
+- **`elevationColorJS`** small helper in the component — JS mirror of the shader's GLSL elevationColor ramp, used to paint the CSS gradient stops so the legend visually matches the surface palette. Comment ties them together; keep in sync if the ramp ever changes.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `computeNodeAnchors` height kernel uses `nodeWeight()` instead of raw `composite`. Comment explaining the contract.
+- `src/components/CausalDAGRelief.tsx` — adds `<ElevationLegend>`, `elevationColorJS()` helper, `peakOmega` useMemo, render call site below the domain legend.
+- `src/lib/__tests__/graph-relief-field.test.ts` — new regression test "anchor y matches the actual mesh-vertex height at the node position": for an isolated source the anchor should reach ≥ 95% of the global mesh-vertex max-Y (was previously sitting at <30% of it).
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 711/711 pass.
+
+### 2026-05-03 — Shipped: 2D hover/select stability — custom EmphasizedEdge + Dag2DContext
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the 2D map is doing this weird thing where if I hover over any node, the whole map starts to blink consistently. And when I select any one node, the map just disappears temporarily."*
+
+**Root cause.** Both the `nodes` and `edges` useMemos depended on `emphasisMap` / `emphasisTarget` (= `hoveredNodeId ?? selectedNode`). Every mousemove that hit a node, and every click that selected one, re-fired both memos and produced **brand-new node + edge object arrays**. React Flow then diffs against its internal store, decides everything is new, and tears down + rebuilds every node and edge DOM element. With many edges and a 180ms opacity transition, that read as a canvas-wide blink. The select-then-disappear case was the same mechanism — `emphasisTarget = selectedNode` flipped the entire arrays, RF unmounted before the new tree was mounted.
+
+This was the work deferred in PR #198 with the note *"would need a custom edge component subscribing to emphasisTarget separately."*
+
+**What shipped.**
+- **`Dag2DContext`** — new React Context carrying `{ adjacency, hoveredNodeId, selectedEdgeId }`. The adjacency Map is the same one the parent already builds; it's stable across hovers because it's keyed on graph topology only.
+- **`computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelected, adjacency)`** — pure helper that returns `"focus" | "neighbor" | "dim" | "none"` for a single node. Used by `CausalNode2D` directly. Same logic as the old `emphasisMap` builder, just per-node instead of all-up-front.
+- **`CausalNode2D` consumes context + store directly.** Reads `hoveredNodeId` from `Dag2DContext`, `selectedNode` and `multiSelectedNodes` from `useApexStore`. Computes its own emphasis. The parent's `nodes` useMemo no longer depends on emphasis-derived state, so hover / single-select don't rebuild the array.
+- **New `EmphasizedEdge` custom edge component.** Subscribes to context + store the same way. Carries structural data (`baseColor`, `baseWidth`, `baseOpacity`, propagation signal, isSelected, type flags) on `edge.data` — all stable per graph state, NOT per hover. In render, computes opacity / strokeWidth / dim modulation from current emphasis. Renders via drei's `BaseEdge` + `getBezierPath`.
+- **Parent's `edges` useMemo deps**: dropped `emphasisTarget`; kept `[graphData, truthFilter, currentSnapshot, selectedEdge]`. Hovering no longer rebuilds the edges array; `selectedEdge` (the edge inspector signal — separate from `selectedNode`) still does, which is correct.
+- Registered `edgeTypes = { emphasized: EmphasizedEdge }` and switched the per-edge `type` from `"default"` to `"emphasized"`.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — Context + helper added at top, `CausalNode2D` updated, `EmphasizedEdge` added, parent `nodes`/`edges` useMemos restructured, render wraps in `<Dag2DContext.Provider>`, `edgeTypes` passed to ReactFlow.
+
+**Out of scope (deliberate).**
+- The replay contraction `nodes` useMemo (`graphData, nodePositions, truthFilter, currentSnapshot, adjacency`) still re-fires on each replay tick, which is correct — node positions actually move during replay. The point of this PR was severing the *hover/select* dependency, not the replay dependency.
+- The "map disappears on select" symptom — same root cause as the blink (whole-array rebuild). Both are fixed by the same change.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 723/723 pass.
+
+### 2026-05-03 — Shipped: 3D readability — labels-on-demand, brighter orbs, size-metric toggle
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on the 3D diagram: *"looks busy / hard to track. Rather than every node labeled, only show labels when I select one. The orbs themselves are near invisible — make them easier to identify. Should we link the orb size to a network feature shown on the right? Maybe a toggle?"*
+
+**What shipped.**
+- **Labels on demand only.** `DAGNode3D` previously rendered every node's label permanently (hidden only during active orbit). Now the label only shows when the node is hovered, single-selected, or a neighbour of the selected node. The hover detail card (full ΩF profile + radar + network metrics) still surfaces full info on demand. Removes the "hodgepodge of overlapping text" the user flagged.
+- **Brighter orbs.** Three changes in concert: (a) base radius range 0.20–0.75 → 0.45–1.05 (≈ 2× across the board, lifts the floor so peripheral nodes still read as orbs not dots); (b) idle emissive intensity floor 0.4 → 0.7 (and hover 0.8 → 0.95); (c) outer glow-sphere opacity 0.06 / 0.12 → 0.16 / 0.32; (d) ΩF colour ring opacity 0.15 / 0.35 → 0.32 / 0.55. Orbs now have visible presence at idle, not just when hovered.
+- **`nodeSizeMetric` toggle.** New `NodeSizeMetric = "omega" | "eigenvector" | "betweenness"` type added to `lib/types.ts`. Store carries `nodeSizeMetric` (default `"eigenvector"` — same as before, just now selectable) + `setNodeSizeMetric` action. `DAGOverlay` exposes a small `SIZE: ΩF / EIG / BTW` button trio in the top-right control strip, only visible in 3D view. `DAGNode3D` reads the store value and computes radius from the chosen metric — `omega` maps `composite/10` to the unit interval; the centralities are passed through directly. Hover-card footer reflects the active metric ("size ∝ ΩF composite", etc.).
+
+**Files.**
+- `src/lib/types.ts` — new `NodeSizeMetric` type.
+- `src/stores/useApexStore.ts` — `nodeSizeMetric` slot + setter, default `"eigenvector"`.
+- `src/components/dag3d/DAGOverlay.tsx` — 3D-only `SIZE:` toggle wired to the store.
+- `src/components/dag3d/DAGNode3D.tsx` — radius formula honours the toggle, label conditional gate, glow / emissive intensity bumps, hover-card footer text.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass. (Three pre-existing lint warnings outside the diff.)
+
+### 2026-05-03 — Shipped: 2D floating edges + node-size toggle parity
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the 3D readability pass: *"some 2D lines are still all curvy. It almost seems like they have to be pointing to the bottom or top of any node. Can't we have them just pointing straight from whatever direction makes the most sense? Also the size differences should also be available in 2D rendering."*
+
+**Floating edges.** The previous `EmphasizedEdge` used `getBezierPath` against React Flow's handle-anchored `sourceX/Y` / `targetX/Y` — every line had to pass through one of the four invisible handles (top/bottom/left/right) on each circle, so a node placed to the left of another would still draw a line that detoured up to the top handle and curved back down. Replaced with the "floating edge" pattern from the RF docs: read the source/target `nodeInternals` via `useReactFlowStore`, compute centre-to-centre direction, trim each end to the circle perimeter, draw a single straight `M…L…` SVG path. Now lines go in the geometrically natural direction, no curvature, no detours. Arrowhead lands on the circle perimeter cleanly.
+
+**Node-size toggle parity.** The 3D `SIZE: ΩF / EIG / BTW` toggle now drives 2D node diameter too:
+- `CausalDAG2D` computes `networkMetrics` via the existing `computeNetworkMetrics` util (same one 3D uses) and caches on `graphSignature`. Replay scrubs / hover don't re-run the centrality sweep.
+- Each node's `data` now carries `metrics: NodeMetrics`.
+- `CausalNode2D` reads `nodeSizeMetric` from the store and maps the chosen signal into a 14–34 px diameter range.
+- `DAGOverlay` SIZE toggle visibility extended from `viewMode === "3d"` to `(viewMode === "3d" || viewMode === "2d")`. MAP / TOPO stay hidden since their visual primitive isn't a sized node.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — `EmphasizedEdge` switched to floating straight path via `useReactFlowStore`; `CausalNode2D` accepts `metrics` and reads `nodeSizeMetric`; parent `nodes` useMemo passes per-node metrics; `networkMetrics` useMemo cached on `sig`.
+- `src/components/dag3d/DAGOverlay.tsx` — SIZE toggle now visible in 2D as well.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass.
+
+### 2026-05-03 — Hotfix (out-of-scope but blocking prod): lazy-init Supabase clients in API routes
+
+**PR:** TBD (about to open).
+
+**Trigger.** User reported `manifold.apexanalytica.co` → Vercel **404 DEPLOYMENT_NOT_FOUND**. Local `npm run build` reproduced: `Error: supabaseUrl is required.` at the "Collecting page data" step, dying on `/api/admin/billing/expire`. Bisected — none of the rendering/perf commits touched these routes; the failure is structural.
+
+**Root cause.** Ten API route files were instantiating service-role Supabase clients (and one Resend client) **at module-load time** at the top of the file:
+
+```ts
+const service = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+```
+
+Next.js 16's Turbopack production builder is more aggressive about evaluating route modules during page-data collection, so any missing env var at build time crashes the entire build. On Vercel that took out the production deployment alias and produced the user-facing DEPLOYMENT_NOT_FOUND.
+
+**Fix.** All 10 routes wrapped the client creation in a `function getService() { return createClient(...) }` and switched callsites to call `getService()` (or `getSupabase()` / `getResend()`) inside the request handler. Module-load no longer touches env vars; the client is constructed at request time when env vars are guaranteed present (or fails with a clearer 500).
+
+**Files touched.**
+- `src/app/api/admin/billing/expire/route.ts`
+- `src/app/api/admin/billing/grant-tier/route.ts`
+- `src/app/api/admin/billing/customers/route.ts`
+- `src/app/api/admin/feedback/[id]/approve/route.ts`
+- `src/app/api/admin/feedback/[id]/reject/route.ts`
+- `src/app/api/admin/leads/[id]/route.ts`
+- `src/app/api/request-access/route.ts` (also lazy-inits Resend)
+- `src/app/api/feedback/route.ts`
+- `src/app/api/webhooks/github/route.ts`
+- `src/app/api/trusted-signup/route.ts`
+
+**Verification.** Local `npm run build` now passes the "Collecting page data" step (where it was failing). Static page pre-rendering still requires env vars present (e.g. `/forgot-password` uses `@supabase/ssr`); that's expected on Vercel where the env vars exist and was always working there.
+
+**Out of scope (deliberate).** This is auth/platform code, not rendering/perf. Logging the hotfix here because it's the only session that's been touching the codebase today and prod was down.
+
 ### 2026-05-03 — Next up
 
-- Verify v5 on production: hard-refresh, click **TOPO**, expect (a) much smoother surface (no visible triangulation), (b) crisp anti-aliased contour rings (no more stair-stepped bands), (c) heatmap colour ramp pixel-perfect across the surface. Knobs to tune in shader uniforms if needed: `uBands` (default 14, controls ring density), `uLineWidth` (default 0.04, controls line thickness). Remaining follow-ups: replay animation (bind field input to `currentSnapshot`), onboarding tooltip. Outside TOPO: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify production deploys past the build step. If still 404, the next likely failure mode is `/forgot-password` or another auth-page pre-render — that would need its own investigation.
+- Resume rendering work: 2D floating-edge verification, plus deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

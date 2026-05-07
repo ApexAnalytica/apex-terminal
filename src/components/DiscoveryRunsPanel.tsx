@@ -45,7 +45,15 @@ const SAMPLE_RUN_URLS = [
   "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
   "/discovery-runs/d1namo-bocpd-hypo-calibration-v0-1-0.json",
   "/discovery-runs/d1namo-csd-fit-hypo-calibration-v0-1-0.json",
+  "/discovery-runs/hall-csd-fit-hypo-calibration-v0-1-0.json",
 ];
+
+// Short cohort labels for tab rendering. Falls back to cohortId when
+// unknown — keeps adding new cohorts low-friction.
+const COHORT_SHORT_LABELS: Record<string, string> = {
+  "d1namo-2018": "D1NAMO",
+  "hall-cgm-2018": "HALL",
+};
 
 type LoadState =
   | { kind: "loading" }
@@ -85,38 +93,53 @@ export default function DiscoveryRunsPanel() {
   return (
     <div className="p-4 space-y-3">
       <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-        Edges and calibration runs computed on a real observational
-        cohort (D1NAMO, Dubosson 2018), separate from the curated
-        CausalGraph above. The two structure-discovery tabs (lag /
-        pcmci) compare algorithms on the same data — common-cause
-        artefacts in the cheaper algorithm fail under proper
-        conditioning. The two calibration tabs (bocpd / csd-fit)
-        validate scores the platform ships against real labelled events.
+        Edges and calibration runs computed on real observational
+        cohorts, separate from the curated CausalGraph above. Two public
+        substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
+        Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). Tab
+        labels carry the cohort prefix; same algorithm across cohorts
+        is how cross-substrate generalisation gets tested.
       </div>
 
       {state.kind === "loading" && <LoadingTile />}
       {state.kind === "error" && <ErrorTile message={state.message} />}
       {state.kind === "ready" && (
         <>
-          {/* Algorithm tabs */}
-          <div className="flex gap-1.5">
-            {state.runs.map((r, i) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => setActiveIdx(i)}
-                className={`flex-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded px-2 py-1 border transition-colors ${
-                  i === activeIdx
-                    ? "text-[#40c4ff] border-[#40c4ff]/60 bg-[#40c4ff]/10"
-                    : "text-text-muted border-border bg-surface-elevated hover:border-foreground/40 hover:text-foreground"
-                }`}
-              >
-                {r.algorithm.id} v{r.algorithm.version}
-                <span className="block text-[7px] font-mono mt-0.5">
-                  {r.result.edges.length} edges
-                </span>
-              </button>
-            ))}
+          {/* Algorithm × cohort tabs. Cohort prefix only appears when
+              there's more than one cohort in the loaded set, so the
+              single-cohort case stays clean. */}
+          <div className="flex gap-1.5 flex-wrap">
+            {state.runs.map((r, i) => {
+              const distinctCohorts = new Set(
+                state.runs.map((x) => x.cohortId),
+              );
+              const showCohort = distinctCohorts.size > 1;
+              const cohortLabel =
+                COHORT_SHORT_LABELS[r.cohortId] ?? r.cohortId;
+              const isCal = CALIBRATION_ALGORITHM_IDS.has(r.algorithm.id);
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setActiveIdx(i)}
+                  className={`flex-1 min-w-[110px] text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded px-2 py-1 border transition-colors ${
+                    i === activeIdx
+                      ? "text-[#40c4ff] border-[#40c4ff]/60 bg-[#40c4ff]/10"
+                      : "text-text-muted border-border bg-surface-elevated hover:border-foreground/40 hover:text-foreground"
+                  }`}
+                >
+                  {showCohort && (
+                    <span className="block text-[6.5px] font-mono opacity-70 -mb-0.5">
+                      {cohortLabel}
+                    </span>
+                  )}
+                  {r.algorithm.id} v{r.algorithm.version}
+                  <span className="block text-[7px] font-mono mt-0.5">
+                    {isCal ? "calibration" : `${r.result.edges.length} edges`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <RunTile run={state.runs[activeIdx]} />
         </>
@@ -310,18 +333,29 @@ function RunTile({ run }: { run: DiscoveryRun }) {
         </div>
       )}
       {run.algorithm.id === "csd-fit-hypo-calibration" && (
-        <div className="text-[7px] font-mono text-accent-cyan/80 leading-relaxed border border-accent-cyan/20 bg-accent-cyan/5 rounded px-1.5 py-1">
-          <strong>F sub-score (CSD/AR(1) fit) vs hypoglycemia, 30-min
-          horizon.</strong> Validates the F sub-score and the bootstrap
-          CI shipped in the F·E·G·S·M relevance composite, on real
-          labelled D1NAMO data. <em>Not</em> a full F·E·G·S·M
-          validation: D1NAMO is single-subject CGM, so M (multi-node
-          consistency) and several other sub-scores are degenerate —
-          listed in the box above. Two AUROCs reported: high-F-predicts-
-          event (sanity) and (1−F)-predicts-event (the regime-shift
-          hypothesis: AR(1) fit collapses as the system approaches a
-          tipping point). The full F·E·G·S·M validation requires a
-          multi-subject-graph cohort like nPOD.
+        <div className="text-[7px] font-mono text-accent-cyan/80 leading-relaxed border border-accent-cyan/20 bg-accent-cyan/5 rounded px-1.5 py-1 space-y-1">
+          <div>
+            <strong>F sub-score (CSD/AR(1) fit) vs hypoglycemia, 30-min
+            horizon.</strong> Validates the F sub-score and the bootstrap
+            CI shipped in the F·E·G·S·M relevance composite, on real
+            labelled CGM data. <em>Not</em> a full F·E·G·S·M validation:
+            single-subject CGM has no multi-node graph, so M and
+            several other sub-scores are degenerate — listed above.
+            Two AUROCs reported: high-F-predicts-event (sanity) and
+            (1−F)-predicts-event (the regime-shift hypothesis: AR(1) fit
+            collapses as the system approaches a tipping point).
+          </div>
+          <div className="border-t border-accent-cyan/20 pt-1">
+            <strong>Cross-substrate finding (run on both cohorts):</strong>{" "}
+            On D1NAMO (T1D + insulin) F→hypo AUROC ≈ 0.59 — mildly
+            informative. On Hall (T2D / pre-diabetic, no insulin) the
+            same calibrator gives AUROC ≈ 0.50 — chance. F's apparent
+            predictive power on D1NAMO does not generalise to a
+            different population. The signal we saw on D1NAMO was
+            T1D-specific, not a universal claim about fit collapse.
+            Full F·E·G·S·M validation still requires a multi-subject-
+            graph cohort like nPOD.
+          </div>
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 import type { TemporalDataset } from "./temporal-data";
 import { getEventsInRange, getNodeStateAt } from "./temporal-data";
-import { DOMAIN_CARDS } from "@/components/DomainSelector";
+import { DOMAIN_CARDS } from "@/lib/domains";
 import {
   renderEngineStateText,
   summarizeEngineState,

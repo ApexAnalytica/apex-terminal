@@ -314,7 +314,7 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     copy: {
       title: "SHOCK / STRESSOR INJECTION",
       description:
-        "Under the criticality cards, the Scenario Injector loads preset shocks calibrated for your active domain. Geopolitical examples: Strait of Hormuz closure, Abqaiq attack, LNG train outage, sovereign default. Life Sciences examples: insulin supply disruption, β-cell antigen exposure spike, HLA-mismatch graft rejection. Each shock depletes the buffer according to severity and propagates through the cascade.",
+        "Under the criticality cards, the Scenario Injector lets you depress the buffer by injecting shocks at any node. Click a vertex on the canvas to inject at that point — the shock depletes the buffer according to severity and propagates through the cascade. The preset library is empty by default; supply your own scenario set via the API, the import path, or a profile-scoped catalog when you need recurring stressors.",
     },
     onEnter: () => useApexStore.getState().setActiveModule("pareto"),
   },

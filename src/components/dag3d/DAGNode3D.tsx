@@ -35,7 +35,15 @@ interface DAGNode3DProps {
   position: [number, number, number];
   isInterventionTarget: boolean;
   isVerifiedRestricted: boolean;
+  // True if this node is the singular click-selected node OR a member of
+  // a marquee/domain multi-selection. Drives ring + scale + label.
   isSelected: boolean;
+  // True ONLY when this node is the singular `selectedNode` (ie. user
+  // clicked it directly). Drives the heavy "ΩF profile + metrics" card —
+  // earlier the card mounted for every `isSelected` node, so a 25-node
+  // domain pick popped 25 cards into the canvas. Multi-selected nodes
+  // get the small floating label, not the heavy card.
+  isSingleSelected: boolean;
   isNeighborOfSelected: boolean;
   anyNodeSelected: boolean;
   isConsequence?: boolean;
@@ -74,6 +82,7 @@ function DAGNode3DInner({
   isInterventionTarget,
   isVerifiedRestricted,
   isSelected,
+  isSingleSelected,
   isNeighborOfSelected,
   anyNodeSelected,
   isConsequence = false,
@@ -302,13 +311,15 @@ function DAGNode3DInner({
         </Html>
       )}
 
-      {/* Detail Card — full ΩF profile + network metrics. Was previously
-           gated on `hovered`, which made the heavy card pop up on every
-           mouse-move and obscured the canvas. User feedback: the small
-           floating label (above) is the right hover affordance; the
-           heavy card should only appear on explicit selection (click).
-           Mirrors the 2D view's hover-vs-click split. */}
-      {isSelected && !dimmed && (
+      {/* Detail Card — full ΩF profile + network metrics. Gated on
+           `isSingleSelected`, NOT `isSelected`: when the user picks a
+           domain (or shift-marquees a region) every node in that set
+           reads as `isSelected=true`, and the earlier gate popped the
+           heavy card on every one of them — a wall of overlapping
+           boxes. Only the singular click-selected node opens the card;
+           multi-selected nodes still get the small floating label
+           above. Mirrors the 2D hover-vs-click split. */}
+      {isSingleSelected && !dimmed && (
         <Html
           position={[0, size + (isSelected ? 3.5 : 2.5), 0]}
           center
@@ -484,6 +495,7 @@ function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
   if (prev.isInterventionTarget !== next.isInterventionTarget) return false;
   if (prev.isVerifiedRestricted !== next.isVerifiedRestricted) return false;
   if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isSingleSelected !== next.isSingleSelected) return false;
   if (prev.isNeighborOfSelected !== next.isNeighborOfSelected) return false;
   if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
   if (prev.isConsequence !== next.isConsequence) return false;

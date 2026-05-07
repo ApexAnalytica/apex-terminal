@@ -602,6 +602,38 @@ The cryptic three-letter labels surfaced no meaning, and three other visual enco
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 778/778 pass.
 
+### 2026-05-07 — Shipped: Map multi-select dim, 3D card-explosion fix, TOPO isolate, domain panel rolled up
+
+**PR:** TBD (about to open).
+
+**Trigger.** Four-item batch from the user after merging PR #262:
+
+1. *"On maps, it didn't actually shade out the rest of them. … in the same way that it did under 2D."* — Map only dimmed when `isolateSelection` was on; 2D dims unconditionally on multi-select.
+2. *"Under 3D, it has, like, a million different cards open. … It should only just have, like, that short little title above that node."* — When PR #261 moved the heavy detail card behind `isSelected`, multi-select set `isSelected=true` for every selected node, popping a wall of overlapping cards.
+3. *"Under topology … it hasn't isolated the region, which I guess is what it should be doing."* — TOPO didn't honour `isolateSelection` at all.
+4. *"Under the bottom-left domain section … sovereign risk Saudi Aramco Energy. These look like not the same level of complexity. And on top of that, you're also showing certain domains for which there are not any nodes."* — The panel iterated raw `n.domain` strings, which carry inconsistent abstraction (per-company vs per-theme), and showed buckets the user hadn't selected at landing.
+
+**What shipped.**
+
+- **Map dim-on-multi-select.** `nodeGeoJSON` now dims non-selected nodes whenever `selectedNodes.length > 0` (0.35 with isolate off, 0.15 with isolate on). Edges branch three ways: cull when isolate ON and not fully in scope, dim to 0.08 when isolate OFF and no endpoint is selected, otherwise render normally.
+- **3D `isSingleSelected` prop.** `DAGNode3D` now takes both `isSelected` (single OR multi → drives ring/scale/label) and `isSingleSelected` (the singular click target → drives the heavy detail card). Multi-selected nodes still get the floating label, never the card.
+- **TOPO isolate + tint.**
+  - With `isolateSelection && multiSelected.size > 0`, `fieldNodes` filters to the selected subset before the relief field is computed — non-selected mountains literally don't render.
+  - Without isolate but with a multi-selection, the surface gets a `uSurfaceTint=0.4` uniform multiplier (new in `TOPO_FRAGMENT_SHADER`) so mountains read as faded context behind the cyan selection pillars. Vanilla `meshStandardMaterial` path mirrors via `transparent + opacity`.
+  - Uniform held in `useState`, mutated imperatively through a `materialRef` to avoid rebuilding the shader pipeline on tint changes.
+- **Domain panel rolled up to card labels.** Replaced the raw `n.domain` enumeration with a card-keyed pipeline: reverse `DOMAIN_MAP` (selector-id → raw-domain[]) into raw → card, bucket nodes by card, show `card.label` (e.g. "Energy Systems") and `card.color`. Cross-domain connectors (`Geopolitical`, `Energy Grid`) keep their raw-name row since they have no card mapping. When `selectedDomains.length > 0`, non-cross-domain rows filter to the user's actual landing-page picks; otherwise fall back to "show everything in the visible graph". Click-to-highlight now selects every node whose raw `n.domain` is in the row's mapped set.
+
+**Files.**
+- `src/components/CausalDAGMap.tsx` — node + edge dim branches.
+- `src/components/dag3d/DAGNode3D.tsx` — new `isSingleSelected` prop, gate on detail card, memo equality.
+- `src/components/CausalDAG3D.tsx` — pass `isSingleSelected={selectedNode === node.id}` to `DAGNode3D`.
+- `src/components/CausalDAGRelief.tsx` — `uSurfaceTint` uniform + shader update; `surfaceTint` prop on `ReliefMesh`; `fieldNodes` isolate filter; multi-select state read in the parent.
+- `src/components/dag3d/DAGOverlay.tsx` — `domainPanelRows` (card-keyed), updated panel render + click handler.
+
+**Caveats / what's still data-side.** "Apples-to-oranges" was addressed at the rendering layer by displaying card labels instead of raw `n.domain` strings. The underlying data still has nodes labelled at multiple abstraction levels — that's an engines-team thing if the picker / canvas ever needs to surface the raw string.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 778/778 pass.
+
 ---
 
 ## How a fresh session resumes

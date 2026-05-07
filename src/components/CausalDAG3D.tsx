@@ -1041,6 +1041,7 @@ export default function CausalDAG3D() {
                 isInterventionTarget={isTarget}
                 isVerifiedRestricted={isRestricted}
                 isSelected={isSelected}
+                isSingleSelected={selectedNode === node.id}
                 isNeighborOfSelected={isNeighborOfSelected}
                 anyNodeSelected={anyNodeSelected}
                 isConsequence={node.isConsequence ?? false}

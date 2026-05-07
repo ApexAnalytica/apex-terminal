@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
+import { DOMAIN_CARDS } from "@/lib/domains";
+import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";
 import type { NodeSizeMetric } from "@/lib/types";
 
 /**
@@ -291,14 +293,89 @@ export default function DAGOverlay() {
     return nodeById.get(selectedNode) ?? null;
   }, [selectedNode, nodeById]);
 
-  // Domain legend: count nodes per domain
-  const domainCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    activeGraph.nodes.forEach((n) => {
-      map[n.domain] = (map[n.domain] || 0) + 1;
-    });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [activeGraph.nodes]);
+  // Domain legend rows. Was previously a raw `Object.entries` over
+  // `n.domain` strings, which the user flagged as apples-to-oranges:
+  // "Sovereign Risk" sat alongside "Saudi Aramco Energy" — same panel,
+  // different abstraction levels. The data layer carries node-domain
+  // strings at multiple granularities (per-company, per-sector,
+  // per-theme); the only level that's user-recognisable is the
+  // DomainCard catalog the landing-page picker shows.
+  //
+  // The new pipeline:
+  //   1. Reverse DOMAIN_MAP (selector-id → raw-domain[]) into
+  //      raw-domain → card.
+  //   2. Walk activeGraph.nodes, bucket each by its card (or by raw
+  //      name if the node belongs to a cross-domain connector like
+  //      "Geopolitical" / "Energy Grid" with no card mapping).
+  //   3. If the user picked specific domains at landing, filter buckets
+  //      to that subset (cross-domain rows always pass).
+  // Result: every row corresponds to something the user actually
+  // chose, displayed with the same label they recognised on the way in.
+  const selectedDomainCardIds = useApexStore((s) => s.selectedDomains);
+  const domainPanelRows = useMemo(() => {
+    const cardById = new Map(DOMAIN_CARDS.map((c) => [c.id, c]));
+    const rawDomainToCardId = new Map<string, string>();
+    for (const [cardId, rawDomains] of Object.entries(DOMAIN_MAP)) {
+      for (const raw of rawDomains) rawDomainToCardId.set(raw, cardId);
+    }
+    type Row = {
+      key: string;
+      label: string;
+      color: string;
+      count: number;
+      rawDomains: string[];
+      isCrossDomain: boolean;
+    };
+    const byKey = new Map<string, Row>();
+    for (const n of activeGraph.nodes) {
+      const cardId = rawDomainToCardId.get(n.domain);
+      if (cardId) {
+        const card = cardById.get(cardId);
+        if (!card) continue;
+        const existing = byKey.get(cardId);
+        if (existing) {
+          existing.count += 1;
+          if (!existing.rawDomains.includes(n.domain)) {
+            existing.rawDomains.push(n.domain);
+          }
+        } else {
+          byKey.set(cardId, {
+            key: cardId,
+            label: card.label,
+            color: card.color,
+            count: 1,
+            rawDomains: [n.domain],
+            isCrossDomain: false,
+          });
+        }
+      } else {
+        // Cross-domain connectors ("Geopolitical", "Energy Grid") have
+        // no card mapping — keep them as their raw-name row so the
+        // user still sees them when they auto-attach to a selection.
+        const key = `_raw:${n.domain}`;
+        const existing = byKey.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          byKey.set(key, {
+            key,
+            label: n.domain,
+            color: getDomainColor(n.domain),
+            count: 1,
+            rawDomains: [n.domain],
+            isCrossDomain: true,
+          });
+        }
+      }
+    }
+    let rows = Array.from(byKey.values());
+    if (selectedDomainCardIds.length > 0) {
+      const allowed = new Set(selectedDomainCardIds);
+      rows = rows.filter((r) => r.isCrossDomain || allowed.has(r.key));
+    }
+    rows.sort((a, b) => b.count - a.count);
+    return rows;
+  }, [activeGraph.nodes, selectedDomainCardIds]);
 
   // Top-Ω nodes
   const topOmega = useMemo(() => {
@@ -554,30 +631,30 @@ export default function DAGOverlay() {
                 ? `· ${activeDomain}`
                 : domainPanelOpen
                   ? "— click to highlight"
-                  : `(${domainCounts.length})`}
+                  : `(${domainPanelRows.length})`}
             </span>
           </button>
           {domainPanelOpen && (
             <div className="flex flex-col gap-0.5 mt-1">
-              {domainCounts.map(([domain, count]) => {
-                const isActive = activeDomain === domain;
-                const domainColor = getDomainColor(domain);
+              {domainPanelRows.map((row) => {
+                const isActive = activeDomain === row.key;
                 return (
                   <div
-                    key={domain}
+                    key={row.key}
                     className="flex items-center gap-1.5 cursor-pointer rounded px-1 -mx-1 py-0.5 transition-colors hover:bg-white/5"
                     style={{
-                      backgroundColor: isActive ? `${domainColor}15` : undefined,
-                      borderLeft: isActive ? `2px solid ${domainColor}` : "2px solid transparent",
+                      backgroundColor: isActive ? `${row.color}15` : undefined,
+                      borderLeft: isActive ? `2px solid ${row.color}` : "2px solid transparent",
                     }}
                     onClick={() => {
                       if (isActive) {
                         setActiveDomain(null);
                         setSelectedNodes([]);
                       } else {
-                        setActiveDomain(domain);
+                        setActiveDomain(row.key);
+                        const allowed = new Set(row.rawDomains);
                         const nodeIds = activeGraph.nodes
-                          .filter((n) => n.domain === domain)
+                          .filter((n) => allowed.has(n.domain))
                           .map((n) => n.id);
                         setSelectedNodes(nodeIds);
                       }
@@ -585,13 +662,13 @@ export default function DAGOverlay() {
                   >
                     <div
                       className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: domainColor }}
+                      style={{ backgroundColor: row.color }}
                     />
-                    <span className="text-[8px]" style={{ color: isActive ? domainColor : "var(--text-muted)" }}>
-                      {domain}
+                    <span className="text-[8px]" style={{ color: isActive ? row.color : "var(--text-muted)" }}>
+                      {row.label}
                     </span>
                     <span className="text-[7px] text-text-muted/50">
-                      ({count})
+                      ({row.count})
                     </span>
                   </div>
                 );

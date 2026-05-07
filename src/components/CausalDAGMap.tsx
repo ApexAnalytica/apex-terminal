@@ -169,7 +169,14 @@ function CausalDAGMapInner() {
       );
       const domainColor = node.datasetColor || getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
-      const isDimmed = isolateSelection && selectedSet.size > 0 && !selectedSet.has(node.id);
+      // Two dim modes:
+      //  - isolate ON  → opacity 0.15 (existing behaviour)
+      //  - isolate OFF → opacity 0.35 (multi-select spotlight, matches 2D
+      //    where multiSelected.length > 0 alone dims non-selected nodes)
+      const isMultiSelectActive = selectedSet.size > 0;
+      const isOutOfScope = isMultiSelectActive && !selectedSet.has(node.id);
+      const isDimmed = isOutOfScope;
+      const dimOpacity = isolateSelection ? 0.15 : 0.35;
       const omega = node.omegaFragility.composite;
 
       return {
@@ -187,7 +194,7 @@ function CausalDAGMapInner() {
           isDimmed,
           // Size based on omega score
           radius: Math.max(4, omega * 1.2),
-          opacity: isDimmed ? 0.15 : 1,
+          opacity: isDimmed ? dimOpacity : 1,
           strokeColor: isSelected ? "#00e5ff" : "rgba(255,255,255,0.3)",
           strokeWidth: isSelected ? 2.5 : 0.5,
         },
@@ -220,12 +227,20 @@ function CausalDAGMapInner() {
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
-      // Isolation: hide edges that don't connect two selected nodes (matches 3D behavior)
-      if (
-        isolateSelection &&
-        selectedSet.size > 0 &&
-        !(selectedSet.has(edge.source) && selectedSet.has(edge.target))
-      ) return;
+      // Three modes for edges when a multi-selection is active:
+      //  - isolate ON   → cull edges that don't connect two selected nodes
+      //  - isolate OFF  → render but dim edges with no selected endpoint
+      //                   (matches 2D's `multiInScope` spotlight)
+      //  - no selection → render normally
+      const inScope =
+        selectedSet.size === 0 ||
+        selectedSet.has(edge.source) ||
+        selectedSet.has(edge.target);
+      const fullScope =
+        selectedSet.size === 0 ||
+        (selectedSet.has(edge.source) && selectedSet.has(edge.target));
+      if (isolateSelection && selectedSet.size > 0 && !fullScope) return;
+      const edgeIsDimmed = !isolateSelection && selectedSet.size > 0 && !inScope;
 
       // Curved line via midpoint offset (MapLibre renders LineStrings as
       // straight segments between vertices, so we sample the quadratic
@@ -278,7 +293,8 @@ function CausalDAGMapInner() {
       // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
       const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
 
-      const opacity = isSevered ? 0.45 : 0.5;
+      const baseOpacity = isSevered ? 0.45 : 0.5;
+      const opacity = edgeIsDimmed ? 0.08 : baseOpacity;
 
       const feature: Feature<LineString> = {
         type: "Feature",

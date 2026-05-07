@@ -1,9 +1,212 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
+import type { NodeSizeMetric } from "@/lib/types";
+
+/**
+ * Documents every visual encoding the network views use, in one
+ * discoverable popover. Replaces the cryptic `SIZE: ΩF / EIG / BTW`
+ * button trio that previously sat inline (no one could tell what BTW
+ * meant) and surfaces the encodings that were never documented at all
+ * (distance, edge thickness, edge colour, glow). Same key in both 3D
+ * and 2D — the encodings are identical so the legend is too.
+ */
+function EncodingLegend({
+  nodeSizeMetric,
+  onMetricChange,
+  onClose,
+}: {
+  nodeSizeMetric: NodeSizeMetric;
+  onMetricChange: (m: NodeSizeMetric) => void;
+  onClose: () => void;
+}) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Click-outside / Escape to dismiss — popover doesn't take focus on its
+  // own (no form inputs), so a global listener is the simplest path.
+  useEffect(() => {
+    function onPointer(e: MouseEvent) {
+      if (!popoverRef.current) return;
+      if (popoverRef.current.contains(e.target as Node)) return;
+      // Don't dismiss if the click was the LEGEND button itself —
+      // that toggle is handled by its own onClick which fires after
+      // this listener clears `legendOpen`.
+      const target = e.target as HTMLElement;
+      if (target.closest("button")?.textContent?.trim() === "LEGEND") return;
+      onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const sizeOptions: Array<{ id: NodeSizeMetric; label: string; help: string }> = [
+    {
+      id: "omega",
+      label: "Criticality (ΩF)",
+      help: "Static fragility composite — 0–10. Default analytical signal.",
+    },
+    {
+      id: "eigenvector",
+      label: "Influence (eigenvector centrality)",
+      help: "Importance via connections to other important nodes. Surfaces hubs.",
+    },
+    {
+      id: "betweenness",
+      label: "Bridge (betweenness centrality)",
+      help: "Lies on shortest paths between others. Surfaces chokepoints.",
+    },
+  ];
+
+  return (
+    <div
+      ref={popoverRef}
+      className="absolute right-0 top-full mt-2 w-[340px] rounded border border-border bg-surface-elevated/95 backdrop-blur-sm shadow-xl pointer-events-auto z-30"
+      style={{ fontFamily: "monospace" }}
+    >
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+          VISUAL ENCODINGS
+        </span>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-text-muted hover:text-foreground"
+          aria-label="Close legend"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Size — interactive: this is the only knob the user can change
+          from the legend. Selecting a row both surfaces the explanation
+          and rebinds nodeSizeMetric in the store. */}
+      <div className="px-3 py-2 border-b border-border">
+        <div className="text-[8px] tracking-wider text-text-muted mb-1.5">
+          NODE SIZE
+        </div>
+        <div className="flex flex-col gap-1">
+          {sizeOptions.map((opt) => {
+            const active = nodeSizeMetric === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => onMetricChange(opt.id)}
+                className={`text-left rounded px-2 py-1.5 transition-colors ${
+                  active
+                    ? "bg-accent-cyan/15 border border-accent-cyan/40"
+                    : "border border-transparent hover:bg-surface"
+                }`}
+              >
+                <div
+                  className={`text-[10px] ${
+                    active ? "text-accent-cyan" : "text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </div>
+                <div className="text-[9px] text-text-muted leading-snug mt-0.5">
+                  {opt.help}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Read-only encodings — fixed by the dataset / view, not toggleable. */}
+      <div className="px-3 py-2 flex flex-col gap-1.5">
+        <LegendRow
+          label="NODE COLOUR"
+          help="Domain (matches the DOMAINS legend)."
+          swatch={
+            <div className="flex gap-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#00e676" }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#00e5ff" }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#ffab00" }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#7c4dff" }} />
+            </div>
+          }
+        />
+        <LegendRow
+          label="NODE GLOW"
+          help="ΩF severity. Red ≥ 9, amber 7–9, green < 7."
+          swatch={
+            <div className="flex gap-0.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#00e676", boxShadow: "0 0 4px #00e676" }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#ffab00", boxShadow: "0 0 4px #ffab00" }} />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#ff1744", boxShadow: "0 0 4px #ff1744" }} />
+            </div>
+          }
+        />
+        <LegendRow
+          label="DISTANCE"
+          help="Force-directed: stronger correlation ⇒ shorter spring ⇒ closer in space."
+          swatch={
+            <div className="relative w-10 h-3">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-accent-cyan" />
+              <span className="absolute right-0 top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-accent-cyan" />
+              <span className="absolute left-1.5 right-1.5 top-1/2 -translate-y-1/2 h-px bg-accent-cyan/40" />
+            </div>
+          }
+        />
+        <LegendRow
+          label="EDGE THICKNESS"
+          help="Correlation magnitude. Thicker = stronger relationship."
+          swatch={
+            <div className="flex flex-col gap-0.5 w-10">
+              <span className="h-px bg-accent-cyan" />
+              <span className="h-0.5 bg-accent-cyan" />
+              <span className="h-1 bg-accent-cyan" />
+            </div>
+          }
+        />
+        <LegendRow
+          label="EDGE COLOUR"
+          help="Causal (cyan) · temporal/lag (amber) · confounded (orange) · Tarski-violation (red)."
+          swatch={
+            <div className="flex gap-0.5">
+              <span className="h-2 w-2.5" style={{ backgroundColor: "#00e5ff" }} />
+              <span className="h-2 w-2.5" style={{ backgroundColor: "#ffab00" }} />
+              <span className="h-2 w-2.5" style={{ backgroundColor: "#ff6d00" }} />
+              <span className="h-2 w-2.5" style={{ backgroundColor: "#ff1744" }} />
+            </div>
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function LegendRow({
+  label,
+  help,
+  swatch,
+}: {
+  label: string;
+  help: string;
+  swatch: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex-shrink-0 mt-0.5 w-12 flex items-center justify-center">
+        {swatch}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[8px] tracking-wider text-text-muted">{label}</div>
+        <div className="text-[9px] text-foreground leading-snug">{help}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function DAGOverlay() {
   // Fine-grained selectors so this component only re-renders when its own
@@ -25,6 +228,15 @@ export default function DAGOverlay() {
   const isLive = useApexStore((s) => s.isLive);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
+  // The encoding key (size + colour + glow + edge meanings) used to live
+  // as a cryptic `SIZE: ΩF / EIG / BTW` button trio next to the view-mode
+  // buttons. Users couldn't tell what BTW meant, and there was no
+  // documentation at all of what edge thickness / inter-node distance /
+  // node colour represent. Replaced with one discoverable LEGEND button
+  // → popover that documents every visual encoding in one place. The
+  // size-metric toggle is moved INSIDE the popover with full names
+  // ("Criticality (ΩF)" instead of "ΩF") and a one-line explanation.
+  const [legendOpen, setLegendOpen] = useState(false);
   const { graph: temporalGraph } = useTemporalGraph();
   const activeGraph = isLive ? graphData : temporalGraph;
   const meta = activeGraph.metadata;
@@ -91,36 +303,33 @@ export default function DAGOverlay() {
           the corner stays clean. View labels still say which view is
           active via the highlighted button. */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
-        {/* Node-size metric toggle. ΩF reads as "criticality"; the two
-            centralities reveal structure (eigenvector → influence hubs;
-            betweenness → bridges). Visible in both 3D and 2D since the
-            same store slot drives orb radius in 3D and circle diameter
-            in 2D. Hidden in MAP/TOPO where the visual primitive isn't a
-            sized node. */}
+        {/* Encoding legend — visible in 3D and 2D where the visual
+            primitive is a sized, coloured node with edges. MAP and TOPO
+            have their own legends. Click opens a popover documenting
+            every encoding the user can see (size, colour, glow,
+            distance, edge thickness, edge colour) plus the size-metric
+            toggle inline. Reduces "what does this dot mean?" friction. */}
         {(viewMode === "3d" || viewMode === "2d") && (
-          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-surface-elevated">
-            <span className="text-[8px] font-mono text-text-muted pr-0.5">SIZE:</span>
-            {(
-              [
-                { id: "omega", label: "ΩF" },
-                { id: "eigenvector", label: "EIG" },
-                { id: "betweenness", label: "BTW" },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setNodeSizeMetric(opt.id)}
-                className={`text-[8px] font-mono px-1.5 py-0.5 rounded transition-colors ${
-                  nodeSizeMetric === opt.id
-                    ? "text-accent-cyan bg-accent-cyan/15"
-                    : "text-text-muted hover:text-accent-cyan"
-                }`}
-                title={`Map node size to ${opt.label}`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </span>
+          <div className="relative">
+            <button
+              onClick={() => setLegendOpen((prev) => !prev)}
+              className={`text-[9px] font-[family-name:var(--font-michroma)] tracking-wider px-2.5 py-1 rounded border transition-colors ${
+                legendOpen
+                  ? "border-accent-cyan text-accent-cyan bg-accent-cyan/10"
+                  : "border-border text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40"
+              }`}
+              title="What do the visuals mean?"
+            >
+              LEGEND
+            </button>
+            {legendOpen && (
+              <EncodingLegend
+                nodeSizeMetric={nodeSizeMetric}
+                onMetricChange={(m) => setNodeSizeMetric(m)}
+                onClose={() => setLegendOpen(false)}
+              />
+            )}
+          </div>
         )}
         {/* View mode cycle buttons. Internal id stays "relief" so existing
             store / type machinery keeps working; the user-facing label is

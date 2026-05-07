@@ -498,10 +498,39 @@ Next.js 16's Turbopack production builder is more aggressive about evaluating ro
 
 **Out of scope (deliberate).** This is auth/platform code, not rendering/perf. Logging the hotfix here because it's the only session that's been touching the codebase today and prod was down.
 
+### 2026-05-03 — Shipped: discoverable LEGEND popover replaces cryptic SIZE buttons
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the SIZE toggle landed: *"the toggle ΩF / EIG / BTW is still kind of confusing — what do they mean? Also what about the distance measures? What are those relative to the orbs? We need to be more specific and consistent."*
+
+The cryptic three-letter labels surfaced no meaning, and three other visual encodings (inter-node distance, edge thickness, edge colour) had **zero documentation** in the UI. Power users could probably guess, first-time users couldn't.
+
+**What shipped.**
+- New `EncodingLegend` popover component in `DAGOverlay`, anchored to a single `LEGEND` button that replaces the inline `SIZE: ΩF / EIG / BTW` strip. Same trigger in 2D and 3D.
+- **Size toggle moved inside the popover** with full names + one-line explanations:
+  - **Criticality (ΩF)** — Static fragility composite — 0–10. Default analytical signal.
+  - **Influence (eigenvector centrality)** — Importance via connections to other important nodes. Surfaces hubs.
+  - **Bridge (betweenness centrality)** — Lies on shortest paths between others. Surfaces chokepoints.
+- **Five read-only encoding rows**, each with a colour swatch + plain-English explanation:
+  - Node colour → domain
+  - Node glow → ΩF severity (red ≥ 9, amber 7–9, green < 7)
+  - Distance → force-directed: stronger correlation ⇒ shorter spring ⇒ closer
+  - Edge thickness → correlation magnitude
+  - Edge colour → causal (cyan) / temporal (amber) / confounded (orange) / Tarski-violation (red)
+- Click-outside + Escape dismiss the popover.
+
+**Tradeoff captured.** Size-metric switching is now a 2-click action (open legend → click metric) instead of 1-click. The discoverability win — users can finally tell what BTW *is* — was the bigger problem.
+
+**Files.**
+- `src/components/dag3d/DAGOverlay.tsx` — `EncodingLegend` + `LegendRow` components, `legendOpen` state, replaces the inline `SIZE:` button strip with a single `LEGEND` button + popover.
+
+**Verification.** `tsc --noEmit` clean; lint clean; vitest 729/729 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify production deploys past the build step. If still 404, the next likely failure mode is `/forgot-password` or another auth-page pre-render — that would need its own investigation.
-- Resume rendering work: 2D floating-edge verification, plus deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+- Verify the LEGEND popover on production: hard-refresh, switch to 2D or 3D — expect a single `LEGEND` button next to the view-mode buttons; clicking opens a 5-row encoding key with the size-metric toggle inline.
+- Backlog: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---
 

@@ -93,9 +93,23 @@ describe("akaikeEvidenceWeights", () => {
 describe("csdRegimeGate", () => {
   it("scores higher for a series with rising variance and autocorr", () => {
     // Trajectory whose variance and autocorrelation grow over time.
+    // Seeded RNG so the test is deterministic — was previously using
+    // unseeded Math.random() and intermittently failed when the random
+    // draw produced rising < flat at the assertion threshold.
+    const rng = (() => {
+      // Mulberry32 inline so the test stays in this single file.
+      let a = 20260506 >>> 0;
+      return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    })();
     const rising: number[] = [];
     for (let i = 0; i < 30; i++) {
-      const noise = (Math.random() - 0.5) * (i / 30);
+      const noise = (rng() - 0.5) * (i / 30);
       const trend = i / 30;
       rising.push(trend + noise);
     }

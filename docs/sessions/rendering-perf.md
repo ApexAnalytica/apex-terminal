@@ -712,6 +712,25 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; lint clean (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
 
+### 2026-05-07 — Shipped: ISOLATE freeze unblocked + TOPO shift-lasso
+
+**PR:** TBD (about to open).
+
+**Trigger.** Two-item batch:
+1. *"On the bottom-left domains panel, if I click [a domain row] and then click ISOLATE, it kinda slows down and freezes. … If I use lasso, it doesn't do that."* — clicking ISOLATE after a multi-domain pick blocked the main thread while React unmounted ~150 DAGNode3D + ~270 DAGEdge3D children in a single render cycle (and rebuilt 4 GeoJSON FCs in the Map view). Lasso selections were typically smaller, but the real perceptual difference was that lasso users had already paid the multi-select cost during the drag — the ISOLATE click only triggered the re-render at peak fan-out.
+2. *"For the topological [view], a user should be able to select specific parts of the topology using the shift-lasso feature you have across the other views."* — TOPO had no marquee.
+
+**What shipped.**
+
+- **`startTransition` around the ISOLATE toggle.** `setIsolateSelection(...)` now runs inside `startTransition`, marking the resulting re-render as non-urgent. React keeps the current UI interactive while it computes the new tree (and processes the unmount cascade) in the background. The actual switch still takes its full ~150-300ms in the worst case, but the click feels instant — the button highlights immediately and the user can keep interacting with other controls. No data-shape changes; just a render-priority hint.
+- **TOPO shift+drag lasso.** New `TopoShiftMarquee` component inside the relief Canvas (mirrors the 3D `ShiftMarquee` pattern). Listens on `gl.domElement` for `pointerdown/move/up`, gates on `e.shiftKey`, tracks a screen-space rect, and on release projects each node's ground-plane position (`layout.x - field.cx`, `0`, `layout.y - field.cy` — same translation `SelectionMarkers` uses) into screen coords for hit-testing. OrbitControls disabled during the drag so the camera doesn't rotate. DOM rect overlay rendered outside the Canvas, identical class set to 2D / 3D / Map for visual consistency.
+
+**Files.**
+- `src/components/dag3d/DAGOverlay.tsx` — `startTransition(() => setIsolateSelection(...))`.
+- `src/components/CausalDAGRelief.tsx` — new `TopoShiftMarquee`; `selectionBoxRef`, `selectionRect`, `shiftDragging`, `handleShiftSelect` state in parent; OrbitControls.enabled bound to `!shiftDragging`; DOM overlay for the rect.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing `onboarding-metrics.test.ts` strictness errors inherited from main); lint clean; vitest 833/833 pass.
+
 ---
 
 ## How a fresh session resumes

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
@@ -572,7 +572,18 @@ export default function DAGOverlay() {
             {/* Action buttons */}
             <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-border/50">
               <button
-                onClick={() => setIsolateSelection(!isolateSelection)}
+                // ISOLATE flips the selection-only filter across every
+                // canvas surface — 2D / 3D / Map / TOPO. With ~200 nodes
+                // and ~330 edges, the resulting re-render cascade
+                // (especially the 3D scene-tree where non-selected nodes
+                // unmount in a single frame) was reading as a freeze
+                // for ~150-300ms when triggered from a multi-domain
+                // selection. `startTransition` marks the resulting work
+                // as non-urgent: React keeps the current UI interactive
+                // and computes the new tree in the background, so the
+                // click feels instant even if the actual switch lands
+                // ~150ms later.
+                onClick={() => startTransition(() => setIsolateSelection(!isolateSelection))}
                 className={`flex-1 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-1 rounded border transition-colors ${
                   isolateSelection
                     ? "border-accent-amber/60 text-accent-amber bg-accent-amber/10"

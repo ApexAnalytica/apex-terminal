@@ -213,7 +213,13 @@ export default function Home() {
           for it — in plain terms, before any of the math.
         </p>
 
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        {/* 8 tiles in 2 rows of 4 at lg (was lg:grid-cols-7 with 7
+            tiles — now we have 8 with insurance added, so the
+            7-col layout was wrapping the 8th tile to a row of its
+            own AND squeezing every tile to ~167px which clipped the
+            longer labels MANUFACTURING / INFRASTRUCTURE). 4 cols
+            gives each tile ~290px and the labels breathe. */}
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4">
           {DOMAINS.map((d) => (
             <Link
               key={d.label}

@@ -302,8 +302,13 @@ function DAGNode3DInner({
         </Html>
       )}
 
-      {/* Hover Detail Card — shows ΩF profile + network metrics */}
-      {hovered && !dimmed && (
+      {/* Detail Card — full ΩF profile + network metrics. Was previously
+           gated on `hovered`, which made the heavy card pop up on every
+           mouse-move and obscured the canvas. User feedback: the small
+           floating label (above) is the right hover affordance; the
+           heavy card should only appear on explicit selection (click).
+           Mirrors the 2D view's hover-vs-click split. */}
+      {isSelected && !dimmed && (
         <Html
           position={[0, size + (isSelected ? 3.5 : 2.5), 0]}
           center

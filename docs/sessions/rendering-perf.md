@@ -555,10 +555,22 @@ The cryptic three-letter labels surfaced no meaning, and three other visual enco
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 732/732 pass.
 
+### 2026-05-03 — Shipped: 3D hover-vs-click parity with 2D
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on 3D: *"when I hover above a node, I'd like to see just the small label like 2D does. I didn't mean the huge box that appears — that should only appear when I physically click on it."*
+
+**What shipped.** Single one-line change in `DAGNode3D`: the heavy "ΩF profile + network metrics" hover card was gated on `hovered && !dimmed`. Switched to `isSelected && !dimmed`. The lightweight floating-label (`{node.label} | {domain} | Ω X.X`) still shows on hover (gate already includes `hovered || isSelected || isNeighborOfSelected`), so hover gives the small label and only an explicit click opens the heavy card. Mirrors the 2D pattern.
+
+**Files.**
+- `src/components/dag3d/DAGNode3D.tsx` — one conditional swap on the detail-card mount.
+
+**Verification.** `tsc --noEmit` clean; lint clean (pre-existing `ablationMode` warning unchanged); vitest 778/778 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify edge thickness contrast on production: hard-refresh, switch to 2D or 3D — strong-correlation edges should now read visibly thicker than weak ones.
-- LEGEND popover should now have 4 separate edge-type rows (causal / temporal / confounded / inconsistent) instead of the single colour-strip row.
+- Verify on production: hover a 3D orb → only the small label appears. Click an orb → the full detail card appears (and stays until you click elsewhere or hit ESC).
 - Backlog: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
 
 ---

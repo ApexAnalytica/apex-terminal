@@ -4,6 +4,13 @@ Owns the chat/copilot as the linguistic access layer to the platform: tool-use p
 
 > **Status:** Active. Tool registry shipped ([#249](https://github.com/ApexAnalytica/apex-terminal/pull/249)). Trace store shipped ([#251](https://github.com/ApexAnalytica/apex-terminal/pull/251)). Provider abstraction (Vercel AI SDK) is the next planned PR.
 
+## Defaults & invariants (DO NOT change without explicit user direction)
+
+- **Copilot LLM defaults to Gemini.** This is hardcoded in `SystemCopilot.tsx:93` (`copilotProvider = llmProvider === "ollama" ? "ollama" : "gemini"`) and called out in the comment at `SystemCopilot.tsx:31`: *"Copilot is locked to Gemini; Claude is used exclusively for compute."* Gemini is the chat path because the chat is high-frequency and Gemini is the cheaper / faster choice; Claude is reserved for the low-frequency, heavy-reasoning compute path (snapshot validation, Tarski runs, etc).
+- **Switching providers requires explicit user action.** Today that means picking Ollama in the settings panel. Nothing flips automatically.
+- **PR3 (Vercel AI SDK) preserves this default.** The provider abstraction adds *optionality* (model picker, easier A/B), not a default change. The out-of-the-box experience stays Gemini-on-load. Any change to that default is a separate, explicit user decision — not bundled into the abstraction PR.
+- **Trace shape stays provider-agnostic.** `model_provider` is a column on `copilot_traces`, so we can compare Gemini vs. Claude vs. local Ollama on the same conversation distribution if/when the user opts in — but the comparison is read from the data, not assumed in the prompt or the prompt-rendering code.
+
 ## Scope summary (in)
 
 - **Tool registry** — `defineTool` / param schemas / wire-format parsing / system-prompt rendering (`src/lib/copilot/tool-registry.ts`).
@@ -74,7 +81,7 @@ supabase-copilot-traces.sql
 
 ## Open follow-ups (priority-ordered)
 
-1. **PR3 — provider abstraction (Vercel AI SDK)**. Replace direct provider calls in `streamLlmQuery` with a unified SDK so flipping between Claude / Gemini / local Ollama / vLLM is a config change, not code. Trace shape stays identical so we can A/B providers on the same conversation distribution. Ship a model picker in the chat UI. **5–7 days of work** — biggest architectural change post-#251.
+1. **PR3 — provider abstraction (Vercel AI SDK)**. Replace direct provider calls in `streamLlmQuery` with a unified SDK so flipping between Claude / Gemini / local Ollama / vLLM is a config change, not code. Trace shape stays identical so we can A/B providers on the same conversation distribution. Ship a model picker in the chat UI. **5–7 days of work** — biggest architectural change post-#251. ⚠️ **Default stays Gemini** — see the Defaults & invariants section. The picker adds optionality; the out-of-the-box on-load provider does not change.
 2. **Eval harness**. Hand-curate 30–50 user queries with expected tool calls. Run them against current model + candidate models, score on tool-call accuracy + response quality. Use trace data to grow the eval set over time.
 3. **Conversation memory**. Per-user retrieval index built from the trace store. Surfaces relevant past turns into the system prompt instead of dumping the entire `copilotMessages` array every time.
 4. **Native tool-use migration**. Once PR3 ships, optionally swap the `<<<ACTION:...>>>` text wire format for native `tool_use` blocks (Anthropic) / functions (OpenAI) where the provider supports it. The text format stays as the fallback for providers / local models that don't. Registry already exports compatible JSON Schema (`renderToolsAsJsonSchema`).

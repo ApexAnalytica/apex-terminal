@@ -105,29 +105,39 @@ function buildAdjacency(edges: CausalEdge[], severedEdgeIds: Set<string>) {
 }
 
 // ─── Main Simulator ─────────────────────────────────────────────
-export function simulateCascade(
+// ─── Internal simulation context ────────────────────────────────
+//
+// Both the sync and the async simulators reuse this setup + the same
+// `runEpoch` body. Keeping the per-epoch work in one place is what lets
+// the async variant chunk it across idle frames without forking the
+// algorithm.
+interface CascadeContext {
+  graph: CausalGraph;
+  cfg: CascadeConfig;
+  severedSet: Set<string>;
+  adjacency: ReturnType<typeof buildAdjacency>;
+  nodeStates: Map<string, NodeEpochState>;
+  baseProfiles: Map<string, OmegaFragilityProfile>;
+  delayBuffers: Map<string, { deliverEpoch: number; signal: number }[]>;
+  bufferHistory: number[];
+  snapshots: EpochSnapshot[];
+}
+
+function initCascadeContext(
   graph: CausalGraph,
   shocks: CausalShock[],
   severedEdgeIds: string[],
   config?: Partial<CascadeConfig>,
-  startEpoch?: number,
   initialNodeStates?: Record<string, NodeEpochState>
-): EpochSnapshot[] {
+): CascadeContext {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const severedSet = new Set(severedEdgeIds);
   const adjacency = buildAdjacency(graph.edges, severedSet);
-  const snapshots: EpochSnapshot[] = [];
-
-  // Delay buffers for edges with lag > 0: edgeId → [epoch, signal][]
-  const delayBuffers = new Map<string, { deliverEpoch: number; signal: number }[]>();
-
-  // Initialize node states
   const nodeStates = new Map<string, NodeEpochState>();
   const baseProfiles = new Map<string, OmegaFragilityProfile>();
 
   for (const node of graph.nodes) {
     baseProfiles.set(node.id, { ...node.omegaFragility });
-
     if (initialNodeStates && initialNodeStates[node.id]) {
       nodeStates.set(node.id, { ...initialNodeStates[node.id] });
     } else {
@@ -140,7 +150,7 @@ export function simulateCascade(
     }
   }
 
-  // Epoch 0: inject shocks
+  // Epoch 0: inject shocks.
   const shockMap = mapShocksToNodes(graph, shocks);
   for (const [nodeId, intensity] of shockMap) {
     const state = nodeStates.get(nodeId);
@@ -150,118 +160,212 @@ export function simulateCascade(
     }
   }
 
-  // Create epoch 0 snapshot
   const bufferHistory: number[] = [];
-  snapshots.push(createSnapshot(0, nodeStates, graph.edges, severedSet, cfg, bufferHistory));
+  const snapshots: EpochSnapshot[] = [];
+  snapshots.push(
+    createSnapshot(0, nodeStates, graph.edges, severedSet, cfg, bufferHistory),
+  );
 
-  // Simulation loop
-  const start = startEpoch ?? 1;
-  for (let epoch = start; epoch <= cfg.maxEpochs; epoch++) {
-    // Collect incoming signals per node (from propagation + delay delivery)
-    const incomingSignals = new Map<string, number>();
+  return {
+    graph,
+    cfg,
+    severedSet,
+    adjacency,
+    nodeStates,
+    baseProfiles,
+    delayBuffers: new Map(),
+    bufferHistory,
+    snapshots,
+  };
+}
 
-    // Propagate from activated nodes
-    for (const node of graph.nodes) {
-      const state = nodeStates.get(node.id);
-      if (!state || !state.isActivated || state.shockIntensity < 0.0001) continue;
+/**
+ * Run a single epoch in-place against the context. Returns "stable",
+ * "critical", or "running" so the caller can decide whether to break the
+ * loop (sync simulator) or schedule the next chunk (async simulator).
+ */
+function runEpoch(epoch: number, ctx: CascadeContext): "stable" | "critical" | "running" {
+  const { graph, cfg, severedSet, adjacency, nodeStates, baseProfiles, delayBuffers, bufferHistory, snapshots } = ctx;
 
-      const neighbors = adjacency.get(node.id) ?? [];
-      for (const { targetId, edge } of neighbors) {
-        const outSignal = state.shockIntensity * edge.weight * cfg.dampingFactor;
+  const incomingSignals = new Map<string, number>();
 
-        if (edge.lag > 0) {
-          // Buffer the signal for delayed delivery
-          if (!delayBuffers.has(edge.id)) delayBuffers.set(edge.id, []);
-          delayBuffers.get(edge.id)!.push({
-            deliverEpoch: epoch + edge.lag,
-            signal: outSignal,
-          });
-        } else {
-          incomingSignals.set(
-            targetId,
-            (incomingSignals.get(targetId) ?? 0) + outSignal
-          );
-        }
+  // Propagate from activated nodes.
+  for (const node of graph.nodes) {
+    const state = nodeStates.get(node.id);
+    if (!state || !state.isActivated || state.shockIntensity < 0.0001) continue;
+
+    const neighbors = adjacency.get(node.id) ?? [];
+    for (const { targetId, edge } of neighbors) {
+      const outSignal = state.shockIntensity * edge.weight * cfg.dampingFactor;
+      if (edge.lag > 0) {
+        if (!delayBuffers.has(edge.id)) delayBuffers.set(edge.id, []);
+        delayBuffers.get(edge.id)!.push({
+          deliverEpoch: epoch + edge.lag,
+          signal: outSignal,
+        });
+      } else {
+        incomingSignals.set(
+          targetId,
+          (incomingSignals.get(targetId) ?? 0) + outSignal,
+        );
       }
     }
-
-    // Deliver delayed signals
-    for (const [, buffer] of delayBuffers) {
-      for (let i = buffer.length - 1; i >= 0; i--) {
-        if (buffer[i].deliverEpoch <= epoch) {
-          const entry = buffer[i];
-          // Find target from the edge — look up via adjacency
-          // We stored by edge.id, need to find target
-          buffer.splice(i, 1);
-          // Signal already has target encoded via the propagation above
-          // Actually we need to store targetId too — let's just deliver to all targets
-        }
-      }
-    }
-
-    // Simplified: handle lag via edge-based delay buffers with target tracking
-    // Re-do delay buffer approach with target info
-    // (The above delay buffer was simplified — let's use a flat approach)
-
-    // Deliver from lag buffers
-    for (const edge of graph.edges) {
-      if (severedSet.has(edge.id) || edge.isSevered) continue;
-      const buf = delayBuffers.get(edge.id);
-      if (!buf) continue;
-      for (let i = buf.length - 1; i >= 0; i--) {
-        if (buf[i].deliverEpoch <= epoch) {
-          incomingSignals.set(
-            edge.target,
-            (incomingSignals.get(edge.target) ?? 0) + buf[i].signal
-          );
-          buf.splice(i, 1);
-        }
-      }
-    }
-
-    // Update node states
-    let maxDelta = 0;
-    for (const node of graph.nodes) {
-      const state = nodeStates.get(node.id)!;
-      const incoming = incomingSignals.get(node.id) ?? 0;
-      const oldIntensity = state.shockIntensity;
-
-      // Apply forgetting + incoming signal
-      const newIntensity = Math.min(1, oldIntensity * (1 - cfg.forgettingRate) + incoming);
-      state.shockIntensity = newIntensity;
-      state.isActivated = newIntensity > 0.001;
-
-      // Update omega composite
-      const baseComposite = baseProfiles.get(node.id)!.composite;
-      state.omegaComposite = Math.min(10, baseComposite * (1 + newIntensity * cfg.omegaShockScale));
-
-      // Update full profile proportionally
-      const base = baseProfiles.get(node.id)!;
-      const scale = 1 + newIntensity * cfg.omegaShockScale;
-      state.omegaProfile = {
-        composite: state.omegaComposite,
-        irreplaceability: Math.min(10, base.irreplaceability * scale),
-        restorationLatency: Math.min(10, base.restorationLatency * scale),
-        jurisdictionalHazard: Math.min(10, base.jurisdictionalHazard * scale),
-        cascadeLoad: Math.min(10, base.cascadeLoad * scale),
-        tailDepth: Math.min(10, base.tailDepth * scale),
-      };
-
-      maxDelta = Math.max(maxDelta, Math.abs(newIntensity - oldIntensity));
-    }
-
-    const snapshot = createSnapshot(epoch, nodeStates, graph.edges, severedSet, cfg, bufferHistory);
-    snapshots.push(snapshot);
-
-    // Early termination
-    if (maxDelta < cfg.stabilityThreshold) {
-      snapshot.isStable = true;
-      break;
-    }
-    if (snapshot.isCritical) break;
   }
 
-  return snapshots;
+  // Drain expired delay-buffer entries (legacy: walks every buffer).
+  for (const [, buffer] of delayBuffers) {
+    for (let i = buffer.length - 1; i >= 0; i--) {
+      if (buffer[i].deliverEpoch <= epoch) {
+        buffer.splice(i, 1);
+      }
+    }
+  }
+
+  // Deliver lagged signals to their target nodes.
+  for (const edge of graph.edges) {
+    if (severedSet.has(edge.id) || edge.isSevered) continue;
+    const buf = delayBuffers.get(edge.id);
+    if (!buf) continue;
+    for (let i = buf.length - 1; i >= 0; i--) {
+      if (buf[i].deliverEpoch <= epoch) {
+        incomingSignals.set(
+          edge.target,
+          (incomingSignals.get(edge.target) ?? 0) + buf[i].signal,
+        );
+        buf.splice(i, 1);
+      }
+    }
+  }
+
+  // Update node states.
+  let maxDelta = 0;
+  for (const node of graph.nodes) {
+    const state = nodeStates.get(node.id)!;
+    const incoming = incomingSignals.get(node.id) ?? 0;
+    const oldIntensity = state.shockIntensity;
+
+    const newIntensity = Math.min(1, oldIntensity * (1 - cfg.forgettingRate) + incoming);
+    state.shockIntensity = newIntensity;
+    state.isActivated = newIntensity > 0.001;
+
+    const baseComposite = baseProfiles.get(node.id)!.composite;
+    state.omegaComposite = Math.min(10, baseComposite * (1 + newIntensity * cfg.omegaShockScale));
+
+    const base = baseProfiles.get(node.id)!;
+    const scale = 1 + newIntensity * cfg.omegaShockScale;
+    state.omegaProfile = {
+      composite: state.omegaComposite,
+      irreplaceability: Math.min(10, base.irreplaceability * scale),
+      restorationLatency: Math.min(10, base.restorationLatency * scale),
+      jurisdictionalHazard: Math.min(10, base.jurisdictionalHazard * scale),
+      cascadeLoad: Math.min(10, base.cascadeLoad * scale),
+      tailDepth: Math.min(10, base.tailDepth * scale),
+    };
+
+    maxDelta = Math.max(maxDelta, Math.abs(newIntensity - oldIntensity));
+  }
+
+  const snapshot = createSnapshot(epoch, nodeStates, graph.edges, severedSet, cfg, bufferHistory);
+  snapshots.push(snapshot);
+
+  if (maxDelta < cfg.stabilityThreshold) {
+    snapshot.isStable = true;
+    return "stable";
+  }
+  if (snapshot.isCritical) return "critical";
+  return "running";
+}
+
+export function simulateCascade(
+  graph: CausalGraph,
+  shocks: CausalShock[],
+  severedEdgeIds: string[],
+  config?: Partial<CascadeConfig>,
+  startEpoch?: number,
+  initialNodeStates?: Record<string, NodeEpochState>
+): EpochSnapshot[] {
+  const ctx = initCascadeContext(graph, shocks, severedEdgeIds, config, initialNodeStates);
+
+  const start = startEpoch ?? 1;
+  for (let epoch = start; epoch <= ctx.cfg.maxEpochs; epoch++) {
+    const status = runEpoch(epoch, ctx);
+    if (status !== "running") break;
+  }
+  return ctx.snapshots;
+}
+
+/**
+ * Async variant: same algorithm as `simulateCascade`, but the epoch loop
+ * is split into chunks of `chunkEpochs` (default 25) with a yield between
+ * chunks via `requestIdleCallback` (browser) or `setTimeout(_, 0)` (node).
+ *
+ * Use this from the UI thread — the cascade no longer freezes the frame
+ * for the full 200-epoch run on shock injection. The full N-epoch latency
+ * is unchanged in wall-clock terms; it's just split across idle frames so
+ * the browser stays responsive.
+ *
+ * Synchronous callers (interdiction-engine, local-provider, tests that
+ * need deterministic single-tick execution) should keep using
+ * `simulateCascade`.
+ */
+export interface CascadeAsyncOptions {
+  /** Epochs per chunk before yielding. Default 25. */
+  chunkEpochs?: number;
+  /** AbortSignal — when triggered, stops the loop and resolves with what was computed. */
+  signal?: AbortSignal;
+}
+
+export async function simulateCascadeAsync(
+  graph: CausalGraph,
+  shocks: CausalShock[],
+  severedEdgeIds: string[],
+  config?: Partial<CascadeConfig>,
+  startEpoch?: number,
+  initialNodeStates?: Record<string, NodeEpochState>,
+  asyncOpts?: CascadeAsyncOptions,
+): Promise<EpochSnapshot[]> {
+  const ctx = initCascadeContext(graph, shocks, severedEdgeIds, config, initialNodeStates);
+  const chunkEpochs = Math.max(1, Math.floor(asyncOpts?.chunkEpochs ?? 25));
+  const signal = asyncOpts?.signal;
+
+  const start = startEpoch ?? 1;
+  let epoch = start;
+  while (epoch <= ctx.cfg.maxEpochs) {
+    if (signal?.aborted) return ctx.snapshots;
+
+    const chunkEnd = Math.min(ctx.cfg.maxEpochs, epoch + chunkEpochs - 1);
+    let earlyExit: "stable" | "critical" | null = null;
+    for (; epoch <= chunkEnd; epoch++) {
+      const status = runEpoch(epoch, ctx);
+      if (status !== "running") {
+        earlyExit = status;
+        break;
+      }
+    }
+    if (earlyExit) return ctx.snapshots;
+
+    // Yield to the event loop so paint + input handlers run before the
+    // next chunk. Prefer requestIdleCallback when available (browsers);
+    // fall back to setTimeout(_, 0) (node tests, older browsers).
+    await yieldToEventLoop();
+  }
+
+  return ctx.snapshots;
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const w = typeof globalThis !== "undefined"
+      ? (globalThis as unknown as {
+          requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => void;
+        })
+      : undefined;
+    if (w?.requestIdleCallback) {
+      w.requestIdleCallback(() => resolve(), { timeout: 50 });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }
 
 // ─── Snapshot Builder ───────────────────────────────────────────

@@ -456,9 +456,16 @@ function elevationColorJS(t: number): [number, number, number] {
 function InSceneElevationLegend({
   field,
   peakOmega,
+  peakAnchor,
 }: {
   field: ReliefField;
   peakOmega: number;
+  /** World-space (x, z) of the highest-Ω node, in the same translated
+   *  coordinate frame the surface uses (i.e. cx/cy already subtracted).
+   *  When provided, the column stands right next to the peak so the
+   *  user can directly compare the column's Ω ticks against the peak's
+   *  height. Falls back to the SE corner of the field if absent. */
+  peakAnchor?: { x: number; z: number };
 }) {
   const HEIGHT = 140; // matches DEFAULT_OPTIONS.heightScale in graph-relief-field
   const HEIGHT_GAMMA = 1.6; // matches heightGamma — keep in sync
@@ -485,11 +492,16 @@ function InSceneElevationLegend({
     return tex;
   }, []);
 
-  // Park the column at the SE corner of the field, pulled out far enough
-  // that it doesn't clip into the surface mesh edge. Y rests on the
-  // ground plane (y=0) so its base aligns with mountain bases.
-  const cornerX = field.width / 2 + 30;
-  const cornerZ = field.height / 2 + 30;
+  // Park the column right next to the highest peak so the user can read
+  // a mountain's Ω directly off the legend at the same horizontal sight
+  // line. The earlier placement was the SE corner of the field, which
+  // the user pointed out was disconnected from the visual it was meant
+  // to explain. The +12 unit offset is far enough to keep the column
+  // out of the mountain's slope but close enough that the comparison
+  // is immediate. Falls back to the SE corner if no anchor is supplied
+  // (e.g. before the layout's settled).
+  const cornerX = peakAnchor ? peakAnchor.x + 12 : field.width / 2 + 30;
+  const cornerZ = peakAnchor ? peakAnchor.z + 12 : field.height / 2 + 30;
 
   // Convert tick Ω values back to the world height the surface would
   // assign them. Peak label sits at top of column (Ω = peakOmega), Ω 0
@@ -791,15 +803,31 @@ function CausalDAGReliefInner() {
 
   // Max Ω composite across the visible (replay-aware) graph — drives
   // the elevation legend's "PEAK Ω" label so users have a numeric
-  // anchor for the heatmap.
-  const peakOmega = useMemo(() => {
+  // anchor for the heatmap. Also surface the peak node so the in-scene
+  // legend can stand next to the tallest mountain.
+  const { peakOmega, peakNodeId } = useMemo(() => {
     let max = 0;
+    let id: string | null = null;
     for (const n of fieldNodes) {
       const c = n.omegaFragility?.composite;
-      if (typeof c === "number" && Number.isFinite(c) && c > max) max = c;
+      if (typeof c === "number" && Number.isFinite(c) && c > max) {
+        max = c;
+        id = n.id;
+      }
     }
-    return max;
+    return { peakOmega: max, peakNodeId: id };
   }, [fieldNodes]);
+
+  // Peak node's translated (x, z) in the same coordinate frame the
+  // surface uses (cx/cy already subtracted). Recomputes when the peak
+  // identity or layout changes, so cascade replay re-anchors the
+  // legend to whichever node is currently tallest.
+  const peakAnchor = useMemo<{ x: number; z: number } | undefined>(() => {
+    if (!activeField || !peakNodeId) return undefined;
+    const p = layout.get(peakNodeId);
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return undefined;
+    return { x: p.x - activeField.cx, z: p.y - activeField.cy };
+  }, [activeField, peakNodeId, layout]);
 
   const anchors = useMemo<NodeAnchor[]>(() => {
     if (!activeField || isEmpty) return [];
@@ -874,7 +902,11 @@ function CausalDAGReliefInner() {
           <SelectionMarkers layout={layout} field={activeField} edges={graphData.edges} />
         )}
         {!isEmpty && activeField && peakOmega > 0 && (
-          <InSceneElevationLegend field={activeField} peakOmega={peakOmega} />
+          <InSceneElevationLegend
+            field={activeField}
+            peakOmega={peakOmega}
+            peakAnchor={peakAnchor}
+          />
         )}
         {!isEmpty && <NodeLabels anchors={anchors} />}
         {!isEmpty && activeField && (

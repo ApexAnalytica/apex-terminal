@@ -653,6 +653,30 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 782/782 pass.
 
+### 2026-05-07 — Shipped: 3D card removed, TOPO legend anchored to peak, Map basemap de-cluttered
+
+**PR:** TBD (about to open).
+
+**Trigger.** Three-item batch:
+
+1. *"Under 3D, selecting any node still gives us a whole box that's hard to get rid of. All it needs to do is give a small title hovering above it along with its nearest neighbors. Like 2D."* — even after PR #265 narrowed the in-canvas detail card to single-click only, the user wants no in-canvas card at all. The 2D pattern is the model: small floating label + neighbour spotlight.
+2. *"The legend on the side of the topology diagram is really off to the side. It should kinda be floating above wherever we're scaling to so we can always kind of see how it compares."* — the SE-corner placement of `InSceneElevationLegend` was visually disconnected from the actual peaks.
+3. *"For the map, … it's almost a globe-like looking map. Looks somewhat like Google Maps, but it gets all the way down to the street. … This is just getting very busy."* — the CARTO `dark_all` basemap rendered street labels and city names under the causal-graph overlay.
+
+**What shipped.**
+
+- **3D in-canvas detail card removed entirely.** Dropped the `Html`-mounted card from `DAGNode3D` (was ~140 lines of JSX rendering a 280px panel with axis bars, network metrics, metadata). The small floating label above the orb is now the only on-canvas affordance — same gate as before (`!dimmed && !isOrbiting && (hovered || isSelected || isNeighborOfSelected)`). Full ΩF profile / network metrics still live in `NodeInspector` and `ModulePanel` as side panels — the right home for the heavy data. Cleanup: removed `isSingleSelected` prop, dead helpers (`getBarColor`, `getCentralityLabel`), unused imports (`getDomainColor`, `resolveDomainProfile`), and the `axes` / `selectedDomains` / `profile` / `pillarLabels` locals.
+- **TOPO legend anchored to the peak.** `InSceneElevationLegend` now takes a `peakAnchor` (translated x/z of the highest-Ω node, in surface coords) and stands the column 12 world units beside it. Cascade replay re-anchors as the peak shifts. Falls back to the SE corner if no anchor is available.
+- **Map basemap switched to `dark_nolabels` + zoom cap 6.** No more street labels / city names. `maxzoom: 6` caps tile detail at country / sub-region scale so the basemap stops loading new tiles past that — pinch-zooming further is allowed but doesn't reveal streets. Same dark theme; just much less competing visual density under the graph.
+
+**Files.**
+- `src/components/dag3d/DAGNode3D.tsx` — card removed; props + helpers / locals trimmed.
+- `src/components/CausalDAG3D.tsx` — stop passing `isSingleSelected`.
+- `src/components/CausalDAGRelief.tsx` — `peakNodeId` + `peakAnchor` derivation; `InSceneElevationLegend` accepts `peakAnchor`.
+- `src/components/CausalDAGMap.tsx` — `dark_nolabels` tile URL, `maxzoom: 6`.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
+
 ---
 
 ## How a fresh session resumes

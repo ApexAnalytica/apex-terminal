@@ -582,7 +582,15 @@ function CausalDAGMapInner() {
     );
   }, [fitKey]);
 
-  // Dark map style matching the app theme
+  // Dark map style matching the app theme. Switched from CARTO's
+  // `dark_all` to `dark_nolabels` so the basemap shows continents,
+  // coastlines, and admin boundaries but skips the street labels and
+  // city names that made the canvas read as busy when the user is
+  // looking at high-level causal flows. `maxzoom: 6` caps the tile
+  // detail at country / sub-region scale — the user can still pinch-
+  // zoom further but the basemap stops loading new tiles, so streets
+  // never appear underneath the nodes. This keeps the view "globe-like"
+  // and stops the basemap from competing with the graph at any zoom.
   const mapStyle = useMemo(
     () => ({
       version: 8 as const,
@@ -591,7 +599,7 @@ function CausalDAGMapInner() {
         "osm-tiles": {
           type: "raster" as const,
           tiles: [
-            "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+            "https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png",
           ],
           tileSize: 256,
           attribution:
@@ -604,7 +612,7 @@ function CausalDAGMapInner() {
           type: "raster" as const,
           source: "osm-tiles",
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 6,
         },
       ],
     }),

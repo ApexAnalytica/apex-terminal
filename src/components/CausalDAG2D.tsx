@@ -769,7 +769,14 @@ function CausalDAG2DInner() {
               ? "#ff6d00"
               : "#00e5ff";
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
-        const baseWidth = 0.5 + e.weight * 1.5;
+        // Power-scale weight to widen the visible width range. Real
+        // edge weights cluster between 0.4 and 0.8, so a linear
+        // `0.5 + w * 1.5` mapping produces 1.1–1.7px — essentially
+        // indistinguishable. `pow(w, 2.4)` stretches that band into
+        // 0.46–1.34 over a 0.7–3.3 width range so a thick edge reads
+        // as ~3× a thin one even at typical clustering.
+        const w = Math.max(0, Math.min(1, e.weight));
+        const baseWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
         const showArrow = e.type === "directed" || isTemporal;
 
         return {

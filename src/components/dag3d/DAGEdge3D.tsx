@@ -75,7 +75,12 @@ function DAGEdge3DInner({
   //   else → type-based color or Tarski red if inconsistent
   const baseColor = getEdgeColor(edge, isVerifiedInconsistent);
   const color = isAblated ? "#e040fb" : isSevered ? "#78909c" : isConsequenceEdge ? "#ff6d00" : baseColor;
-  const lineWidth = 0.5 + edge.weight * 1.5;
+  // Power-scale weight to widen visible thickness range. Real weights
+  // cluster 0.4–0.8 so the previous linear `0.5 + w * 1.5` mapping
+  // produced 1.1–1.7 — basically uniform on screen. See the parallel
+  // change in `CausalDAG2D.tsx` (EmphasizedEdge memo).
+  const w = Math.max(0, Math.min(1, edge.weight));
+  const lineWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
 
   // Deterministic curve offset based on edge ID
   const curveOffset = useMemo(() => {

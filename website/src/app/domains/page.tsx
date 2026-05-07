@@ -6,7 +6,7 @@ import { DOMAINS, DOMAIN_SLUGS, type Color } from "@/lib/domains";
 export const metadata: Metadata = {
   title: "Domains · Apex Analytica",
   description:
-    "Seven domains where Manifold maps, scores, and stress-tests fragility. Pick the one that matches the system you care about.",
+    "Eight domains where Manifold maps, scores, and stress-tests fragility. Pick the one that matches the system you care about.",
 };
 
 const colorMap: Record<
@@ -20,6 +20,7 @@ const colorMap: Record<
   green:   { text: "text-accent-green",   border: "border-accent-green/30",   bg: "bg-accent-green",   soft: "bg-accent-green/5",   glow: "text-glow-cyan",  rule: "bg-accent-green" },
   red:     { text: "text-accent-red",     border: "border-accent-red/30",     bg: "bg-accent-red",     soft: "bg-accent-red/5",     glow: "text-glow-amber", rule: "bg-accent-red" },
   magenta: { text: "text-accent-magenta", border: "border-accent-magenta/30", bg: "bg-accent-magenta", soft: "bg-accent-magenta/5", glow: "text-glow-cyan",  rule: "bg-accent-magenta" },
+  blue:    { text: "text-accent-blue",    border: "border-accent-blue/30",    bg: "bg-accent-blue",    soft: "bg-accent-blue/5",    glow: "text-glow-cyan",  rule: "bg-accent-blue" },
 };
 
 export default function DomainsIndexPage() {
@@ -37,10 +38,10 @@ export default function DomainsIndexPage() {
             </span>
             <span className="font-mono text-[10px] text-text-muted/60">manifold.domains</span>
             <span className="text-text-muted/40">·</span>
-            <span className="font-mono text-[10px] text-text-muted/60">07 CONFIGURED</span>
+            <span className="font-mono text-[10px] text-text-muted/60">08 CONFIGURED</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
-            Seven domains.{" "}
+            Eight domains.{" "}
             <span className="text-accent-cyan text-glow-cyan">One graph engine.</span>
           </h1>
           <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">

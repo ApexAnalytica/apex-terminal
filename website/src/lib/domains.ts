@@ -11,7 +11,7 @@
  * sees themselves in the persona list.
  */
 
-export type Color = "cyan" | "amber" | "purple" | "orange" | "green" | "red" | "magenta";
+export type Color = "cyan" | "amber" | "purple" | "orange" | "green" | "red" | "magenta" | "blue";
 
 export type Persona = {
   /** Who the reader is (job title, org type). */
@@ -327,6 +327,42 @@ export const DOMAINS: Record<string, DomainContent> = {
         title: "R&D Strategy · Biotech / Pharma",
         pain: "Research bets assume inputs are fungible. Often they aren't — a single instrument supplier, a single CRO, a single specialist team can stall a program for a year.",
         gain: "Graph view of the research supply chain. Cascade simulation on supplier and CRO failure across the pipeline.",
+      },
+    ],
+  },
+
+  insurance: {
+    slug: "insurance",
+    name: "Insurance",
+    color: "blue",
+    tagline: "Reinsurance, specialty lines, and the cascade exposure cat models miss.",
+    problem: [
+      "Insurance and reinsurance run on cat models that price physical damage well — wind, flood, quake — and price the network around the asset poorly. The cascade between insureds, between treaties, and between regions is rarely modeled. The peak exposures that actually move a portfolio are usually structural, not perils.",
+      "Aggregate exposure across a book is monitored line-by-line. The joint event that lights up multiple lines at once — a tropical storm that takes a port offline that strands manufacturing capacity that breaks supplier covenants — sits in the seams between underwriting silos. By the time it materializes, retro spirals are already running.",
+      "Specialty and ILS markets price tail risk explicitly, but the tail itself is graph-shaped: parametric triggers, reinstatements, capacity caps, retrocession layers. The tail event isn't a single number; it's a sequence of dependent draws across a network of obligations. Most pricing tools don't model that network.",
+    ],
+    mapping: [
+      "Manifold ingests the insurance graph at three layers: the physical exposure graph (insured assets, geographies, occupancy), the contractual graph (treaties, layers, retrocession towers, capacity providers), and the regulatory graph (state filings, run-off jurisdictions, capital requirements). Edges encode physical correlation, ceding obligation, and jurisdictional dependency.",
+      "PEARL runs counterfactuals on named events (a 1-in-200 tropical storm hitting this exposure footprint; a sovereign ratings shock impacting these reinsurers' balance sheets). PARETO simulates the cascade through retrocession and aggregate-stop-loss layers. SPIRTES discovers latent exposure correlations the actuarial categories don't capture. TARSKI verifies which paths through the graph remain compliant under filed treaty terms and regulatory regimes.",
+    ],
+    engines: ["SPIRTES", "PEARL", "PARETO", "TARSKI"],
+    pillars: ["I", "R", "J", "C", "T"],
+    signals: [],
+    personas: [
+      {
+        title: "CAT Underwriter · Specialty Reinsurance",
+        pain: "Peak-peril exposure is priced asset-by-asset; the cross-asset cascade is footnoted. When a named event hits, the actual loss includes second-order claims from infrastructure interdependency that the cat model never saw.",
+        gain: "Network-aware exposure across the insured graph. Cascade load and tail-depth on the lines you actually wrote. Counterfactual loss distribution under named scenarios, with the second-order term priced.",
+      },
+      {
+        title: "CRO · P&C Insurer",
+        pain: "Aggregate exposure is monitored per line of business. The joint event that hits multiple lines at once is rarely sized. When it lands, the loss is computed after the fact and the capital case is reactive.",
+        gain: "Joint-shock simulation across the full book. ΩSF / ΩSX as steady metrics on the portfolio graph. Defensible economic-capital case before the next renewal cycle.",
+      },
+      {
+        title: "ILS / Sidecar Manager",
+        pain: "Capital-markets reinsurance prices tail explicitly, but the tail is graph-shaped — reinstatements, retro spirals, parametric triggers — and the structuring tools treat each layer as independent.",
+        gain: "Tail-depth simulation that respects the network: dependent reinstatements, retro propagation, parametric trigger interactions. Defensible structuring of new layers and sidecar capacity.",
       },
     ],
   },

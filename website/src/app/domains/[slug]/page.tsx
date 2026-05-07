@@ -45,6 +45,7 @@ const colorMap: Record<
   green:   { text: "text-accent-green",   border: "border-accent-green/30",   bg: "bg-accent-green",   soft: "bg-accent-green/5",   glow: "text-glow-cyan" },
   red:     { text: "text-accent-red",     border: "border-accent-red/30",     bg: "bg-accent-red",     soft: "bg-accent-red/5",     glow: "text-glow-amber" },
   magenta: { text: "text-accent-magenta", border: "border-accent-magenta/30", bg: "bg-accent-magenta", soft: "bg-accent-magenta/5", glow: "text-glow-cyan" },
+  blue:    { text: "text-accent-blue",    border: "border-accent-blue/30",    bg: "bg-accent-blue",    soft: "bg-accent-blue/5",    glow: "text-glow-cyan" },
 };
 
 export function generateStaticParams() {

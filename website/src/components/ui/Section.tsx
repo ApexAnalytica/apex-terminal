@@ -16,7 +16,7 @@ export function Section({
   );
 }
 
-export function SectionLabel({ children, color = "cyan" }: { children: ReactNode; color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange" }) {
+export function SectionLabel({ children, color = "cyan" }: { children: ReactNode; color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange" | "blue" }) {
   const map: Record<string, string> = {
     cyan: "text-accent-cyan",
     amber: "text-accent-amber",
@@ -25,6 +25,7 @@ export function SectionLabel({ children, color = "cyan" }: { children: ReactNode
     red: "text-accent-red",
     magenta: "text-accent-magenta",
     orange: "text-accent-orange",
+    blue: "text-accent-blue",
   };
   return (
     <div className="flex items-center gap-3">
@@ -65,7 +66,7 @@ export function TerminalHeader({
   label: string;
   path?: string;
   right?: string;
-  color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange";
+  color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange" | "blue";
 }) {
   const map: Record<string, string> = {
     cyan: "text-accent-cyan/90",
@@ -75,6 +76,7 @@ export function TerminalHeader({
     red: "text-accent-red/90",
     magenta: "text-accent-magenta/90",
     orange: "text-accent-orange/90",
+    blue: "text-accent-blue/90",
   };
   return (
     <div className="flex items-center justify-between border-b border-border pb-2 mb-6">

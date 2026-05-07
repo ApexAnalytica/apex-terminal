@@ -30,6 +30,7 @@ const DOMAINS = [
   { label: "ENERGY",         slug: "energy",         text: "text-accent-green",   border: "border-accent-green/25",   dot: "bg-accent-green",   sub: "Grid · oil · gas · transition tech" },
   { label: "GEOPOLITICAL",   slug: "geopolitical",   text: "text-accent-red",     border: "border-accent-red/25",     dot: "bg-accent-red",     sub: "Sanctions · conflict · export controls" },
   { label: "SCIENCE",        slug: "science",        text: "text-accent-magenta", border: "border-accent-magenta/25", dot: "bg-accent-magenta", sub: "Research infra · instrumentation · talent" },
+  { label: "INSURANCE",      slug: "insurance",      text: "text-accent-blue",    border: "border-accent-blue/25",    dot: "bg-accent-blue",    sub: "Reinsurance · specialty lines · ILS · cat" },
 ];
 
 /* ───────── page ───────── */
@@ -92,7 +93,7 @@ export default function Home() {
               <div className="pt-6 grid grid-cols-3 gap-4 max-w-md">
                 <Stat label="ENGINES" value="04" />
                 <Stat label="ΩF PILLARS" value="05" />
-                <Stat label="DOMAINS" value="07" />
+                <Stat label="DOMAINS" value="08" />
               </div>
             </div>
 
@@ -123,7 +124,7 @@ export default function Home() {
 
       {/* ───────── // DOMAINS ───────── */}
       <Section id="domains" className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="07 CONFIGURED · CLICK TO EXPLORE" />
+        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="08 CONFIGURED · CLICK TO EXPLORE" />
 
         <p className="mb-5 text-[13px] md:text-sm font-mono text-text-muted leading-relaxed max-w-2xl">
           Find your domain. Each one explains the problem Manifold solves

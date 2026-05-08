@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   fciAlgorithm,
   runOrientation,
+  buildInitialEdges,
+  applyVStructures,
+  applyR1,
+  applyR2,
+  applyR3,
   type SkeletonResult,
+  type OrientedEdge,
 } from "../algorithms/fci";
 import type { Cohort } from "../cohort-types";
 
@@ -333,6 +339,194 @@ describe("runOrientation — R1 propagates arrowheads outward from v-structures"
     const yz = find(1, 2);
     expect(yz.markA).toBe("circle");
     expect(yz.markB).toBe("circle");
+  });
+});
+
+// ─── R2 direct fixture tests (constructed OrientedEdge map) ──────────
+//
+// Triggering R2 end-to-end through `runOrientation` requires a 6+ node
+// graph with two v-structures that R1 then orients into a directed
+// sub-path through a triangle — complex to set up. The refactor exposes
+// `applyR2` directly, so we construct the post-R1 OrientedEdge state by
+// hand and verify R2's exact mark transitions.
+
+function buildAdj(edges: [number, number][], nNodes: number): Set<number>[] {
+  const adj: Set<number>[] = Array.from(
+    { length: nNodes },
+    () => new Set<number>(),
+  );
+  for (const [a, b] of edges) {
+    adj[a].add(b);
+    adj[b].add(a);
+  }
+  return adj;
+}
+
+function buildEdges(
+  triples: [number, number, "circle" | "arrow" | "tail", "circle" | "arrow" | "tail"][],
+): Map<string, OrientedEdge> {
+  const m = new Map<string, OrientedEdge>();
+  for (const [a, b, mA, mB] of triples) {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const markLo = lo === a ? mA : mB;
+    const markHi = hi === a ? mA : mB;
+    m.set(`${lo}:${hi}`, { a: lo, b: hi, markA: markLo, markB: markHi });
+  }
+  return m;
+}
+
+describe("applyR2 — propagates arrowhead through a directed sub-path", () => {
+  it("orients X-Z's Z-side as arrow when X → Y and Y *→ Z (triangle)", () => {
+    // Triangle X(0)-Y(1)-Z(2) with X-Z adjacent.
+    // Pre-state: X → Y (tail at X, arrow at Y); Y *→ Z (circle at Y,
+    // arrow at Z); X-Z (circle, circle).
+    const adj = buildAdj([[0, 1], [1, 2], [0, 2]], 3);
+    const edges = buildEdges([
+      [0, 1, "tail", "arrow"], // X → Y
+      [1, 2, "circle", "arrow"], // Y *→ Z
+      [0, 2, "circle", "circle"], // X o-o Z
+    ]);
+    const changed = applyR2(edges, adj);
+    expect(changed).toBe(true);
+    const xz = edges.get("0:2")!;
+    expect(xz.markA).toBe("circle"); // X-side stays circle
+    expect(xz.markB).toBe("arrow"); // Z-side flipped to arrow
+  });
+
+  it("orients X-Z's Z-side as arrow when X *→ Y and Y → Z (triangle, other branch)", () => {
+    const adj = buildAdj([[0, 1], [1, 2], [0, 2]], 3);
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // X *→ Y
+      [1, 2, "tail", "arrow"], // Y → Z
+      [0, 2, "circle", "circle"],
+    ]);
+    const changed = applyR2(edges, adj);
+    expect(changed).toBe(true);
+    const xz = edges.get("0:2")!;
+    expect(xz.markB).toBe("arrow");
+  });
+
+  it("does not fire when the triple is unshielded (X-Z not adjacent)", () => {
+    const adj = buildAdj([[0, 1], [1, 2]], 3); // no X-Z edge
+    const edges = buildEdges([
+      [0, 1, "tail", "arrow"],
+      [1, 2, "circle", "arrow"],
+    ]);
+    const changed = applyR2(edges, adj);
+    expect(changed).toBe(false);
+  });
+
+  it("does not fire when the directed sub-path is incomplete", () => {
+    // X-Y has arrow at Y but X-side is circle (not directed). Y *→ Z
+    // present, X-Z circle/circle. R2 needs (directedXY AND arrowAtZ)
+    // OR (arrowAtY AND directedYZ). With only arrow at Y on X-Y AND
+    // only arrow at Z on Y-Z (no tail at Y on Y-Z), neither branch
+    // triggers.
+    const adj = buildAdj([[0, 1], [1, 2], [0, 2]], 3);
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // X *→ Y (X-side circle)
+      [1, 2, "circle", "arrow"], // Y *→ Z (Y-side circle)
+      [0, 2, "circle", "circle"],
+    ]);
+    const changed = applyR2(edges, adj);
+    expect(changed).toBe(false);
+  });
+});
+
+describe("applyR3 — orients D *→ B via the discriminating kite", () => {
+  it("orients D-B's B-side as arrow given the canonical kite pattern", () => {
+    // Kite: A(0) *→ B(1) ←* C(2), with D(3) adjacent to A, B, C.
+    // Pre-state marks:
+    //   A-B: A-side circle, B-side arrow (A *→ B)
+    //   C-B: C-side circle, B-side arrow (C *→ B)
+    //   A-D: A-side circle, D-side circle  (the "A *-o D" precondition
+    //        only requires circle at D, but for cleanness keep both as
+    //        circles)
+    //   C-D: same shape as A-D
+    //   D-B: D-side circle, B-side circle (the edge R3 will orient)
+    //   A and C NOT adjacent.
+    const adj = buildAdj(
+      [
+        [0, 1], // A-B
+        [2, 1], // C-B
+        [0, 3], // A-D
+        [2, 3], // C-D
+        [3, 1], // D-B
+      ],
+      4,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // A *→ B
+      [2, 1, "circle", "arrow"], // C *→ B
+      [0, 3, "circle", "circle"], // A o-o D
+      [2, 3, "circle", "circle"], // C o-o D
+      [3, 1, "circle", "circle"], // D o-o B
+    ]);
+    const changed = applyR3(edges, adj);
+    expect(changed).toBe(true);
+    const db = edges.get("1:3")!;
+    // B-side should be arrow now.
+    const bMark = db.a === 1 ? db.markA : db.markB;
+    const dMark = db.a === 3 ? db.markA : db.markB;
+    expect(bMark).toBe("arrow");
+    expect(dMark).toBe("circle"); // D-side stays
+  });
+
+  it("does not fire when A and C are adjacent (kite collapses)", () => {
+    const adj = buildAdj(
+      [
+        [0, 1], // A-B
+        [2, 1], // C-B
+        [0, 3], // A-D
+        [2, 3], // C-D
+        [3, 1], // D-B
+        [0, 2], // A-C — breaks the precondition
+      ],
+      4,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [2, 1, "circle", "arrow"],
+      [0, 3, "circle", "circle"],
+      [2, 3, "circle", "circle"],
+      [3, 1, "circle", "circle"],
+      [0, 2, "circle", "circle"],
+    ]);
+    const changed = applyR3(edges, adj);
+    expect(changed).toBe(false);
+  });
+
+  it("does not fire when D-B already has arrow at B", () => {
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [2, 1],
+        [0, 3],
+        [2, 3],
+        [3, 1],
+      ],
+      4,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [2, 1, "circle", "arrow"],
+      [0, 3, "circle", "circle"],
+      [2, 3, "circle", "circle"],
+      [3, 1, "circle", "arrow"], // already arrow at B — no work for R3
+    ]);
+    const changed = applyR3(edges, adj);
+    expect(changed).toBe(false);
+  });
+});
+
+describe("buildInitialEdges + applyVStructures — exported helpers compose", () => {
+  it("initializes all edges as circle/circle and applyVStructures is a no-op when nothing qualifies", () => {
+    const skel = makeSkeleton([[0, 1]], { "0:1": [] }, 2);
+    const edges = buildInitialEdges(skel);
+    expect([...edges.values()].every((e) => e.markA === "circle" && e.markB === "circle")).toBe(true);
+    const changed = applyVStructures(edges, skel);
+    expect(changed).toBe(false);
   });
 });
 

@@ -468,24 +468,28 @@
     }
     .team-card {
       padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     }
     .team-card .avatar {
       width: 1.35in;
       height: 1.35in;
       border-radius: 4pt;
-      margin: 0 auto 0.14in auto;
+      margin: 0 0 0.14in 0;
       background-position: center 30%;
       background-size: cover;
       background-color: var(--apex-paper-tint);
       border: 1pt solid var(--apex-rule);
       box-shadow: 0 1pt 0 0 var(--apex-cyan);
-      display: flex;
-      align-items: center;
-      justify-content: center;
       overflow: hidden;
+      flex-shrink: 0;
     }
-    .team-card { text-align: center; }
-    .advisor-row .team-card { text-align: left; }
+    .advisor-row .team-card {
+      align-items: flex-start;
+      text-align: left;
+    }
     .advisor-row .team-card .avatar {
       width: 1.7in;
       height: 1.7in;
@@ -925,7 +929,7 @@
         <div class="avatar" style="background-image: url('./brand/team/igusa.png');"></div>
         <p class="role">Systems Engineering Advisor</p>
         <p class="who">Dr. Takeru Igusa</p>
-        <p class="bg">Professor, Johns Hopkins. Systems science, applied mathematics, epidemiology, resilience. NIH and CDC funded; his work on cascading failure in interdependent systems is foundational to the cascade and restoration pillars.</p>
+        <p class="bg">Professor, Johns Hopkins. Systems science, applied mathematics, epidemiology. NIH and CDC funded. His work on cascading failure in interdependent systems anchors the framework's cascade and restoration pillars.</p>
       </div>
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/telukdarie.png');"></div>

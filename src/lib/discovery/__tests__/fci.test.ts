@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { fciAlgorithm } from "../algorithms/fci";
+import {
+  fciAlgorithm,
+  runOrientation,
+  type SkeletonResult,
+} from "../algorithms/fci";
 import type { Cohort } from "../cohort-types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -203,6 +207,132 @@ describe("fciAlgorithm — pattern recovery", () => {
     const zMarkOnYZ = yz!.source === "z" ? yz!.endpointMarks?.sourceMark : yz!.endpointMarks?.targetMark;
     expect(zMarkOnXZ).toBe("arrow");
     expect(zMarkOnYZ).toBe("arrow");
+  });
+});
+
+// ─── Orientation-rule unit tests (constructed skeleton fixture) ──────
+//
+// Building synthetic cohorts that exercise R1 cleanly is hard: PC-stable's
+// depth-bounded search interacts with the data-generating process in ways
+// that make the input → output mapping less direct. Testing R1 against
+// a constructed `SkeletonResult` is more rigorous — we control exactly
+// which adjacencies and sepsets the rule sees and can assert the expected
+// mark transitions deterministically.
+//
+// R2 is implemented in `runOrientation` per Zhang (2008). A dedicated R2
+// fixture-test is deferred — triggering R2 end-to-end through
+// `runOrientation` requires constructing a 6+ node fixture with two
+// v-structures + a triangle, which is complex enough to merit its own
+// follow-up. R2 not firing spuriously is implicitly verified by all the
+// pattern-recovery tests passing.
+
+function makeSkeleton(
+  edges: [number, number][],
+  sepsets: Record<string, number[]>,
+  nNodes: number,
+): SkeletonResult {
+  const adj: Set<number>[] = Array.from(
+    { length: nNodes },
+    () => new Set<number>(),
+  );
+  for (const [a, b] of edges) {
+    adj[a].add(b);
+    adj[b].add(a);
+  }
+  const sepset = new Map<string, number[]>();
+  for (const k of Object.keys(sepsets)) sepset.set(k, sepsets[k]);
+  return {
+    adj,
+    sepset,
+    pairKey: (i, j) => (i < j ? `${i}:${j}` : `${j}:${i}`),
+    marginalR: new Map(),
+  };
+}
+
+describe("runOrientation — R1 propagates arrowheads outward from v-structures", () => {
+  it("orients Y→Z and Y→W via R1 after a v-structure puts arrowheads at Y", () => {
+    // 5-node skeleton:
+    //   Edges: A(0)-Y(1), B(2)-Y(1), Y(1)-Z(3), Y(1)-W(4)
+    //   sepset(A, B) = []  → v-structure at Y (arrowheads at Y on A-Y and B-Y)
+    //   sepset(A, Z) = {Y}, sepset(B, Z) = {Y} → not v-structures, but R1 fires
+    //   sepset(A, W) = {Y}, sepset(B, W) = {Y} → R1 also fires here
+    //   sepset(Z, W) = {Y} → Z, W not adjacent in skeleton
+    const skel = makeSkeleton(
+      [
+        [0, 1],
+        [2, 1],
+        [1, 3],
+        [1, 4],
+      ],
+      {
+        "0:2": [],
+        "0:3": [1],
+        "2:3": [1],
+        "0:4": [1],
+        "2:4": [1],
+        "3:4": [1],
+      },
+      5,
+    );
+    const out = runOrientation(skel);
+
+    const find = (a: number, b: number) =>
+      out.find(
+        (e) => (e.a === a && e.b === b) || (e.a === b && e.b === a),
+      )!;
+
+    // V-structure: arrows at Y on A-Y and B-Y.
+    const ay = find(0, 1);
+    const by = find(1, 2);
+    expect(ay.a === 1 ? ay.markA : ay.markB).toBe("arrow");
+    expect(by.a === 1 ? by.markA : by.markB).toBe("arrow");
+
+    // R1: orient Y-Z and Y-W as Y→Z and Y→W respectively.
+    const yz = find(1, 3);
+    const yw = find(1, 4);
+    expect(yz.a === 1 ? yz.markA : yz.markB).toBe("tail");
+    expect(yz.a === 3 ? yz.markA : yz.markB).toBe("arrow");
+    expect(yw.a === 1 ? yw.markA : yw.markB).toBe("tail");
+    expect(yw.a === 4 ? yw.markA : yw.markB).toBe("arrow");
+  });
+
+  it("does not orient when triple is shielded (X-Z is adjacent)", () => {
+    // Triangle X(0)-Y(1)-Z(2) with all three edges adjacent. R1's
+    // unshielded-triple precondition fails, so even with an arrowhead
+    // at Y on X-Y, R1 does NOT propagate to Y-Z.
+    // Setup: add a v-structure-source W(3) with W-X edge and W
+    // independent of Y, Z so v-structure check at X gives arrow at X.
+    // R1 then fires on (W, X, Y) — but only because W,Y are not
+    // adjacent — and orients X-Y as X→Y. R1 does NOT fire on (X, Y, Z)
+    // because X-Z is adjacent (shielded). Y-Z stays as o-o.
+    const skel = makeSkeleton(
+      [
+        [0, 1], // X-Y
+        [1, 2], // Y-Z
+        [0, 2], // X-Z (shielded)
+        [3, 0], // W-X
+        [4, 0], // V-X
+      ],
+      {
+        "3:4": [], // W, V independent → v-structure at X
+        "1:3": [0], // W-Y separated by X
+        "1:4": [0],
+        "2:3": [0], // W-Z separated by X
+        "2:4": [0],
+      },
+      5,
+    );
+    const out = runOrientation(skel);
+    const find = (a: number, b: number) =>
+      out.find(
+        (e) => (e.a === a && e.b === b) || (e.a === b && e.b === a),
+      )!;
+
+    // Y-Z must remain unoriented (both circles) — R1 was blocked by
+    // the shielded X-Z edge.
+    const yz = find(1, 2);
+    expect(yz.markA).toBe("circle");
+    expect(yz.markB).toBe("circle");
   });
 });
 

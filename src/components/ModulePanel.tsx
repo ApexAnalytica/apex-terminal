@@ -26,14 +26,42 @@ import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import { detectCommunities } from "@/lib/community-detection";
 import { summarizeDiscoveryUncertainty } from "@/lib/discovery-uncertainty";
+import dynamic from "next/dynamic";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
-import TissueCohortView from "./scientist/TissueCohortView";
-import MonteCarloForecast from "./MonteCarloForecast";
-import InterdictionPanel from "./InterdictionPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
-import VX880TrialPanel from "./VX880TrialPanel";
+
+// Tab-gated sub-panels lazy-loaded so the default Spirtes tab doesn't
+// pull their JS on first paint:
+//   - MonteCarloForecast (714 LOC + simulation helpers)  → Pearl tab
+//   - VX880TrialPanel (910 LOC + cohort helpers)         → Pearl tab
+//   - InterdictionPanel (191 LOC)                        → Pareto tab
+//   - TissueCohortView (504 LOC + d1namo cohort data)    → Spirtes tab
+//     but only when isT1DDomain is true, so worth deferring
+// Each has a small loading hint that matches the panel padding so the
+// layout doesn't jump when the chunk lands.
+const PANEL_LOADER = (
+  <div className="p-4 text-[8px] font-mono text-text-muted/60 animate-pulse">
+    LOADING…
+  </div>
+);
+const TissueCohortView = dynamic(
+  () => import("./scientist/TissueCohortView"),
+  { ssr: false, loading: () => PANEL_LOADER },
+);
+const MonteCarloForecast = dynamic(
+  () => import("./MonteCarloForecast"),
+  { ssr: false, loading: () => PANEL_LOADER },
+);
+const InterdictionPanel = dynamic(
+  () => import("./InterdictionPanel"),
+  { ssr: false, loading: () => PANEL_LOADER },
+);
+const VX880TrialPanel = dynamic(
+  () => import("./VX880TrialPanel"),
+  { ssr: false, loading: () => PANEL_LOADER },
+);
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);

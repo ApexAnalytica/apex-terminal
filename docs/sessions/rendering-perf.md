@@ -822,6 +822,23 @@ Items 2 + 3 each Brandes'-class O(V·E). Item 1 was secretly O(N×E) — `comput
 
 **Verification.** `tsc --noEmit` clean (modulo same pre-existing inherited errors); lint pre-existing errors only; vitest 918/918 pass.
 
+### 2026-05-07 — Shipped: relief-field 4σ Gaussian truncation
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: TOPO compute-shader port for real-time scrub. The headline item was a full GPU port (multi-PR, requires WebGL render-to-texture + vertex-shader sampling). Before paying that cost, lower the CPU bar with a math-level optimisation.
+
+**Diagnosis.** All three field-compute paths (`computeReliefField`, `computeReliefLayers`, `computeFusedReliefField`) call `Math.exp(-(dx² + dy²) / σ²)` once per (grid-vertex × sample). For a 128² grid × 200 samples that's 3.3M exp evals; multi-domain stacks the cost across layers. `Math.exp` is the dominant kernel cost.
+
+**What shipped.** A 4σ truncation around the squared-distance check. `exp(-16) ≈ 1.1e-7`, which contributes nothing visible to the rendered surface. For typical layouts each grid point only "sees" 10-30 of the 200 samples within `truncSq = 16·σ²`, so the inner loop short-circuits ~85% of its iterations before the exp call. End-to-end ~5-10× speedup on the single-domain path; the savings compound on the multi-domain fused path because they apply per-layer.
+
+The full GPU compute-shader port is still queued — if real-time scrub still drops frames after this lands in production, the next step is a Web Worker port (cheaper than GPU), then a WebGL render-target if needed.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `truncSq` constant + squared-distance early-out in all three field-compute inner loops.
+
+**Verification.** `tsc --noEmit` clean; vitest 918/918 pass (22 of which are relief-field-specific).
+
 ---
 
 ## How a fresh session resumes

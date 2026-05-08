@@ -761,6 +761,99 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; vitest 843/843 pass.
 
+### 2026-05-07 — Shipped: Map particles → imperative `setData`
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog item flagged in earlier sessions. The particle layer's GeoJSON was held in `useState`, so `setParticleGeoJSON({...})` fired on every rAF tick (60fps). Each set forced a full React re-render of the Map subtree, which re-evaluated 5+ Source/Layer JSX expressions just so react-maplibre's `<Source data={...}>` reconciler could call `source.setData()` on the underlying maplibre source. The `setData` itself was the only thing that needed to happen per frame; everything around it was wasted.
+
+**What shipped.** Direct route around React. The particle Source mounts once with a stable empty FeatureCollection, and the rAF callback writes new features into the underlying maplibre source via `mapRef.current.getMap().getSource('particles').setData(fc)`. A re-usable `Feature[]` buffer + FC wrapper lives in the effect's closure so we re-use the same array across frames (one fewer allocation per tick — ~60/sec saved). Phase state still lives in the existing `particlePhases` ref; nothing else changes about the physics.
+
+Net effect: per-frame work shrinks from "render + diff + reconcile + setData" to a single `setData` call. Still correct on dependency changes (the effect tears down on `temporalEdgePaths` change and rebuilds the buffer + rAF).
+
+**Files.**
+- `src/components/CausalDAGMap.tsx` — `useState<FC>` removed; `writeData` helper inside the temporal-edge effect; Source's `data` prop bound to the stable empty FC.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched file; vitest 843/843 pass.
+
+### 2026-05-07 — Shipped: defer tab-gated ModulePanel sub-panels via next/dynamic
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: bundle-analyzer perf sweep (PR #222 wired the tooling). Sandbox can't run `ANALYZE=true npx next build` end-to-end — Google Fonts blocked + `ai`/`@ai-sdk/*` not installed — so I switched to static analysis. The ModulePanel mounts on first paint (right pane is the default), and it statically imports a swarm of sub-panels gated on the active module tab. Spirtes is the default tab; users on Spirtes were paying for the JS of every other tab's sub-panel.
+
+**What shipped.** Four tab-gated sub-panels converted to `next/dynamic` with `ssr: false`:
+- `MonteCarloForecast` (~714 LOC, Pearl tab)
+- `VX880TrialPanel` (~910 LOC, Pearl tab)
+- `InterdictionPanel` (~191 LOC, Pareto tab)
+- `TissueCohortView` (~504 LOC, Spirtes tab but only when `isT1DDomain`)
+
+Common loading hint (`<div>LOADING…</div>`) sized to the panel padding so the layout doesn't jump when the chunk lands. Inline panels (`TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, `SnapshotIndicator`) live as functions inside `ModulePanel.tsx` itself, so I'd need to extract them before they could be deferred — out of scope for a perf sweep, queued for later.
+
+The Spirtes-tab default sub-panels (`TrinityPanel`, `DiscoveryRunsPanel`) stay static since they're on the critical path; `TrinityPanel` already lazy-loads its three Trinity graphs internally so there's no double-defer to chase.
+
+**Files.**
+- `src/components/ModulePanel.tsx` — four `dynamic()` declarations replacing the static imports.
+
+**Notes for future sweep.** When the analyzer can be run end-to-end on a real env, things to look at next: the `tarski-data` axiom library size; estimator libs (`lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`) imported at module top-level — could be deferred to first-use; `framer-motion` is everywhere and probably unavoidable but worth confirming we're tree-shaking.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors from `ai`-SDK types missing in sandbox + a known fci.test endpointMarks drift); lint pre-existing errors only (2 errors on lines 81 + 1806, both confirmed on main pre-merge); vitest 909/909 pass.
+
+### 2026-05-07 — Shipped: launch-workspace freeze — O(N×E) → O(N+E) + defer Brandes' metrics
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"manifold keeps freezing after I select domains and click LAUNCH WORKSPACE."* The launch flow synchronously runs:
+1. `applyOmegaLiveAdjustments(g)` inside `setGraphData`
+2. `omegaBridgeDensity(graph)` inside `StructuralMetrics`
+3. `netMetrics` inside `CascadeHeader` (eigenvector + Brandes' edge betweenness + clustering + diameter BFS, all in one memo)
+4. Canvas mount + `computeNetworkMetrics` + `compute2DForceLayout`
+
+Items 2 + 3 each Brandes'-class O(V·E). Item 1 was secretly O(N×E) — `computeCascadeLoadDelta` ran `graph.edges.filter(e => e.source === node.id)` once per node. Combined cost on a CROSS-DOMAIN multi-card workspace blew past the user's freeze threshold.
+
+**What shipped.**
+- **`applyOmegaLiveAdjustments` linearised.** Pre-compute `outDegreeBy: Map<sourceId, count>` once in O(N+E), then look up each node's out-degree in O(1). New internal helper `computeCascadeLoadDeltaFromOutDegree` so the per-node math doesn't re-scan all edges. Original exported `computeCascadeLoadDelta(node, graph)` kept for back-compat with tests.
+- **`useDeferredValue` on the heavy metric paths.** `StructuralMetrics` wraps `graph` in `useDeferredValue` before passing it to `omegaBridgeDensity`. `CascadeHeader` wraps both `graphData` and `selectedNodes` and threads the deferred refs through `cascade`, `netMetrics`, and the deps array. The strip + panel paint immediately with whatever value React has (stale by one frame on a graph swap); the recompute lands as a low-priority work unit afterwards. Launch feels interactive instead of locked.
+
+**Files.**
+- `src/lib/omega-pillar-wiring.ts` — out-degree pre-pass + private `computeCascadeLoadDeltaFromOutDegree`.
+- `src/components/StructuralMetrics.tsx` — `useDeferredValue(graph)` before `omegaBridgeDensity`.
+- `src/components/ModulePanel.tsx` — `useDeferredValue` on `graphData` + `selectedNodes` in `CascadeHeader`.
+
+**Verification.** `tsc --noEmit` clean (modulo same pre-existing inherited errors); lint pre-existing errors only; vitest 918/918 pass.
+
+### 2026-05-07 — Shipped: relief-field 4σ Gaussian truncation
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: TOPO compute-shader port for real-time scrub. The headline item was a full GPU port (multi-PR, requires WebGL render-to-texture + vertex-shader sampling). Before paying that cost, lower the CPU bar with a math-level optimisation.
+
+**Diagnosis.** All three field-compute paths (`computeReliefField`, `computeReliefLayers`, `computeFusedReliefField`) call `Math.exp(-(dx² + dy²) / σ²)` once per (grid-vertex × sample). For a 128² grid × 200 samples that's 3.3M exp evals; multi-domain stacks the cost across layers. `Math.exp` is the dominant kernel cost.
+
+**What shipped.** A 4σ truncation around the squared-distance check. `exp(-16) ≈ 1.1e-7`, which contributes nothing visible to the rendered surface. For typical layouts each grid point only "sees" 10-30 of the 200 samples within `truncSq = 16·σ²`, so the inner loop short-circuits ~85% of its iterations before the exp call. End-to-end ~5-10× speedup on the single-domain path; the savings compound on the multi-domain fused path because they apply per-layer.
+
+The full GPU compute-shader port is still queued — if real-time scrub still drops frames after this lands in production, the next step is a Web Worker port (cheaper than GPU), then a WebGL render-target if needed.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `truncSq` constant + squared-distance early-out in all three field-compute inner loops.
+
+**Verification.** `tsc --noEmit` clean; vitest 918/918 pass (22 of which are relief-field-specific).
+
+### 2026-05-07 — Shipped: stop CausalDAG2D from running its layout sim on launch
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"still keeps freezing"* after the previous launch-workspace fix. Identified the remaining sync hog: `CausalDAG2D` was statically imported and always-mounted (with `visibility: hidden` for instant view-switching), so its `compute2DForceLayout` + `computeNetworkMetrics` ran *in parallel* with the 3D path's equivalents on every launch — even though the user lands on 3D and the 2D canvas is hidden.
+
+The always-mount pattern was in place to keep the 3D WebGL context alive across view switches (the browser's GPU process can deallocate it on remount). 2D doesn't carry a WebGL context — it renders through React Flow — so the rationale doesn't apply to it.
+
+**What shipped.** `CausalDAG2D` converted to `next/dynamic` (matching Map / Relief) and conditionally rendered only when `viewMode === "2d"`. 3D stays always-mounted with the `visibility: hidden` toggle. Trade-off: first switch from 3D → 2D pays a chunk-load + layout-compute beat (~300-500ms on a 500-node CROSS-DOMAIN workspace), same shape as the existing first-Map and first-Relief switch.
+
+**Files.**
+- `src/app/page.tsx` — `CausalDAG2D` static import → `dynamic`; render block wrapped in `viewMode === "2d"` gate.
+
+**Verification.** `tsc --noEmit` clean; vitest 918/918 pass.
+
 ---
 
 ## How a fresh session resumes

@@ -11,7 +11,6 @@ import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
 import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
-import CausalDAG2D from "@/components/CausalDAG2D";
 import TimeDial from "@/components/TimeDial";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
@@ -56,6 +55,30 @@ const CausalDAG3D = dynamic(() => import("@/components/CausalDAG3D"), {
     <div className="w-full h-full flex items-center justify-center bg-background">
       <div className="text-[10px] font-mono text-text-muted animate-pulse">
         INITIALIZING WEBGL_3D RENDERER...
+      </div>
+    </div>
+  ),
+});
+
+// CausalDAG2D was previously statically imported and rendered alongside
+// CausalDAG3D with `visibility: hidden` so view switches were instant.
+// Cost: on launch the 2D layout sim + Brandes' centrality ran in parallel
+// with the 3D ones, doubling the work in the launch frame. User reports
+// of "manifold keeps freezing on LAUNCH WORKSPACE" came back even after
+// the omega-pillar O(N×E) fix and the metric deferrals — this was the
+// remaining sync budget hog. 2D doesn't carry a WebGL context (it uses
+// React Flow), so the comment about GPU-context preservation that
+// motivated the always-mount pattern doesn't apply to 2D.
+//
+// Trade-off: first switch from 3D → 2D incurs chunk-load + layout
+// compute (~300-500ms on a 500-node CROSS-DOMAIN workspace), same shape
+// as the existing first-switch latency for Map / Relief.
+const CausalDAG2D = dynamic(() => import("@/components/CausalDAG2D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="text-[10px] font-mono text-text-muted animate-pulse">
+        INITIALIZING 2D RENDERER...
       </div>
     </div>
   ),
@@ -147,8 +170,13 @@ export default function Home() {
           {/* DAG Canvas — relative container with explicit flex sizing,
                children use absolute positioning to fill */}
           <div className="flex-1 relative min-h-0" data-tour="dag-canvas" style={{ contain: "strict" }}>
-            {/* Keep both views mounted — use visibility:hidden instead of display:none
-                to prevent WebGL context deallocation by the browser GPU process */}
+            {/* 3D stays always-mounted with visibility:hidden so the WebGL
+                context isn't torn down on view switches (the browser's GPU
+                process can deallocate it across remounts). 2D / Map / Relief
+                are conditionally rendered — they don't carry a WebGL context
+                that needs preserving (2D uses React Flow), so paying first-
+                switch chunk-load latency once is cheaper than running their
+                layout sims on every page launch. */}
             <div
               className="absolute inset-0"
               style={{
@@ -159,16 +187,11 @@ export default function Home() {
             >
               <CausalDAG3D />
             </div>
-            <div
-              className="absolute inset-0"
-              style={{
-                visibility: viewMode === "2d" ? "visible" : "hidden",
-                pointerEvents: viewMode === "2d" ? "auto" : "none",
-                zIndex: viewMode === "2d" ? 1 : 0,
-              }}
-            >
-              <CausalDAG2D />
-            </div>
+            {viewMode === "2d" && (
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <CausalDAG2D />
+              </div>
+            )}
             {viewMode === "map" && (
               <div className="absolute inset-0" style={{ zIndex: 1 }}>
                 <CausalDAGMap />

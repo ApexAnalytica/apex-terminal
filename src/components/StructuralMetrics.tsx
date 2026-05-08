@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeOmegaState, computeDoomsdayState } from "@/lib/omega-engine";
+import { omegaBridgeDensity } from "@/lib/estimators";
+import { bridgeDensityBand } from "@/lib/omega-bridge-density-display";
 
 export default function StructuralMetrics() {
-  const meta = useFilteredGraph().metadata;
+  const graph = useFilteredGraph();
+  const meta = graph.metadata;
   const shocks = useApexStore((s) => s.shocks);
 
   const omegaState = useMemo(() => computeOmegaState(shocks), [shocks]);
@@ -14,12 +17,31 @@ export default function StructuralMetrics() {
     () => computeDoomsdayState(shocks, omegaState.buffer),
     [shocks, omegaState.buffer]
   );
+  // Ω-Bridge Density (Ghauri 2025, system-level diagnostic). Brandes'-
+  // class O(V·E) under the hood — for the LAUNCH-WORKSPACE flow it
+  // landed in the same synchronous tick as the canvas mount + module
+  // panel reflows + temporalData init, which the user reported as a
+  // freeze. `useDeferredValue` lets React render the rest of the
+  // strip immediately with a stale (or default) bridgeDensity, then
+  // schedule the recompute as a low-priority work unit. The strip
+  // shows a placeholder for one frame on a graph swap; in exchange
+  // the launch path stays interactive.
+  const deferredGraph = useDeferredValue(graph);
+  const bridgeDensity = useMemo(() => omegaBridgeDensity(deferredGraph), [deferredGraph]);
+  const band = bridgeDensityBand(bridgeDensity.density);
 
   return (
     <div className="flex items-center gap-4 px-4 py-1.5 border-t border-border bg-surface text-[9px] font-mono text-text-muted">
       <span>
         DISCOVERY DENSITY:{" "}
         <span className="text-foreground">{meta.density.toFixed(2)}</span>
+      </span>
+      <span className="text-border">|</span>
+      <span title={band.tooltip}>
+        Ω-BRIDGE DENSITY:{" "}
+        <span style={{ color: band.color }}>
+          {bridgeDensity.density.toFixed(3)}
+        </span>
       </span>
       <span className="text-border">|</span>
       <span>

@@ -49,3 +49,9 @@ export {
   resolveChiStarEdges,
 } from "./chi-star";
 export type { ChiStarOptions, ChiStarResult } from "./chi-star";
+
+export { omegaBridgeDensity } from "./omega-bridge-density";
+export type {
+  OmegaBridgeDensityOptions,
+  OmegaBridgeDensityResult,
+} from "./omega-bridge-density";

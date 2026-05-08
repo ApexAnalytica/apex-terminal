@@ -744,6 +744,23 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean (same pre-existing onboarding-metrics test errors); vitest 833/833 pass.
 
+### 2026-05-07 — Shipped: timeline range capped at "now" — no more 2030 scrub
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"the bottom timeline allows us to go to like 2030 which doesn't make sense. Also I'm skeptical if the data is being categorized correctly with the date / time."*
+
+**Diagnosis.** `loadRealTemporalData` in `src/lib/real-timeseries.ts` blindly min/maxed timestamps across every node's history to derive `rangeStart` / `rangeEnd`. Several sources in `public/datasets/claire/timeseries.json` carry forecast / target end-state rows that extend years past today (`2030-12-31` for one, plus monthly projections through 2027). Those pushed `rangeEnd` forward, the store wired `timelineRange.end` to it, and the bottom dial then let the user scrub into 2030.
+
+**What shipped.** Cap `rangeEnd` at `Date.now()` while iterating timestamps. Forecast / future points stay in each node's `history` (so a future overlay can still plot them as projection if a feature wants that), but they don't drag the timeline range past the present. Plus a fallback: if every series turns out to be forecast-only or empty, default the range to the last 60 days instead of leaving it pinned at the 1970 sentinel.
+
+**Files.**
+- `src/lib/real-timeseries.ts` — future-point skip + empty-range fallback in the `rangeStart` / `rangeEnd` derivation.
+
+**Out of scope.** Date-vs-value categorisation correctness (the second half of the user's report) is a domain-data question. The parser itself looks sound — ISO strings via `new Date(s)` and year numbers via `new Date(year, 0, 1)` — but verifying that each value is on the right date is a data-team job, not a rendering one. Will surface specific cases if the user provides them.
+
+**Verification.** `tsc --noEmit` clean; vitest 843/843 pass.
+
 ---
 
 ## How a fresh session resumes

@@ -35,9 +35,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DOMAIN_CARDS } from "@/lib/domains";
 
+// Resolve from process.cwd() rather than __dirname — vitest is run
+// from the repo root by the project's `npm test` / `npm run prebuild`
+// scripts, so this is the stable anchor. Avoids __dirname semantics
+// that vary between CJS / ESM module resolution under different
+// build environments (notably Vercel's prebuild hook, which the
+// GH Actions test · build harness sidestepped on a previous attempt).
 const MIGRATION_PATH = resolve(
-  __dirname,
-  "../../../supabase-billing-migration.sql",
+  process.cwd(),
+  "supabase-billing-migration.sql",
 );
 
 describe("DomainCard ids ⊆ tier_features seed", () => {

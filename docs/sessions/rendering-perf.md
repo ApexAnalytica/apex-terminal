@@ -776,6 +776,29 @@ Net effect: per-frame work shrinks from "render + diff + reconcile + setData" to
 
 **Verification.** `tsc --noEmit` clean; lint clean on touched file; vitest 843/843 pass.
 
+### 2026-05-07 — Shipped: defer tab-gated ModulePanel sub-panels via next/dynamic
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: bundle-analyzer perf sweep (PR #222 wired the tooling). Sandbox can't run `ANALYZE=true npx next build` end-to-end — Google Fonts blocked + `ai`/`@ai-sdk/*` not installed — so I switched to static analysis. The ModulePanel mounts on first paint (right pane is the default), and it statically imports a swarm of sub-panels gated on the active module tab. Spirtes is the default tab; users on Spirtes were paying for the JS of every other tab's sub-panel.
+
+**What shipped.** Four tab-gated sub-panels converted to `next/dynamic` with `ssr: false`:
+- `MonteCarloForecast` (~714 LOC, Pearl tab)
+- `VX880TrialPanel` (~910 LOC, Pearl tab)
+- `InterdictionPanel` (~191 LOC, Pareto tab)
+- `TissueCohortView` (~504 LOC, Spirtes tab but only when `isT1DDomain`)
+
+Common loading hint (`<div>LOADING…</div>`) sized to the panel padding so the layout doesn't jump when the chunk lands. Inline panels (`TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, `SnapshotIndicator`) live as functions inside `ModulePanel.tsx` itself, so I'd need to extract them before they could be deferred — out of scope for a perf sweep, queued for later.
+
+The Spirtes-tab default sub-panels (`TrinityPanel`, `DiscoveryRunsPanel`) stay static since they're on the critical path; `TrinityPanel` already lazy-loads its three Trinity graphs internally so there's no double-defer to chase.
+
+**Files.**
+- `src/components/ModulePanel.tsx` — four `dynamic()` declarations replacing the static imports.
+
+**Notes for future sweep.** When the analyzer can be run end-to-end on a real env, things to look at next: the `tarski-data` axiom library size; estimator libs (`lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`) imported at module top-level — could be deferred to first-use; `framer-motion` is everywhere and probably unavoidable but worth confirming we're tree-shaking.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors from `ai`-SDK types missing in sandbox + a known fci.test endpointMarks drift); lint pre-existing errors only (2 errors on lines 81 + 1806, both confirmed on main pre-merge); vitest 909/909 pass.
+
 ---
 
 ## How a fresh session resumes

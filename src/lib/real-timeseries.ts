@@ -309,15 +309,35 @@ export async function loadRealTemporalData(
     unmappedNodes.push(node);
   }
 
-  // Determine time range from real-data nodes only
+  // Determine time range from real-data nodes only.
+  //
+  // Cap at "now": some sources in `timeseries.json` extend into the
+  // future (forecasts / target end-states — e.g. `2030-12-31`, plus
+  // monthly projections through 2027). Letting those push `rangeEnd`
+  // forward made the live timeline scrubbable into 2030, which the
+  // user (correctly) flagged as nonsense — historical data only goes
+  // up to today, anything past is projection. Forecast points still
+  // live in the per-node history (TimeSeriesOverlay can plot them as
+  // a dashed projection if a future feature wants that), but the
+  // *timeline range* is bounded by observed history. A small +1 hour
+  // headroom keeps `now` itself reachable when the user goes live.
+  const nowMs = Date.now();
   let rangeStart = new Date();
   let rangeEnd = new Date(0);
   for (const [, nodeData] of nodeMap) {
     for (const h of nodeData.history) {
+      if (h.timestamp > nowMs) continue; // skip future / forecast points for range
       const d = new Date(h.timestamp);
       if (d < rangeStart) rangeStart = d;
       if (d > rangeEnd) rangeEnd = d;
     }
+  }
+  // Fallback when no observable history exists (every series was
+  // forecast-only or empty). Without this, rangeEnd stays at the 1970
+  // sentinel and the timeline collapses, which we'd rather not ship.
+  if (rangeEnd.getTime() === 0 || rangeStart.getTime() > nowMs) {
+    rangeEnd = new Date(nowMs);
+    rangeStart = new Date(nowMs - 60 * 24 * 60 * 60 * 1000);
   }
 
   // ── Pass 2: Unmapped nodes — no real data available ─────────────

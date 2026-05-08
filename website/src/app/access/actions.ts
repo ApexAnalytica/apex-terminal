@@ -35,6 +35,8 @@ const DOMAIN_OPTIONS = new Set([
 const SOURCE_LABELS: Record<string, string> = {
   "founding-10": "Founding 10",
   "mini-audit": "ΩF Mini-Audit",
+  "mini-audit-lite": "ΩF Mini-Audit · LITE ($1,500)",
+  "mini-audit-full": "ΩF Mini-Audit · FULL ($5,000)",
 };
 
 function s(value: FormDataEntryValue | null, max = 2000): string {
@@ -85,9 +87,10 @@ export async function submitAccessRequest(
   const subjectPrefix = sourceLabel ? `[${sourceLabel}] ` : "[Manifold] ";
   const subject = `${subjectPrefix}Access request — ${org || name}`;
 
+  const sourcePagePath = sourceRaw === "founding-10" ? "/founding" : "/audit";
   const lines = [
     sourceLabel
-      ? `>> ROUTING: ${sourceLabel} (visitor clicked the primary CTA on /${sourceRaw === "founding-10" ? "founding" : "audit"})`
+      ? `>> ROUTING: ${sourceLabel} (visitor clicked the primary CTA on ${sourcePagePath})`
       : "",
     sourceLabel ? "" : null,
     `Name: ${name}`,

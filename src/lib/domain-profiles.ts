@@ -19,6 +19,8 @@ export type EstimatorId =
   | "transfer-entropy"
   | "moran"
   | "takens"
+  // Distributionally-robust risk estimators (from-spec, Ghauri 2025)
+  | "cvar-w1"
   // Clinical / trial estimators (Python reference canonical)
   | "hte-meta"
   | "cox-ph"
@@ -386,10 +388,18 @@ export const AI_SAFETY_PROFILE: DomainProfile = {
   pillarLabels: AI_SAFETY_PILLARS,
   pillarDetails: AI_SAFETY_PILLAR_DETAILS,
   compositeMethodology: AI_SAFETY_METHODOLOGY,
-  // v1 reuses geopolitical's criticality estimator set as a working fallback.
-  // AI-domain-specific estimators (FR, BES temporal monitoring) arrive in
-  // Phase 3 once Pearl session wires them up.
-  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
+  // Five tabs:
+  //   csd / ph / lppls / bocpd — graph-Ω-trajectory estimators inherited
+  //     from the geopolitical fallback. Sharp transitions in the GAT's
+  //     ΩF trajectory under catastrophic-forgetting events are exactly
+  //     the regime they were designed for.
+  //   cvar-w1 — canonical Tail Depth pillar estimator (Ghauri 2025
+  //     Ch. 4 §3 Ω-Robustness). Renders as "awaiting-data" until a loss
+  //     sample (per-attack-class observed harm, per-incident cascade
+  //     depth, etc.) is wired into the store.
+  // FR + BES temporal monitoring arrive in Phase 3 once the Pearl
+  // session wires them up.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd", "cvar-w1"],
 };
 
 // ─── Resolution ─────────────────────────────────────────────────────

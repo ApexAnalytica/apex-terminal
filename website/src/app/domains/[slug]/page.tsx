@@ -42,14 +42,14 @@ const ENGINE_COLOR: Record<string, Color> = {
  * this map).
  */
 const AUDIT_CTA_BY_SLUG: Record<string, string> = {
-  manufacturing: "Audit your supplier graph — $1,500",
-  infrastructure: "Audit your infrastructure graph — $1,500",
-  economic: "Audit your trade-flow graph — $1,500",
-  finance: "Audit your counterparty graph — $1,500",
-  energy: "Audit your grid / supply graph — $1,500",
-  geopolitical: "Audit your sanctions exposure — $1,500",
-  science: "Audit your research portfolio — $1,500",
-  insurance: "Audit your treaty / exposure graph — $1,500",
+  manufacturing: "Audit your supplier graph — from $1,500",
+  infrastructure: "Audit your infrastructure graph — from $1,500",
+  economic: "Audit your trade-flow graph — from $1,500",
+  finance: "Audit your counterparty graph — from $1,500",
+  energy: "Audit your grid / supply graph — from $1,500",
+  geopolitical: "Audit your sanctions exposure — from $1,500",
+  science: "Audit your research portfolio — from $1,500",
+  insurance: "Audit your treaty / exposure graph — from $1,500",
 };
 
 const colorMap: Record<
@@ -284,7 +284,7 @@ export default async function DomainPage({
                 className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded text-[11px] font-[family-name:var(--font-michroma)] tracking-[0.18em] bg-accent-amber/10 border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/20 hover:border-accent-amber/60 transition-all"
               >
                 <span>
-                  {AUDIT_CTA_BY_SLUG[d.slug] ?? "Audit your graph — $1,500"}
+                  {AUDIT_CTA_BY_SLUG[d.slug] ?? "Audit your graph — from $1,500"}
                 </span>
                 <span aria-hidden>›</span>
               </Link>

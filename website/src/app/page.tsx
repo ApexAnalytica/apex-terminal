@@ -184,20 +184,20 @@ export default function Home() {
               </span>
             </div>
             <h3 className="relative font-[family-name:var(--font-michroma)] text-2xl md:text-[26px] tracking-[0.04em] leading-[1.15] text-accent-amber text-glow-amber">
-              $1,500 flat. 5-day readout.
+              From $1,500. Causal-fragility readout.
             </h3>
             <p className="relative text-[12.5px] md:text-[13px] font-mono text-text-muted leading-relaxed flex-1">
-              Send your data, get back a 12-page causal-fragility
-              report on your graph. Decisive nodes named, top-three
-              counterfactuals run, signed by the team. No platform
-              commitment.
+              Send your data, get back a readout on your graph.
+              Lite ($1,500) is a 3-day automated diagnostic. Full
+              ($5,000) is a 5-day hand-delivered review signed by
+              the team. No platform commitment.
             </p>
             <div className="relative pt-3 border-t border-border/60 flex items-center justify-between gap-3">
               <span className="font-mono text-[10px] text-text-muted/70 tracking-wider">
-                FIXED PRICE · 5 DAYS
+                LITE 3-DAY · FULL 5-DAY
               </span>
               <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-accent-amber group-hover:text-glow-amber transition-colors">
-                ORDER ONE ›
+                SEE TIERS ›
               </span>
             </div>
           </Link>

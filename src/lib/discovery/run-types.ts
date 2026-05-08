@@ -57,6 +57,21 @@ export interface DiscoveredEdge {
    * algorithm internals.
    */
   evidence: string;
+  /**
+   * PAG endpoint marks for FCI-style algorithms. `sourceMark` is the
+   * mark on the *source* end of the edge, `targetMark` is on the
+   * *target* end. The combination encodes the four PAG edge types:
+   *   - { tail, arrow }   → directed (source → target)
+   *   - { arrow, arrow }  → bidirected (latent confounder)
+   *   - { circle, arrow } → possibly causal
+   *   - { circle, circle }→ uncertain
+   * `undefined` for purely directed algorithms (lag-correlation,
+   * PCMCI+ in this codebase) — interpret as `{ tail, arrow }`.
+   */
+  endpointMarks?: {
+    sourceMark: "circle" | "arrow" | "tail";
+    targetMark: "circle" | "arrow" | "tail";
+  };
 }
 
 /**

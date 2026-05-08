@@ -15,7 +15,7 @@ Owns the engine that audits every edge in the causal graph against domain-aware 
 - Auto-ranking constraints by relevance to active domains via `scoreAxiomRelevance(graph, activeProfileId)` in `src/lib/tarski-data.ts`.
 - The VERIFY action: toggle axioms, run verification, recolor canvas (violating edges → red), expose clickable proof traces explaining which constraint failed.
 - Constraint catalog and proof-trace logic.
-- Snapshot validator: `src/lib/snapshots/tarski-validator.ts` (thinner — currently 5 axioms; see Open work).
+- Snapshot validator: `src/lib/snapshots/tarski-validator.ts` — adapter that delegates to `runTarskiValidation` (the full 32-axiom library) when given a live graph. The thin 5-axiom path is kept as a `partial` fallback for legacy callers that pass only a snapshot without a live graph.
 - **Live API feeds** that drive engine state — feed proxies, polling hooks, store mutators, validator branches.
 - Engine-side ΩF wiring: Tarski violations → pillar **J** (jurisdictional hazard). Spirtes-metrics → pillar **C** (cascade) is owned in the SPIRTES doc.
 
@@ -251,7 +251,7 @@ src/lib/feeds/providers/ofac-sdn.ts           OFAC provider — matchPayload + j
 src/lib/feeds/providers/fred.ts               FRED provider — series→node label-pattern matching
 src/lib/feeds/registry.ts                     FEED_PROVIDERS — single source of registered providers
 src/hooks/useFeedRegistry.ts                  Single generic poll hook (replaces useHormuzFeed + useOfacFeed)
-src/lib/snapshots/tarski-validator.ts         THIN snapshot validator (5 axioms) — deferred cleanup
+src/lib/snapshots/tarski-validator.ts         Adapter to runTarskiValidation (full 32-axiom library); thin 5-axiom path kept as fallback only
 src/stores/useApexStore.ts                    applyHormuzLiveData, applyOfacLiveData, appendFeedEvent helper
 src/hooks/useHormuzFeed.ts                    5-min poll, geopolitical-only gate
 src/hooks/useOfacFeed.ts                      30-min poll, geopolitical-only gate

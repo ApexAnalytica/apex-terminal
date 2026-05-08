@@ -1,3 +1,12 @@
+// @vitest-environment node
+//
+// Test reads supabase-billing-migration.sql from disk via node:fs.
+// The default happy-dom env externalises node: imports for browser
+// compatibility, which works locally but breaks on Vercel's prebuild
+// (the failure mode flagged in .github/workflows/pr-validate.yml's
+// header comment about the 2026-04-30 outage). Pinning this file to
+// the node env is the explicit fix.
+//
 // Domain ↔ tier_features seed coverage contract.
 //
 // Catches the failure mode that motivated this test: a new DomainCard

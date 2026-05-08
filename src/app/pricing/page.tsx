@@ -24,18 +24,15 @@ export default function PricingPage() {
 
       <header className="relative border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          {/* Brand mark on /pricing routes back to the new marketing
-              site (apex-analytica-website.vercel.app), NOT to the
-              platform root or the legacy apexanalytica.co Vite SPA.
-              Visitors landing here are evaluating the product, so
-              "home" means the new public marketing site we're
-              building, not the platform dashboard.
-
-              TODO when DNS for apexanalytica.co cuts over to this
-              new website (the Vercel project apex-analytica-website),
-              swap this href to https://apexanalytica.co/ so the
-              brand mark uses the canonical domain. */}
-          <a href="https://apex-analytica-website.vercel.app/" className="flex items-center gap-3">
+          {/* Brand mark on /pricing routes back to apexanalytica.co —
+              the public marketing site. Visitors landing here are
+              evaluating the product, so "home" means the marketing
+              site, NOT the platform root. (DNS for apexanalytica.co
+              was cut over from the legacy Netlify Vite SPA to the
+              apex-analytica-website Vercel project on 2026-05-05;
+              this href used to point at the .vercel.app deploy URL
+              while DNS was still on Netlify.) */}
+          <a href="https://apexanalytica.co/" className="flex items-center gap-3">
             <Image src="/logo.png" alt="Apex Analytica" width={36} height={36} />
             <div className="leading-tight">
               <div className="text-[12px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan">

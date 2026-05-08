@@ -38,14 +38,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Marketing-site nav so visitors landing on the login page can
           still navigate back to /product, /framework, /domains, etc.
-          on the public site. Brand mark goes to the new marketing
-          site (apex-analytica-website.vercel.app); other nav items
-          point at subpages on the same. Login + Request Access are
-          intentionally omitted — visitor is already on /login. */}
+          on the public site at apexanalytica.co. Login + Request
+          Access are intentionally omitted — visitor is already on
+          /login. (Hrefs used to point at the .vercel.app deploy
+          while DNS for apexanalytica.co was on the legacy Netlify
+          Vite SPA; switched to the canonical domain post-cutover
+          on 2026-05-05.) */}
       <header className="border-b border-border">
         <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-4 md:px-6">
           <a
-            href="https://apex-analytica-website.vercel.app/"
+            href="https://apexanalytica.co/"
             className="group flex items-center gap-2.5"
           >
             <Image
@@ -62,31 +64,31 @@ export default function LoginPage() {
           </a>
           <nav className="hidden md:flex items-center gap-7">
             <a
-              href="https://apex-analytica-website.vercel.app/product"
+              href="https://apexanalytica.co/product"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
             >
               PRODUCT
             </a>
             <a
-              href="https://apex-analytica-website.vercel.app/framework"
+              href="https://apexanalytica.co/framework"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
             >
               FRAMEWORK
             </a>
             <a
-              href="https://apex-analytica-website.vercel.app/domains"
+              href="https://apexanalytica.co/domains"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
             >
               DOMAINS
             </a>
             <a
-              href="https://apex-analytica-website.vercel.app/team"
+              href="https://apexanalytica.co/team"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
             >
               TEAM
             </a>
             <a
-              href="https://apex-analytica-website.vercel.app/contact"
+              href="https://apexanalytica.co/contact"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted hover:text-accent-cyan transition-colors"
             >
               CONTACT

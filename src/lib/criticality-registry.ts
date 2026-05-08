@@ -129,6 +129,26 @@ const REGISTRY: Record<EstimatorId, EstimatorMeta> = {
       "A loss sample {x_1, …, x_n} (n ≥ ~30 for stable boundary interpolation). One scalar per observation; the loss transform should be applied upstream so the sample is already on the right scale. Plus α ∈ (0, 1) and a W₁ radius ε ≥ 0 chosen via cross-validation.",
   },
 
+  // ── Topology-aware criticality (Ghauri 2025 χ★ artefact, from-spec) ──
+  "chi-star": {
+    id: "chi-star",
+    abbrev: "χ★",
+    fullName: "χ★ — BRIDGE SETS",
+    shortDesc:
+      "Topological load-bearing skeleton — strict bridges + top Bridge-Edge Strength edges that gate the graph's cascade pathways",
+    color: "#7B68EE",
+    methodology: [
+      "Strict bridges via Tarjan (1974): an edge (u, v) is a bridge iff low[v] > disc[u] in the DFS tree — i.e. v's subtree has no back-edge climbing above u. Removing a bridge disconnects the (undirected) graph, so every cascade path between the two resulting components must traverse it. Iterative DFS with parent-edge bookkeeping handles multi-edges correctly (parallel edges between the same pair are NOT bridges since one provides the alternate path). O(V + E).",
+      "Bridge-Edge Strength (BES) is edge betweenness centrality (Brandes 2008) normalised to [0, 1] by the graph's max. Per-source BFS + reverse-order dependency accumulation, divided by 2 to correct the undirected double-count. High BES = high information-flow funnel — the edge participates in many shortest paths even if removing it doesn't formally disconnect the graph. The dissertation's GAT attention head reads BES to bias the replay buffer toward high-bridge edges (Ch. 8 §6, topology-aware rehearsal). O(V · E).",
+      "χ★ = strict bridges ∪ top-k BES edges. The default top-k is max(1, ⌊0.1 · |E|⌋). Implementation at src/lib/estimators/chi-star.ts. From-spec, derived directly from Ghauri 2025 (D.Eng., Ch. 5–8). The artefact is the canonical 'edges most worth hardening, monitoring, or preserving in replay against catastrophic forgetting' set.",
+    ],
+    formula:
+      "χ★(G) = bridges(G) ∪ topK_BES(G);  BES(e) = betweenness(e) / max_betweenness",
+    placeholderAssessment:
+      "READY — operates on the live graph topology. Surfaces strict bridges and the BES distribution; runtime renders the χ★ set highlighted on the graph plus the descending-BES ranking.",
+    defaultAvailability: "ready",
+  },
+
   "transfer-entropy": {
     id: "transfer-entropy",
     abbrev: "TE",

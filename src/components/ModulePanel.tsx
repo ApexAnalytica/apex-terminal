@@ -9,6 +9,10 @@ import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tars
 import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
+// omegaBridgeDensity wraps chiStar (Tarjan + Brandes BES) and surfaces
+// the |χ★| / |E| scalar plus the full ChiStarResult — used by the
+// chi-star Pareto-card branch and the system-metrics strip.
+import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
   bocpdRegimeGate,
@@ -1593,6 +1597,91 @@ function ParetoPanel({
                 },
               };
             }
+          }
+          // ── χ★ BRIDGE SETS (live on filtered graph topology) ──────
+          // Snapshot estimator: no time-series, no observed-vs-model
+          // fit. Computes Tarjan strict bridges + Brandes BES on the
+          // current filtered graph and renders the live numerics.
+          // The chart shows the descending-BES distribution as a
+          // Pareto-shape curve — informative as a "concentration"
+          // visualisation even though the x-axis is rank not time.
+          if (id === "chi-star") {
+            const liveEdgeCount = graphData.edges.filter((e) => !e.isSevered).length;
+            if (liveEdgeCount === 0) {
+              return {
+                key: "chi-star",
+                abbrev: meta.abbrev,
+                fullName: meta.fullName,
+                epochs: 0,
+                maxEpochs: 100,
+                color: meta.color,
+                confidence: 0,
+                timeSeries: [],
+                modelSeries: undefined,
+                shortDesc: meta.shortDesc,
+                methodology: meta.methodology,
+                formula: meta.formula,
+                assessment:
+                  "INSUFFICIENT GRAPH STRUCTURE — no live edges in the current filtered graph. χ★ requires edges to compute strict bridges and Bridge-Edge Strength.",
+                emptyState: {
+                  kind: "awaiting-data" as const,
+                  inputs:
+                    "At least one edge in the current filtered graph. Select a domain that contains edges (or widen the filter).",
+                },
+              };
+            }
+            const obd = omegaBridgeDensity({
+              ...graphData,
+              edges: graphData.edges.filter((e) => !e.isSevered),
+            });
+            const density = obd.density;
+            const bridgeFraction = obd.bridgeFraction;
+            const chiStarSize = obd.chiStarSize;
+            const bridgeCount = obd.chiStar.bridges.length;
+            const topBesAdds = chiStarSize - bridgeCount;
+            const topBesEdge = obd.chiStar.besRanking[0];
+            // BES descending series — informative shape for the chart
+            // (Pareto-style fall-off when one edge dominates, flat
+            // when betweenness is evenly distributed). Not a time
+            // axis — labelled in the methodology copy.
+            const besSeries = obd.chiStar.besRanking.map((r) => r.bes);
+            // Bridge-fraction is the natural [0, 1] confidence proxy:
+            // 0 means "no strict chokepoints, alternate paths
+            // everywhere"; 1 means "tree topology, every edge load-
+            // bearing." Higher = more critical.
+            const confidence = bridgeFraction;
+            // Epochs gauge: invert density so high-density (near-tree)
+            // graphs show a low T- value (closer to critical), and
+            // redundant graphs show high T- (far from critical).
+            // Same direction as csd/lppls semantics ("epochs to
+            // critical").
+            const epochs = Math.max(0, Math.round((1 - density) * 100));
+            return {
+              key: "chi-star",
+              abbrev: meta.abbrev,
+              fullName: meta.fullName,
+              epochs,
+              maxEpochs: 100,
+              color: meta.color,
+              confidence,
+              timeSeries: besSeries,
+              modelSeries: undefined,
+              shortDesc: meta.shortDesc,
+              methodology: [
+                `Tarjan strict bridges + Brandes Bridge-Edge Strength (BES) on the live filtered graph (${graphData.nodes.length} nodes, ${liveEdgeCount} non-severed edges). Found ${bridgeCount} strict bridges (edges whose removal disconnects the graph) and ${topBesAdds} top-BES additions, for a χ★ size of ${chiStarSize}.`,
+                `Ω-Bridge Density = |χ★| / |E| = ${chiStarSize} / ${liveEdgeCount} = ${density.toFixed(3)}. Strict-bridges-only fraction = ${bridgeFraction.toFixed(3)}. Top BES = ${topBesEdge ? topBesEdge.bes.toFixed(3) : "—"} on edge ${topBesEdge ? topBesEdge.edgeId : "—"}.`,
+                meta.methodology[0] ?? "",
+              ],
+              formula: `|χ★| = ${chiStarSize} | bridges = ${bridgeCount} | density = ${density.toFixed(3)} | top BES = ${topBesEdge ? topBesEdge.bes.toFixed(3) : "—"}`,
+              assessment:
+                density > 0.6
+                  ? `FRAGILE — Ω-Bridge Density ${density.toFixed(3)} > 0.60. Near-tree topology; ${chiStarSize} χ★ edges (${bridgeCount} strict bridges) carry the cascade pathways. Removing any of them fragments the graph.`
+                  : density > 0.3
+                    ? `ELEVATED — Ω-Bridge Density ${density.toFixed(3)} ∈ (0.30, 0.60]. ${chiStarSize} edges form the load-bearing skeleton; more bridge-like structure than typical for real causal graphs.`
+                    : density < 0.05
+                      ? `REDUNDANT — Ω-Bridge Density ${density.toFixed(3)} < 0.05. Cycle-rich; few chokepoints. Alternate paths absorb most disruptions; ${bridgeCount} strict bridges in ${liveEdgeCount} edges.`
+                      : `NOMINAL — Ω-Bridge Density ${density.toFixed(3)} ∈ [0.05, 0.30]. Well-connected with ${chiStarSize} chokepoint edges (${bridgeCount} strict bridges, ${topBesAdds} top-BES). Typical regime for real causal graphs.`,
+            };
           }
           // Estimator has a static-registry entry with no live runtime yet:
           // render the card in an empty state that still teaches what the

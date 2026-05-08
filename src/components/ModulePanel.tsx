@@ -24,6 +24,7 @@ import {
 import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
+import { detectCommunities } from "@/lib/community-detection";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
 import TissueCohortView from "./scientist/TissueCohortView";
@@ -2027,19 +2028,23 @@ function CascadeHeader() {
     });
     const clusteringCoeff = clusterCount > 0 ? clusterSum / clusterCount : 0;
 
-    // 6. Community detection (simple label propagation, 10 iterations)
-    const community = new Map<string, string>();
-    nodes.forEach((nd) => community.set(nd.id, nd.domain));
-    // Communities are already domain-based, count them
-    const communities = new Map<string, string[]>();
-    nodes.forEach((nd) => {
-      const dom = nd.domain;
-      if (!communities.has(dom)) communities.set(dom, []);
-      communities.get(dom)!.push(nd.id);
-    });
-    const communityList = [...communities.entries()]
-      .sort((a, b) => b[1].length - a[1].length)
-      .map(([name, members]) => ({ name, size: members.length }));
+    // 6. Community detection — modularity-greedy Louvain phase 1 on the
+    // actual edge topology. Emergent communities can diverge from the
+    // domain partition; cross-domain communities are the interesting cases.
+    const communityResult = detectCommunities(nodes, edges);
+    const communityList = communityResult.communities.map((c) => ({
+      id: c.id,
+      name: c.crossesDomains
+        ? `${c.dominantDomain} +${c.domainCount - 1}`
+        : c.dominantDomain,
+      size: c.size,
+      crossesDomains: c.crossesDomains,
+      domainCount: c.domainCount,
+    }));
+    const communityModularity = communityResult.modularityProxy;
+    const crossDomainCommunityCount = communityResult.communities.filter(
+      (c) => c.crossesDomains,
+    ).length;
 
     // 7. Connected components (BFS)
     const visited = new Set<string>();
@@ -2081,6 +2086,7 @@ function CascadeHeader() {
     return {
       density, avgDegree, clusteringCoeff, componentCount, diameter,
       eigenTop, betweenTop, communityList,
+      communityModularity, crossDomainCommunityCount,
       lambdaMax: cascade.lambdaMax, isStable: cascade.isStable,
       dampingCoeff: cascade.dampingCoeff, forgettingRate: cascade.forgettingRate,
       nodeCount: n, edgeCount: m,
@@ -2219,6 +2225,9 @@ function CascadeHeader() {
         <div className="flex items-center justify-between p-1.5 rounded border border-accent-green/20 bg-accent-green/5 hover:bg-accent-green/8 transition-colors">
           <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-green">
             COMMUNITIES ({netMetrics.communityList.length})
+            {netMetrics.crossDomainCommunityCount > 0 && (
+              <span className="ml-1 text-accent-amber">{"·"} {netMetrics.crossDomainCommunityCount} cross-domain</span>
+            )}
           </div>
           <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "community" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
             {"\u25BC"}
@@ -2228,13 +2237,25 @@ function CascadeHeader() {
       {expandedMetric === "community" && (
         <div className="space-y-1 pl-1">
           <div className="text-[8px] font-mono text-text-muted leading-relaxed mb-1">
-            Domain-based community structure. Inter-community edges are potential contagion pathways; intra-community edges represent tightly coupled sub-systems.
+            Topology-detected via modularity optimization (Louvain phase 1). Emergent groupings — distinct from the curator-assigned domain partition shown in the bottom Domain Selector. Cross-domain communities (amber) span multiple domains and surface contagion pathways the domain partition does not.
+          </div>
+          <div className="flex items-center gap-2 px-1 pb-1 border-b border-border/40">
+            <span className="text-[8px] font-mono text-text-muted">modularity (intra-edge fraction)</span>
+            <div className="flex-1 h-1 bg-border rounded overflow-hidden">
+              <div className="h-full bg-accent-green/60 rounded" style={{ width: `${netMetrics.communityModularity * 100}%` }} />
+            </div>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.communityModularity.toFixed(2)}</span>
           </div>
           {netMetrics.communityList.map((c) => (
-            <div key={c.name} className="flex items-center gap-2 py-0.5 px-1">
-              <span className="text-[9px] font-mono text-accent-green flex-1 truncate">{c.name}</span>
+            <div key={c.id} className="flex items-center gap-2 py-0.5 px-1">
+              <span className={`text-[9px] font-mono flex-1 truncate ${c.crossesDomains ? "text-accent-amber" : "text-accent-green"}`}>
+                {c.name}
+              </span>
               <div className="w-16 h-1 bg-border rounded overflow-hidden">
-                <div className="h-full bg-accent-green/60 rounded" style={{ width: `${(c.size / graphData.nodes.length) * 100}%` }} />
+                <div
+                  className={`h-full rounded ${c.crossesDomains ? "bg-accent-amber/60" : "bg-accent-green/60"}`}
+                  style={{ width: `${(c.size / graphData.nodes.length) * 100}%` }}
+                />
               </div>
               <span className="text-[8px] font-mono text-text-muted tabular-nums">{c.size}</span>
             </div>

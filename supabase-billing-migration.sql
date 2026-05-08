@@ -181,8 +181,10 @@ on conflict (tier) do nothing;
 -- 8a. Phase 2 seed: populate tier_features.domain_ids with the
 -- current public domain set. Only updates rows still at the empty
 -- default ('{}') so admin overrides are preserved on re-run. The
--- canonical list lives in src/components/DomainSelector.tsx —
--- update both when a new public domain ships.
+-- canonical list lives in src/lib/domains.ts (DOMAIN_GROUPS /
+-- DOMAIN_CARDS) — keep them in sync. The
+-- domain-tier-coverage.test.ts test fails when a new hasData:true
+-- DomainCard is added to domains.ts but missing from this list.
 update public.tier_features
 set domain_ids = array[
       'energy-systems',
@@ -195,7 +197,9 @@ set domain_ids = array[
       'macro-labor',
       'macro-inflation',
       't1d-beta-cell',
-      't1d-vx880'
+      't1d-vx880',
+      'frontier-science',
+      'ai-safety-ids'
     ],
     updated_at = now()
 where tier in ('trial','multi_domain','enterprise','trusted')

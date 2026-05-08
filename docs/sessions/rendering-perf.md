@@ -761,6 +761,21 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean; vitest 843/843 pass.
 
+### 2026-05-07 — Shipped: Map particles → imperative `setData`
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog item flagged in earlier sessions. The particle layer's GeoJSON was held in `useState`, so `setParticleGeoJSON({...})` fired on every rAF tick (60fps). Each set forced a full React re-render of the Map subtree, which re-evaluated 5+ Source/Layer JSX expressions just so react-maplibre's `<Source data={...}>` reconciler could call `source.setData()` on the underlying maplibre source. The `setData` itself was the only thing that needed to happen per frame; everything around it was wasted.
+
+**What shipped.** Direct route around React. The particle Source mounts once with a stable empty FeatureCollection, and the rAF callback writes new features into the underlying maplibre source via `mapRef.current.getMap().getSource('particles').setData(fc)`. A re-usable `Feature[]` buffer + FC wrapper lives in the effect's closure so we re-use the same array across frames (one fewer allocation per tick — ~60/sec saved). Phase state still lives in the existing `particlePhases` ref; nothing else changes about the physics.
+
+Net effect: per-frame work shrinks from "render + diff + reconcile + setData" to a single `setData` call. Still correct on dependency changes (the effect tears down on `temporalEdgePaths` change and rebuilds the buffer + rAF).
+
+**Files.**
+- `src/components/CausalDAGMap.tsx` — `useState<FC>` removed; `writeData` helper inside the temporal-edge effect; Source's `data` prop bound to the stable empty FC.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched file; vitest 843/843 pass.
+
 ---
 
 ## How a fresh session resumes

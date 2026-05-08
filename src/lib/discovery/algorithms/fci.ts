@@ -24,18 +24,24 @@
 //      that the marks at the X-side and Y-side stay as circles for now.
 //      This is the FCI variant of the standard collider rule.
 //
-//   3. PAG output. Each surviving edge carries `endpointMarks` with
+//   3. Zhang's R1 + R2 orientation rules (fixed-point pass). R1
+//      propagates an arrowhead through Y when X *→ Y o-* Z and X, Z
+//      are not adjacent (Y can't be a collider, so orient Y → Z).
+//      R2 propagates an arrowhead at Z through a definite directed
+//      sub-path X → Y *→ Z (or X *→ Y → Z) onto an X-Z edge.
+//
+//   4. PAG output. Each surviving edge carries `endpointMarks` with
 //      `circle` (uncertain), `arrow` (arrowhead), or `tail` (ancestor).
-//      Initial state is `{ circle, circle }`; the v-structure rule sets
-//      the Z-side to `arrow` on both incident edges.
+//      Initial state is `{ circle, circle }`; the orientation phase
+//      sets marks via the v-structure rule and Zhang's R1 / R2.
 //
 // What this DOES NOT do (vs. the full Spirtes implementation):
 //
-//   - No FCI orientation rules R1–R4 (Zhang 2008). Those propagate
-//     orientations beyond v-structures and refine the PAG. Without
-//     them, this implementation is correct but uninformative on
-//     non-collider triples — they remain `o-o`. Adding them is a
-//     bounded follow-up: each rule is a small fixed-point pass.
+//   - No FCI orientation rules R3 / R4 (Zhang 2008). Those handle
+//     discriminating paths and refine the PAG further. Without them,
+//     edges in regions of the graph that need a discriminating-path
+//     argument can remain `circle / circle`. Adding them is a
+//     bounded follow-up.
 //
 //   - No nonparametric CI tests. Linear-Gaussian partial correlation
 //     only (same baseline as PCMCI in this codebase). For step changes
@@ -167,7 +173,11 @@ function buildContemporaneousMatrix(
 
 // ─── Skeleton phase (PC-stable) ──────────────────────────────────────
 
-interface SkeletonResult {
+/**
+ * Output of the skeleton phase. Exported for unit-testing the
+ * orientation rules with a constructed fixture.
+ */
+export interface SkeletonResult {
   /** Adjacency: adj[i] = set of indices currently adjacent to variable i. */
   adj: Set<number>[];
   /** sepset[i][j] = the conditioning set that separated i,j (undefined if still adjacent). */
@@ -258,7 +268,7 @@ function runSkeleton(
   return { adj, sepset, pairKey, marginalR };
 }
 
-// ─── Orientation phase (v-structures only, MV) ───────────────────────
+// ─── Orientation phase (v-structures + Zhang R1 + R2) ───────────────
 
 type Mark = "circle" | "arrow" | "tail";
 
@@ -273,7 +283,21 @@ interface OrientedEdge {
   markB: Mark;
 }
 
-function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
+function markAt(edge: OrientedEdge, nodeIdx: number): Mark {
+  return edge.a === nodeIdx ? edge.markA : edge.markB;
+}
+
+function setMarkAt(edge: OrientedEdge, nodeIdx: number, mark: Mark): void {
+  if (edge.a === nodeIdx) edge.markA = mark;
+  else edge.markB = mark;
+}
+
+/**
+ * Run the orientation phase: v-structure rule, then Zhang's R1 + R2 as
+ * a fixed-point pass. Exported for unit-testing the rules directly
+ * with a constructed `SkeletonResult` fixture.
+ */
+export function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
   const edges = new Map<string, OrientedEdge>();
   const n = skeleton.adj.length;
   for (let i = 0; i < n; i++) {
@@ -303,13 +327,74 @@ function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
         // Collider X *→ Z ←* Y: arrow at Z on both incident edges.
         const exz = edges.get(pairKey(x, z));
         const eyz = edges.get(pairKey(y, z));
-        if (exz) {
-          if (exz.a === z) exz.markA = "arrow";
-          else exz.markB = "arrow";
+        if (exz) setMarkAt(exz, z, "arrow");
+        if (eyz) setMarkAt(eyz, z, "arrow");
+      }
+    }
+  }
+
+  // Zhang's orientation rules R1 + R2 — fixed-point pass.
+  //
+  //   R1: If X *→ Y o-* Z, and X, Z not adjacent, orient Y o-* Z as
+  //       Y → Z (tail at Y, arrow at Z). Propagates an arrowhead at Y
+  //       outward, since Y can't be a collider in (X, Y, Z).
+  //
+  //   R2: If X → Y *→ Z, or X *→ Y → Z, and X *-o Z, orient X *-o Z
+  //       as X *→ Z (arrow at Z). Propagates an arrowhead through a
+  //       definite directed sub-path.
+  //
+  // Higher-numbered rules (R3, R4) handle discriminating paths and
+  // are deferred — uninformative cases stay as `circle / circle`.
+  let changed = true;
+  let safetyIterations = 0;
+  while (changed && safetyIterations < n * n * 4) {
+    changed = false;
+    safetyIterations += 1;
+
+    // R1: triple (X, Y, Z) with X-Y, Y-Z edges, X-Z not adjacent.
+    for (let y = 0; y < n; y++) {
+      const nbrs = [...skeleton.adj[y]];
+      for (const x of nbrs) {
+        for (const z of nbrs) {
+          if (x === z) continue;
+          if (skeleton.adj[x].has(z)) continue; // shielded
+          const exy = edges.get(pairKey(x, y));
+          const eyz = edges.get(pairKey(y, z));
+          if (!exy || !eyz) continue;
+          if (markAt(exy, y) !== "arrow") continue; // need X *→ Y
+          if (markAt(eyz, y) !== "circle") continue; // need Y o-* Z
+          setMarkAt(eyz, y, "tail");
+          if (markAt(eyz, z) === "circle") setMarkAt(eyz, z, "arrow");
+          changed = true;
         }
-        if (eyz) {
-          if (eyz.a === z) eyz.markA = "arrow";
-          else eyz.markB = "arrow";
+      }
+    }
+
+    // R2: triple (X, Y, Z) with X-Y, Y-Z, X-Z all edges (Y is a
+    //     mediator). Either X→Y AND Y*→Z, or X*→Y AND Y→Z. Propagate
+    //     the arrowhead at Z through the chain.
+    for (let y = 0; y < n; y++) {
+      const nbrs = [...skeleton.adj[y]];
+      for (const x of nbrs) {
+        for (const z of nbrs) {
+          if (x === z) continue;
+          if (!skeleton.adj[x].has(z)) continue; // need X-Z adjacent
+          const exy = edges.get(pairKey(x, y));
+          const eyz = edges.get(pairKey(y, z));
+          const exz = edges.get(pairKey(x, z));
+          if (!exy || !eyz || !exz) continue;
+          const directedXY =
+            markAt(exy, x) === "tail" && markAt(exy, y) === "arrow";
+          const directedYZ =
+            markAt(eyz, y) === "tail" && markAt(eyz, z) === "arrow";
+          const arrowAtYonXY = markAt(exy, y) === "arrow";
+          const arrowAtZonYZ = markAt(eyz, z) === "arrow";
+          const triggers =
+            (directedXY && arrowAtZonYZ) || (arrowAtYonXY && directedYZ);
+          if (!triggers) continue;
+          if (markAt(exz, z) !== "circle") continue;
+          setMarkAt(exz, z, "arrow");
+          changed = true;
         }
       }
     }
@@ -339,9 +424,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.1.0",
+  version: "0.2.0",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation. Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 orientation rules. Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -373,7 +458,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures, FCI v0.1)`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2, FCI v0.2)`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

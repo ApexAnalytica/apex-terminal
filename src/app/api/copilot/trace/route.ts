@@ -10,13 +10,25 @@
 // client treats logging as fire-and-forget.
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
-const supabaseAdmin = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+// Lazy-init the service-role client so build-time page-data
+// collection doesn't fail when env vars aren't set (matches the
+// pattern PR #253 applied to the other API routes).
+let _supabaseAdmin: SupabaseClient | null = null;
+function getSupabaseAdmin(): SupabaseClient {
+  if (_supabaseAdmin) return _supabaseAdmin;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Supabase env not configured (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)",
+    );
+  }
+  _supabaseAdmin = createServiceClient(url, key);
+  return _supabaseAdmin;
+}
 
 // ─── Validation ─────────────────────────────────────────────────
 
@@ -142,7 +154,7 @@ export async function POST(request: NextRequest) {
         : {},
   };
 
-  const { error } = await supabaseAdmin.from("copilot_traces").insert(row);
+  const { error } = await getSupabaseAdmin().from("copilot_traces").insert(row);
   if (error) {
     console.error("[copilot-trace] insert failed:", error);
     return NextResponse.json({ error: "Failed to log trace" }, { status: 500 });

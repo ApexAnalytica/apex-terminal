@@ -1,6 +1,30 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// ─── /api/copilot — unified LLM streaming via Vercel AI SDK ──────
+//
+// Replaces the previous hand-rolled per-provider streamX functions
+// with a single streamText call. The provider-specific differences
+// (auth, model id formats, tool-call shapes) are encapsulated in
+// the @ai-sdk/* adapters; this route just picks the right adapter
+// and hands streamText the same shape regardless.
+//
+// Why this shape:
+//   - Adding a new provider (OpenAI, Mistral, Groq, vLLM, …) is
+//     a one-line addition to resolveModel — no new streaming code.
+//   - The trace shape stays identical regardless of provider, so
+//     the copilot_traces table can A/B compare them on the same
+//     conversation distribution.
+//   - The default copilot provider stays Gemini (see the Defaults
+//     & invariants section in docs/sessions/copilot.md). The
+//     picker — when it ships in PR3.2 — adds optionality on top
+//     of this; it does NOT change the on-load default.
+//
+// Browser-direct Ollama (the user's local model) keeps using the
+// existing client-side path in src/lib/copilot-engine.ts because
+// Vercel's serverless runtime can't reach the user's localhost.
+
 import { NextRequest } from "next/server";
+import { streamText, convertToModelMessages, type UIMessage, type LanguageModel } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LLMProvider } from "@/lib/llm-providers";
 
 const SYSTEM_PROMPT = `You are APEX Synthetic Scientist — an elite causal-inference analyst embedded in a real-time strategic intelligence terminal. You analyze cross-domain causal DAGs (directed acyclic graphs) tracking global chokepoints in semiconductors, energy, finance, communications, and critical infrastructure.
@@ -16,251 +40,119 @@ When the user asks a question, reference the live graph context provided below. 
 
 Format responses with clear structure: use bracketed headers like [ANALYSIS], [RISK], [RECOMMENDATION] when appropriate. Reference specific Ω scores and node labels.
 
-IMPORTANT — ACTION COMMANDS:
-You can control the terminal by including ACTION blocks in your response. When the user asks you to do something (select a node, inject a shock, switch modules, filter domains, etc.), include the action in your response using this exact format:
+The available action commands and their parameters are documented in the LIVE GRAPH CONTEXT below (=== COPILOT ACTIONS ===). Emit them inline using <<<ACTION:name:param>>> tags as documented there.`;
 
-<<<ACTION:action_type:param>>>
+// ─── Provider → model adapter ───────────────────────────────────
 
-Available actions:
-- <<<ACTION:select_node:node_id>>> — Select/focus a node in the graph
-- <<<ACTION:add_shock:shock_id>>> — Inject a preset shock scenario
-- <<<ACTION:remove_shock:shock_id>>> — Remove an active shock
-- <<<ACTION:set_module:spirtes|tarski|pearl|pareto>>> — Switch the active analysis module
-- <<<ACTION:set_view:2d|3d>>> — Switch between 2D and 3D graph views
-- <<<ACTION:sever_edge:edge_id>>> — Sever a causal edge (Pearl intervention)
-- <<<ACTION:reset_severed>>> — Reset all severed edges
-- <<<ACTION:start_replay>>> — Start cascade replay simulation
-- <<<ACTION:stop_replay>>> — Stop cascade replay
-- <<<ACTION:set_truth_filter:raw|verified>>> — Toggle Tarski truth filter
-- <<<ACTION:set_domains:domain1,domain2>>> — Filter to specific domains
-
-You can include multiple actions in a single response. Always explain what you're doing alongside the action. The preset shock library is empty by default — only emit add_shock when the user has supplied a custom scenario set or the active profile registers preset IDs.`;
-
-// ─── Anthropic streaming ────────────────────────────────────────
-
-function streamAnthropic(
-  apiKey: string,
-  model: string,
-  fullSystem: string,
-  messages: { role: string; content: string }[],
-  maxTokens: number
-): ReadableStream<Uint8Array> {
-  const client = new Anthropic({ apiKey });
-  const encoder = new TextEncoder();
-
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        const stream = await client.messages.stream({
-          model: model || "claude-sonnet-4-20250514",
-          max_tokens: maxTokens,
-          system: fullSystem,
-          messages: messages.map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
-        });
-
-        for await (const event of stream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            controller.enqueue(encoder.encode(event.delta.text));
-          }
-        }
-        controller.close();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Stream error";
-        controller.enqueue(encoder.encode(`\n[ERROR: ${message}]`));
-        controller.close();
-      }
-    },
-  });
+interface ResolveOptions {
+  provider: LLMProvider;
+  model: string;
+  apiKey: string;
 }
 
-// ─── Gemini streaming ───────────────────────────────────────────
-
-function streamGemini(
-  apiKey: string,
-  model: string,
-  fullSystem: string,
-  messages: { role: string; content: string }[],
-): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const genModel = genAI.getGenerativeModel({
-          model: model || "gemini-2.5-flash",
-          systemInstruction: fullSystem,
-        });
-
-        // Build Gemini contents array (role: "user" | "model")
-        const contents = messages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }));
-
-        const result = await genModel.generateContentStream({ contents });
-
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) {
-            controller.enqueue(encoder.encode(text));
-          }
-        }
-        controller.close();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Stream error";
-        controller.enqueue(encoder.encode(`\n[ERROR: ${message}]`));
-        controller.close();
-      }
-    },
-  });
-}
-
-// ─── Ollama streaming (local open-source LLM) ──────────────────
-
-function streamOllama(
-  ollamaUrl: string,
-  model: string,
-  fullSystem: string,
-  messages: { role: string; content: string }[],
-): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        const ollamaMessages = [
-          { role: "system", content: fullSystem },
-          ...messages.map((m) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
-            content: m.content,
-          })),
-        ];
-
-        const res = await fetch(`${ollamaUrl}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            messages: ollamaMessages,
-            stream: true,
-          }),
-        });
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "Ollama request failed");
-          throw new Error(`Ollama error (${res.status}): ${errText}`);
-        }
-
-        if (!res.body) throw new Error("No response body from Ollama");
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          // Ollama streams newline-delimited JSON
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const parsed = JSON.parse(line);
-              if (parsed.message?.content) {
-                controller.enqueue(encoder.encode(parsed.message.content));
-              }
-            } catch {
-              // skip malformed JSON lines
-            }
-          }
-        }
-
-        // Process remaining buffer
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer);
-            if (parsed.message?.content) {
-              controller.enqueue(encoder.encode(parsed.message.content));
-            }
-          } catch {
-            // skip
-          }
-        }
-
-        controller.close();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Ollama stream error";
-        controller.enqueue(encoder.encode(`\n[ERROR: ${message}]`));
-        controller.close();
-      }
-    },
-  });
+function resolveModel({ provider, model, apiKey }: ResolveOptions): LanguageModel {
+  switch (provider) {
+    case "anthropic": {
+      const anthropic = createAnthropic({ apiKey });
+      return anthropic(model || "claude-sonnet-4-20250514");
+    }
+    case "gemini": {
+      // Vercel AI SDK uses @ai-sdk/google for Gemini.
+      const google = createGoogleGenerativeAI({ apiKey });
+      return google(model || "gemini-2.5-flash");
+    }
+    case "ollama":
+      // Server-side Ollama isn't reachable from Vercel; the client
+      // talks to the user's localhost directly via copilot-engine.
+      // This branch only fires if someone deploys the API behind an
+      // Ollama instance the server CAN reach — the dynamic import
+      // keeps the dep out of the cold-start path otherwise.
+      throw new Error("Ollama is handled client-side (browser-direct)");
+  }
 }
 
 // ─── Route handler ──────────────────────────────────────────────
 
+interface CopilotRequestBody {
+  messages: { role: string; content: string }[];
+  systemContext?: string;
+  apiKey?: string;
+  model?: string;
+  provider?: LLMProvider;
+}
+
 export async function POST(req: NextRequest) {
+  let body: CopilotRequestBody;
   try {
-    const { messages, systemContext, apiKey, model, provider, ollamaUrl } = await req.json() as {
-      messages: { role: string; content: string }[];
-      systemContext?: string;
-      apiKey: string;
-      model: string;
-      provider?: LLMProvider;
-      ollamaUrl?: string;
-    };
-
-    // Resolve API key: use client-provided key, or fall back to server env var
-    const resolvedApiKey = apiKey
-      || (provider === "gemini" || !provider ? process.env.GEMINI_API_KEY : undefined)
-      || (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined)
-      || "";
-
-    // Ollama doesn't need an API key
-    if (!resolvedApiKey && provider !== "ollama") {
-      return new Response(JSON.stringify({ error: "API key required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const fullSystem = systemContext
-      ? `${SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`
-      : SYSTEM_PROMPT;
-
-    // Determine provider from explicit param or model name prefix
-    const resolvedProvider: LLMProvider =
-      provider ?? (model?.startsWith("gemini") ? "gemini" : model?.includes(":") ? "ollama" : "anthropic");
-
-    let readable: ReadableStream<Uint8Array>;
-    if (resolvedProvider === "ollama") {
-      readable = streamOllama(ollamaUrl || "http://localhost:11434", model, fullSystem, messages);
-    } else if (resolvedProvider === "gemini") {
-      readable = streamGemini(resolvedApiKey, model, fullSystem, messages);
-    } else {
-      readable = streamAnthropic(resolvedApiKey, model, fullSystem, messages, 2048);
-    }
-
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
-        "Cache-Control": "no-cache",
-      },
+    body = (await req.json()) as CopilotRequestBody;
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
     });
+  }
+
+  const { messages, systemContext, model = "" } = body;
+
+  // Determine provider from explicit param or model name prefix.
+  // Default is Gemini — see Defaults & invariants in copilot.md.
+  const provider: LLMProvider =
+    body.provider ??
+    (model.startsWith("gemini")
+      ? "gemini"
+      : model.startsWith("claude")
+        ? "anthropic"
+        : "gemini");
+
+  if (provider === "ollama") {
+    // Should never reach the server route — browser handles it.
+    return new Response(
+      JSON.stringify({ error: "Ollama provider must be called client-side" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Resolve API key: client-provided → server env fallback.
+  const apiKey =
+    body.apiKey ||
+    (provider === "gemini" ? process.env.GEMINI_API_KEY : undefined) ||
+    (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined) ||
+    "";
+
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "API key required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const fullSystem = systemContext
+    ? `${SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`
+    : SYSTEM_PROMPT;
+
+  try {
+    // Convert the chat messages to the SDK's UIMessage shape so
+    // convertToModelMessages can normalize them into the per-provider
+    // wire format.
+    const uiMessages: UIMessage[] = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m, idx) => ({
+        id: `m-${idx}`,
+        role: m.role as "user" | "assistant",
+        parts: [{ type: "text", text: m.content }],
+      }));
+
+    const result = streamText({
+      model: resolveModel({ provider, model, apiKey }),
+      system: fullSystem,
+      messages: await convertToModelMessages(uiMessages),
+    });
+
+    // Plain text/plain stream — keeps the existing client contract
+    // (raw token bytes; the client appends them to a string buffer).
+    return result.toTextStreamResponse();
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    const message = err instanceof Error ? err.message : "Stream initialization failed";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

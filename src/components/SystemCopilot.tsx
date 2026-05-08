@@ -28,7 +28,12 @@ const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "VERIFY LOGIC", action: "VERIFY_LOGIC", color: "var(--accent-amber)" },
 ];
 
-// Copilot is locked to Gemini; Claude is used exclusively for compute.
+// Copilot DEFAULTS to Gemini (set in useApexStore: llmProvider = "gemini").
+// The picker in settings can flip to Anthropic or local Ollama; that's a
+// per-user opt-in and does not change the on-load default. See the
+// "Defaults & invariants" section in docs/sessions/copilot.md.
+// Claude is also the heavy-reasoning compute path (separate from copilot
+// chat) — that split stays.
 
 function getRoleColor(role: CopilotMessage["role"]): string {
   switch (role) {
@@ -89,10 +94,22 @@ export default function SystemCopilot() {
   const currentEpoch = useApexStore((s) => s.currentEpoch);
   const tarskiReport = useApexStore((s) => s.tarskiReport);
 
-  // Copilot provider: Gemini or Ollama; Claude is for compute only
-  const copilotProvider: LLMProvider = llmProvider === "ollama" ? "ollama" : "gemini";
-  const copilotApiKey = copilotProvider === "ollama" ? "ollama-local" : geminiApiKey;
-  const copilotModel = copilotProvider === "ollama" ? ollamaModel : geminiModel;
+  // Copilot provider — flows through from llmProvider (default "gemini",
+  // see store). Picker in settings lets the user opt into Anthropic or
+  // Ollama; default-on-load stays Gemini per the invariant.
+  const copilotProvider: LLMProvider = llmProvider;
+  const copilotApiKey =
+    copilotProvider === "ollama"
+      ? "ollama-local"
+      : copilotProvider === "anthropic"
+        ? claudeApiKey
+        : geminiApiKey;
+  const copilotModel =
+    copilotProvider === "ollama"
+      ? ollamaModel
+      : copilotProvider === "anthropic"
+        ? claudeModel
+        : geminiModel;
   const copilotModelOptions = getModelsForProvider(copilotProvider);
 
   // Claude compute key/model
@@ -145,8 +162,13 @@ export default function SystemCopilot() {
     conversationIdRef.current = newConversationId();
   }
 
-  // Gemini is always active — server-side env var provides the key if client doesn't
-  const isLlmActive = copilotProvider === "ollama" || copilotProvider === "gemini" || copilotApiKey.length > 0;
+  // Gemini is always active — server-side env var provides the key if the
+  // client doesn't have one. Ollama needs no key. Anthropic must have a
+  // user-provided key (no server-side fallback today).
+  const isLlmActive =
+    copilotProvider === "ollama" ||
+    copilotProvider === "gemini" ||
+    copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
 
   // Stable refs for event handlers to avoid stale closures in CustomEvent listeners
@@ -795,9 +817,13 @@ export default function SystemCopilot() {
             <div className="text-[9px] text-text-muted font-mono mt-0.5">
               {copilotProvider === "ollama"
                 ? `Ollama Local (${ollamaModel})`
-                : isLlmActive
-                  ? "Gemini-Augmented Analysis"
-                  : "Synthetic Scientist Interface"}
+                : copilotProvider === "anthropic"
+                  ? isLlmActive
+                    ? `Claude-Augmented Analysis (${copilotModel})`
+                    : "Claude — key required"
+                  : isLlmActive
+                    ? `Gemini-Augmented Analysis (${copilotModel})`
+                    : "Synthetic Scientist Interface"}
               {isComputeAvailable && " + Claude Compute"}
             </div>
           </div>
@@ -851,10 +877,10 @@ export default function SystemCopilot() {
                 {/* Provider toggle */}
                 <div className="space-y-1">
                   <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                    COPILOT PROVIDER
+                    COPILOT PROVIDER <span className="text-text-muted/60">— DEFAULT: GEMINI</span>
                   </div>
                   <div className="flex gap-1">
-                    {(["gemini", "ollama"] as const).map((p) => (
+                    {(["gemini", "anthropic", "ollama"] as const).map((p) => (
                       <button
                         key={p}
                         onClick={() => setLlmProvider(p)}
@@ -865,7 +891,7 @@ export default function SystemCopilot() {
                           color: copilotProvider === p ? "var(--accent-cyan)" : "var(--text-muted)",
                         }}
                       >
-                        {p === "gemini" ? "GEMINI" : "OLLAMA"}
+                        {p === "gemini" ? "GEMINI" : p === "anthropic" ? "CLAUDE" : "OLLAMA"}
                       </button>
                     ))}
                   </div>
@@ -901,6 +927,43 @@ export default function SystemCopilot() {
                         GEMINI ACTIVE
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Anthropic (Claude) config — opt-in copilot path */}
+                {copilotProvider === "anthropic" && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                      CLAUDE — COPILOT
+                    </div>
+                    <input
+                      type="password"
+                      value={claudeApiKey}
+                      onChange={(e) => setClaudeApiKey(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                      placeholder="sk-ant-... (session only)"
+                      spellCheck={false}
+                    />
+                    <select
+                      value={copilotModel}
+                      onChange={(e) => setClaudeModel(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
+                    >
+                      {copilotModelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    {claudeApiKey.length > 0 && (
+                      <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                        CLAUDE COPILOT ACTIVE
+                      </div>
+                    )}
+                    <div className="text-[8px] font-mono text-text-muted leading-relaxed">
+                      The same key powers compute below. Switching providers
+                      doesn&apos;t change the on-load default (Gemini).
+                    </div>
                   </div>
                 )}
 

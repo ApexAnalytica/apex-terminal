@@ -107,6 +107,28 @@ const REGISTRY: Record<EstimatorId, EstimatorMeta> = {
       "STABLE REGIME — posterior is concentrated on the current run; no recent change-point activity above floor.",
     defaultAvailability: "ready",
   },
+
+  // ── Distributionally-robust risk (Ghauri 2025 Ω-Robustness, from-spec) ──
+  "cvar-w1": {
+    id: "cvar-w1",
+    abbrev: "CVAR-W₁",
+    fullName: "CVaR — WASSERSTEIN-1 AMBIGUITY",
+    shortDesc:
+      "Distributionally-robust α-CVaR over a W₁ ball — quantifies tail loss with a calibrated ambiguity premium",
+    color: "#7B68EE",
+    methodology: [
+      "Conditional Value-at-Risk (CVaR_α) is the standard coherent risk measure for the upper-α tail of a loss distribution: the expected loss conditional on being in the worst (1−α) fraction of outcomes. For a sorted sample {x_(1) ≤ … ≤ x_(n)} and k = ⌈αn⌉ the empirical estimator is CVaR_α = (1 / ((1−α)n)) · [(k − αn) · x_(k) + Σ_{i>k} x_(i)]. The (k − αn) factor redistributes the boundary order statistic when αn isn't an integer.",
+      "Wasserstein-1 ambiguity hedges against the empirical distribution being wrong. Define a W₁-ball B_ε(P̂_n) of radius ε around the empirical measure; the worst-case CVaR over that ball admits a closed form (Mohajerin Esfahani & Kuhn 2018, Theorem 6.3, specialised to the ReLU envelope (·)_+ that defines CVaR via Rockafellar-Uryasev): sup_{Q ∈ B_ε} CVaR_α(ℓ; Q) = CVaR_α(ℓ; P̂_n) + (L_ℓ · ε) / (1−α). The ambiguity term is a deterministic premium proportional to ε and inversely proportional to (1−α) — it grows as you demand more tail confidence.",
+      "Implementation at src/lib/estimators/cvar-w1.ts. From-spec, derived directly from Ghauri 2025 (D.Eng., Ch. 4 §3 — Ω-Robustness framework). No Python reference exists because the dissertation closed form is the canonical specification. Calibration of ε is domain-specific — typical practice is ε = c · n^{−1/d} where d is the loss dimensionality and c is tuned by cross-validation on a held-out window.",
+    ],
+    formula: "CVaR_α^{W₁}(X) = CVaR_α(X̂) + L · ε / (1 − α)",
+    placeholderAssessment:
+      "AWAITING DATA — needs a numeric loss sample (per-node failure cost, per-incident cascade depth, per-attack-class observed harm). Once a sample is wired the card reports empirical CVaR, robust CVaR, and the W₁ ambiguity premium.",
+    defaultAvailability: "awaiting-data",
+    requiredInputs:
+      "A loss sample {x_1, …, x_n} (n ≥ ~30 for stable boundary interpolation). One scalar per observation; the loss transform should be applied upstream so the sample is already on the right scale. Plus α ∈ (0, 1) and a W₁ radius ε ≥ 0 chosen via cross-validation.",
+  },
+
   "transfer-entropy": {
     id: "transfer-entropy",
     abbrev: "TE",

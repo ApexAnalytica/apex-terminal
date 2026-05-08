@@ -25,6 +25,7 @@ import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import { detectCommunities } from "@/lib/community-detection";
+import { summarizeDiscoveryUncertainty } from "@/lib/discovery-uncertainty";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
 import TissueCohortView from "./scientist/TissueCohortView";
@@ -2031,6 +2032,7 @@ function CascadeHeader() {
     // 6. Community detection — modularity-greedy Louvain phase 1 on the
     // actual edge topology. Emergent communities can diverge from the
     // domain partition; cross-domain communities are the interesting cases.
+    const uncertainty = summarizeDiscoveryUncertainty(nodes, edges);
     const communityResult = detectCommunities(nodes, edges);
     const communityList = communityResult.communities.map((c) => ({
       id: c.id,
@@ -2087,6 +2089,7 @@ function CascadeHeader() {
       density, avgDegree, clusteringCoeff, componentCount, diameter,
       eigenTop, betweenTop, communityList,
       communityModularity, crossDomainCommunityCount,
+      uncertainty,
       lambdaMax: cascade.lambdaMax, isStable: cascade.isStable,
       dampingCoeff: cascade.dampingCoeff, forgettingRate: cascade.forgettingRate,
       nodeCount: n, edgeCount: m,
@@ -2260,6 +2263,74 @@ function CascadeHeader() {
               <span className="text-[8px] font-mono text-text-muted tabular-nums">{c.size}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Uncertainty / Discovery Confidence */}
+      <button onClick={() => toggleMetric("uncertainty")} className="w-full text-left">
+        <div className="flex items-center justify-between p-1.5 rounded border border-accent-blue/20 bg-accent-blue/5 hover:bg-accent-blue/8 transition-colors">
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-blue">
+            UNCERTAINTY
+            <span className="ml-1 text-text-muted">μ {netMetrics.uncertainty.meanEdgeConfidence.toFixed(2)}</span>
+            {netMetrics.uncertainty.lowConfidenceCount > 0 && (
+              <span className="ml-1 text-accent-amber">{"·"} {netMetrics.uncertainty.lowConfidenceCount} low-conf</span>
+            )}
+          </div>
+          <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "uncertainty" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
+            {"▼"}
+          </span>
+        </div>
+      </button>
+      {expandedMetric === "uncertainty" && (
+        <div className="space-y-1 pl-1">
+          <div className="text-[8px] font-mono text-text-muted leading-relaxed mb-1">
+            Per-edge SPIRTES discovery confidence aggregated graph-wide. Edges below the 0.7 cutoff (matching Tarski A-06) are flagged amber. Node-level breakdown shows how much of the active structure is triangulated across DCD / PCMCI+ / FCI vs. surfaced by a single algorithm.
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className="text-[8px] font-mono text-text-muted flex-1">mean confidence</span>
+            <div className="w-16 h-1 bg-border rounded overflow-hidden">
+              <div className="h-full bg-accent-blue/60 rounded" style={{ width: `${netMetrics.uncertainty.meanEdgeConfidence * 100}%` }} />
+            </div>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.meanEdgeConfidence.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className="text-[8px] font-mono text-text-muted flex-1">median confidence</span>
+            <div className="w-16 h-1 bg-border rounded overflow-hidden">
+              <div className="h-full bg-accent-blue/60 rounded" style={{ width: `${netMetrics.uncertainty.medianEdgeConfidence * 100}%` }} />
+            </div>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.medianEdgeConfidence.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className={`text-[8px] font-mono flex-1 ${netMetrics.uncertainty.lowConfidenceCount > 0 ? "text-accent-amber" : "text-text-muted"}`}>
+              edges below 0.7
+            </span>
+            <div className="w-16 h-1 bg-border rounded overflow-hidden">
+              <div
+                className={`h-full rounded ${netMetrics.uncertainty.lowConfidenceCount > 0 ? "bg-accent-amber/60" : "bg-accent-blue/60"}`}
+                style={{ width: `${netMetrics.uncertainty.lowConfidenceFraction * 100}%` }}
+              />
+            </div>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.lowConfidenceCount}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5 border-t border-border/40 mt-1 pt-1">
+            <span className="text-[8px] font-mono text-text-muted flex-1">merged (multi-algo)</span>
+            <div className="w-16 h-1 bg-border rounded overflow-hidden">
+              <div className="h-full bg-accent-green/60 rounded" style={{ width: `${netMetrics.uncertainty.mergedFraction * 100}%` }} />
+            </div>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.sourceBreakdown.merged}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className="text-[8px] font-mono text-text-muted flex-1">DCD only</span>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.sourceBreakdown.DCD}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className="text-[8px] font-mono text-text-muted flex-1">PCMCI+ only</span>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.sourceBreakdown.PCMCI}</span>
+          </div>
+          <div className="flex items-center gap-2 px-1 py-0.5">
+            <span className="text-[8px] font-mono text-text-muted flex-1">FCI only</span>
+            <span className="text-[8px] font-mono text-text-muted tabular-nums">{netMetrics.uncertainty.sourceBreakdown.FCI}</span>
+          </div>
         </div>
       )}
     </div>

@@ -47,8 +47,8 @@ The TARSKI session has shipped two live API feeds (EIA Persian Gulf throughput, 
 
 - Phase-2 Spirtes-live: real algorithm runs on rolling windows.
 - Hardening of latent-confounder detection (FCI) for production graphs.
-- Confidence/uncertainty surfacing in the right panel.
-- Wiring network metrics → ΩF pillar **C** (systemic cascade load) — verify present and quantitatively sane.
+- ~~Confidence/uncertainty surfacing in the right panel.~~ ✅ shipped — `src/lib/discovery-uncertainty.ts` + `summarizeDiscoveryUncertainty(nodes, edges)` returns mean / median edge confidence, low-confidence count (`< 0.7`, matching Tarski A-06), and node-level breakdown by `discoverySource` (DCD / PCMCI+ / FCI / merged). New UNCERTAINTY zone in StructuralMetrics surfaces all of it; header chip shows `μ <mean>` and an amber `· N low-conf` badge when any edges are below the threshold.
+- ~~Wiring network metrics → ΩF pillar **C** (systemic cascade load) — verify present and quantitatively sane.~~ ✅ verified — `src/lib/omega-pillar-wiring.ts` + 16 tests in `omega-pillar-wiring.test.ts`. Uses out-degree above structural-median threshold (5) as cheap proxy, capped at +3.0. Future refinement candidate: weight by *cross-community* out-degree (using the new `detectCommunities`) — a hub bridging communities is more cascade-prone than a hub serving its own community.
 - **Communities on the canvas (Rendering follow-up).** `detectCommunities` returns a stable `membership: Map<nodeId, communityId>`. Rendering can pick this up and add a "color-by-community" toggle alongside the existing color-by-domain mode (in 2D, 3D, and Relief views). Optionally a translucent hull overlay around each community. SPIRTES side is done; the work is in the Rendering session.
 - **Louvain phase 2 (multilevel).** Current implementation is single-pass — communities found, but no super-node aggregation + recursion. For larger graphs this can leave the modularity below optimum. Phase 2 would aggregate communities into super-nodes and re-run, repeating until modularity stops improving. Defer until graph size warrants it.
 

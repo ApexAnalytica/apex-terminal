@@ -80,9 +80,20 @@ export function computeCascadeLoadDelta(
  * downstream code can quickly skip nodes with no live overlay.
  */
 export function applyOmegaLiveAdjustments(graph: CausalGraph): CausalGraph {
+  // Pre-compute out-degree once instead of doing
+  // `graph.edges.filter(e => e.source === node.id)` inside
+  // `computeCascadeLoadDelta` for each node — that pattern was O(N×E).
+  // For a 200-node × 300-edge graph it's 60k ops, fine; for a 500-node
+  // CROSS-DOMAIN selection it's 400k synchronous ops on the launch path
+  // and the user reports the page freezing right after LAUNCH WORKSPACE.
+  // Building a Map<sourceId, count> first drops it to O(N + E).
+  const outDegreeBy = new Map<string, number>();
+  for (const e of graph.edges) {
+    outDegreeBy.set(e.source, (outDegreeBy.get(e.source) ?? 0) + 1);
+  }
   const nodes = graph.nodes.map((n) => {
     const j = computeJurisdictionalHazardDelta(n);
-    const c = computeCascadeLoadDelta(n, graph);
+    const c = computeCascadeLoadDeltaFromOutDegree(n, outDegreeBy.get(n.id) ?? 0);
     if (j.delta === 0 && c.delta === 0) {
       // Strip any stale adjustment so a node that no longer carries live
       // signals doesn't keep showing yesterday's overlay.
@@ -105,6 +116,27 @@ export function applyOmegaLiveAdjustments(graph: CausalGraph): CausalGraph {
     return { ...n, liveAdjustments: adjustments };
   });
   return { ...graph, nodes };
+}
+
+/**
+ * Internal variant of `computeCascadeLoadDelta` that takes a pre-computed
+ * out-degree instead of scanning all edges. The exported variant
+ * (which keeps the original signature for back-compat with tests /
+ * standalone callers) delegates here.
+ */
+function computeCascadeLoadDeltaFromOutDegree(
+  _node: CausalNode,
+  outDegree: number,
+): { delta: number; source: string } {
+  if (outDegree <= C_HIGH_OUT_DEGREE_THRESHOLD) {
+    return { delta: 0, source: "" };
+  }
+  const excess = outDegree - C_HIGH_OUT_DEGREE_THRESHOLD;
+  const delta = Math.min(C_BUMP_CAP, excess * C_BUMP_PER_DEGREE);
+  return {
+    delta: round1(delta),
+    source: `+${round1(delta)} from out-degree ${outDegree} (${excess} above structural median)`,
+  };
 }
 
 /**

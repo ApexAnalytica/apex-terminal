@@ -799,6 +799,29 @@ The Spirtes-tab default sub-panels (`TrinityPanel`, `DiscoveryRunsPanel`) stay s
 
 **Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors from `ai`-SDK types missing in sandbox + a known fci.test endpointMarks drift); lint pre-existing errors only (2 errors on lines 81 + 1806, both confirmed on main pre-merge); vitest 909/909 pass.
 
+### 2026-05-07 — Shipped: launch-workspace freeze — O(N×E) → O(N+E) + defer Brandes' metrics
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"manifold keeps freezing after I select domains and click LAUNCH WORKSPACE."* The launch flow synchronously runs:
+1. `applyOmegaLiveAdjustments(g)` inside `setGraphData`
+2. `omegaBridgeDensity(graph)` inside `StructuralMetrics`
+3. `netMetrics` inside `CascadeHeader` (eigenvector + Brandes' edge betweenness + clustering + diameter BFS, all in one memo)
+4. Canvas mount + `computeNetworkMetrics` + `compute2DForceLayout`
+
+Items 2 + 3 each Brandes'-class O(V·E). Item 1 was secretly O(N×E) — `computeCascadeLoadDelta` ran `graph.edges.filter(e => e.source === node.id)` once per node. Combined cost on a CROSS-DOMAIN multi-card workspace blew past the user's freeze threshold.
+
+**What shipped.**
+- **`applyOmegaLiveAdjustments` linearised.** Pre-compute `outDegreeBy: Map<sourceId, count>` once in O(N+E), then look up each node's out-degree in O(1). New internal helper `computeCascadeLoadDeltaFromOutDegree` so the per-node math doesn't re-scan all edges. Original exported `computeCascadeLoadDelta(node, graph)` kept for back-compat with tests.
+- **`useDeferredValue` on the heavy metric paths.** `StructuralMetrics` wraps `graph` in `useDeferredValue` before passing it to `omegaBridgeDensity`. `CascadeHeader` wraps both `graphData` and `selectedNodes` and threads the deferred refs through `cascade`, `netMetrics`, and the deps array. The strip + panel paint immediately with whatever value React has (stale by one frame on a graph swap); the recompute lands as a low-priority work unit afterwards. Launch feels interactive instead of locked.
+
+**Files.**
+- `src/lib/omega-pillar-wiring.ts` — out-degree pre-pass + private `computeCascadeLoadDeltaFromOutDegree`.
+- `src/components/StructuralMetrics.tsx` — `useDeferredValue(graph)` before `omegaBridgeDensity`.
+- `src/components/ModulePanel.tsx` — `useDeferredValue` on `graphData` + `selectedNodes` in `CascadeHeader`.
+
+**Verification.** `tsc --noEmit` clean (modulo same pre-existing inherited errors); lint pre-existing errors only; vitest 918/918 pass.
+
 ---
 
 ## How a fresh session resumes

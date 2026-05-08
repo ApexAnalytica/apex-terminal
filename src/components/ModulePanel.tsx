@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
@@ -1898,8 +1898,18 @@ function CascadeHeader() {
   const graphData = useApexStore((s) => s.graphData);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const selectedNodes = useApexStore((s) => s.selectedNodes);
+  // Defer the heavy `graphData` + `selectedNodes` references so the
+  // Brandes'-class `netMetrics` computation below runs as low-priority
+  // work after the urgent UI has painted. Otherwise launch-workspace
+  // chains the metric recompute (~50-200ms on a typical graph) into
+  // the same synchronous frame as the canvas mount, and the user sees
+  // it as a freeze. The sliver of staleness is invisible in practice
+  // (the row labels & sparkbars all read from the same memoised
+  // result, so they update together).
+  const deferredGraphData = useDeferredValue(graphData);
+  const deferredSelectedNodes = useDeferredValue(selectedNodes);
   const engine = useMemo(() => getEngineProvider(), []);
-  const cascade = useMemo(() => engine.discoverStructure(graphData), [engine, graphData]);
+  const cascade = useMemo(() => engine.discoverStructure(deferredGraphData), [engine, deferredGraphData]);
   const [expandedMetric, setExpandedMetric] = useState<string | null>(null);
 
   // Pre-build full-graph adjacency, memoized on graphData.edges identity only
@@ -1916,11 +1926,11 @@ function CascadeHeader() {
 
   // Compute comprehensive network metrics
   const netMetrics = useMemo(() => {
-    const allNodes = graphData.nodes;
-    const allEdges = graphData.edges.filter((e) => !e.isSevered);
+    const allNodes = deferredGraphData.nodes;
+    const allEdges = deferredGraphData.edges.filter((e) => !e.isSevered);
 
     // Scope to selection if any
-    const selSet = new Set(selectedNodes);
+    const selSet = new Set(deferredSelectedNodes);
     const isScoped = selSet.size > 0;
     const nodes = isScoped ? allNodes.filter((n) => selSet.has(n.id)) : allNodes;
     const edges = isScoped ? allEdges.filter((e) => selSet.has(e.source) && selSet.has(e.target)) : allEdges;
@@ -2124,7 +2134,7 @@ function CascadeHeader() {
       totalNodeCount: allNodes.length, totalEdgeCount: allEdges.length,
       isScoped,
     };
-  }, [graphData, cascade, selectedNodes, fullNeighborSets]);
+  }, [deferredGraphData, cascade, deferredSelectedNodes, fullNeighborSets]);
 
   const metricColor = (val: number, threshLow: number, threshHigh: number) =>
     val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";

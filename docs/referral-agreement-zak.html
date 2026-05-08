@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — Referral Partner Agreement (Zak)</title>
+
+  <!-- Fonts loaded via <link> directly in <head> rather than only via CSS @import:
+       headless Chrome PDF generation does not reliably subset @import-loaded fonts.
+       Match the existing brand stylesheet's family list. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+  <style>
+    /* Local overrides for legal-document density */
+    @page { margin: 0.75in 0.85in 0.85in 0.85in; }
+
+    .agt-parties {
+      margin: 0 0 14pt 0;
+      font-size: 10.5pt;
+      line-height: 1.6;
+    }
+    .agt-parties p { margin: 0 0 8pt 0; }
+
+    .agt-recital {
+      margin: 0 0 6pt 0;
+      padding-left: 22pt;
+      text-indent: -22pt;
+      font-size: 10pt;
+      color: var(--apex-ink-soft);
+    }
+    .agt-recital strong { color: var(--apex-ink); }
+
+    .agt-section {
+      margin-top: 14pt;
+      margin-bottom: 6pt;
+      font-family: var(--apex-font-display);
+      font-size: 10pt;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--apex-cyan);
+      padding-bottom: 4pt;
+      border-bottom: 0.6pt solid var(--apex-rule);
+      page-break-after: avoid;
+    }
+
+    .agt-clause {
+      margin: 0 0 7pt 0;
+      padding-left: 32pt;
+      text-indent: -32pt;
+      font-size: 10pt;
+      line-height: 1.5;
+    }
+    .agt-clause .num {
+      font-weight: 600;
+      color: var(--apex-ink);
+      display: inline-block;
+      min-width: 32pt;
+      text-indent: 0;
+    }
+
+    .agt-subclause {
+      margin: 4pt 0 4pt 18pt;
+      padding-left: 22pt;
+      text-indent: -22pt;
+      font-size: 10pt;
+      line-height: 1.5;
+    }
+    .agt-subclause .letter {
+      font-weight: 600;
+      color: var(--apex-ink);
+      display: inline-block;
+      min-width: 22pt;
+      text-indent: 0;
+    }
+
+    .agt-defined { font-weight: 600; color: var(--apex-ink); }
+
+    .agt-placeholder {
+      background: #fff8d8;
+      color: var(--apex-amber);
+      font-weight: 600;
+      padding: 0 4pt;
+      border-radius: 2pt;
+      font-family: var(--apex-font-mono);
+      font-size: 9.5pt;
+    }
+
+    .agt-illustration-note {
+      font-style: italic;
+      color: var(--apex-ink-soft);
+      font-size: 9.5pt;
+      margin: 4pt 0;
+    }
+
+    .agt-witness {
+      font-family: var(--apex-font-display);
+      font-size: 9pt;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--apex-ink-soft);
+      margin: 18pt 0 14pt 0;
+      page-break-after: avoid;
+    }
+
+    .agt-signatures {
+      margin-top: 14pt;
+      page-break-inside: avoid;
+    }
+    .agt-sig-block {
+      margin-bottom: 24pt;
+    }
+    .agt-sig-party {
+      font-family: var(--apex-font-display);
+      font-size: 10pt;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--apex-cyan);
+      margin: 0 0 14pt 0;
+    }
+    .agt-sig-line {
+      display: block;
+      border-bottom: 0.6pt solid var(--apex-ink);
+      width: 65%;
+      height: 22pt;
+      margin-bottom: 4pt;
+    }
+    .agt-sig-meta {
+      font-size: 9.5pt;
+      line-height: 1.6;
+      color: var(--apex-ink-soft);
+    }
+    .agt-sig-meta strong { color: var(--apex-ink); }
+
+    .agt-disclaimer {
+      margin-top: 22pt;
+      padding: 10pt 14pt;
+      background: var(--apex-paper-tint);
+      border-left: 2.5pt solid var(--apex-ink-muted);
+      font-size: 9pt;
+      color: var(--apex-ink-muted);
+      font-style: italic;
+      page-break-inside: avoid;
+    }
+
+    /* Compact tables for the illustrative-calculation block */
+    main table.agt-illustration {
+      font-size: 9.5pt;
+      margin: 6pt 0 10pt 0;
+    }
+    main table.agt-illustration tbody td:first-child {
+      width: 25%;
+    }
+    main table.agt-illustration tfoot td {
+      padding: 6pt 8pt 6pt 0;
+      font-weight: 700;
+      color: var(--apex-ink);
+      border-top: 1pt solid var(--apex-cyan);
+    }
+
+    @media print {
+      .apex-screen-only { display: none !important; }
+      .agt-signatures { page-break-before: auto; }
+      .agt-section { page-break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Masthead / Letterhead ── -->
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>Referral Partner Agreement · AA-AGT-01</div>
+      <div>2026-05-11</div>
+    </div>
+  </header>
+
+  <!-- ── Title block ── -->
+  <h1 class="apex-title">Referral Partner Agreement</h1>
+  <p class="apex-subtitle">Apex Analytica × Houssam Zak</p>
+
+  <main>
+
+    <!-- ── Parties ── -->
+    <div class="agt-parties">
+      <p>This <strong>Referral Partner Agreement</strong> (the &ldquo;<span class="agt-defined">Agreement</span>&rdquo;) is entered into as of <strong>May 11, 2026</strong> (the &ldquo;<span class="agt-defined">Effective Date</span>&rdquo;) by and between:</p>
+
+      <p><strong>APEX ANALYTICA, INC.</strong> (&ldquo;<span class="agt-defined">Apex</span>&rdquo;), a Maryland corporation with principal place of business at 6001 Bricker Rd., Dayton, Maryland, represented by <strong>Junaid Ghauri</strong>, Chief Executive Officer;</p>
+
+      <p>and</p>
+
+      <p><strong>HOUSSAM ZAK</strong> (&ldquo;<span class="agt-defined">Referrer</span>&rdquo;), an individual.</p>
+
+      <p>(each a &ldquo;<span class="agt-defined">Party</span>,&rdquo; collectively the &ldquo;<span class="agt-defined">Parties</span>&rdquo;).</p>
+    </div>
+
+    <!-- ── Recitals ── -->
+    <h2 class="agt-section">Recitals</h2>
+
+    <p class="agt-recital"><strong>A.</strong>&nbsp;&nbsp;Apex develops and licenses <strong>Manifold</strong>, a causal-inference research platform for cross-domain risk analytics.</p>
+    <p class="agt-recital"><strong>B.</strong>&nbsp;&nbsp;Referrer has professional relationships with potential institutional buyers of Manifold and wishes to introduce qualified prospects to Apex.</p>
+    <p class="agt-recital"><strong>C.</strong>&nbsp;&nbsp;The Parties wish to establish the commercial terms governing such introductions, including the commission Apex will pay to Referrer for deals sourced through Referrer&rsquo;s introductions.</p>
+
+    <p style="margin-top: 10pt;"><strong>NOW, THEREFORE</strong>, in consideration of the mutual covenants set forth below, the Parties agree as follows:</p>
+
+    <!-- ── 1. Scope and Independence ── -->
+    <h2 class="agt-section">1. Scope and Independence</h2>
+
+    <p class="agt-clause"><span class="num">1.1.</span> During the Term, Referrer may from time to time introduce prospective customers (&ldquo;<span class="agt-defined">Prospects</span>&rdquo;) to Apex for the purpose of Apex licensing Manifold to such Prospects.</p>
+
+    <p class="agt-clause"><span class="num">1.2.</span> This Agreement does not grant Referrer any authority to negotiate, accept terms, execute agreements, make representations, or otherwise contract on behalf of Apex. Referrer is not an employee, agent, or representative of Apex.</p>
+
+    <!-- ── 2. Commission Structure ── -->
+    <h2 class="agt-section">2. Commission Structure</h2>
+
+    <p class="agt-clause"><span class="num">2.1.</span> <strong>First-Year Commission.</strong> Apex shall pay Referrer <strong>fifteen percent (15%)</strong> of the Annual Contract Value (&ldquo;<span class="agt-defined">ACV</span>&rdquo;) of any Qualifying Deal (as defined in Section 3), based on revenue actually collected by Apex from the customer in the first contract year.</p>
+
+    <p class="agt-clause"><span class="num">2.2.</span> <strong>Renewal Commission.</strong> Apex shall pay Referrer <strong>five percent (5%)</strong> of the ACV of any Qualifying Deal in each of contract years two (2) and three (3), based on revenue actually collected by Apex from the customer in those years.</p>
+
+    <p class="agt-clause"><span class="num">2.3.</span> <strong>Beyond Year Three.</strong> No commission shall be payable to Referrer on revenue collected from a Qualifying Deal in or after the fourth contract year.</p>
+
+    <p class="agt-clause"><span class="num">2.4.</span> <strong>Basis: Collected Revenue.</strong> All commissions are calculated on revenue actually collected by Apex, net of refunds, chargebacks, credits, and bona fide adjustments. Revenue that has been booked but not yet collected does not trigger commission payment.</p>
+
+    <p class="agt-clause"><span class="num">2.5.</span> <strong>Illustrative Calculation.</strong></p>
+    <p class="agt-illustration-note">For illustration only: a Qualifying Deal at the Enterprise tier with $150,000 ACV would generate the following commissions to Referrer, assuming full collection in each year.</p>
+    <table class="agt-illustration">
+      <thead>
+        <tr>
+          <th>Contract year</th>
+          <th>Apex revenue collected</th>
+          <th>Commission rate</th>
+          <th>Commission to Referrer</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Year 1</td><td>$150,000</td><td>15%</td><td>$22,500</td></tr>
+        <tr><td>Year 2</td><td>$150,000</td><td>5%</td><td>$7,500</td></tr>
+        <tr><td>Year 3</td><td>$150,000</td><td>5%</td><td>$7,500</td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td>Total (Years 1&ndash;3)</td><td>$450,000</td><td></td><td>$37,500</td></tr>
+      </tfoot>
+    </table>
+
+    <!-- ── 3. Attribution ── -->
+    <h2 class="agt-section">3. Attribution</h2>
+
+    <p class="agt-clause"><span class="num">3.1.</span> A &ldquo;<span class="agt-defined">Qualifying Deal</span>&rdquo; is a contract executed between Apex and a Prospect that satisfies <em>all</em> of the following conditions:</p>
+
+    <p class="agt-subclause"><span class="letter">(a)</span> <strong>Documented introduction.</strong> Referrer made a documented introduction (by email, written message, or formal meeting) of the Prospect to Apex.</p>
+    <p class="agt-subclause"><span class="letter">(b)</span> <strong>Pipeline cleanliness.</strong> The Prospect was not, at the time of introduction, (i) already engaged in active sales discussions with Apex, or (ii) on Apex&rsquo;s then-current sales pipeline. Apex shall maintain a written pipeline list and share an excerpt with Referrer upon reasonable request.</p>
+    <p class="agt-subclause"><span class="letter">(c)</span> <strong>Twelve-month attribution window.</strong> The contract is executed by the Prospect within twelve (12) months of the date of Referrer&rsquo;s introduction.</p>
+    <p class="agt-subclause"><span class="letter">(d)</span> <strong>Acknowledgment.</strong> The Prospect identifies Referrer as their referrer in any written acknowledgment that Apex requests during the sales process.</p>
+
+    <p class="agt-clause"><span class="num">3.2.</span> <strong>Disputed Attribution.</strong> If two or more sources claim attribution for the same Prospect, Apex shall in good faith determine attribution based on the order, substance, and effectiveness of introductions. Apex&rsquo;s good-faith determination shall be final.</p>
+
+    <!-- ── 4. Exclusions ── -->
+    <h2 class="agt-section">4. Exclusions</h2>
+
+    <p style="margin-bottom: 6pt;">The following are expressly excluded from commission, regardless of Referrer&rsquo;s involvement:</p>
+
+    <p class="agt-subclause"><span class="letter">(a)</span> Apex&rsquo;s &ldquo;Founding 10&rdquo; promotional offer or any similarly discounted promotional pricing tier;</p>
+    <p class="agt-subclause"><span class="letter">(b)</span> Self-serve trial conversions or any contract executed without active sales involvement from Apex;</p>
+    <p class="agt-subclause"><span class="letter">(c)</span> Renewals of contracts originally executed prior to the Effective Date of this Agreement;</p>
+    <p class="agt-subclause"><span class="letter">(d)</span> Any deal in which Referrer is also a beneficial owner, employee, or principal of the Prospect.</p>
+
+    <!-- ── 5. Payment Terms ── -->
+    <h2 class="agt-section">5. Payment Terms</h2>
+
+    <p class="agt-clause"><span class="num">5.1.</span> Apex shall pay commissions earned in any calendar quarter no later than <strong>thirty (30) days</strong> after the end of that quarter, by wire transfer or ACH to a bank account designated in writing by Referrer.</p>
+
+    <p class="agt-clause"><span class="num">5.2.</span> Each commission payment shall be accompanied by a statement identifying:</p>
+    <p class="agt-subclause"><span class="letter">(a)</span> the Qualifying Deal(s) giving rise to the payment;</p>
+    <p class="agt-subclause"><span class="letter">(b)</span> the revenue collected from the customer in the relevant period;</p>
+    <p class="agt-subclause"><span class="letter">(c)</span> the applicable commission rate; and</p>
+    <p class="agt-subclause"><span class="letter">(d)</span> the resulting commission calculation.</p>
+
+    <p class="agt-clause"><span class="num">5.3.</span> Commissions are paid <strong>gross of taxes</strong>. Referrer is solely responsible for any income, self-employment, or other tax obligations arising from commission payments and shall provide Apex with a completed Form W-9 (or equivalent applicable tax form) prior to receiving any payment.</p>
+
+    <!-- ── 6. Term and Termination ── -->
+    <h2 class="agt-section">6. Term and Termination</h2>
+
+    <p class="agt-clause"><span class="num">6.1.</span> This Agreement begins on the Effective Date and continues until terminated in accordance with Section 6.2.</p>
+
+    <p class="agt-clause"><span class="num">6.2.</span> <strong>Termination for Convenience.</strong> Either Party may terminate this Agreement at any time, for any reason, upon <strong>thirty (30) days&rsquo;</strong> written notice to the other Party.</p>
+
+    <p class="agt-clause"><span class="num">6.3.</span> <strong>Termination for Cause.</strong> Either Party may terminate this Agreement immediately upon written notice if the other Party materially breaches the Agreement and fails to cure such breach within fifteen (15) days of written notice describing the breach.</p>
+
+    <p class="agt-clause"><span class="num">6.4.</span> <strong>Survival of Earned Commissions.</strong> Termination of this Agreement does not affect Referrer&rsquo;s right to commissions on Qualifying Deals where the introduction was made before the effective date of termination, subject to (i) the twelve-month attribution window in Section 3.1(c), and (ii) the renewal commission terms in Sections 2.2 and 2.3.</p>
+
+    <p class="agt-clause"><span class="num">6.5.</span> <strong>Survival of Sections.</strong> Sections 2 (Commission Structure), 5 (Payment Terms), 7 (Confidentiality), 9 (Miscellaneous), and this Section 6 survive termination of this Agreement.</p>
+
+    <!-- ── 7. Confidentiality ── -->
+    <h2 class="agt-section">7. Confidentiality</h2>
+
+    <p class="agt-clause"><span class="num">7.1.</span> Referrer shall hold in confidence any non-public information disclosed by Apex in connection with this Agreement, including without limitation customer lists, contract terms, pricing, financial information, technical roadmap, and product details (&ldquo;<span class="agt-defined">Confidential Information</span>&rdquo;), and shall not disclose Confidential Information to any third party except (a) as reasonably necessary to make introductions hereunder, or (b) as required by law.</p>
+
+    <p class="agt-clause"><span class="num">7.2.</span> Referrer&rsquo;s obligations under this Section 7 survive termination of this Agreement for a period of <strong>three (3) years</strong>.</p>
+
+    <p class="agt-clause"><span class="num">7.3.</span> Confidential Information does not include information that (a) is or becomes publicly available through no breach by Referrer, (b) was known to Referrer prior to disclosure by Apex, or (c) is independently developed by Referrer without use of Apex&rsquo;s Confidential Information.</p>
+
+    <!-- ── 8. Independent Contractor ── -->
+    <h2 class="agt-section">8. Independent Contractor</h2>
+
+    <p class="agt-clause"><span class="num">8.1.</span> Referrer is an <strong>independent contractor</strong>. Nothing in this Agreement creates an employment, partnership, joint venture, or agency relationship between the Parties.</p>
+
+    <p class="agt-clause"><span class="num">8.2.</span> Referrer is solely responsible for Referrer&rsquo;s own taxes, insurance, retirement contributions, and any benefits Referrer chooses to obtain. Apex shall not provide any employment-style benefits to Referrer.</p>
+
+    <p class="agt-clause"><span class="num">8.3.</span> Referrer shall not represent to any third party that Referrer is an employee, officer, director, or agent of Apex.</p>
+
+    <!-- ── 9. Miscellaneous ── -->
+    <h2 class="agt-section">9. Miscellaneous</h2>
+
+    <p class="agt-clause"><span class="num">9.1.</span> <strong>Governing Law.</strong> This Agreement is governed by and construed in accordance with the laws of the State of Maryland, without regard to its conflict-of-laws principles.</p>
+
+    <p class="agt-clause"><span class="num">9.2.</span> <strong>Entire Agreement.</strong> This Agreement constitutes the entire agreement between the Parties with respect to its subject matter and supersedes all prior discussions, understandings, and agreements (whether written or oral) on that subject.</p>
+
+    <p class="agt-clause"><span class="num">9.3.</span> <strong>Amendment.</strong> This Agreement may be amended only by a written instrument signed by authorized representatives of both Parties.</p>
+
+    <p class="agt-clause"><span class="num">9.4.</span> <strong>Severability.</strong> If any provision of this Agreement is held to be invalid or unenforceable by a court of competent jurisdiction, the remaining provisions shall continue in full force and effect, and the invalid or unenforceable provision shall be modified to the minimum extent necessary to render it valid and enforceable while preserving the Parties&rsquo; original intent.</p>
+
+    <p class="agt-clause"><span class="num">9.5.</span> <strong>Notices.</strong> All notices under this Agreement shall be in writing and delivered by email (with confirmation of receipt) or by recognized overnight courier to the addresses provided by the Parties below or as updated in writing.</p>
+
+    <p class="agt-clause"><span class="num">9.6.</span> <strong>Assignment.</strong> Neither Party may assign this Agreement without the prior written consent of the other Party, except that Apex may assign this Agreement in connection with a merger, acquisition, reorganization, or sale of substantially all of its assets.</p>
+
+    <p class="agt-clause"><span class="num">9.7.</span> <strong>Counterparts; Electronic Signature.</strong> This Agreement may be executed in counterparts, including by electronic signature (DocuSign, HelloSign, or equivalent), each of which shall be deemed an original and all of which together shall constitute one and the same instrument.</p>
+
+    <!-- ── Signatures ── -->
+    <p class="agt-witness">In Witness Whereof</p>
+
+    <p style="font-size: 10pt; margin: 0 0 14pt 0;">The Parties have executed this Agreement as of the Effective Date.</p>
+
+    <div class="agt-signatures">
+
+      <div class="agt-sig-block">
+        <p class="agt-sig-party">Apex Analytica</p>
+        <span class="agt-sig-line"></span>
+        <p class="agt-sig-meta">
+          <strong>Name:</strong>&nbsp;&nbsp;Junaid Ghauri<br />
+          <strong>Title:</strong>&nbsp;&nbsp;Chief Executive Officer<br />
+          <strong>Date:</strong>&nbsp;&nbsp;<span style="display:inline-block; border-bottom: 0.4pt solid var(--apex-ink-soft); min-width: 110pt;">&nbsp;</span><br />
+          <strong>Email:</strong>&nbsp;&nbsp;junaid@apexanalytica.co
+        </p>
+      </div>
+
+      <div class="agt-sig-block">
+        <p class="agt-sig-party">Houssam Zak</p>
+        <span class="agt-sig-line"></span>
+        <p class="agt-sig-meta">
+          <strong>Name:</strong>&nbsp;&nbsp;Houssam Zak<br />
+          <strong>Date:</strong>&nbsp;&nbsp;<span style="display:inline-block; border-bottom: 0.4pt solid var(--apex-ink-soft); min-width: 110pt;">&nbsp;</span><br />
+          <strong>Email:</strong>&nbsp;&nbsp;houssamzak@gmail.com
+        </p>
+      </div>
+
+    </div>
+
+    <div class="agt-disclaimer">
+      This document was prepared as a working draft for the Parties&rsquo; review and is not legal advice. Before execution, both Parties should review the Agreement with qualified legal counsel familiar with applicable employment, contract, securities, and tax laws in the relevant jurisdiction.
+    </div>
+
+  </main>
+
+  <!-- ── Footer ── -->
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA · CONFIDENTIAL · AA-AGT-01</span>
+    <span class="apex-footer-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS&trade;</span>
+  </footer>
+
+  <!-- Screen-only hint; hidden in print -->
+  <div class="apex-screen-only">Press &#x2318;P &rarr; Save as PDF</div>
+
+</body>
+</html>

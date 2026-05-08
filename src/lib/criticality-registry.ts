@@ -123,10 +123,8 @@ const REGISTRY: Record<EstimatorId, EstimatorMeta> = {
     ],
     formula: "CVaR_α^{W₁}(X) = CVaR_α(X̂) + L · ε / (1 − α)",
     placeholderAssessment:
-      "AWAITING DATA — needs a numeric loss sample (per-node failure cost, per-incident cascade depth, per-attack-class observed harm). Once a sample is wired the card reports empirical CVaR, robust CVaR, and the W₁ ambiguity premium.",
-    defaultAvailability: "awaiting-data",
-    requiredInputs:
-      "A loss sample {x_1, …, x_n} (n ≥ ~30 for stable boundary interpolation). One scalar per observation; the loss transform should be applied upstream so the sample is already on the right scale. Plus α ∈ (0, 1) and a W₁ radius ε ≥ 0 chosen via cross-validation.",
+      "READY — operates on per-node ΩF composite values across the live filtered graph. α = 0.9 standard. W₁ ambiguity radius ε = 0 until a calibrated value is wired per profile.",
+    defaultAvailability: "ready",
   },
 
   // ── Topology-aware criticality (Ghauri 2025 χ★ artefact, from-spec) ──

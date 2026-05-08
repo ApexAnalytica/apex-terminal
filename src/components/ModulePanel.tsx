@@ -13,6 +13,7 @@ import { moransI } from "@/lib/estimators/moran";
 // the |χ★| / |E| scalar plus the full ChiStarResult — used by the
 // chi-star Pareto-card branch and the system-metrics strip.
 import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density";
+import { cvarW1, tailDepthScore } from "@/lib/estimators/cvar-w1";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
   bocpdRegimeGate,
@@ -1597,6 +1598,90 @@ function ParetoPanel({
                 },
               };
             }
+          }
+          // ── CVaR-W₁ (canonical Tail Depth pillar estimator) ───────
+          // Loss sample = per-node ΩF composite values across the
+          // filtered graph. Profile-agnostic: every CausalNode carries
+          // omegaFragility.composite, so wherever the user has
+          // selected, this estimator has a sample to work with.
+          //
+          // α = 0.9 standard. W₁ ambiguity radius ε = 0 — until a
+          // calibrated radius lands per profile (cross-validation on
+          // historical incidents would set it), the robust value
+          // collapses to the empirical CVaR. Documented in the
+          // methodology so the user knows what's missing.
+          if (id === "cvar-w1") {
+            const samples = graphData.nodes
+              .map((n) => n.omegaFragility?.composite)
+              .filter(
+                (v): v is number => typeof v === "number" && !Number.isNaN(v),
+              );
+            if (samples.length < 5) {
+              return {
+                key: "cvar-w1",
+                abbrev: meta.abbrev,
+                fullName: meta.fullName,
+                epochs: 0,
+                maxEpochs: 100,
+                color: meta.color,
+                confidence: 0,
+                timeSeries: [],
+                modelSeries: undefined,
+                shortDesc: meta.shortDesc,
+                methodology: meta.methodology,
+                formula: meta.formula,
+                assessment: `INSUFFICIENT DATA — only ${samples.length} ΩF composite value(s) in the current filtered graph. CVaR's boundary interpolation needs ≥5 samples to be stable.`,
+                emptyState: {
+                  kind: "awaiting-data" as const,
+                  inputs:
+                    "At least 5 nodes with omegaFragility.composite values in the filtered graph. Widen the domain selection or load a domain with more nodes.",
+                },
+              };
+            }
+            const alpha = 0.9;
+            const result = cvarW1(samples, { alpha, radius: 0 });
+            // Pillar score in [0, 10] using the conventional ΩF range
+            // (composites are 0–10 by construction). High CVaR → high
+            // tail depth → high pillar score.
+            const pillarScore = tailDepthScore(result.empirical, 0, 10);
+            // Sort descending so the chart shows the upper tail's
+            // shape rather than the cumulative distribution. Same
+            // convention as the chi-star BES ranking.
+            const sorted = [...samples].sort((a, b) => b - a);
+            // Epochs: low pillar score → far from critical (high T-);
+            // high pillar score → close to critical (low T-). Mirrors
+            // the direction csd / lppls / chi-star use.
+            const epochs = Math.max(
+              0,
+              Math.round((1 - pillarScore / 10) * 100),
+            );
+            return {
+              key: "cvar-w1",
+              abbrev: meta.abbrev,
+              fullName: meta.fullName,
+              epochs,
+              maxEpochs: 100,
+              color: meta.color,
+              // pillarScore / 10 lands in [0, 1] — same shape as the
+              // other estimators' confidence values. High = elevated
+              // tail risk.
+              confidence: pillarScore / 10,
+              timeSeries: sorted,
+              modelSeries: undefined,
+              shortDesc: meta.shortDesc,
+              methodology: [
+                `Empirical α-CVaR on n=${samples.length} ΩF composite values across the live filtered graph (${graphData.nodes.length} nodes total). α = ${alpha}, so CVaR_α is the expected ΩF in the worst ${((1 - alpha) * 100).toFixed(0)}% tail.`,
+                `α-VaR (${alpha}-quantile) = ${result.varEmpirical.toFixed(3)}. Empirical CVaR = ${result.empirical.toFixed(3)}. Robust CVaR = ${result.robust.toFixed(3)} (W₁ ambiguity radius ε = ${result.radius} — no calibrated radius wired upstream yet, so robust collapses to empirical for now).`,
+                meta.methodology[0] ?? "",
+              ],
+              formula: `α = ${alpha} | n = ${samples.length} | VaR = ${result.varEmpirical.toFixed(3)} | empirical CVaR = ${result.empirical.toFixed(3)} | pillar = ${pillarScore.toFixed(2)}/10`,
+              assessment:
+                pillarScore >= 8
+                  ? `CRITICAL TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Expected ΩF in the worst ${((1 - alpha) * 100).toFixed(0)}% tail is in the high-fragility band. Pillar score ${pillarScore.toFixed(1)}/10.`
+                  : pillarScore >= 5
+                    ? `ELEVATED TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Worst-${((1 - alpha) * 100).toFixed(0)}% tail sits above the median fragility. Pillar score ${pillarScore.toFixed(1)}/10.`
+                    : `CONTAINED TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Worst-${((1 - alpha) * 100).toFixed(0)}% tail stays in the lower-fragility regime. Pillar score ${pillarScore.toFixed(1)}/10.`,
+            };
           }
           // ── χ★ BRIDGE SETS (live on filtered graph topology) ──────
           // Snapshot estimator: no time-series, no observed-vs-model

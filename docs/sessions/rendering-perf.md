@@ -839,6 +839,21 @@ The full GPU compute-shader port is still queued — if real-time scrub still dr
 
 **Verification.** `tsc --noEmit` clean; vitest 918/918 pass (22 of which are relief-field-specific).
 
+### 2026-05-07 — Shipped: stop CausalDAG2D from running its layout sim on launch
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"still keeps freezing"* after the previous launch-workspace fix. Identified the remaining sync hog: `CausalDAG2D` was statically imported and always-mounted (with `visibility: hidden` for instant view-switching), so its `compute2DForceLayout` + `computeNetworkMetrics` ran *in parallel* with the 3D path's equivalents on every launch — even though the user lands on 3D and the 2D canvas is hidden.
+
+The always-mount pattern was in place to keep the 3D WebGL context alive across view switches (the browser's GPU process can deallocate it on remount). 2D doesn't carry a WebGL context — it renders through React Flow — so the rationale doesn't apply to it.
+
+**What shipped.** `CausalDAG2D` converted to `next/dynamic` (matching Map / Relief) and conditionally rendered only when `viewMode === "2d"`. 3D stays always-mounted with the `visibility: hidden` toggle. Trade-off: first switch from 3D → 2D pays a chunk-load + layout-compute beat (~300-500ms on a 500-node CROSS-DOMAIN workspace), same shape as the existing first-Map and first-Relief switch.
+
+**Files.**
+- `src/app/page.tsx` — `CausalDAG2D` static import → `dynamic`; render block wrapped in `viewMode === "2d"` gate.
+
+**Verification.** `tsc --noEmit` clean; vitest 918/918 pass.
+
 ---
 
 ## How a fresh session resumes

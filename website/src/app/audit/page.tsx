@@ -319,20 +319,11 @@ export default function AuditPage() {
             </p>
           </div>
 
-          {/* Placeholder for the sample-report PDF preview. Replace
-              with a real preview image once the sanitized PDF is
-              produced. */}
-          <div className="relative bg-surface-elevated border border-dashed border-border rounded-lg flex items-center justify-center min-h-[220px] p-6">
-            <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" aria-hidden />
-            <div className="relative text-center space-y-2">
-              <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted">
-                SAMPLE PDF
-              </div>
-              <div className="font-mono text-[12px] text-text-muted/80">
-                Preview coming soon
-              </div>
-            </div>
-          </div>
+          {/* Sample-report PDF preview — option A from the strategic
+              call (mock spread inline as SVG). Option B (hand-laid
+              real PDF on a synthetic 47-node manufacturing supplier
+              graph) is queued for follow-up. */}
+          <SampleReportSpread />
         </div>
       </Section>
 
@@ -484,12 +475,167 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+/**
+ * SampleReportSpread — inline-SVG mock of the audit's first two
+ * pages (cover + first content page) styled with the site's brand
+ * tokens. This is option A from the strategic call: a "feels real"
+ * preview to fill the slot until option B (a hand-laid sanitized
+ * PDF on a real synthetic graph) is produced.
+ *
+ * The numbers below are illustrative — they line up to a fictional
+ * 47-node manufacturing supplier graph with FAB · TSMC ARIZONA-1
+ * as the top-fragility node (matches the sample-readout entry that
+ * already lives in the manufacturing domain page for visual
+ * consistency).
+ */
+function SampleReportSpread() {
+  return (
+    <div className="relative bg-surface-elevated border border-border rounded-lg p-5 md:p-6">
+      <div className="grid gap-3 grid-cols-2">
+        {/* Page 1 — cover */}
+        <div className="relative aspect-[3/4] bg-background border border-border rounded shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div className="absolute inset-0 grid-bg opacity-25 pointer-events-none" aria-hidden />
+          <div className="relative h-full flex flex-col justify-between p-3 md:p-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-accent-cyan" />
+                <div className="font-[family-name:var(--font-michroma)] text-[6px] md:text-[7px] tracking-[0.3em] text-accent-cyan">
+                  APEX ANALYTICA
+                </div>
+              </div>
+              <div className="font-[family-name:var(--font-michroma)] text-[6px] tracking-[0.25em] text-text-muted/70">
+                ΩF MINI-AUDIT · CONFIDENTIAL
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="font-[family-name:var(--font-michroma)] text-[14px] md:text-[18px] tracking-[0.04em] text-foreground leading-[1.05]">
+                Manufacturing
+                <br />
+                supplier graph
+                <br />
+                <span className="text-accent-cyan">readout.</span>
+              </div>
+              <div className="h-px w-12 bg-accent-cyan/60" />
+              <div className="space-y-0.5 font-mono text-[7px] md:text-[8px] text-text-muted">
+                <div>PREPARED FOR: ACME INDUSTRIAL CO.</div>
+                <div>GRAPH: 47 nodes · 89 edges</div>
+                <div>DELIVERED: MAY 2026</div>
+              </div>
+            </div>
+
+            <div className="flex items-end justify-between gap-2 pt-2 border-t border-border/60">
+              <div className="font-mono text-[6px] md:text-[7px] text-text-muted/70 tracking-wider">
+                manifold.audit
+              </div>
+              <div className="font-[family-name:var(--font-michroma)] text-[6px] md:text-[7px] tracking-[0.2em] text-text-muted/70">
+                01 / 12
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Page 2 — top fragility node + ΩF breakdown */}
+        <div className="relative aspect-[3/4] bg-background border border-border rounded shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div className="absolute inset-0 grid-bg opacity-25 pointer-events-none" aria-hidden />
+          <div className="relative h-full flex flex-col p-3 md:p-4 gap-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <div className="font-[family-name:var(--font-michroma)] text-[6px] md:text-[7px] tracking-[0.25em] text-accent-cyan">
+                  // TOP FRAGILITY
+                </div>
+              </div>
+              <div className="font-[family-name:var(--font-michroma)] text-[6px] tracking-[0.2em] text-text-muted/70">
+                03 / 12
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-[family-name:var(--font-michroma)] text-[7px] md:text-[8px] tracking-[0.2em] text-text-muted">
+                NODE
+              </div>
+              <div className="font-[family-name:var(--font-michroma)] text-[10px] md:text-[12px] tracking-[0.05em] text-foreground leading-tight">
+                FAB · TSMC
+                <br />
+                ARIZONA-1
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1 pt-1 border-t border-border/60">
+              <div className="col-span-3 font-[family-name:var(--font-michroma)] text-[6px] md:text-[7px] tracking-[0.2em] text-text-muted">
+                ΩF · 7.42 / 10
+              </div>
+              {[
+                { p: "I", v: 9.1, color: "bg-accent-cyan" },
+                { p: "R", v: 8.4, color: "bg-accent-green" },
+                { p: "J", v: 7.8, color: "bg-accent-red" },
+                { p: "C", v: 7.2, color: "bg-accent-purple" },
+                { p: "T", v: 4.6, color: "bg-accent-amber" },
+              ].map((row) => (
+                <PillarRow key={row.p} {...row} />
+              ))}
+            </div>
+
+            <div className="mt-auto space-y-1 pt-2 border-t border-border/60">
+              <div className="font-[family-name:var(--font-michroma)] text-[6px] tracking-[0.2em] text-text-muted/80">
+                COUNTERFACTUAL
+              </div>
+              <div className="font-mono text-[7px] md:text-[8px] text-foreground/85 leading-snug">
+                90-day outage cascades to{" "}
+                <span className="text-accent-amber">37 downstream nodes</span>.
+                Estimated value-at-risk: $2.1B.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Caption */}
+      <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="font-mono text-[10.5px] text-text-muted/80 leading-relaxed">
+          <span className="text-text-muted">Stylized preview</span> —
+          actual readout is delivered as a PDF on your data, with
+          your node names and your numbers.
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 border border-border rounded text-[9px] font-mono text-text-muted/70 tracking-wider">
+          PREVIEW · NOT REAL DATA
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PillarRow({
+  p,
+  v,
+  color,
+}: {
+  p: string;
+  v: number;
+  color: string;
+}) {
+  return (
+    <>
+      <span className="font-[family-name:var(--font-michroma)] text-[9px] md:text-[10px] text-foreground leading-none">
+        {p}
+      </span>
+      <div className="h-1 bg-surface border border-border rounded-full overflow-hidden">
+        <div
+          className={`h-full ${color}`}
+          style={{ width: `${v * 10}%`, opacity: 0.85 }}
+        />
+      </div>
+      <span className="font-mono text-[7px] md:text-[8px] text-foreground/85 tabular-nums">
+        {v.toFixed(1)}
+      </span>
+    </>
+  );
+}
+
 /* ───────── placeholder content ─────────
    COPY: Replace TRUST_PARTNERS / AUDIT_TEAM / FAQ_PLACEHOLDERS
    below with content drawn from the source-of-truth spec at
-   `docs/outreach/mini-audit-offer.md`. Photo paths for AUDIT_TEAM
-   should match what's already in /team — I'm using the apexanalytica.co
-   hosted versions to stay consistent with the team page. */
+   `docs/outreach/mini-audit-offer.md`. */
 
 const TRUST_PARTNERS = [
   { name: "AWS", logo: "/partners/aws.svg", alt: "Amazon Web Services", naturalW: 304, naturalH: 182, mono: true },

@@ -450,71 +450,132 @@
     }
 
     /* ── Team / advisor cards ── */
-    .team-grid {
+    /* Team: 5 cards in a single row, each card stays narrow */
+    .team-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.28in;
+      margin-top: 0.2in;
+      max-width: 11.85in;
+    }
+    /* Advisors: 3 cards, more space per card with larger photo */
+    .advisor-row {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 0.3in 0.4in;
+      gap: 0.4in;
       margin-top: 0.25in;
-      max-width: 11.5in;
-    }
-    /* Flex layout for 5-card team slide so the 2-card second row centers */
-    .team-flex {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 0.3in 0.4in;
-      margin-top: 0.25in;
-      max-width: 12in;
-    }
-    .team-flex .team-card {
-      flex: 0 0 3.4in;
-      max-width: 3.4in;
+      max-width: 11.85in;
     }
     .team-card {
       padding: 0;
     }
     .team-card .avatar {
-      width: 1in;
-      height: 1in;
-      border-radius: 50%;
-      margin-bottom: 0.13in;
-      background-position: center;
+      width: 1.35in;
+      height: 1.35in;
+      border-radius: 4pt;
+      margin-bottom: 0.14in;
+      background-position: center top;
       background-size: cover;
       background-color: var(--apex-paper-tint);
-      border: 1.5pt solid var(--apex-cyan);
+      border: 1pt solid var(--apex-rule);
+      box-shadow: 0 1pt 0 0 var(--apex-cyan);
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
     }
-    .team-card .avatar.initials {
-      font-family: var(--apex-font-display);
-      font-size: 18pt;
-      letter-spacing: 0.06em;
-      color: var(--apex-cyan);
-      background: var(--apex-cyan-soft);
+    .advisor-row .team-card .avatar {
+      width: 1.7in;
+      height: 1.7in;
+      border-radius: 4pt;
     }
     .team-card .role {
       font-family: var(--apex-font-mono);
-      font-size: 8pt;
-      letter-spacing: 0.16em;
+      font-size: 7.5pt;
+      letter-spacing: 0.14em;
       color: var(--apex-cyan);
       text-transform: uppercase;
-      margin: 0 0 0.05in 0;
+      margin: 0 0 0.04in 0;
+    }
+    .advisor-row .team-card .role {
+      font-size: 8pt;
     }
     .team-card .who {
       font-family: var(--apex-font-display);
-      font-size: 11pt;
+      font-size: 10pt;
       color: var(--apex-ink);
       margin: 0 0 0.06in 0;
       letter-spacing: 0.02em;
+      line-height: 1.2;
+    }
+    .advisor-row .team-card .who {
+      font-size: 12pt;
+      margin-bottom: 0.08in;
     }
     .team-card .bg {
       font-family: var(--apex-font-body);
-      font-size: 10.5pt;
+      font-size: 9pt;
       line-height: 1.4;
       color: var(--apex-ink-soft);
       margin: 0;
+    }
+    .advisor-row .team-card .bg {
+      font-size: 10pt;
+      line-height: 1.45;
+    }
+
+    /* ── AON business-line plug-ins (slide 10) ── */
+    .biz-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.25in 0.4in;
+      margin-top: 0.2in;
+      max-width: 11.6in;
+    }
+    .biz-card {
+      padding: 0.18in 0.22in;
+      border: 0.6pt solid var(--apex-rule);
+      border-left: 2.5pt solid var(--apex-cyan);
+      background: var(--apex-paper);
+    }
+    .biz-card .line {
+      font-family: var(--apex-font-display);
+      font-size: 11pt;
+      letter-spacing: 0.02em;
+      color: var(--apex-ink);
+      margin: 0 0 0.05in 0;
+    }
+    .biz-card .pill {
+      display: inline-block;
+      font-family: var(--apex-font-mono);
+      font-size: 7.5pt;
+      letter-spacing: 0.14em;
+      color: var(--apex-cyan);
+      text-transform: uppercase;
+      margin-bottom: 0.08in;
+    }
+    .biz-card .row {
+      font-family: var(--apex-font-body);
+      font-size: 10pt;
+      line-height: 1.4;
+      margin: 0 0 0.06in 0;
+      color: var(--apex-ink-soft);
+    }
+    .biz-card .row strong {
+      display: inline-block;
+      width: 0.7in;
+      font-family: var(--apex-font-mono);
+      font-size: 7.5pt;
+      letter-spacing: 0.12em;
+      color: var(--apex-cyan);
+      text-transform: uppercase;
+      vertical-align: top;
+    }
+    .biz-card .row .body {
+      display: inline-block;
+      width: calc(100% - 0.8in);
+      vertical-align: top;
+      color: var(--apex-ink);
     }
 
     /* ── CTA / next-steps ── */
@@ -756,24 +817,24 @@
     <h2 class="slide-title">Twelve weeks, one question, four phases.</h2>
     <div class="slide-rule"></div>
 
-    <p class="slide-lede">A pilot scopes Manifold to one question your team is currently facing: a treaty cascade, a peril correlation review, a counterparty cascade across reinsurance partners, or an ILS trigger portfolio. The engagement runs in four phases.</p>
+    <p class="slide-lede">A pilot scopes Manifold to one question your team is facing: a treaty cascade, a peril correlation review, a counterparty network, or an ILS trigger portfolio. The engagement runs in four phases.</p>
 
     <div class="engine-grid">
       <div class="engine-card">
         <p class="name">PHASE 1 &nbsp;·&nbsp; WEEKS 1&ndash;2</p>
-        <p class="desc"><strong>Data intake and graph reconstruction.</strong> Your team hands over the data shape. We map it to the Manifold schema and produce a first-pass causal graph. Short feedback loop with whoever knows your portfolio.</p>
+        <p class="desc"><strong>Data intake and graph reconstruction.</strong> Your team hands over the data shape. We map it to the Manifold schema and return a first-pass causal graph.</p>
       </div>
       <div class="engine-card">
         <p class="name">PHASE 2 &nbsp;·&nbsp; WEEKS 3&ndash;6</p>
-        <p class="desc"><strong>Per-node fragility readouts.</strong> Every node in the graph gets scored across the five <span class="apex-omega">Ω</span>F pillars, with bootstrap confidence intervals. Top-3 fragility nodes ranked, with the cascade scenario driving each ranking.</p>
+        <p class="desc"><strong>Per-node fragility readouts.</strong> Every node scored across the five <span class="apex-omega">Ω</span>F pillars with bootstrap CIs. Top-3 fragility nodes ranked.</p>
       </div>
       <div class="engine-card">
         <p class="name">PHASE 3 &nbsp;·&nbsp; WEEKS 7&ndash;9</p>
-        <p class="desc"><strong>Interdiction analysis.</strong> Pearl do-calculus quantifies the effect of each candidate intervention. If you cut this exposure, harden this counterparty, restructure this treaty: how does the system-level fragility move, and by how much.</p>
+        <p class="desc"><strong>Interdiction analysis.</strong> Pearl do-calculus quantifies the marginal effect of each candidate intervention: cut this exposure, harden this counterparty, restructure this treaty.</p>
       </div>
       <div class="engine-card">
         <p class="name">PHASE 4 &nbsp;·&nbsp; WEEKS 10&ndash;12</p>
-        <p class="desc"><strong>Written deliverable and workshop.</strong> 40&ndash;60 page report, executive summary, and an on-site or remote walkthrough with your team. Configured Manifold instance left running for AON read-access at the end of the engagement.</p>
+        <p class="desc"><strong>Written deliverable and workshop.</strong> 40&ndash;60 page report, executive summary, and an on-site or remote walkthrough. Configured Manifold instance left running for AON read-access.</p>
       </div>
     </div>
 
@@ -796,12 +857,12 @@
     <h2 class="slide-title">Built inside the discipline, not adjacent to it.</h2>
     <div class="slide-rule"></div>
 
-    <div class="team-flex">
+    <div class="team-row">
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/junaid.png');"></div>
         <p class="role">CEO &amp; Principal Scientist</p>
         <p class="who">Junaid Ghauri</p>
-        <p class="bg">D.Eng. Johns Hopkins. Bayesian modelling, COVID-19 analytics, reinsurance risk. Ex-CTO MARK LABS. Authored the <span class="apex-omega">Ω</span>-Robustness foundations in his dissertation.</p>
+        <p class="bg">D.Eng. Johns Hopkins. Bayesian modelling, COVID-19 analytics, reinsurance risk. Ex-CTO MARK LABS. Authored the <span class="apex-omega">Ω</span>-Robustness foundations.</p>
       </div>
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/gergios.png');"></div>
@@ -810,16 +871,16 @@
         <p class="bg">Ph.D. Mathematics, Trinity College Dublin (visiting Stanford). Ex-HSBC AI and optimization. Quantum algorithms for collateral and continuous optimization.</p>
       </div>
       <div class="team-card">
-        <div class="avatar initials">JK</div>
+        <div class="avatar" style="background-image: url('./brand/team/jeremy.png');"></div>
         <p class="role">AI Research Scientist</p>
         <p class="who">Jeremy Kulcsar</p>
-        <p class="bg">Ex-HSBC AI Research. Causality, portfolio optimization, deep learning. Author of the <span class="apex-omega">Ω</span>F five-pillar scoring framework. Ecole Centrale Paris MSc CS.</p>
+        <p class="bg">Ex-HSBC AI Research. Causality, portfolio optimization, deep learning. Author of the <span class="apex-omega">Ω</span>F five-pillar scoring framework. Ecole Centrale Paris.</p>
       </div>
       <div class="team-card">
-        <div class="avatar initials">DM</div>
+        <div class="avatar" style="background-image: url('./brand/team/daniel.png');"></div>
         <p class="role">Software &amp; Research</p>
         <p class="who">Daniel Mastropietro</p>
-        <p class="bg">20+ years across energy, telecom, finance, government, manufacturing. Reinforcement learning, optimization, model interpretability. Doctoral candidate INP Toulouse. Fulbright alumnus.</p>
+        <p class="bg">20+ years across energy, telecom, finance, government, manufacturing. Reinforcement learning, optimization, interpretability. Doctoral candidate INP Toulouse. Fulbright alumnus.</p>
       </div>
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/brynna.png');"></div>
@@ -845,27 +906,29 @@
     </div>
 
     <div class="slide-eyebrow">Advisors</div>
-    <h2 class="slide-title">Three advisors with deep insurance and risk credibility.</h2>
+    <h2 class="slide-title">Three advisors anchoring the work in published risk science.</h2>
     <div class="slide-rule"></div>
 
-    <div class="team-grid">
+    <p class="slide-lede">Each advisor's research output bears on a different layer of the platform: catastrophe and disaster risk, systems-resilience methodology, and AI for large-scale industrial systems. Two are at Johns Hopkins, where the underlying <span class="apex-omega">Ω</span>-Robustness work was developed.</p>
+
+    <div class="advisor-row">
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/pita.png');"></div>
         <p class="role">Risk Modeling Advisor</p>
         <p class="who">Dr. Gonzalo L. Pita</p>
-        <p class="bg">Associate Research Scientist, JHU. Natural disaster risk, climate change, infrastructure vulnerability. Former Senior Consultant at the World Bank.</p>
+        <p class="bg">Associate Research Scientist, Johns Hopkins. Natural disaster risk, climate change adaptation, infrastructure vulnerability under hazard. Former Senior Consultant at the World Bank, where his published work informed national-scale catastrophe modelling for emerging-market reinsurance programmes.</p>
       </div>
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/igusa.png');"></div>
         <p class="role">Systems Engineering Advisor</p>
         <p class="who">Dr. Takeru Igusa</p>
-        <p class="bg">Professor, Johns Hopkins. Systems science, applied math, epidemiology, resilience. NIH and CDC funded across 25 years of risk-modelling research.</p>
+        <p class="bg">Professor, Johns Hopkins. Systems science, applied mathematics, epidemiology, and resilience methodology. NIH and CDC funded across 25 years; his work on cascading failure in interdependent systems is foundational to the cascade-load and restoration-latency pillars in the framework.</p>
       </div>
       <div class="team-card">
         <div class="avatar" style="background-image: url('./brand/team/telukdarie.png');"></div>
         <p class="role">Digital &amp; AI Advisor</p>
         <p class="who">Dr. Arnesh Telukdarie</p>
-        <p class="bg">Professor, University of Johannesburg. AI, large-scale systems design, digital transformation in regulated industries.</p>
+        <p class="bg">Professor, University of Johannesburg. AI, large-scale industrial-systems design, digital transformation in regulated industries. Brings the operational-deployment perspective on how analytics platforms move from research output to embedded enterprise tools.</p>
       </div>
     </div>
 
@@ -876,7 +939,7 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- SLIDE 10 — WAYS THIS COULD FIT -->
+  <!-- SLIDE 10 — AON BUSINESS LINE PLUG-INS -->
   <!-- ═══════════════════════════════════════════════ -->
   <section class="slide">
     <div class="slide-strip">
@@ -884,37 +947,40 @@
       <span class="pageno">10 / 11</span>
     </div>
 
-    <div class="slide-eyebrow">Ways This Could Fit</div>
-    <h2 class="slide-title">Four shapes, sized to the question.</h2>
+    <div class="slide-eyebrow">Where This Plugs In at AON</div>
+    <h2 class="slide-title">Four AON business lines and how Manifold lands in each.</h2>
     <div class="slide-rule"></div>
 
-    <p class="slide-lede">Manifold can land at AON in different shapes depending on what you're trying to learn. The four below cover the range from a focused readout to a full-team deployment.</p>
+    <div class="biz-grid">
 
-    <div class="tier-grid">
-      <div class="tier-card">
-        <p class="tname"><span class="apex-omega">Ω</span>F MINI-AUDIT</p>
-        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">5 business days</p>
-        <p class="cad">Focused readout</p>
-        <p class="desc">Send a sanitised AON dataset. Get a 12-page <span class="apex-omega">Ω</span>F readout, top-3 fragility nodes, suggested interdictions, and a 30-minute walkthrough.</p>
+      <div class="biz-card">
+        <p class="pill">Reinsurance Solutions</p>
+        <p class="line">Treaty optimisation and counterparty cascade.</p>
+        <p class="row"><strong>Problem</strong><span class="body">Cross-treaty correlation and downstream cascade when a primary or partner fails. Capital relief miscalculated when treaty couplings are inferred statistically rather than structurally.</span></p>
+        <p class="row"><strong>Manifold</strong><span class="body">Causal graph of the tower, <span class="apex-omega">Ω</span>F readout per treaty and partner, Pearl interdiction quantifies the marginal benefit of hardening any single link.</span></p>
       </div>
-      <div class="tier-card featured">
-        <p class="tname">CAUSAL RISK ASSESSMENT</p>
-        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">2&ndash;3 weeks</p>
-        <p class="cad">Scoped analysis</p>
-        <p class="desc">Custom analysis on a specific question, such as a treaty cascade, a peril cluster, or a counterparty network. Configured Manifold instance plus written deliverable.</p>
+
+      <div class="biz-card">
+        <p class="pill">Impact Forecasting</p>
+        <p class="line">Catastrophe modelling under climate non-stationarity.</p>
+        <p class="row"><strong>Problem</strong><span class="body">Historical-fit CAT models break under climate regime change. Cross-peril correlation degrades exactly when stressed. Sub-portfolio cascade depth is opaque to the statistical fit.</span></p>
+        <p class="row"><strong>Manifold</strong><span class="body">Causal discovery (Spirtes / PCMCI) surfaces structural correlations the fit missed. BOCPD flags regime shifts on the time series. Layers onto Impact Forecasting outputs rather than replacing them.</span></p>
       </div>
-      <div class="tier-card">
-        <p class="tname">ENTERPRISE PILOT</p>
-        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">12 weeks</p>
-        <p class="cad">Embedded engagement</p>
-        <p class="desc">Insurance-domain configuration of Manifold against AON's data shape. On-demand engineering, dedicated solutions support, contractual SLA.</p>
+
+      <div class="biz-card">
+        <p class="pill">Aon Securities</p>
+        <p class="line">ILS structuring, parametric triggers, and basis risk.</p>
+        <p class="row"><strong>Problem</strong><span class="body">Trigger-structure validation and basis-risk quantification rely on assumed correlations that fail under regime shifts. Investor disclosure requires a defensible structural narrative.</span></p>
+        <p class="row"><strong>Manifold</strong><span class="body">Tarski formally verifies trigger conditions against the inferred causal graph. Pearl quantifies basis-risk scenarios. Audit-trail output supports investor and rating-agency disclosure.</span></p>
       </div>
-      <div class="tier-card">
-        <p class="tname">PLATFORM LICENSE</p>
-        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">Annual</p>
-        <p class="cad">Continuous access</p>
-        <p class="desc">Continuous Manifold access for an AON team. Multi-domain seats with cross-asset bridges, live feeds, and the full estimator suite.</p>
+
+      <div class="biz-card">
+        <p class="pill">Climate Risk Advisory</p>
+        <p class="line">Disclosure, scenario modelling, and capital advisory.</p>
+        <p class="row"><strong>Problem</strong><span class="body">Clients need defensible disclosure narratives for TCFD, NAIC, and Solvency II. Statistical climate-loss models don't carry the structural-causality story regulators are starting to ask for.</span></p>
+        <p class="row"><strong>Manifold</strong><span class="body">Explicit causal model of climate-loss linkages with regime-shift detection. Written audit-trail. Defensible answers to "which channels drive the loss" rather than just point estimates of magnitude.</span></p>
       </div>
+
     </div>
 
     <div class="slide-foot">

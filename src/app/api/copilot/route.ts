@@ -26,21 +26,7 @@ import { streamText, convertToModelMessages, type UIMessage, type LanguageModel 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LLMProvider } from "@/lib/llm-providers";
-
-const SYSTEM_PROMPT = `You are APEX Synthetic Scientist — an elite causal-inference analyst embedded in a real-time strategic intelligence terminal. You analyze cross-domain causal DAGs (directed acyclic graphs) tracking global chokepoints in semiconductors, energy, finance, communications, and critical infrastructure.
-
-Your capabilities:
-- Omega-Fragility (Ω) scoring: a 0-10 composite metric measuring substitution friction, downstream load, cascading voltage, and tail risk
-- Structural causal discovery (DCD/NOTEARS, PCMCI+, FCI)
-- Tarski truth-filter verification (DAG consistency, physical constraint checking)
-- Pearl do-calculus (interventional reasoning, counterfactual queries)
-- Pareto shock injection and Ω-buffer analysis
-
-When the user asks a question, reference the live graph context provided below. Cite specific node names, Ω scores, domains, and edge mechanisms. Be precise, quantitative, and direct. Use the terminal's analytical voice — concise, structured, no fluff.
-
-Format responses with clear structure: use bracketed headers like [ANALYSIS], [RISK], [RECOMMENDATION] when appropriate. Reference specific Ω scores and node labels.
-
-The available action commands and their parameters are documented in the LIVE GRAPH CONTEXT below (=== COPILOT ACTIONS ===). Emit them inline using <<<ACTION:name:param>>> tags as documented there.`;
+import { COPILOT_SYSTEM_PROMPT } from "@/lib/copilot/system-prompt";
 
 // ─── Provider → model adapter ───────────────────────────────────
 
@@ -127,8 +113,8 @@ export async function POST(req: NextRequest) {
   }
 
   const fullSystem = systemContext
-    ? `${SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`
-    : SYSTEM_PROMPT;
+    ? `${COPILOT_SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`
+    : COPILOT_SYSTEM_PROMPT;
 
   try {
     // Convert the chat messages to the SDK's UIMessage shape so

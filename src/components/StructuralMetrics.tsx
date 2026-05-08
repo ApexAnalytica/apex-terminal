@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeOmegaState, computeDoomsdayState } from "@/lib/omega-engine";
@@ -17,9 +17,17 @@ export default function StructuralMetrics() {
     () => computeDoomsdayState(shocks, omegaState.buffer),
     [shocks, omegaState.buffer]
   );
-  // Ω-Bridge Density (Ghauri 2025, system-level diagnostic). Recomputes
-  // on filtered-graph changes — same cadence as DISCOVERY DENSITY.
-  const bridgeDensity = useMemo(() => omegaBridgeDensity(graph), [graph]);
+  // Ω-Bridge Density (Ghauri 2025, system-level diagnostic). Brandes'-
+  // class O(V·E) under the hood — for the LAUNCH-WORKSPACE flow it
+  // landed in the same synchronous tick as the canvas mount + module
+  // panel reflows + temporalData init, which the user reported as a
+  // freeze. `useDeferredValue` lets React render the rest of the
+  // strip immediately with a stale (or default) bridgeDensity, then
+  // schedule the recompute as a low-priority work unit. The strip
+  // shows a placeholder for one frame on a graph swap; in exchange
+  // the launch path stays interactive.
+  const deferredGraph = useDeferredValue(graph);
+  const bridgeDensity = useMemo(() => omegaBridgeDensity(deferredGraph), [deferredGraph]);
   const band = bridgeDensityBand(bridgeDensity.density);
 
   return (

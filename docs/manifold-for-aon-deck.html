@@ -449,16 +449,50 @@
       margin: 0;
     }
 
-    /* ── Team grid ── */
+    /* ── Team / advisor cards ── */
     .team-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 0.25in 0.4in;
-      margin-top: 0.2in;
+      gap: 0.3in 0.4in;
+      margin-top: 0.25in;
       max-width: 11.5in;
+    }
+    /* Flex layout for 5-card team slide so the 2-card second row centers */
+    .team-flex {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.3in 0.4in;
+      margin-top: 0.25in;
+      max-width: 12in;
+    }
+    .team-flex .team-card {
+      flex: 0 0 3.4in;
+      max-width: 3.4in;
     }
     .team-card {
       padding: 0;
+    }
+    .team-card .avatar {
+      width: 1in;
+      height: 1in;
+      border-radius: 50%;
+      margin-bottom: 0.13in;
+      background-position: center;
+      background-size: cover;
+      background-color: var(--apex-paper-tint);
+      border: 1.5pt solid var(--apex-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .team-card .avatar.initials {
+      font-family: var(--apex-font-display);
+      font-size: 18pt;
+      letter-spacing: 0.06em;
+      color: var(--apex-cyan);
+      background: var(--apex-cyan-soft);
     }
     .team-card .role {
       font-family: var(--apex-font-mono);
@@ -555,7 +589,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">02 / 10</span>
+      <span class="pageno">02 / 11</span>
     </div>
 
     <div class="slide-eyebrow">The Gap</div>
@@ -581,7 +615,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">03 / 10</span>
+      <span class="pageno">03 / 11</span>
     </div>
 
     <div class="hero-statement">
@@ -601,7 +635,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">04 / 10</span>
+      <span class="pageno">04 / 11</span>
     </div>
 
     <div class="slide-eyebrow">The Platform</div>
@@ -639,7 +673,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">05 / 10</span>
+      <span class="pageno">05 / 11</span>
     </div>
 
     <div class="slide-eyebrow">The Scoring Framework</div>
@@ -688,7 +722,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">06 / 10</span>
+      <span class="pageno">06 / 11</span>
     </div>
 
     <div class="slide-eyebrow">Where It Lands at AON</div>
@@ -715,7 +749,7 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">07 / 10</span>
+      <span class="pageno">07 / 11</span>
     </div>
 
     <div class="slide-eyebrow">What a Pilot Delivers</div>
@@ -755,43 +789,43 @@
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">08 / 10</span>
+      <span class="pageno">08 / 11</span>
     </div>
 
-    <div class="slide-eyebrow">Why Apex</div>
-    <h2 class="slide-title">A team built inside the discipline, not adjacent to it.</h2>
+    <div class="slide-eyebrow">The Team</div>
+    <h2 class="slide-title">Built inside the discipline, not adjacent to it.</h2>
     <div class="slide-rule"></div>
 
-    <div class="team-grid">
+    <div class="team-flex">
       <div class="team-card">
+        <div class="avatar" style="background-image: url('./brand/team/junaid.png');"></div>
         <p class="role">CEO &amp; Principal Scientist</p>
         <p class="who">Junaid Ghauri</p>
         <p class="bg">D.Eng. Johns Hopkins. Bayesian modelling, COVID-19 analytics, reinsurance risk. Ex-CTO MARK LABS. Authored the <span class="apex-omega">Ω</span>-Robustness foundations in his dissertation.</p>
       </div>
       <div class="team-card">
+        <div class="avatar" style="background-image: url('./brand/team/gergios.png');"></div>
         <p class="role">Head of Research</p>
         <p class="who">Georgios Korpas</p>
         <p class="bg">Ph.D. Mathematics, Trinity College Dublin (visiting Stanford). Ex-HSBC AI and optimization. Quantum algorithms for collateral and continuous optimization.</p>
       </div>
       <div class="team-card">
+        <div class="avatar initials">JK</div>
         <p class="role">AI Research Scientist</p>
         <p class="who">Jeremy Kulcsar</p>
         <p class="bg">Ex-HSBC AI Research. Causality, portfolio optimization, deep learning. Author of the <span class="apex-omega">Ω</span>F five-pillar scoring framework. Ecole Centrale Paris MSc CS.</p>
       </div>
       <div class="team-card">
+        <div class="avatar initials">DM</div>
         <p class="role">Software &amp; Research</p>
         <p class="who">Daniel Mastropietro</p>
         <p class="bg">20+ years across energy, telecom, finance, government, manufacturing. Reinforcement learning, optimization, model interpretability. Doctoral candidate INP Toulouse. Fulbright alumnus.</p>
       </div>
       <div class="team-card">
-        <p class="role">Risk Modeling Advisor</p>
-        <p class="who">Dr. Gonzalo L. Pita</p>
-        <p class="bg">Associate Research Scientist, JHU. Natural disaster risk, climate change, infrastructure vulnerability. Former Senior Consultant at the World Bank.</p>
-      </div>
-      <div class="team-card">
-        <p class="role">Systems Engineering Advisor</p>
-        <p class="who">Dr. Takeru Igusa</p>
-        <p class="bg">Professor, Johns Hopkins. Systems science, applied math, epidemiology, resilience. NIH and CDC funded across 25 years of risk-modelling research.</p>
+        <div class="avatar" style="background-image: url('./brand/team/brynna.png');"></div>
+        <p class="role">Head of Operations</p>
+        <p class="who">Brynna Shale</p>
+        <p class="bg">NYU Stern (Business and Data Science). Ex-Goldman Sachs Capital Reporting. Operational strategy, customer success, contracting and finance.</p>
       </div>
     </div>
 
@@ -802,41 +836,83 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- SLIDE 9 — ENGAGEMENT MODELS -->
+  <!-- SLIDE 9 — ADVISORS -->
   <!-- ═══════════════════════════════════════════════ -->
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">09 / 10</span>
+      <span class="pageno">09 / 11</span>
     </div>
 
-    <div class="slide-eyebrow">How to Start</div>
-    <h2 class="slide-title">Four engagement shapes, sized to the question.</h2>
+    <div class="slide-eyebrow">Advisors</div>
+    <h2 class="slide-title">Three advisors with deep insurance and risk credibility.</h2>
     <div class="slide-rule"></div>
+
+    <div class="team-grid">
+      <div class="team-card">
+        <div class="avatar" style="background-image: url('./brand/team/pita.png');"></div>
+        <p class="role">Risk Modeling Advisor</p>
+        <p class="who">Dr. Gonzalo L. Pita</p>
+        <p class="bg">Associate Research Scientist, JHU. Natural disaster risk, climate change, infrastructure vulnerability. Former Senior Consultant at the World Bank.</p>
+      </div>
+      <div class="team-card">
+        <div class="avatar" style="background-image: url('./brand/team/igusa.png');"></div>
+        <p class="role">Systems Engineering Advisor</p>
+        <p class="who">Dr. Takeru Igusa</p>
+        <p class="bg">Professor, Johns Hopkins. Systems science, applied math, epidemiology, resilience. NIH and CDC funded across 25 years of risk-modelling research.</p>
+      </div>
+      <div class="team-card">
+        <div class="avatar" style="background-image: url('./brand/team/telukdarie.png');"></div>
+        <p class="role">Digital &amp; AI Advisor</p>
+        <p class="who">Dr. Arnesh Telukdarie</p>
+        <p class="bg">Professor, University of Johannesburg. AI, large-scale systems design, digital transformation in regulated industries.</p>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span>APEX ANALYTICA · CONFIDENTIAL · MANIFOLD FOR AON</span>
+      <span class="foot-mark"><span class="apex-omega">Ω</span>-CRITICAL AI SYSTEMS&trade;</span>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!-- SLIDE 10 — WAYS THIS COULD FIT -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <section class="slide">
+    <div class="slide-strip">
+      <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
+      <span class="pageno">10 / 11</span>
+    </div>
+
+    <div class="slide-eyebrow">Ways This Could Fit</div>
+    <h2 class="slide-title">Four shapes, sized to the question.</h2>
+    <div class="slide-rule"></div>
+
+    <p class="slide-lede">Manifold can land at AON in different shapes depending on what you're trying to learn. The four below cover the range from a focused readout to a full-team deployment.</p>
 
     <div class="tier-grid">
       <div class="tier-card">
         <p class="tname"><span class="apex-omega">Ω</span>F MINI-AUDIT</p>
-        <p class="price">$1,500</p>
-        <p class="cad">Flat &nbsp;·&nbsp; 5 business days</p>
-        <p class="desc">Send a sanitised AON dataset. Get a 12-page <span class="apex-omega">Ω</span>F readout, top-3 fragility nodes, suggested interdictions, and a 30-min walkthrough.</p>
+        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">5 business days</p>
+        <p class="cad">Focused readout</p>
+        <p class="desc">Send a sanitised AON dataset. Get a 12-page <span class="apex-omega">Ω</span>F readout, top-3 fragility nodes, suggested interdictions, and a 30-minute walkthrough.</p>
       </div>
       <div class="tier-card featured">
         <p class="tname">CAUSAL RISK ASSESSMENT</p>
-        <p class="price">$7.5–15k</p>
-        <p class="cad">2–3 weeks &nbsp;·&nbsp; scoped</p>
+        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">2&ndash;3 weeks</p>
+        <p class="cad">Scoped analysis</p>
         <p class="desc">Custom analysis on a specific question, such as a treaty cascade, a peril cluster, or a counterparty network. Configured Manifold instance plus written deliverable.</p>
       </div>
       <div class="tier-card">
         <p class="tname">ENTERPRISE PILOT</p>
-        <p class="price">$150k+</p>
-        <p class="cad">3–6 months &nbsp;·&nbsp; embedded</p>
+        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">12 weeks</p>
+        <p class="cad">Embedded engagement</p>
         <p class="desc">Insurance-domain configuration of Manifold against AON's data shape. On-demand engineering, dedicated solutions support, contractual SLA.</p>
       </div>
       <div class="tier-card">
         <p class="tname">PLATFORM LICENSE</p>
-        <p class="price">From $48k</p>
-        <p class="cad">Per seat / year</p>
+        <p class="price" style="font-size: 13pt; letter-spacing: 0.04em;">Annual</p>
+        <p class="cad">Continuous access</p>
         <p class="desc">Continuous Manifold access for an AON team. Multi-domain seats with cross-asset bridges, live feeds, and the full estimator suite.</p>
       </div>
     </div>
@@ -848,25 +924,21 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- SLIDE 10 — NEXT STEPS / CTA -->
+  <!-- SLIDE 11 — CONTINUING THE CONVERSATION -->
   <!-- ═══════════════════════════════════════════════ -->
   <section class="slide">
     <div class="slide-strip">
       <span><span class="brand">APEX ANALYTICA</span> · MANIFOLD FOR AON</span>
-      <span class="pageno">10 / 10</span>
+      <span class="pageno">11 / 11</span>
     </div>
 
-    <div class="slide-eyebrow">What We're Asking</div>
-    <h2 class="slide-title">A walkthrough, then one of three follow-on paths.</h2>
+    <div class="slide-eyebrow">Continuing the Conversation</div>
+    <h2 class="slide-title">If any of this is useful, we'd welcome a longer conversation.</h2>
     <div class="slide-rule"></div>
 
     <div class="cta-box">
-      <p class="ask">Pick a use case AON cares about and we'll bring Manifold live on a 30-minute call, configured for that use case, and walk through one cascade scenario relevant to your book or capital-advisory work.</p>
-      <ul>
-        <li><strong>Path 1. <span class="apex-omega">Ω</span>F Mini-Audit on a sanitised AON dataset.</strong> $1,500 flat. Concrete output in 5 business days.</li>
-        <li><strong>Path 2. Scoped Causal Risk Assessment.</strong> Pick one question; we deliver a written analysis in 2&ndash;3 weeks at $7.5&ndash;15k.</li>
-        <li><strong>Path 3. Enterprise Pilot.</strong> 12-week embedded engagement, configured Manifold instance, $150k+. The path forward if the walkthrough earns it.</li>
-      </ul>
+      <p class="ask">If a use case in this deck maps to something your team is actually working on, we'd be glad to set aside 30 minutes to dig in. We can configure Manifold ahead of the call against a domain you care about, so the conversation has something concrete to point at rather than slideware.</p>
+      <p style="font-family: var(--apex-font-body); font-size: 12pt; line-height: 1.45; color: var(--apex-ink-soft); margin: 0.18in 0 0.18in 0;">If the deck raised more questions than answers, that's also a good outcome. Send them over and we'll respond in writing before any meeting if that's easier.</p>
       <div class="contact">junaid@apexanalytica.co &nbsp;·&nbsp; apexanalytica.co</div>
     </div>
 

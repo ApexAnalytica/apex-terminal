@@ -731,6 +731,19 @@ A `draggedRef` tracks whether motion fired between drag start/stop.
 
 **Verification.** `tsc --noEmit` clean (modulo pre-existing `onboarding-metrics.test.ts` strictness errors inherited from main); lint clean; vitest 833/833 pass.
 
+### 2026-05-07 — Shipped: maplibre-gl v5 upgrade — globe projection now actually works
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"the 3D map doesn't seem to be working, still 2D"* — the `projection: { type: "globe" }` field I added in PR #281 was being silently ignored. Globe projection landed in **maplibre-gl v5.0**; we were on `^4.7.1`. v4 doesn't recognise the `projection` style field, so the globe never rendered.
+
+**What shipped.** `maplibre-gl: ^4.7.1 → ^5.24.0`. `@vis.gl/react-maplibre@8.1.0`'s peer-dep range is `>=4.0.0`, so the upgrade is in-bounds; no companion bump needed. The existing `mapStyle.projection = { type: "globe" }` is now honoured, the `ProjectionSpecification` type is exported from the v5 style spec (typecheck stayed clean), and the v5 globe-projection runtime kicks in at low zoom and transitions to mercator as the user pinches in.
+
+**Files.**
+- `package.json`, `package-lock.json` — maplibre-gl version bump.
+
+**Verification.** `tsc --noEmit` clean (same pre-existing onboarding-metrics test errors); vitest 833/833 pass.
+
 ---
 
 ## How a fresh session resumes

@@ -13,6 +13,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.76",
+    "@ai-sdk/google": "^3.0.70",
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/generative-ai": "^0.24.1",
     "@mozilla/readability": "^0.6.0",
@@ -25,10 +27,12 @@
     "@supabase/supabase-js": "^2.103.0",
     "@vercel/speed-insights": "^2.0.0",
     "@vis.gl/react-maplibre": "^8.1.0",
+    "ai": "^6.0.176",
     "d3-force-3d": "^3.0.6",
     "framer-motion": "^12.34.3",
     "maplibre-gl": "^5.24.0",
     "next": "16.1.6",
+    "ollama-ai-provider-v2": "^3.5.0",
     "pdfjs-dist": "^5.5.207",
     "react": "19.2.3",
     "react-dom": "19.2.3",

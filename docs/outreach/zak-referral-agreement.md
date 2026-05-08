@@ -1,6 +1,6 @@
 # Referral Partner Agreement — Zak / Apex Analytica
 
-> **Status:** Final values locked 2026-05-08 — effective date 2026-05-11, Apex Analytica, Inc. (Maryland corporation, 6001 Bricker Rd., Dayton, MD), governing law Maryland, all placeholders filled, Pareto Technologies references removed at user direction. Brand-styled HTML at `docs/referral-agreement-zak.html`; rendered PDF at `docs/pdf/Apex-Referral-Agreement-Zak.pdf` is the artifact to share with Zak. Markdown below is the readable / searchable version of the same content. Have qualified legal counsel review before either party signs — I'm not a lawyer and this is a working draft, not legally vetted advice.
+> **Status:** Final values locked 2026-05-08 — effective date 2026-05-11, Apex Analytica, Inc. (Maryland corporation, 6001 Bricker Rd., Dayton, MD 21036), governing law Maryland, all placeholders filled, Pareto Technologies references removed at user direction. Brand-styled HTML at `docs/referral-agreement-zak.html`; rendered PDF at `docs/pdf/Apex-Referral-Agreement-Zak.pdf` is the artifact to share with Zak. Markdown below is the readable / searchable version of the same content. Have qualified legal counsel review before either party signs — I'm not a lawyer and this is a working draft, not legally vetted advice.
 >
 > **Suggested cover email (paste-ready, sits on top of the attached PDF rendering of this agreement):**
 >
@@ -20,7 +20,7 @@
 
 **This Referral Partner Agreement** (the "**Agreement**") is entered into as of **May 11, 2026** (the "**Effective Date**") by and between:
 
-**APEX ANALYTICA, INC.** ("**Apex**"), a Maryland corporation with principal place of business at **6001 Bricker Rd., Dayton, Maryland**, represented by **Junaid Ghauri**, Chief Executive Officer;
+**APEX ANALYTICA, INC.** ("**Apex**"), a Maryland corporation with principal place of business at **6001 Bricker Rd., Dayton, Maryland 21036**, represented by **Junaid Ghauri**, Chief Executive Officer;
 
 and
 

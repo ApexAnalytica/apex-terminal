@@ -25,12 +25,19 @@ import type {
   CausalNode,
   OmegaLiveAdjustments,
 } from "@/lib/types";
+import { detectCommunities } from "@/lib/community-detection";
 
 const J_BUMP_PER_PROGRAM = 0.4; // each active OFAC program lifts J by 0.4
 const J_BUMP_CAP = 4.0; // ceiling on the total J adjustment from live sanctions
 const C_HIGH_OUT_DEGREE_THRESHOLD = 5; // out-degree above this is "amplifier-shaped"
 const C_BUMP_PER_DEGREE = 0.3; // each out-edge above the threshold lifts C by 0.3
 const C_BUMP_CAP = 3.0;
+// Cross-community amplifier — a hub bridging communities is a stronger
+// cascade signal than a hub serving its own community. Each cross-
+// community out-edge adds 0.4; capped at +2.0 amplifier alone; total
+// (base + amplifier) still capped at C_BUMP_CAP = 3.0.
+const C_CROSS_COMMUNITY_BUMP_PER_EDGE = 0.4;
+const C_CROSS_COMMUNITY_BUMP_CAP = 2.0;
 
 /**
  * Compute the J-pillar adjustment for a node from its live `liveData[]`
@@ -54,23 +61,35 @@ export function computeJurisdictionalHazardDelta(
 
 /**
  * Compute the C-pillar adjustment for a node from its position in the
- * graph (out-degree). High out-degree on the live graph means this node
- * propagates broadly downstream — adds to cascade load.
+ * graph. Two components:
+ *
+ *   1. Base bump from raw out-degree (high out-degree → cascade-prone).
+ *   2. Cross-community amplifier from the share of out-edges that
+ *      cross community boundaries (a hub bridging communities is more
+ *      cascade-prone than a hub serving its own community).
+ *
+ * Communities are computed via Louvain phase 1 on the live graph
+ * topology (`detectCommunities`). The base bump uses the existing
+ * out-degree threshold; the amplifier adds 0.4 per cross-community
+ * out-edge, capped at +2.0. The total (base + amplifier) is still
+ * capped at C_BUMP_CAP = 3.0.
  */
 export function computeCascadeLoadDelta(
   node: CausalNode,
   graph: CausalGraph,
 ): { delta: number; source: string } {
-  const outDegree = graph.edges.filter((e) => e.source === node.id).length;
-  if (outDegree <= C_HIGH_OUT_DEGREE_THRESHOLD) {
-    return { delta: 0, source: "" };
+  let outDegree = 0;
+  let crossCommunityOut = 0;
+  const membership = detectCommunities(graph.nodes, graph.edges).membership;
+  const ownCommunity = membership.get(node.id);
+  for (const e of graph.edges) {
+    if (e.source !== node.id) continue;
+    outDegree += 1;
+    if (ownCommunity !== undefined && membership.get(e.target) !== ownCommunity) {
+      crossCommunityOut += 1;
+    }
   }
-  const excess = outDegree - C_HIGH_OUT_DEGREE_THRESHOLD;
-  const delta = Math.min(C_BUMP_CAP, excess * C_BUMP_PER_DEGREE);
-  return {
-    delta: round1(delta),
-    source: `+${round1(delta)} from out-degree ${outDegree} (${excess} above structural median)`,
-  };
+  return composeCDelta(outDegree, crossCommunityOut);
 }
 
 /**
@@ -88,12 +107,32 @@ export function applyOmegaLiveAdjustments(graph: CausalGraph): CausalGraph {
   // and the user reports the page freezing right after LAUNCH WORKSPACE.
   // Building a Map<sourceId, count> first drops it to O(N + E).
   const outDegreeBy = new Map<string, number>();
+  const crossCommunityOutBy = new Map<string, number>();
+  const membership =
+    graph.edges.length > 0
+      ? detectCommunities(graph.nodes, graph.edges).membership
+      : new Map<string, string>();
   for (const e of graph.edges) {
     outDegreeBy.set(e.source, (outDegreeBy.get(e.source) ?? 0) + 1);
+    const sourceComm = membership.get(e.source);
+    const targetComm = membership.get(e.target);
+    if (
+      sourceComm !== undefined &&
+      targetComm !== undefined &&
+      sourceComm !== targetComm
+    ) {
+      crossCommunityOutBy.set(
+        e.source,
+        (crossCommunityOutBy.get(e.source) ?? 0) + 1,
+      );
+    }
   }
   const nodes = graph.nodes.map((n) => {
     const j = computeJurisdictionalHazardDelta(n);
-    const c = computeCascadeLoadDeltaFromOutDegree(n, outDegreeBy.get(n.id) ?? 0);
+    const c = composeCDelta(
+      outDegreeBy.get(n.id) ?? 0,
+      crossCommunityOutBy.get(n.id) ?? 0,
+    );
     if (j.delta === 0 && c.delta === 0) {
       // Strip any stale adjustment so a node that no longer carries live
       // signals doesn't keep showing yesterday's overlay.
@@ -119,23 +158,38 @@ export function applyOmegaLiveAdjustments(graph: CausalGraph): CausalGraph {
 }
 
 /**
- * Internal variant of `computeCascadeLoadDelta` that takes a pre-computed
- * out-degree instead of scanning all edges. The exported variant
- * (which keeps the original signature for back-compat with tests /
- * standalone callers) delegates here.
+ * Compose the cascade-load delta from pre-computed out-degree and
+ * cross-community out-degree counts. Internal variant of
+ * `computeCascadeLoadDelta` shared between the per-node and graph-walk
+ * paths so the formula and source-string format stay consistent.
+ *
+ * Returns delta = 0 when both signals are below their respective
+ * thresholds. Source string attributes the contributing components.
  */
-function computeCascadeLoadDeltaFromOutDegree(
-  _node: CausalNode,
+function composeCDelta(
   outDegree: number,
+  crossCommunityOut: number,
 ): { delta: number; source: string } {
-  if (outDegree <= C_HIGH_OUT_DEGREE_THRESHOLD) {
-    return { delta: 0, source: "" };
+  const excess = Math.max(0, outDegree - C_HIGH_OUT_DEGREE_THRESHOLD);
+  const baseBump = Math.min(C_BUMP_CAP, excess * C_BUMP_PER_DEGREE);
+  const amplifier = Math.min(
+    C_CROSS_COMMUNITY_BUMP_CAP,
+    crossCommunityOut * C_CROSS_COMMUNITY_BUMP_PER_EDGE,
+  );
+  const total = Math.min(C_BUMP_CAP, baseBump + amplifier);
+  if (total === 0) return { delta: 0, source: "" };
+  const parts: string[] = [];
+  if (baseBump > 0) {
+    parts.push(`out-degree ${outDegree} (${excess} above structural median)`);
   }
-  const excess = outDegree - C_HIGH_OUT_DEGREE_THRESHOLD;
-  const delta = Math.min(C_BUMP_CAP, excess * C_BUMP_PER_DEGREE);
+  if (amplifier > 0) {
+    parts.push(
+      `${crossCommunityOut} cross-community out-edge${crossCommunityOut === 1 ? "" : "s"}`,
+    );
+  }
   return {
-    delta: round1(delta),
-    source: `+${round1(delta)} from out-degree ${outDegree} (${excess} above structural median)`,
+    delta: round1(total),
+    source: `+${round1(total)} from ${parts.join(", ")}`,
   };
 }
 

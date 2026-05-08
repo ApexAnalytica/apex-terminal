@@ -93,6 +93,109 @@ describe("computeCascadeLoadDelta — Spirtes-metrics → C wire", () => {
   });
 });
 
+describe("computeCascadeLoadDelta — cross-community amplifier", () => {
+  // A hub bridging communities is more cascade-prone than a hub serving
+  // its own community. The amplifier adds 0.4 per cross-community
+  // out-edge on top of the base out-degree bump.
+  //
+  // Construct two dense triangles connected only by a bridge from one
+  // triangle's vertex to each vertex of the other. Louvain should
+  // separate them into two communities; the bridging vertex's out-edges
+  // to the other triangle all count as cross-community.
+
+  it("adds an amplifier when out-edges cross community boundaries", () => {
+    const nodes = ["a1", "a2", "a3", "b1", "b2", "b3"].map((id) =>
+      makeNode({ id }),
+    );
+    const edges = [
+      // Triangle A (a1-a2-a3 densely connected)
+      makeEdge({ id: "a12", source: "a1", target: "a2" }),
+      makeEdge({ id: "a23", source: "a2", target: "a3" }),
+      makeEdge({ id: "a31", source: "a3", target: "a1" }),
+      // Triangle B (b1-b2-b3 densely connected)
+      makeEdge({ id: "b12", source: "b1", target: "b2" }),
+      makeEdge({ id: "b23", source: "b2", target: "b3" }),
+      makeEdge({ id: "b31", source: "b3", target: "b1" }),
+      // Bridges from a1 to all three nodes in triangle B (cross-community)
+      makeEdge({ id: "br1", source: "a1", target: "b1" }),
+      makeEdge({ id: "br2", source: "a1", target: "b2" }),
+      makeEdge({ id: "br3", source: "a1", target: "b3" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const a1 = graph.nodes.find((n) => n.id === "a1")!;
+    const { delta, source } = computeCascadeLoadDelta(a1, graph);
+    // a1 has out-degree 5: 2 to its own community (a2, a3 — wait, a3-a1 is
+    // inbound to a1), 3 cross-community (b1, b2, b3). With out-degree 5
+    // exactly at threshold (5), base is 0, but amplifier kicks in:
+    // 3 cross-community × 0.4 = 1.2.
+    expect(delta).toBeCloseTo(1.2, 1);
+    expect(source).toContain("cross-community");
+  });
+
+  it("source string mentions both base and amplifier when both fire", () => {
+    // Build a node with high out-degree (triggers base) where most
+    // targets are in different communities (triggers amplifier too).
+    const nodes = [
+      makeNode({ id: "hub" }),
+      ...Array.from({ length: 6 }, (_, i) => makeNode({ id: `t${i}` })),
+      // Add a peer in the hub's community so hub isn't a singleton
+      makeNode({ id: "peer" }),
+    ];
+    const edges = [
+      // Hub connects densely with peer (same community)
+      makeEdge({ id: "hp", source: "hub", target: "peer" }),
+      makeEdge({ id: "ph", source: "peer", target: "hub" }),
+      // Each ti is in its own community (no inter-ti edges)
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeEdge({ id: `e${i}`, source: "hub", target: `t${i}` }),
+      ),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const hub = graph.nodes.find((n) => n.id === "hub")!;
+    const { delta, source } = computeCascadeLoadDelta(hub, graph);
+    expect(delta).toBeGreaterThan(0);
+    expect(source).toMatch(/out-degree|cross-community/);
+  });
+
+  it("amplifier is capped at +2.0 alone (and total still capped at 3.0)", () => {
+    // 1 hub + many leaves, each leaf is its own community (no
+    // inter-leaf edges). Hub bridges to all of them. Cross-community
+    // out-degree is high; amplifier alone should cap.
+    const nodes = [
+      makeNode({ id: "hub" }),
+      makeNode({ id: "peer" }),
+      ...Array.from({ length: 20 }, (_, i) => makeNode({ id: `t${i}` })),
+    ];
+    const edges = [
+      // Hub-peer pair forms one community
+      makeEdge({ id: "hp", source: "hub", target: "peer" }),
+      makeEdge({ id: "ph", source: "peer", target: "hub" }),
+      // 20 cross-community out-edges from hub
+      ...Array.from({ length: 20 }, (_, i) =>
+        makeEdge({ id: `e${i}`, source: "hub", target: `t${i}` }),
+      ),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const hub = graph.nodes.find((n) => n.id === "hub")!;
+    const { delta } = computeCascadeLoadDelta(hub, graph);
+    // Total (base + amplifier) should be at the global cap of 3.0.
+    expect(delta).toBe(3.0);
+  });
+
+  it("returns zero when out-degree is below threshold AND no cross-community edges", () => {
+    // Small graph, all in same community, sub-threshold out-degree.
+    const nodes = ["a", "b", "c"].map((id) => makeNode({ id }));
+    const edges = [
+      makeEdge({ id: "ab", source: "a", target: "b" }),
+      makeEdge({ id: "bc", source: "b", target: "c" }),
+    ];
+    const graph = makeGraph(nodes, edges);
+    const a = graph.nodes.find((n) => n.id === "a")!;
+    const { delta } = computeCascadeLoadDelta(a, graph);
+    expect(delta).toBe(0);
+  });
+});
+
 describe("applyOmegaLiveAdjustments — graph-level walk", () => {
   it("attaches liveAdjustments only to nodes with non-zero deltas", () => {
     const graph = makeGraph(

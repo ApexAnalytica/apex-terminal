@@ -25,6 +25,14 @@ interface DAGEdge3DProps {
   onAblationClick?: () => void;
   onEdgeClick?: () => void;
   epochState?: EdgeEpochState;
+  /**
+   * Edge is in the χ★ bridge set (Tarjan strict bridges ∪ top-k BES).
+   * Renders a wider violet halo line behind the main edge so the
+   * graph's load-bearing skeleton is visible at a glance. Computed
+   * once per graph at the parent level — see CausalDAG3D's chiStarSet
+   * useMemo.
+   */
+  isChiStar?: boolean;
 }
 
 /**
@@ -63,6 +71,7 @@ function DAGEdge3DInner({
   onAblationClick,
   onEdgeClick,
   epochState,
+  isChiStar = false,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
   const particleRef = useRef<THREE.Mesh>(null);
@@ -188,6 +197,20 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
+      {/* χ★ halo — rendered BEFORE the main edge so the latter overlays
+          on top. Subtle wider violet line in the AI Safety / chi-star
+          color (#7B68EE). Skipped on severed/ablated edges since their
+          own visual treatments take priority. */}
+      {isChiStar && !isSevered && !isAblated && (
+        <Line
+          points={curvePoints}
+          color="#7B68EE"
+          lineWidth={Math.max(2.5, lineWidth + 2.5)}
+          transparent
+          opacity={0.35}
+        />
+      )}
+
       {/* Edge line — using drei Line for reliable rendering:
           directed = solid cyan
           temporal = solid amber (+ animated particle)
@@ -286,6 +309,7 @@ function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
   if (prev.scissorsMode !== next.scissorsMode) return false;
   if (prev.isAblated !== next.isAblated) return false;
   if (prev.ablationMode !== next.ablationMode) return false;
+  if (prev.isChiStar !== next.isChiStar) return false;
   // epochState — only `propagationSignal` is read (drives shouldAnimate).
   const pe = prev.epochState;
   const ne = next.epochState;

@@ -12,6 +12,8 @@ import { submitAccessRequest, type AccessResult } from "./actions";
 const SOURCE_LABELS: Record<string, string> = {
   "founding-10": "Founding 10 (apex.founding)",
   "mini-audit": "ΩF Mini-Audit (apex.audit)",
+  "mini-audit-lite": "ΩF Mini-Audit · LITE — $1,500 (apex.audit)",
+  "mini-audit-full": "ΩF Mini-Audit · FULL — $5,000 (apex.audit)",
 };
 
 const DOMAINS = [

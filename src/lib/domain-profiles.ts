@@ -19,8 +19,10 @@ export type EstimatorId =
   | "transfer-entropy"
   | "moran"
   | "takens"
-  // Distributionally-robust risk estimators (from-spec, Ghauri 2025)
+  // Distributionally-robust risk + topology-aware criticality
+  // (from-spec, Ghauri 2025)
   | "cvar-w1"
+  | "chi-star"
   // Clinical / trial estimators (Python reference canonical)
   | "hte-meta"
   | "cox-ph"
@@ -388,7 +390,7 @@ export const AI_SAFETY_PROFILE: DomainProfile = {
   pillarLabels: AI_SAFETY_PILLARS,
   pillarDetails: AI_SAFETY_PILLAR_DETAILS,
   compositeMethodology: AI_SAFETY_METHODOLOGY,
-  // Five tabs:
+  // Six tabs:
   //   csd / ph / lppls / bocpd — graph-Ω-trajectory estimators inherited
   //     from the geopolitical fallback. Sharp transitions in the GAT's
   //     ΩF trajectory under catastrophic-forgetting events are exactly
@@ -397,9 +399,14 @@ export const AI_SAFETY_PROFILE: DomainProfile = {
   //     Ch. 4 §3 Ω-Robustness). Renders as "awaiting-data" until a loss
   //     sample (per-attack-class observed harm, per-incident cascade
   //     depth, etc.) is wired into the store.
+  //   chi-star — topology-aware criticality artefact (Ghauri 2025
+  //     Ch. 5–8 — IDS substrate + topology-aware replay). Computes
+  //     strict bridges (Tarjan) ∪ top-k Bridge-Edge Strength (Brandes)
+  //     on the live graph. Ready out of the box — operates on the
+  //     graph topology directly.
   // FR + BES temporal monitoring arrive in Phase 3 once the Pearl
   // session wires them up.
-  criticalityEstimators: ["csd", "ph", "lppls", "bocpd", "cvar-w1"],
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd", "cvar-w1", "chi-star"],
 };
 
 // ─── Resolution ─────────────────────────────────────────────────────

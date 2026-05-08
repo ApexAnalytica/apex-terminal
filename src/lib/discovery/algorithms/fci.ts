@@ -24,7 +24,7 @@
 //      that the marks at the X-side and Y-side stay as circles for now.
 //      This is the FCI variant of the standard collider rule.
 //
-//   3. Zhang's R1 + R2 + R3 orientation rules (fixed-point pass).
+//   3. Zhang's R1 + R2 + R3 + R4 orientation rules (fixed-point pass).
 //      R1 propagates an arrowhead through Y when X *→ Y o-* Z and
 //      X, Z are not adjacent (Y can't be a collider, orient Y → Z).
 //      R2 propagates an arrowhead at Z through a definite directed
@@ -32,6 +32,11 @@
 //      R3 is the discriminating "kite" — for the pattern A *→ B ←* C
 //      with a fourth node D adjacent to A, B, C with appropriate
 //      circles, orient D *→ B.
+//      R4 is the discriminating-path rule — for W *→ V ←* B - C with
+//      V → C and W not adjacent to C, orient B-C as B → C if B is in
+//      sepset(W, C), else as bidirected (latent confounder candidate).
+//      Implemented for the length-3 (4-node) path only; longer
+//      discriminating paths are deferred.
 //
 //   4. PAG output. Each surviving edge carries `endpointMarks` with
 //      `circle` (uncertain), `arrow` (arrowhead), or `tail` (ancestor).
@@ -40,10 +45,10 @@
 //
 // What this DOES NOT do (vs. the full Spirtes implementation):
 //
-//   - No FCI orientation rule R4 (Zhang 2008). R4 handles
-//     discriminating paths of length > 2 and is a small but bounded
-//     follow-up. Without R4, some edges that need a long
-//     discriminating-path argument can remain `circle / circle`.
+//   - R4 is implemented only for length-3 discriminating paths (the
+//     4-node case W → V ← B - C with V → C). Longer chains of
+//     colliders that are all parents of C are deferred — they require
+//     a path-search instead of fixed-arity neighborhood iteration.
 //
 //   - No nonparametric CI tests. Linear-Gaussian partial correlation
 //     only (same baseline as PCMCI in this codebase). For step changes
@@ -270,7 +275,7 @@ function runSkeleton(
   return { adj, sepset, pairKey, marginalR };
 }
 
-// ─── Orientation phase (v-structures + Zhang R1 + R2 + R3) ──────────
+// ─── Orientation phase (v-structures + Zhang R1 + R2 + R3 + R4) ─────
 
 export type Mark = "circle" | "arrow" | "tail";
 
@@ -478,8 +483,86 @@ export function applyR3(
 }
 
 /**
+ * Zhang's R4 — discriminating-path rule (length-3 / 4-node MV variant).
+ *
+ * For the path W *→ V ←* B − C with V → C (V is a parent of C and a
+ * collider on the path) and W not adjacent to C:
+ *   - if B is in sepset(W, C), orient B-C as B → C (B is on the path
+ *     between W and C without being a collider; W is separable from C
+ *     by conditioning on B)
+ *   - else, orient B-C as bidirected (arrows at both B and C — latent
+ *     confounder candidate; B is a collider on the W-C path)
+ *
+ * This implements only the length-3 (4-node) discriminating path —
+ * the simplest case of R4. Longer paths (where V is itself reached via
+ * a chain of colliders that are all parents of C) are deferred. Returns
+ * true iff any mark changed.
+ */
+export function applyR4(
+  edges: Map<string, OrientedEdge>,
+  adj: Set<number>[],
+  sepset: Map<string, number[]>,
+): boolean {
+  let changed = false;
+  const n = adj.length;
+  for (let b = 0; b < n; b++) {
+    for (const c of adj[b]) {
+      // Look for V where V → C (tail at V, arrow at C on V-C edge)
+      // and V *→ B's mark at V is arrow (so V is a collider on the
+      // path W-V-B from B's side).
+      for (const v of adj[c]) {
+        if (v === b) continue;
+        if (!adj[v].has(b)) continue;
+        const evc = edges.get(pairKey(v, c));
+        if (!evc) continue;
+        if (markAt(evc, v) !== "tail") continue; // need V → C tail at V
+        if (markAt(evc, c) !== "arrow") continue; // arrow at C
+        const evb = edges.get(pairKey(v, b));
+        if (!evb) continue;
+        if (markAt(evb, v) !== "arrow") continue; // B *→ V (collider at V on W-V-B path)
+        // Look for W *→ V with W not adjacent to C and W ≠ B, C.
+        for (const w of adj[v]) {
+          if (w === b || w === c) continue;
+          if (adj[w].has(c)) continue; // need W not adjacent to C
+          const ewv = edges.get(pairKey(w, v));
+          if (!ewv) continue;
+          if (markAt(ewv, v) !== "arrow") continue; // W *→ V
+          // Discriminating path found: W *→ V ←* B with V → C, B-C adjacent.
+          const ebc = edges.get(pairKey(b, c));
+          if (!ebc) continue;
+          const sep = sepset.get(pairKey(w, c));
+          const bInSep = !!sep && sep.includes(b);
+          if (bInSep) {
+            // Orient B-C as B → C.
+            if (markAt(ebc, b) === "circle") {
+              setMarkAt(ebc, b, "tail");
+              changed = true;
+            }
+            if (markAt(ebc, c) === "circle") {
+              setMarkAt(ebc, c, "arrow");
+              changed = true;
+            }
+          } else {
+            // Orient B-C as bidirected (latent confounder candidate).
+            if (markAt(ebc, b) !== "arrow") {
+              setMarkAt(ebc, b, "arrow");
+              changed = true;
+            }
+            if (markAt(ebc, c) !== "arrow") {
+              setMarkAt(ebc, c, "arrow");
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+/**
  * Run the full orientation phase: v-structure rule, then Zhang's R1,
- * R2, R3 as a fixed-point pass. Exported alongside the individual
+ * R2, R3, R4 as a fixed-point pass. Exported alongside the individual
  * rule helpers so tests can verify each rule in isolation against a
  * constructed `OrientedEdge` map.
  */
@@ -496,6 +579,7 @@ export function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
     if (applyR1(edges, skeleton.adj)) changed = true;
     if (applyR2(edges, skeleton.adj)) changed = true;
     if (applyR3(edges, skeleton.adj)) changed = true;
+    if (applyR4(edges, skeleton.adj, skeleton.sepset)) changed = true;
   }
   return [...edges.values()];
 }
@@ -521,9 +605,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.3.0",
+  version: "0.4.0",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 orientation rules. Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules (R4 length-3 / 4-node MV). Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -555,7 +639,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3, FCI v0.3)`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.4)`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

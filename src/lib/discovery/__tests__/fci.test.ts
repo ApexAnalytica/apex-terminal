@@ -7,6 +7,7 @@ import {
   applyR1,
   applyR2,
   applyR3,
+  applyR4,
   type SkeletonResult,
   type OrientedEdge,
 } from "../algorithms/fci";
@@ -516,6 +517,115 @@ describe("applyR3 — orients D *→ B via the discriminating kite", () => {
       [3, 1, "circle", "arrow"], // already arrow at B — no work for R3
     ]);
     const changed = applyR3(edges, adj);
+    expect(changed).toBe(false);
+  });
+});
+
+describe("applyR4 — discriminating-path rule (length-3 / 4-node MV)", () => {
+  it("orients B-C as B → C when B is in sepset(W, C)", () => {
+    // Discriminating path: W(0) *→ V(1) ←* B(2) - C(3), with V → C and
+    // W not adjacent to C, B in sepset(W, C). Per R4: orient B-C as B → C.
+    const adj = buildAdj(
+      [
+        [0, 1], // W-V
+        [1, 2], // V-B
+        [1, 3], // V-C
+        [2, 3], // B-C
+      ],
+      4,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:3", [2]); // sepset(W, C) = {B}
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // W *→ V (arrow at V)
+      [1, 2, "arrow", "arrow"], // V ←* B (arrow at V; B-side also arrow simulates the "*" wildcard)
+      [1, 3, "tail", "arrow"], // V → C (tail at V, arrow at C)
+      [2, 3, "circle", "circle"], // B-C unoriented
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(true);
+    const bc = edges.get("2:3")!;
+    // B-C oriented as B → C: tail at B (idx 2), arrow at C (idx 3).
+    const bMark = bc.a === 2 ? bc.markA : bc.markB;
+    const cMark = bc.a === 3 ? bc.markA : bc.markB;
+    expect(bMark).toBe("tail");
+    expect(cMark).toBe("arrow");
+  });
+
+  it("orients B-C as bidirected when B is NOT in sepset(W, C)", () => {
+    // Same discriminating path; sepset(W, C) does NOT include B
+    // (e.g. sepset = {V}). Per R4: orient B-C as bidirected (latent
+    // confounder).
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [1, 3],
+        [2, 3],
+      ],
+      4,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:3", [1]); // sepset = {V}, not including B
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [1, 3, "tail", "arrow"],
+      [2, 3, "circle", "circle"],
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(true);
+    const bc = edges.get("2:3")!;
+    expect(bc.markA).toBe("arrow"); // bidirected: arrow at B-side
+    expect(bc.markB).toBe("arrow"); // bidirected: arrow at C-side
+  });
+
+  it("does not fire when V is not a parent of C (V-C not directed V → C)", () => {
+    // Same skeleton, but V-C has circle at V instead of tail — V is
+    // not a definite parent of C, so the discriminating-path
+    // precondition fails.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [1, 3],
+        [2, 3],
+      ],
+      4,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:3", [2]);
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [1, 3, "circle", "arrow"], // V-C has circle at V (not directed V → C)
+      [2, 3, "circle", "circle"],
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(false);
+  });
+
+  it("does not fire when W is adjacent to C (path is shielded)", () => {
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [1, 3],
+        [2, 3],
+        [0, 3], // W-C — breaks the precondition
+      ],
+      4,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:3", [2]);
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [1, 3, "tail", "arrow"],
+      [2, 3, "circle", "circle"],
+      [0, 3, "circle", "circle"],
+    ]);
+    const changed = applyR4(edges, adj, sepset);
     expect(changed).toBe(false);
   });
 });

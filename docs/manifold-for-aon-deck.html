@@ -559,14 +559,14 @@
     </div>
 
     <div class="slide-eyebrow">The Gap</div>
-    <h2 class="slide-title">Why current CAT and risk tools fall short under regime change.</h2>
+    <h2 class="slide-title">Where the current toolset stops.</h2>
     <div class="slide-rule"></div>
 
     <ul>
-      <li><strong>CAT models are statistical, fitted on historical event sets.</strong> <span class="desc">They break when climate non-stationarity invalidates the i.i.d. assumption underpinning every fit.</span></li>
-      <li><strong>Cross-peril correlations are inferred from data-thin substrates.</strong> <span class="desc">They degrade exactly when the system is stressed — when coupling matters most, the calibration fails first.</span></li>
-      <li><strong>Sanctions and treaty cascade are not represented as graph topology.</strong> <span class="desc">Today they're shoehorned into scenario libraries — additive bumps to an exposure number that doesn't know the structure exists.</span></li>
-      <li><strong>VaR and stress tests answer <em>how big.</em> They don't answer <em>through which channels.</em></strong> <span class="desc">When a primary insurer fails, every downstream treaty doesn't fail at the same severity. The structure determines the cascade — and the structure isn't in the model.</span></li>
+      <li><strong>CAT models fit historical event sets.</strong> <span class="desc">When the climate regime changes, the fit breaks. The model can describe the old regime, not the new one.</span></li>
+      <li><strong>Cross-peril correlation is inferred from thin data.</strong> <span class="desc">The calibration fails exactly under stress, when coupling matters most.</span></li>
+      <li><strong>Sanctions and treaty cascade live in scenario libraries.</strong> <span class="desc">They become additive bumps to an exposure number that doesn't know the underlying structure exists.</span></li>
+      <li><strong>Stress tests give magnitude, not propagation.</strong> <span class="desc">When a primary fails, every treaty downstream doesn't fail at the same severity. The structure decides which links carry the cascade, and the structure isn't in the model.</span></li>
     </ul>
 
     <div class="slide-foot">
@@ -585,8 +585,8 @@
     </div>
 
     <div class="hero-statement">
-      <p class="lead">Stress tests answer <span class="em">how big</span> a shock could be.<br/>Causal graphs answer <span class="em">through which channels</span> it propagates.</p>
-      <p class="sub">Both are necessary. Most desks have only the first. Manifold is the structural counterpart that maps the network the rest of the stack assumes away — built by a team that comes from inside the financial-modelling discipline, not adjacent to it.</p>
+      <p class="lead">Stress tests show <span class="em">how big</span>.<br/>Causal graphs show <span class="em">how it propagates</span>.</p>
+      <p class="sub">Most risk frameworks have the first and skip the second. Manifold builds the second on top of the structure your existing models assume away. The team comes from inside financial modelling, not adjacent to it: ex-HSBC AI, reinsurance, JHU systems engineering.</p>
     </div>
 
     <div class="slide-foot">
@@ -611,19 +611,19 @@
     <div class="engine-grid">
       <div class="engine-card">
         <p class="name">SPIRTES &nbsp;·&nbsp; CAUSAL DISCOVERY</p>
-        <p class="desc">Infers causal structure from claim, exposure, and balance-sheet panels. PCMCI on lagged returns and exposure deltas surfaces the dependencies the historical fit missed.</p>
+        <p class="desc">Infers causal structure from claim, exposure, and balance-sheet panels. PCMCI on lagged returns and exposure deltas surfaces dependencies the historical fit missed.</p>
       </div>
       <div class="engine-card">
         <p class="name">TARSKI &nbsp;·&nbsp; FORMAL VERIFICATION</p>
-        <p class="desc">Verifies treaty terms, regulatory regimes, and ILS / parametric trigger structures against the inferred graph. Red-lines connections that violate stated constraints.</p>
+        <p class="desc">Verifies treaty terms, regulatory constraints, and ILS / parametric trigger structures against the inferred graph. Red-lines connections that violate the stated conditions.</p>
       </div>
       <div class="engine-card">
         <p class="name">PEARL &nbsp;·&nbsp; COUNTERFACTUAL INTERVENTION</p>
-        <p class="desc">Do-calculus on the graph. Answers &ldquo;if I cut this exposure, what does the cascade look like?&rdquo; — the question stress tests gesture at and never actually answer.</p>
+        <p class="desc">Do-calculus on the graph. Answers the question stress tests gesture at and don't resolve: if you cut this exposure, what does the cascade look like.</p>
       </div>
       <div class="engine-card">
         <p class="name">PARETO &nbsp;·&nbsp; CASCADE SIMULATION</p>
-        <p class="desc">Per-node criticality estimators (BOCPD, persistent homology, transfer entropy) plus full cascade simulation across the tower under stress.</p>
+        <p class="desc">Per-node criticality estimators (BOCPD, persistent homology, transfer entropy) and full cascade simulation across the tower under stress.</p>
       </div>
     </div>
 
@@ -643,10 +643,10 @@
     </div>
 
     <div class="slide-eyebrow">The Scoring Framework</div>
-    <h2 class="slide-title"><span class="apex-omega">Ω</span>F — five pillars, per-node fragility.</h2>
+    <h2 class="slide-title"><span class="apex-omega">Ω</span>F. Five pillars, per-node fragility.</h2>
     <div class="slide-rule"></div>
 
-    <p class="slide-lede">Every node in the graph — counterparty, peril, treaty, jurisdiction, line of business — gets a score on five orthogonal pillars. The composite <span class="apex-omega">Ω</span>F runs with bootstrap confidence intervals, so the readout shows uncertainty alongside the point estimate.</p>
+    <p class="slide-lede">Every node in the graph (counterparty, peril, treaty, jurisdiction, line of business) gets a score on five orthogonal pillars. The composite <span class="apex-omega">Ω</span>F runs with bootstrap confidence intervals, so the readout shows uncertainty alongside the point estimate.</p>
 
     <div class="pillar-grid">
       <div class="pillar-card">
@@ -696,11 +696,11 @@
     <div class="slide-rule"></div>
 
     <ul>
-      <li><strong>CAT model augmentation.</strong> <span class="desc">Surface structural correlations the statistical AIR / RMS / KCC fit missed — common-peril infrastructure dependencies, climate-driven shifts in coupling, sub-portfolio cascade depth.</span></li>
-      <li><strong>Treaty cascade analysis.</strong> <span class="desc">Pearl do-calculus answers &ldquo;what happens to the tower if a primary insurer or a key reinsurance partner fails?&rdquo; — quantified cascade with per-node fragility readouts.</span></li>
-      <li><strong>Climate non-stationarity stress tests.</strong> <span class="desc">Explicit causal model of climate-loss linkages, with regime-shift detection (BOCPD) on the time series. Defensible regulatory-disclosure narrative for TCFD / NAIC / Solvency II.</span></li>
-      <li><strong>ILS &amp; parametric trigger structuring.</strong> <span class="desc">Tarski formally verifies trigger conditions against the graph. Quantifies basis risk with structural — not statistical — causality.</span></li>
-      <li><strong>Counterparty cascade across reinsurance partners.</strong> <span class="desc"><span class="apex-omega">Ω</span>F readout per partner ranks fragility under stress; interdiction analysis quantifies the marginal benefit of hardening any single link.</span></li>
+      <li><strong>CAT model augmentation.</strong> <span class="desc">Surface the structural correlations the AIR, RMS, or KCC fit missed: common-peril infrastructure dependencies, climate-driven shifts in coupling, sub-portfolio cascade depth.</span></li>
+      <li><strong>Treaty cascade analysis.</strong> <span class="desc">If a primary insurer or a key reinsurance partner fails, what happens across the tower. Pearl do-calculus produces the quantified cascade with per-node fragility readouts.</span></li>
+      <li><strong>Climate non-stationarity stress testing.</strong> <span class="desc">Explicit causal model of climate-loss linkages with regime-shift detection on the time series. Produces a defensible disclosure narrative for TCFD, NAIC, or Solvency II.</span></li>
+      <li><strong>ILS and parametric trigger structuring.</strong> <span class="desc">Tarski formally verifies trigger conditions against the graph. Quantifies basis risk with structural causality, not statistical correlation.</span></li>
+      <li><strong>Counterparty cascade across reinsurance partners.</strong> <span class="desc"><span class="apex-omega">Ω</span>F per partner ranks fragility under stress. Interdiction analysis quantifies the marginal benefit of hardening any single link.</span></li>
     </ul>
 
     <div class="slide-foot">
@@ -710,7 +710,7 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- SLIDE 7 — VALIDATION -->
+  <!-- SLIDE 7 — WHAT A PILOT DELIVERS -->
   <!-- ═══════════════════════════════════════════════ -->
   <section class="slide">
     <div class="slide-strip">
@@ -718,27 +718,28 @@
       <span class="pageno">07 / 10</span>
     </div>
 
-    <div class="slide-eyebrow">What's Live Today</div>
-    <h2 class="slide-title">Real platform. Real data. Real validation.</h2>
+    <div class="slide-eyebrow">What a Pilot Delivers</div>
+    <h2 class="slide-title">Twelve weeks, one question, four phases.</h2>
     <div class="slide-rule"></div>
 
-    <p class="slide-lede">Manifold is deployed in production. The numbers below are from real cohort calibration, not slideware. Honest scope: the validation substrate is currently CGM and macroeconomic time-series; the insurance-domain configuration is the next deployment, scoped to AON's data shape on engagement.</p>
+    <p class="slide-lede">A pilot scopes Manifold to one question your team is currently facing: a treaty cascade, a peril correlation review, a counterparty cascade across reinsurance partners, or an ILS trigger portfolio. The engagement runs in four phases.</p>
 
-    <div class="stat-row">
-      <div class="stat-block">
-        <p class="num">0.679</p>
-        <p class="lbl">AUROC · BOCPD on D1NAMO</p>
-        <p class="desc">Bayesian online change-point detection vs. real hypoglycemia events across 9 subjects, 8,309 paired observations. Heavy miscalibration in top decile, surfaced honestly in the readout.</p>
+    <div class="engine-grid">
+      <div class="engine-card">
+        <p class="name">PHASE 1 &nbsp;·&nbsp; WEEKS 1&ndash;2</p>
+        <p class="desc"><strong>Data intake and graph reconstruction.</strong> Your team hands over the data shape. We map it to the Manifold schema and produce a first-pass causal graph. Short feedback loop with whoever knows your portfolio.</p>
       </div>
-      <div class="stat-block">
-        <p class="num">0.589</p>
-        <p class="lbl">AUROC · F sub-score calibration</p>
-        <p class="desc">CSD-fit relevance scoring on real cohort, mean bootstrap CI half-width 0.075. Empirical sanity-check on the &plusmn; band shipped to the UI.</p>
+      <div class="engine-card">
+        <p class="name">PHASE 2 &nbsp;·&nbsp; WEEKS 3&ndash;6</p>
+        <p class="desc"><strong>Per-node fragility readouts.</strong> Every node in the graph gets scored across the five <span class="apex-omega">Ω</span>F pillars, with bootstrap confidence intervals. Top-3 fragility nodes ranked, with the cascade scenario driving each ranking.</p>
       </div>
-      <div class="stat-block">
-        <p class="num">4 / 4</p>
-        <p class="lbl">Engines deployed</p>
-        <p class="desc">Spirtes, Tarski, Pearl, Pareto all live in production. Insurance-domain configuration in flight; pre-production validation against AON-shaped data is part of the proposed pilot.</p>
+      <div class="engine-card">
+        <p class="name">PHASE 3 &nbsp;·&nbsp; WEEKS 7&ndash;9</p>
+        <p class="desc"><strong>Interdiction analysis.</strong> Pearl do-calculus quantifies the effect of each candidate intervention. If you cut this exposure, harden this counterparty, restructure this treaty: how does the system-level fragility move, and by how much.</p>
+      </div>
+      <div class="engine-card">
+        <p class="name">PHASE 4 &nbsp;·&nbsp; WEEKS 10&ndash;12</p>
+        <p class="desc"><strong>Written deliverable and workshop.</strong> 40&ndash;60 page report, executive summary, and an on-site or remote walkthrough with your team. Configured Manifold instance left running for AON read-access at the end of the engagement.</p>
       </div>
     </div>
 
@@ -765,32 +766,32 @@
       <div class="team-card">
         <p class="role">CEO &amp; Principal Scientist</p>
         <p class="who">Junaid Ghauri</p>
-        <p class="bg">D.Eng., Johns Hopkins. Bayesian models, COVID-19 analytics, reinsurance risk. Ex-CTO MARK LABS, ex-GP Pareto Technologies. Authored the dissertation underpinning <span class="apex-omega">Ω</span>F.</p>
+        <p class="bg">D.Eng. Johns Hopkins. Bayesian modelling, COVID-19 analytics, reinsurance risk. Ex-CTO MARK LABS. Authored the <span class="apex-omega">Ω</span>-Robustness foundations in his dissertation.</p>
       </div>
       <div class="team-card">
         <p class="role">Head of Research</p>
         <p class="who">Georgios Korpas</p>
-        <p class="bg">Ph.D. Mathematics, Trinity College Dublin (visiting Stanford). Ex-HSBC AI / Optimization. Quantum algorithms for collateral and continuous optimization.</p>
+        <p class="bg">Ph.D. Mathematics, Trinity College Dublin (visiting Stanford). Ex-HSBC AI and optimization. Quantum algorithms for collateral and continuous optimization.</p>
       </div>
       <div class="team-card">
         <p class="role">AI Research Scientist</p>
         <p class="who">Jeremy Kulcsar</p>
-        <p class="bg">Ex-HSBC AI Research. Causality, portfolio optimization, deep learning. Author of the <span class="apex-omega">Ω</span>F pillar framework. Ecole Centrale Paris MSc CS.</p>
+        <p class="bg">Ex-HSBC AI Research. Causality, portfolio optimization, deep learning. Author of the <span class="apex-omega">Ω</span>F five-pillar scoring framework. Ecole Centrale Paris MSc CS.</p>
       </div>
       <div class="team-card">
-        <p class="role">Software / Research</p>
+        <p class="role">Software &amp; Research</p>
         <p class="who">Daniel Mastropietro</p>
-        <p class="bg">20+ years across energy, telecom, finance, government, manufacturing. RL, optimization, model interpretability. Doctoral candidate INP Toulouse, Fulbright alumnus.</p>
+        <p class="bg">20+ years across energy, telecom, finance, government, manufacturing. Reinforcement learning, optimization, model interpretability. Doctoral candidate INP Toulouse. Fulbright alumnus.</p>
       </div>
       <div class="team-card">
         <p class="role">Risk Modeling Advisor</p>
         <p class="who">Dr. Gonzalo L. Pita</p>
-        <p class="bg">Associate Research Scientist, JHU. Natural disaster risk, climate change, infrastructure vulnerability. Former Senior Consultant, World Bank.</p>
+        <p class="bg">Associate Research Scientist, JHU. Natural disaster risk, climate change, infrastructure vulnerability. Former Senior Consultant at the World Bank.</p>
       </div>
       <div class="team-card">
         <p class="role">Systems Engineering Advisor</p>
         <p class="who">Dr. Takeru Igusa</p>
-        <p class="bg">Professor, Johns Hopkins. Systems science, applied math, epidemiology, resilience. NIH and CDC funded across 25+ years of risk-modeling research.</p>
+        <p class="bg">Professor, Johns Hopkins. Systems science, applied math, epidemiology, resilience. NIH and CDC funded across 25 years of risk-modelling research.</p>
       </div>
     </div>
 
@@ -824,7 +825,7 @@
         <p class="tname">CAUSAL RISK ASSESSMENT</p>
         <p class="price">$7.5–15k</p>
         <p class="cad">2–3 weeks &nbsp;·&nbsp; scoped</p>
-        <p class="desc">Custom analysis on a specific question — a treaty cascade, a peril cluster, a counterparty network. Configured Manifold instance + written deliverable.</p>
+        <p class="desc">Custom analysis on a specific question, such as a treaty cascade, a peril cluster, or a counterparty network. Configured Manifold instance plus written deliverable.</p>
       </div>
       <div class="tier-card">
         <p class="tname">ENTERPRISE PILOT</p>
@@ -836,7 +837,7 @@
         <p class="tname">PLATFORM LICENSE</p>
         <p class="price">From $48k</p>
         <p class="cad">Per seat / year</p>
-        <p class="desc">Continuous Manifold access for an AON team — multi-domain seats with cross-asset bridges, live feeds, and the full estimator suite.</p>
+        <p class="desc">Continuous Manifold access for an AON team. Multi-domain seats with cross-asset bridges, live feeds, and the full estimator suite.</p>
       </div>
     </div>
 
@@ -856,15 +857,15 @@
     </div>
 
     <div class="slide-eyebrow">What We're Asking</div>
-    <h2 class="slide-title">A 30-minute walkthrough &mdash; and one of three follow-on paths.</h2>
+    <h2 class="slide-title">A walkthrough, then one of three follow-on paths.</h2>
     <div class="slide-rule"></div>
 
     <div class="cta-box">
-      <p class="ask">Show us a domain you care about. We'll bring Manifold live, configured for that domain, and walk through one cascade scenario relevant to AON's book or capital-advisory work.</p>
+      <p class="ask">Pick a use case AON cares about and we'll bring Manifold live on a 30-minute call, configured for that use case, and walk through one cascade scenario relevant to your book or capital-advisory work.</p>
       <ul>
-        <li><strong>Path 1 &mdash; <span class="apex-omega">Ω</span>F Mini-Audit on a sanitised AON dataset.</strong> $1,500 flat. Concrete output in 5 business days.</li>
-        <li><strong>Path 2 &mdash; Scoped Causal Risk Assessment.</strong> Pick one question; we deliver a written analysis in 2–3 weeks at $7.5–15k.</li>
-        <li><strong>Path 3 &mdash; Enterprise Pilot.</strong> 3–6 month embedded engagement, configured Manifold instance, $150k+. The path forward if the demo earns it.</li>
+        <li><strong>Path 1. <span class="apex-omega">Ω</span>F Mini-Audit on a sanitised AON dataset.</strong> $1,500 flat. Concrete output in 5 business days.</li>
+        <li><strong>Path 2. Scoped Causal Risk Assessment.</strong> Pick one question; we deliver a written analysis in 2&ndash;3 weeks at $7.5&ndash;15k.</li>
+        <li><strong>Path 3. Enterprise Pilot.</strong> 12-week embedded engagement, configured Manifold instance, $150k+. The path forward if the walkthrough earns it.</li>
       </ul>
       <div class="contact">junaid@apexanalytica.co &nbsp;·&nbsp; apexanalytica.co</div>
     </div>

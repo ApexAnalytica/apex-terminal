@@ -8,37 +8,40 @@ import { OFFERS, offerCheckoutHref, isPlaceholderUrl } from "@/lib/site";
 export const metadata: Metadata = {
   title: "ΩF Mini-Audit · Apex Analytica",
   description:
-    "$1,500 flat. Five-day causal-fragility readout on your data. No platform commitment.",
+    "From $1,500. Causal-fragility readout on your data. LITE 3-day automated, FULL 5-day hand-delivered. No platform commitment.",
 };
 
 /**
  * /audit — landing page for the productized ΩF Mini-Audit.
  *
+ * PRICING: two tiers (decided 2026-05-07 with Junaid).
+ *   LITE — $1,500 — 3-day automated readout (Stripe placeholder
+ *          OFFERS.auditLiteStripeUrl). For internal diagnostic /
+ *          scoping.
+ *   FULL — $5,000 — 5-day hand-delivered review signed by Junaid
+ *          and Georgios (Stripe placeholder OFFERS.auditFullStripeUrl).
+ *          For board-ready output / defensible loss numbers.
+ * Until the real Stripe Payment Links are wired, both tier CTAs
+ * route to /access?source=mini-audit-lite (or -full) via
+ * offerCheckoutHref(); the access form picks up the source and
+ * surfaces it in the email subject + body.
+ *
  * COPY STATUS: Customer-facing prose in the marked sections is a
  * scaffold pending the source-of-truth spec at
- * `docs/outreach/mini-audit-offer.md`. Replace each `[COPY: ...]`
+ * `docs/outreach/mini-audit-offer.md`. Replace each `// COPY:`
  * block with the corresponding section from the doc before public
  * launch. The 12-page deliverable spec and fulfillment workflow
  * from the source doc are INTERNAL — do NOT publish them on this
  * page.
  *
- * Pricing: $1,500 flat, single price, no tiers.
- *
- * Stripe Payment Link: placeholder
- * `STRIPE_PAYMENT_LINK_AUDIT_TBD` from `lib/site.ts`. After payment,
- * post-payment redirect goes to `TALLY_INTAKE_FORM_TBD` for CSV
- * upload. Junaid swaps both URLs in after Stripe + Tally are wired.
- *
  * Sample-report PDF preview is a "coming soon" placeholder. Junaid
  * will produce the sanitized sample later.
  */
 export default function AuditPage() {
-  // Until Junaid wires the real Stripe Payment Link, route the
-  // ORDER AUDIT CTAs at /access?source=mini-audit. Once the URL is
-  // dropped into OFFERS.auditStripeUrl, this resolves to the real
-  // Stripe URL and the button becomes external.
-  const orderHref = offerCheckoutHref(OFFERS.auditStripeUrl, "mini-audit");
-  const orderIsExternal = !isPlaceholderUrl(OFFERS.auditStripeUrl);
+  const liteHref = offerCheckoutHref(OFFERS.auditLiteStripeUrl, "mini-audit-lite");
+  const liteIsExternal = !isPlaceholderUrl(OFFERS.auditLiteStripeUrl);
+  const fullHref = offerCheckoutHref(OFFERS.auditFullStripeUrl, "mini-audit-full");
+  const fullIsExternal = !isPlaceholderUrl(OFFERS.auditFullStripeUrl);
 
   return (
     <>
@@ -56,7 +59,7 @@ export default function AuditPage() {
             <span className="text-text-muted/40">·</span>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 border border-accent-amber/40 bg-accent-amber/5 rounded text-[10px] font-mono text-accent-amber tracking-wider">
               <span className="h-1.5 w-1.5 rounded-full bg-accent-amber pulse-ring" />
-              5-DAY READOUT · $1,500 FLAT
+              FROM $1,500 · LITE 3-DAY · FULL 5-DAY
             </span>
           </div>
 
@@ -67,29 +70,34 @@ export default function AuditPage() {
           <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
             {/* COPY: replace with the hero subhead from the source doc's
                 "Customer-facing one-pager" section. */}
-            A 5-day causal-fragility readout on your data. We map the
+            A causal-fragility readout on your data. We map the
             graph, score every node on five pillars, name the
-            decisive ones, and hand you a 12-page report. $1,500
-            flat. No platform commitment.
+            decisive ones, and hand you a report. Two tiers — a
+            $1,500 automated diagnostic, or a $5,000 hand-delivered
+            review signed by the team. No platform commitment.
           </p>
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <CTAButton href={orderHref} external={orderIsExternal}>
-              ORDER AUDIT — $1,500
-            </CTAButton>
+            <Link
+              href="#tiers"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded text-[11px] font-[family-name:var(--font-michroma)] tracking-[0.25em] bg-accent-cyan/10 border border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/20 hover:border-accent-cyan/60 transition-all glow-cyan"
+            >
+              <span>SEE BOTH TIERS</span>
+              <span aria-hidden>›</span>
+            </Link>
             <Link
               href="#what-you-get"
               className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted hover:text-foreground transition-colors"
             >
-              WHAT YOU GET ›
+              WHAT&apos;S IN A READOUT ›
             </Link>
           </div>
 
           <p className="mt-4 text-[11px] font-mono text-text-muted/70 leading-relaxed max-w-xl">
             {/* COPY: post-payment flow blurb from source doc. */}
             After payment you&apos;ll be redirected to a short
-            intake form to upload your data. Readout delivered
-            within 5 business days.
+            intake form to upload your data. Lite delivers in 3
+            business days; Full in 5.
           </p>
         </div>
       </section>
@@ -153,10 +161,135 @@ export default function AuditPage() {
           />
           <DeliverableTile
             label="04 · REPORT"
-            title="12 pages, plain English"
-            blurb="The graph, the scores, the counterfactuals, and a one-page executive summary you can hand to a board."
+            title="3 pages (Lite) / 12 pages (Full)"
+            blurb="Lite: a 3-page exec summary with the headline numbers. Full: a 12-page report with executive summary, technical narrative, and appendix — signed by the team."
           />
         </div>
+      </Section>
+
+      {/* Tiers — pick LITE or FULL */}
+      <Section id="tiers" className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// CHOOSE YOUR DEPTH"
+          path="apex.audit.tiers"
+          right="TWO PRICE POINTS"
+          color="amber"
+        />
+        <p className="mb-6 text-[13px] md:text-sm font-mono text-text-muted leading-relaxed max-w-2xl">
+          Same underlying engine, two ways to buy. Lite is a fast,
+          algorithmic diagnostic — best for internal scoping. Full
+          is hand-delivered, signed, and built for board-ready
+          decisions.
+        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* LITE */}
+          <div className="bg-surface-elevated border border-border rounded-lg p-6 md:p-7 flex flex-col gap-4 hover:bg-surface transition-colors">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted">
+                LITE
+              </span>
+              <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.25em] text-accent-amber/80">
+                3-DAY · AUTOMATED
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-[family-name:var(--font-michroma)] text-3xl md:text-4xl text-foreground leading-none">
+                $1,500
+              </span>
+              <span className="font-mono text-[11px] text-text-muted/80">flat</span>
+            </div>
+            <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
+              Algorithmic readout on your data. Best for an internal
+              diagnostic, scoping a deeper engagement, or evaluating
+              Manifold before institutional commitment.
+            </p>
+            <ul className="space-y-1.5 flex-1 pt-2 border-t border-border/60">
+              {[
+                "Causal graph mapped from your data",
+                "ΩF score on every node, all 5 pillars",
+                "Top-3 decisive nodes named",
+                "3-page executive summary (PDF)",
+                "3 business days",
+              ].map((item) => (
+                <li
+                  key={item}
+                  className="flex gap-2 text-[12px] font-mono text-foreground/85 leading-relaxed"
+                >
+                  <span className="text-accent-cyan/70 mt-0.5 shrink-0">·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <CTAButton
+              href={liteHref}
+              external={liteIsExternal}
+              variant="secondary"
+              className="w-full"
+            >
+              ORDER LITE — $1,500
+            </CTAButton>
+          </div>
+
+          {/* FULL */}
+          <div className="bg-accent-cyan/[0.04] border border-accent-cyan/40 rounded-lg p-6 md:p-7 flex flex-col gap-4 hover:bg-accent-cyan/[0.08] transition-colors relative">
+            <span className="absolute top-0 right-4 -translate-y-1/2 px-2 py-0.5 bg-accent-cyan/15 border border-accent-cyan/50 rounded text-[9px] font-[family-name:var(--font-michroma)] tracking-[0.25em] text-accent-cyan">
+              RECOMMENDED
+            </span>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan">
+                FULL
+              </span>
+              <span className="font-[family-name:var(--font-michroma)] text-[9px] tracking-[0.25em] text-accent-cyan/80">
+                5-DAY · HAND-DELIVERED
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-[family-name:var(--font-michroma)] text-3xl md:text-4xl text-foreground leading-none">
+                $5,000
+              </span>
+              <span className="font-mono text-[11px] text-text-muted/80">flat</span>
+            </div>
+            <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
+              Hand-delivered review, signed by Junaid Ghauri and
+              Georgios Korpas. Best for board-ready output,
+              defensible loss numbers, or evaluating partnership
+              terms.
+            </p>
+            <ul className="space-y-1.5 flex-1 pt-2 border-t border-accent-cyan/20">
+              {[
+                "Everything in Lite, plus:",
+                "Counterfactual stress-test on the top-3 nodes",
+                "12-page report with executive summary + technical narrative",
+                "Custom recommendations and follow-on roadmap",
+                "Signed by Junaid Ghauri + Georgios Korpas",
+                "5 business days",
+              ].map((item, i) => (
+                <li
+                  key={item}
+                  className={`flex gap-2 text-[12px] font-mono leading-relaxed ${
+                    i === 0 ? "text-accent-cyan/90" : "text-foreground/85"
+                  }`}
+                >
+                  <span className="text-accent-cyan/70 mt-0.5 shrink-0">·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <CTAButton
+              href={fullHref}
+              external={fullIsExternal}
+              className="w-full"
+            >
+              ORDER FULL — $5,000
+            </CTAButton>
+          </div>
+        </div>
+
+        <p className="mt-5 text-[11px] font-mono text-text-muted/80 leading-relaxed">
+          Either tier credits 100% toward the first year of an
+          institutional Manifold seat if you sign within 90 days of
+          delivery.
+        </p>
       </Section>
 
       {/* Sample report preview */}
@@ -278,22 +411,30 @@ export default function AuditPage() {
               // ORDER AUDIT
             </div>
             <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.06em] text-foreground leading-[1.25]">
-              $1,500 flat. Readout in 5 business days.
+              From $1,500. Pick your tier.
             </h3>
             <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
               {/* COPY: closing nudge from the source doc. */}
-              No platform commitment. If the audit lands well, talk
-              to us about a Founding seat or a full institutional
-              engagement.
+              No platform commitment. Either tier credits toward an
+              institutional seat if you sign within 90 days. If the
+              audit lands well, talk to us about a Founding seat or
+              a full engagement.
             </p>
           </div>
           <div className="flex flex-col gap-3 shrink-0">
-            <CTAButton href={orderHref} external={orderIsExternal}>
-              ORDER AUDIT — $1,500
+            <CTAButton href={fullHref} external={fullIsExternal}>
+              ORDER FULL — $5,000
             </CTAButton>
-            <CTAButton href="/founding" variant="secondary">
-              OR · SEE FOUNDING 10
+            <CTAButton href={liteHref} external={liteIsExternal} variant="secondary">
+              OR · ORDER LITE — $1,500
             </CTAButton>
+            <Link
+              href="/founding"
+              className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted/70 hover:text-foreground inline-flex items-center justify-center gap-2 pt-1"
+            >
+              <span>SEE FOUNDING 10</span>
+              <span aria-hidden>›</span>
+            </Link>
           </div>
         </div>
       </Section>
@@ -375,6 +516,14 @@ const AUDIT_TEAM = [
 
 const FAQ_PLACEHOLDERS = [
   {
+    q: "What's the difference between Lite and Full?",
+    a: "Lite ($1,500) is a 3-day automated readout — algorithmic ΩF score on every node, top-3 decisive nodes named, 3-page executive summary. Best for an internal diagnostic. Full ($5,000) is a 5-day hand-delivered review signed by Junaid and Georgios — adds counterfactual stress-tests on the top-3 nodes, custom recommendations, and a 12-page report with technical narrative. Best for board-ready output.",
+  },
+  {
+    q: "Which tier should I order?",
+    a: "If you're scoping internally or evaluating whether Manifold is a fit, Lite is the right entry point. If you need a defensible loss number for a board, a regulator, or a partner conversation, order Full — the hand-delivered narrative and team signatures are the difference.",
+  },
+  {
     q: "What data do I need to send?",
     a: "One CSV per layer of your graph (nodes + edges). The intake form walks you through the shape. We have templates for manufacturing, finance, and infrastructure.",
   },
@@ -383,11 +532,11 @@ const FAQ_PLACEHOLDERS = [
     a: "Get in touch first — for non-tabular data we either scope a brief data-prep step or recommend you start with the institutional engagement.",
   },
   {
-    q: "Is the readout signed by the team?",
-    a: "Yes. Junaid and Georgios both review and sign. The 12-page report includes a one-page executive summary you can hand to a board.",
+    q: "Is the Full readout signed by the team?",
+    a: "Yes. For Full, Junaid and Georgios both review and sign. The 12-page report includes a one-page executive summary you can hand to a board. Lite is algorithmic and unsigned by design — that's part of why the price is lower.",
   },
   {
-    q: "Can I expense this and use it as a pilot?",
-    a: "Yes. The audit is invoiced as a fixed-price engagement and credits toward your first year of an institutional seat if you sign within 90 days.",
+    q: "Can I credit this toward an institutional seat?",
+    a: "Yes — both tiers. The audit is invoiced as a fixed-price engagement and credits 100% toward your first year of an institutional seat if you sign within 90 days of delivery.",
   },
 ];

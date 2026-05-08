@@ -27,8 +27,13 @@ export const SITE = {
 export const OFFERS = {
   /** Founding 10: $1,500 year-1 locked at $9,000/yr forever. 10 seats. */
   foundingStripeUrl: "STRIPE_PAYMENT_LINK_FOUNDING_TBD",
-  /** Mini-Audit: $1,500 flat, single price, 5-day causal-fragility readout. */
-  auditStripeUrl: "STRIPE_PAYMENT_LINK_AUDIT_TBD",
+  /** Mini-Audit LITE: $1,500 flat. 3-day automated readout — algorithmic
+   *  ΩF score, top-3 decisive nodes, 3-page exec summary. */
+  auditLiteStripeUrl: "STRIPE_PAYMENT_LINK_AUDIT_LITE_TBD",
+  /** Mini-Audit FULL: $5,000 flat. 5-day hand-delivered review signed by
+   *  Junaid + Georgios. Lite + counterfactual stress-tests on top-3 +
+   *  12-page report with technical narrative + custom recommendations. */
+  auditFullStripeUrl: "STRIPE_PAYMENT_LINK_AUDIT_FULL_TBD",
   /** Tally form for post-payment CSV upload (Mini-Audit intake). */
   auditTallyUrl: "TALLY_INTAKE_FORM_TBD",
   /** Hardcoded for MVP. The path to a live counter is documented in the

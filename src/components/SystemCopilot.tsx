@@ -10,7 +10,13 @@ import {
   streamLlmQuery,
   CopilotAction,
 } from "@/lib/copilot-engine";
-import { processLlmActions, stripActions } from "@/lib/copilot-actions";
+import { processLlmActionsWithTrace, stripActions } from "@/lib/copilot-actions";
+import {
+  logTurnTrace,
+  hashPrompt,
+  newConversationId,
+  type TurnTrace,
+} from "@/lib/copilot/trace-logger";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
 import { serializeGraphContext, serializeSnapshotContext, serializeTimeWindowContext } from "@/lib/copilot-context";
@@ -129,6 +135,15 @@ export default function SystemCopilot() {
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenMsgRef = useRef<string | null>(null);
+  // Conversation identity for trace logging. Stable across the
+  // session; resets when the chat is cleared. turn_index is a
+  // monotonically increasing counter so we can replay traces in
+  // order. Lazily initialized so SSR doesn't call crypto.randomUUID.
+  const conversationIdRef = useRef<string | null>(null);
+  const turnIndexRef = useRef<number>(0);
+  if (conversationIdRef.current === null && typeof window !== "undefined") {
+    conversationIdRef.current = newConversationId();
+  }
 
   // Gemini is always active — server-side env var provides the key if client doesn't
   const isLlmActive = copilotProvider === "ollama" || copilotProvider === "gemini" || copilotApiKey.length > 0;
@@ -407,7 +422,7 @@ export default function SystemCopilot() {
         }
 
         // After streaming completes, execute any actions from the full response
-        const { displayText, actionResults } = processLlmActions(accumulated);
+        const { displayText, actionResults, toolCalls } = processLlmActionsWithTrace(accumulated);
         // Flush final text to the store in one write
         useApexStore.setState((s) => ({
           copilotMessages: s.copilotMessages.map((m) =>
@@ -426,6 +441,51 @@ export default function SystemCopilot() {
             content: `ACTIONS EXECUTED:\n${actionSummary}`,
             timestamp: Date.now(),
           });
+        }
+
+        // \u2500\u2500\u2500 Trace logging (PR2) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Fire-and-forget POST to /api/copilot/trace. We hash the
+        // system prompt instead of storing the full text \u2014 too large
+        // to log every turn. Logging never awaits and never blocks
+        // the chat; failures land in console.warn only.
+        try {
+          const conversationId = conversationIdRef.current ?? newConversationId();
+          conversationIdRef.current = conversationId;
+          const turnIndex = turnIndexRef.current++;
+          const systemPromptText = serializeGraphContext(graphData, {
+            selectedNode,
+            severedEdges,
+            shocks,
+            interventionMode,
+            interventionTarget,
+            ablationMode,
+            ablatedNodeIds,
+            ablatedEdgeIds,
+            tarskiReport,
+          }) + (snapshotContext ? "\n\n" + snapshotContext : "");
+          const trace: TurnTrace = {
+            conversation_id: conversationId,
+            turn_index: turnIndex,
+            user_message: userContent,
+            assistant_message: accumulated,
+            display_text: displayText,
+            tool_calls: toolCalls,
+            model_provider: copilotProvider,
+            model_id: copilotModel,
+            system_prompt_hash: hashPrompt(systemPromptText),
+            system_prompt_size: systemPromptText.length,
+            // dataset routing isn't in the store yet (PR3 candidate);
+            // leave null so the column is still queryable when added.
+            dataset: null,
+            active_module: activeModule,
+            selected_node: selectedNode,
+            active_shock_count: shocks.length,
+          };
+          // Intentionally not awaited \u2014 logging is best-effort.
+          void logTurnTrace(trace);
+        } catch (logErr) {
+          // Never let trace prep errors leak into the chat.
+          console.warn("[copilot-trace] prep failed:", logErr);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "LLM request failed";
@@ -459,6 +519,8 @@ export default function SystemCopilot() {
       ablationMode,
       ablatedNodeIds,
       ablatedEdgeIds,
+      activeModule,
+      tarskiReport,
       addCopilotMessage,
       setIsLlmStreaming,
     ]

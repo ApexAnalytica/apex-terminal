@@ -8,6 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
+import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
@@ -167,9 +168,21 @@ function CausalDAGMapInner() {
         node.globalConcentration ?? "",
         node.domain,
       );
-      const domainColor = node.datasetColor || getDomainColor(node.domain);
+      // Color priority: domain-card colour (panel ↔ canvas alignment) →
+      // node.datasetColor → raw-domain palette. Same precedence as 2D / 3D.
+      const domainColor =
+        getDomainCardColor(node.domain) ??
+        node.datasetColor ??
+        getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
-      const isDimmed = isolateSelection && selectedSet.size > 0 && !selectedSet.has(node.id);
+      // Two dim modes:
+      //  - isolate ON  → opacity 0.15 (existing behaviour)
+      //  - isolate OFF → opacity 0.35 (multi-select spotlight, matches 2D
+      //    where multiSelected.length > 0 alone dims non-selected nodes)
+      const isMultiSelectActive = selectedSet.size > 0;
+      const isOutOfScope = isMultiSelectActive && !selectedSet.has(node.id);
+      const isDimmed = isOutOfScope;
+      const dimOpacity = isolateSelection ? 0.15 : 0.35;
       const omega = node.omegaFragility.composite;
 
       return {
@@ -187,7 +200,7 @@ function CausalDAGMapInner() {
           isDimmed,
           // Size based on omega score
           radius: Math.max(4, omega * 1.2),
-          opacity: isDimmed ? 0.15 : 1,
+          opacity: isDimmed ? dimOpacity : 1,
           strokeColor: isSelected ? "#00e5ff" : "rgba(255,255,255,0.3)",
           strokeWidth: isSelected ? 2.5 : 0.5,
         },
@@ -220,12 +233,20 @@ function CausalDAGMapInner() {
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
-      // Isolation: hide edges that don't connect two selected nodes (matches 3D behavior)
-      if (
-        isolateSelection &&
-        selectedSet.size > 0 &&
-        !(selectedSet.has(edge.source) && selectedSet.has(edge.target))
-      ) return;
+      // Three modes for edges when a multi-selection is active:
+      //  - isolate ON   → cull edges that don't connect two selected nodes
+      //  - isolate OFF  → render but dim edges with no selected endpoint
+      //                   (matches 2D's `multiInScope` spotlight)
+      //  - no selection → render normally
+      const inScope =
+        selectedSet.size === 0 ||
+        selectedSet.has(edge.source) ||
+        selectedSet.has(edge.target);
+      const fullScope =
+        selectedSet.size === 0 ||
+        (selectedSet.has(edge.source) && selectedSet.has(edge.target));
+      if (isolateSelection && selectedSet.size > 0 && !fullScope) return;
+      const edgeIsDimmed = !isolateSelection && selectedSet.size > 0 && !inScope;
 
       // Curved line via midpoint offset (MapLibre renders LineStrings as
       // straight segments between vertices, so we sample the quadratic
@@ -278,7 +299,8 @@ function CausalDAGMapInner() {
       // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
       const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
 
-      const opacity = isSevered ? 0.45 : 0.5;
+      const baseOpacity = isSevered ? 0.45 : 0.5;
+      const opacity = edgeIsDimmed ? 0.08 : baseOpacity;
 
       const feature: Feature<LineString> = {
         type: "Feature",
@@ -566,16 +588,30 @@ function CausalDAGMapInner() {
     );
   }, [fitKey]);
 
-  // Dark map style matching the app theme
+  // Dark map style matching the app theme.
+  //   - `projection: { type: "globe" }` renders the world as a 3D
+  //     sphere at low zoom, smoothly transitioning to mercator as the
+  //     user zooms in. Gives the "dimension map" / globe look the user
+  //     asked for and stops the basemap reading as a flat sheet.
+  //   - `dark_nolabels` strips street labels / city names so the
+  //     basemap doesn't compete with the causal graph.
+  //   - Tile maxzoom is back at 19 so the user can drill down to
+  //     street level when they need it (the previous cap at 6 was
+  //     correct for the "less busy" complaint but conflicted with the
+  //     "we need street-level when the analysis demands it" follow-up).
+  //     At low zoom the globe projection naturally hides street
+  //     density, so the busy-ness only appears when the user
+  //     deliberately zooms in.
   const mapStyle = useMemo(
     () => ({
       version: 8 as const,
       name: "Apex Dark",
+      projection: { type: "globe" as const },
       sources: {
         "osm-tiles": {
           type: "raster" as const,
           tiles: [
-            "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+            "https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png",
           ],
           tileSize: 256,
           attribution:

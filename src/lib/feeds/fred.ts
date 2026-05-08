@@ -30,9 +30,13 @@ export interface FredSeriesConfig {
   /** "Elevated" threshold; ratio is shown as the qualifier in the card row.
    *  0 = no qualifier shown. */
   capacity: number;
-  /** FRED `units` URL parameter for transformations (pc1 = % change YoY).
-   *  Omitted = level. */
-  units?: "pc1" | "pch" | "lin";
+  /** FRED `units` URL parameter for transformations.
+   *    pc1 = % change Y/Y (12-month)
+   *    pch = % change period-over-period
+   *    pca = % change at compounded annual rate (Q/Q annualized)
+   *    chg = absolute change period-over-period (e.g. PAYEMS thousands)
+   *    lin = level (default if omitted) */
+  units?: "pc1" | "pch" | "pca" | "chg" | "lin";
   /** Plausible mock value for dev mode. */
   mockValue: number;
 }
@@ -93,6 +97,35 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "ECIALLCIV", label: "Employment Cost Index Q/Q", labelPatterns: ["employment cost index"], unit: "%", capacity: 1.5, units: "pch", mockValue: 1.0 },
   { id: "TCU", label: "Capacity Utilization", labelPatterns: ["capacity utilization"], unit: "%", capacity: 85, mockValue: 78.5 },
   { id: "MICH", label: "UMich 1Y Inflation Expectations", labelPatterns: ["umich consumer inflation expectations"], unit: "%", capacity: 5, mockValue: 3.2 },
+  // Phase 10 — close the bare-modeled gap on the labor / growth pillar.
+  // Nodes already exist in graph-data.ts with these labels but no FRED
+  // series was registered, so they showed as static modeled instead of
+  // live. All five series are free, monthly/quarterly, and on FRED today.
+  { id: "HOUST", label: "Housing Starts (thousands, SAAR)", labelPatterns: ["housing starts"], unit: "K", capacity: 1800, mockValue: 1380 },
+  { id: "RSAFS", label: "Retail Sales M/M %", labelPatterns: ["retail sales mom", "retail sales"], unit: "%", capacity: 2, units: "pch", mockValue: 0.4 },
+  { id: "ULCNFB", label: "Unit Labor Costs Q/Q Annualized", labelPatterns: ["unit labor costs qoq annualized", "unit labor costs"], unit: "%", capacity: 5, units: "pca", mockValue: 2.8 },
+  { id: "CUSR0000SEHC", label: "CPI Owners' Equivalent Rent Y/Y", labelPatterns: ["owners' equivalent rent (oer)", "owners equivalent rent", "oer"], unit: "%", capacity: 8, units: "pc1", mockValue: 4.5 },
+  { id: "JTSHIR", label: "JOLTS Hires Rate", labelPatterns: ["hiring rate", "hires rate"], unit: "%", capacity: 5, mockValue: 3.4 },
+  // Phase 11 — Tier-1 audit follow-up. Three more bare-modeled nodes
+  // closed by adding new FRED transforms or alternative series.
+  // - PAYEMS with units=chg gives the headline NFP CHANGE (different
+  //   from the level entry above which uses no transform).
+  // - DTWEXBGS is FRED's Nominal Broad U.S. Dollar Index — not the
+  //   ICE DXY but the standard FRED proxy. The ICE 6-currency index
+  //   isn't on FRED at all. Synthetic DXY in graph-data.ts shares the
+  //   shape closely enough that the live tick reads in the same regime.
+  // - CES0500000003 we already pull as Y/Y (entry above); the MoM
+  //   variant uses the same series with units=pch.
+  { id: "PAYEMS", label: "Headline Nonfarm Payroll Change", labelPatterns: ["headline nonfarm payroll change", "nonfarm payroll change"], unit: "K", capacity: 250, units: "chg", mockValue: 175 },
+  { id: "DTWEXBGS", label: "Nominal Broad U.S. Dollar Index", labelPatterns: ["us dollar index (dxy)", "dollar index", "dxy"], unit: "", capacity: 130, mockValue: 122 },
+  { id: "CES0500000003", label: "Average Hourly Earnings M/M %", labelPatterns: ["average hourly earnings mom", "average hourly earnings m/m"], unit: "%", capacity: 0.5, units: "pch", mockValue: 0.3 },
+  // Phase 13 — promote 3 historical-only Supply Chain / Fertilizer food
+  // nodes to live ongoing pulls. PFOODINDEXM is the IMF Food Price
+  // Index (cereals, meats, oils, dairy, sugar) republished on FRED;
+  // monthly cadence; same shape the analyst snapshot used. Two transforms:
+  // level for the stress nodes, pc1 (Y/Y %) for the inflation node.
+  { id: "PFOODINDEXM", label: "IMF Food Price Index (level)", labelPatterns: ["global food price", "global food-price stress", "global food prices", "food price / farm-input"], unit: "index", capacity: 200, mockValue: 132 },
+  { id: "PFOODINDEXM", label: "IMF Food Price Index Y/Y %", labelPatterns: ["food price inflation"], unit: "%", capacity: 15, units: "pc1", mockValue: 4.2 },
 ];
 
 /** A single observation per FRED series, returned by the proxy and
@@ -171,8 +204,13 @@ export function parseFredSeriesResponse(
     .slice(1)
     .reverse()
     .map((p) => ({ value: p.value, observedAt: p.observedAt }));
+  // Include the units transform in the routing key so two FRED_SERIES
+  // entries that share the same series id (e.g. PAYEMS as level + chg,
+  // CES0500000003 as Y/Y + M/M) don't collide in the provider's
+  // matchSeriesToNode lookup.
+  const seriesId = config.units ? `${config.id}_${config.units}` : config.id;
   return {
-    seriesId: config.id,
+    seriesId,
     label: config.label,
     value: latest.value,
     unit: config.unit,
@@ -195,7 +233,10 @@ export function mockFredFeed(): FredFeed {
   return {
     fetchedAt: observedAt,
     observations: FRED_SERIES.map((s) => ({
-      seriesId: s.id,
+      // Same transform-aware key as parseFredSeriesResponse so the mock
+      // feed routes the same way the live one does (no PAYEMS-level vs
+      // PAYEMS-chg collision).
+      seriesId: s.units ? `${s.id}_${s.units}` : s.id,
       label: s.label,
       value: s.mockValue,
       unit: s.unit,

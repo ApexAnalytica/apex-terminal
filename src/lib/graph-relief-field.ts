@@ -58,6 +58,13 @@ export interface ReliefFieldParams {
   padding?: number;
   /** Gaussian bandwidth as a fraction of the smaller bounds dimension. */
   sigmaFraction?: number;
+  /**
+   * Power applied to normalized elevation before mapping to vertex Y.
+   * `> 1` flattens valleys and raises peaks (visually more "peaky"); `1` is
+   * linear; `< 1` lifts mid-elevations. Default 1.4 → distinct peaks instead
+   * of the soft-mound look the linear mapping produced on multi-domain graphs.
+   */
+  heightGamma?: number;
 }
 
 export interface ReliefField {
@@ -69,17 +76,26 @@ export interface ReliefField {
   resolution: number;
   /** Maximum raw field value before normalization — useful for legends. */
   peak: number;
+  /**
+   * World-space center the mesh was recentered around. Subtract these from a
+   * raw layout (x, y) to convert to mesh-local coordinates — needed by the
+   * component to place HTML labels above the right node peaks.
+   */
+  cx: number;
+  cy: number;
 }
 
 const DEFAULTS: Required<ReliefFieldParams> = {
-  resolution: 80,
-  // Tall enough to read as terrain rather than a pancake on a wide layout.
-  heightScale: 70,
+  // Bumped from 80 to 128 — at 80 cells, triangles were visible at the
+  // silhouette and contour-band stripes looked stepped. 128² = 16,384
+  // verts ≈ 100ms compute on a 200-node graph. The shader-side iso-contour
+  // pass means we don't need to crank resolution any further; smoothness
+  // now comes from the pixel-rate fragment shader, not the mesh density.
+  resolution: 128,
+  heightScale: 140,
   padding: 80,
-  // Tighter Gaussian than v1 — a quarter-extent bandwidth (0.12) smeared every
-  // node's contribution and merged peaks into one broad lump. ~6% gives local,
-  // legible mountains while still being smooth between adjacent nodes.
-  sigmaFraction: 0.06,
+  sigmaFraction: 0.05,
+  heightGamma: 1.6,
 };
 
 /** Power-law boost applied to each node's composite ΩF before kernel
@@ -101,6 +117,8 @@ const EMPTY_FIELD: ReliefField = {
   height: 0,
   resolution: 0,
   peak: 0,
+  cx: 0,
+  cy: 0,
 };
 
 export function computeReliefField(
@@ -108,7 +126,7 @@ export function computeReliefField(
   layout: Map<string, { x: number; y: number }>,
   params: ReliefFieldParams = {},
 ): ReliefField {
-  const { resolution, heightScale, padding, sigmaFraction } = {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
     ...DEFAULTS,
     ...params,
   };
@@ -177,12 +195,18 @@ export function computeReliefField(
       const norm = Number.isFinite(rawNorm)
         ? Math.max(0, Math.min(1, rawNorm))
         : 0;
-      const z = norm * heightScale;
+      // Gamma > 1 raises the contrast between peaks and valleys —
+      // peaks stay near 1, mid-elevations drop more aggressively, valleys
+      // flatten. Reads as ridges and basins instead of a soft mound.
+      const shaped = Math.pow(norm, heightGamma);
+      const z = shaped * heightScale;
 
       positions[idx * 3 + 0] = xWorld - cx;
       positions[idx * 3 + 1] = z;
       positions[idx * 3 + 2] = yWorld - cy;
 
+      // Color ramp still keys off the linear `norm` so the legend stays
+      // readable — only the geometry is gamma'd.
       const [r, g, b] = elevationColor(norm);
       colors[idx * 3 + 0] = r;
       colors[idx * 3 + 1] = g;
@@ -205,7 +229,7 @@ export function computeReliefField(
     }
   }
 
-  return { positions, colors, indices, width, height, resolution: N, peak };
+  return { positions, colors, indices, width, height, resolution: N, peak, cx, cy };
 }
 
 /**
@@ -272,7 +296,7 @@ export function computeReliefLayers(
   layout: Map<string, { x: number; y: number }>,
   params: ReliefFieldParams = {},
 ): ReliefLayer[] {
-  const { resolution, heightScale, padding, sigmaFraction } = {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
     ...DEFAULTS,
     ...params,
   };
@@ -385,14 +409,15 @@ export function computeReliefLayers(
       for (let i = 0; i < N; i++) {
         const xWorld = gx[i];
         const idx = j * N + i;
-        // Clamp defensively — a NaN/Infinity in `composite` propagates to
-        // `peak`/`inv`/`norm` and corrupts the GPU upload, which can crash
-        // the renderer on first draw.
         const rawNorm = heights[idx] * inv;
         const norm = Number.isFinite(rawNorm)
           ? Math.max(0, Math.min(1, rawNorm))
           : 0;
-        const z = norm * heightScale;
+        // Apply the same height-gamma as the single-domain path so the two
+        // modes have the same "peakiness" character. The color tint uses a
+        // slightly stronger gamma so valleys go to additive black faster.
+        const shaped = Math.pow(norm, heightGamma);
+        const z = shaped * heightScale;
 
         positions[idx * 3 + 0] = xWorld - cx;
         positions[idx * 3 + 1] = z;
@@ -417,6 +442,8 @@ export function computeReliefLayers(
         height,
         resolution: N,
         peak,
+        cx,
+        cy,
       },
       nodeCount: samples.length,
     });
@@ -429,10 +456,353 @@ export function computeReliefLayers(
   return layers;
 }
 
+// ─── Node anchors for HTML labels ──────────────────────────────────
+
+export interface NodeAnchor {
+  id: string;
+  label: string;
+  /** Mesh-local X (= layout x − cx). */
+  x: number;
+  /** Mesh-local Z (= layout y − cy). */
+  z: number;
+  /** Vertex Y the label should float above. */
+  y: number;
+  /** ΩF composite — drives top-K ordering and label coloring. */
+  composite: number;
+  /** Owning domain — drives label color. */
+  domain: string;
+}
+
+/**
+ * Compute world-space anchors for the top-K most-fragile nodes so the
+ * component can drop HTML labels above their peaks. Without these labels
+ * the relief mesh is just an abstract surface — labels are how a viewer
+ * recognises *which* nodes the mountain ridges are made of.
+ *
+ * Height is approximated by sampling the same Gaussian field at each node's
+ * (x, y) position. Cheap (O(K × N) where K is the cap) and exact enough for
+ * label placement.
+ */
+export function computeNodeAnchors(
+  nodes: Pick<CausalNode, "id" | "label" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  field: ReliefField,
+  params: ReliefFieldParams = {},
+  topK = 8,
+): NodeAnchor[] {
+  if (field.positions.length === 0 || field.peak <= 0) return [];
+
+  const { padding, sigmaFraction, heightScale, heightGamma } = {
+    ...DEFAULTS,
+    ...params,
+  };
+  const sigma = Math.max(60, Math.min(field.width, field.height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+
+  // Gather every usable node-with-position once so we can reuse them as
+  // both label candidates and Gaussian sources.
+  type Source = { id: string; label: string; domain: string; composite: number; x: number; y: number };
+  const sources: Source[] = [];
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = Number.isFinite(n.omegaFragility?.composite)
+      ? n.omegaFragility.composite
+      : 0;
+    sources.push({
+      id: n.id,
+      label: n.label,
+      domain: typeof n.domain === "string" ? n.domain : "Unknown",
+      composite,
+      x: p.x,
+      y: p.y,
+    });
+  }
+  if (sources.length === 0) return [];
+
+  // Top-K by composite. With K small (default 8), an n*log(n) sort is fine.
+  const sorted = [...sources].sort((a, b) => b.composite - a.composite);
+  const picks = sorted.slice(0, Math.min(topK, sorted.length));
+
+  // Sample the field at each pick's coordinates. Suppress padding parameter
+  // since `field.cx/cy` already encode the recentered origin.
+  void padding;
+
+  const anchors: NodeAnchor[] = [];
+  for (const pick of picks) {
+    // CRITICAL: use the same kernel weight the field eval uses
+    // (`nodeWeight = composite^WEIGHT_EXPONENT`). v1 used the raw
+    // composite here, so `h / field.peak` was a wildly different ratio
+    // from the actual mesh-vertex norm — labels rendered at ≤ 20% of
+    // their true peak height and looked like they sat on the floor.
+    let h = 0;
+    for (const s of sources) {
+      const dx = pick.x - s.x;
+      const dy = pick.y - s.y;
+      h += nodeWeight(s.composite) * Math.exp(-(dx * dx + dy * dy) / sigma2);
+    }
+    const norm = Math.max(0, Math.min(1, h / field.peak));
+    const shaped = Math.pow(norm, heightGamma);
+    anchors.push({
+      id: pick.id,
+      label: pick.label,
+      domain: pick.domain,
+      composite: pick.composite,
+      x: pick.x - field.cx,
+      z: pick.y - field.cy,
+      y: shaped * heightScale,
+    });
+  }
+  return anchors;
+}
+
 function hexToLinearRGB(hex: string): [number, number, number] {
   const m = hex.replace("#", "");
   const r = parseInt(m.slice(0, 2), 16) / 255;
   const g = parseInt(m.slice(2, 4), 16) / 255;
   const b = parseInt(m.slice(4, 6), 16) / 255;
   return [r, g, b];
+}
+
+// ─── Fused relief — single mesh colored by dominant domain ────────
+
+export interface FusedReliefLegendEntry {
+  domain: string;
+  colorHex: string;
+  /** Number of nodes in this domain — drives legend ordering. */
+  nodeCount: number;
+}
+
+export interface FusedReliefField extends ReliefField {
+  legend: FusedReliefLegendEntry[];
+  /**
+   * Per-vertex normalised height in [0, 1] — same length as
+   * `positions.length / 3`. Fed to the topo shader as a per-vertex
+   * attribute so the fragment shader can compute pixel-perfect heatmap
+   * colour + iso-contour lines, regardless of how coarse the geometry is.
+   */
+  norms: Float32Array;
+}
+
+/**
+ * Build ONE heightfield mesh for the whole graph (sum of every domain's
+ * Gaussians) and color each vertex by the *dominant* domain at that grid
+ * cell × elevation tint × iso-contour banding.
+ *
+ * Why this beats the additive multilayer:
+ *  - Real silhouette. Each peak is a single 3D ridge, not 7 transparent
+ *    sheets stacked on top of each other smearing into a haze.
+ *  - Domain identity is still readable — the dominant-domain choice paints
+ *    each peak with one color, so the user can see "this ridge is mostly
+ *    Energy" vs "this one is mostly Macro Inflation".
+ *  - Iso-contours add the topographic-map character (the rings around
+ *    peaks) the user explicitly asked for.
+ *  - Only one geometry to raycast, so click-to-select picking works.
+ */
+export function computeFusedReliefField(
+  nodes: Pick<CausalNode, "id" | "domain" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  params: ReliefFieldParams = {},
+): FusedReliefField {
+  const { resolution, heightScale, padding, sigmaFraction, heightGamma } = {
+    ...DEFAULTS,
+    ...params,
+  };
+
+  // Group samples by domain — same as multilayer — but we'll fuse the
+  // fields into a single mesh.
+  type Sample = { x: number; y: number; w: number };
+  const byDomain = new Map<string, Sample[]>();
+  const domainNodeCount = new Map<string, number>();
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const composite = n.omegaFragility?.composite ?? 0;
+    const domain = typeof n.domain === "string" && n.domain.length > 0
+      ? n.domain
+      : "Unknown";
+    const sample: Sample = { x: p.x, y: p.y, w: nodeWeight(composite) };
+    const arr = byDomain.get(domain);
+    if (arr) arr.push(sample);
+    else byDomain.set(domain, [sample]);
+    domainNodeCount.set(domain, (domainNodeCount.get(domain) ?? 0) + 1);
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  if (byDomain.size === 0 || !Number.isFinite(minX)) {
+    return { ...EMPTY_FIELD, legend: [], norms: new Float32Array(0) };
+  }
+
+  minX -= padding; maxX += padding;
+  minY -= padding; maxY += padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const sigma = Math.max(60, Math.min(width, height) * sigmaFraction);
+  const sigma2 = sigma * sigma;
+  const N = resolution;
+  const vertCount = N * N;
+  const positions = new Float32Array(vertCount * 3);
+  const colors = new Float32Array(vertCount * 3);
+
+  // Pre-cache the domain order and per-domain RGB so the inner loop reuses
+  // tiny indexed tuples instead of Map lookups.
+  const domains = Array.from(byDomain.keys());
+  const domainSamples = domains.map((d) => byDomain.get(d)!);
+  const domainRGB = domains.map((d) => hexToLinearRGB(reliefDomainColor(d)));
+
+  // Pass 1 — for every grid cell, evaluate per-domain heights, sum to the
+  // total height, and remember which domain dominated.
+  const totalHeights = new Float32Array(vertCount);
+  const dominantDomain = new Uint8Array(vertCount);
+  let peak = 0;
+  for (let j = 0; j < N; j++) {
+    const y = minY + (j / (N - 1)) * height;
+    for (let i = 0; i < N; i++) {
+      const x = minX + (i / (N - 1)) * width;
+      let total = 0;
+      let bestH = -1;
+      let bestDom = 0;
+      for (let d = 0; d < domains.length; d++) {
+        const samples = domainSamples[d];
+        let h = 0;
+        for (const s of samples) {
+          const dx = x - s.x;
+          const dy = y - s.y;
+          h += s.w * Math.exp(-(dx * dx + dy * dy) / sigma2);
+        }
+        total += h;
+        if (h > bestH) {
+          bestH = h;
+          bestDom = d;
+        }
+      }
+      const idx = j * N + i;
+      totalHeights[idx] = total;
+      dominantDomain[idx] = bestDom;
+      if (total > peak) peak = total;
+    }
+  }
+
+  // Pass 2 — emit positions + per-vertex norms. Vertex colours stay populated
+  // (used by the meshStandardMaterial fallback) but the *primary* topo
+  // shader path consumes `norms` and computes heatmap colour + iso-contour
+  // lines per fragment, which is why the surface looks crisp instead of
+  // pixelated regardless of how coarse the geometry is.
+  void domainRGB; void dominantDomain; // retained for legend; not used in colour pass.
+  const norms = new Float32Array(vertCount);
+  const inv = peak > 0 ? 1 / peak : 0;
+  for (let j = 0; j < N; j++) {
+    const yWorld = minY + (j / (N - 1)) * height;
+    for (let i = 0; i < N; i++) {
+      const xWorld = minX + (i / (N - 1)) * width;
+      const idx = j * N + i;
+      const rawNorm = totalHeights[idx] * inv;
+      const norm = Number.isFinite(rawNorm)
+        ? Math.max(0, Math.min(1, rawNorm))
+        : 0;
+      const shaped = Math.pow(norm, heightGamma);
+      const z = shaped * heightScale;
+
+      positions[idx * 3 + 0] = xWorld - cx;
+      positions[idx * 3 + 1] = z;
+      positions[idx * 3 + 2] = yWorld - cy;
+
+      norms[idx] = norm;
+
+      // Vertex colour fallback (when the shaderMaterial isn't used).
+      // No iso-contour modulation here — the shader does that per pixel.
+      const [rR, gG, bB] = elevationColor(norm);
+      colors[idx * 3 + 0] = rR;
+      colors[idx * 3 + 1] = gG;
+      colors[idx * 3 + 2] = bB;
+    }
+  }
+
+  // Triangle indices.
+  const cells = (N - 1) * (N - 1);
+  const indices = new Uint32Array(cells * 6);
+  let k = 0;
+  for (let j = 0; j < N - 1; j++) {
+    for (let i = 0; i < N - 1; i++) {
+      const a = j * N + i;
+      const b = j * N + i + 1;
+      const c = (j + 1) * N + i;
+      const d = (j + 1) * N + i + 1;
+      indices[k++] = a; indices[k++] = c; indices[k++] = b;
+      indices[k++] = b; indices[k++] = c; indices[k++] = d;
+    }
+  }
+
+  // Legend ordered by node count desc — biggest contributors first.
+  const legend: FusedReliefLegendEntry[] = domains.map((domain) => ({
+    domain,
+    colorHex: reliefDomainColor(domain),
+    nodeCount: domainNodeCount.get(domain) ?? 0,
+  }));
+  legend.sort((a, b) => b.nodeCount - a.nodeCount);
+
+  return {
+    positions,
+    colors,
+    indices,
+    width,
+    height,
+    resolution: N,
+    peak,
+    cx,
+    cy,
+    legend,
+    norms,
+  };
+}
+
+// ─── Picking — click point → nearest node ────────────────────────────
+
+/**
+ * Given a click point in mesh-local coordinates (X, Z — the same space
+ * positions live in after recentering by `field.cx/cy`), return the node
+ * id whose layout position is closest. Returns null if no candidate is
+ * within `maxDistance` (defaults to roughly half the Gaussian sigma so a
+ * click on flat ground doesn't pick a far-away node).
+ */
+export function pickNearestNode(
+  clickX: number,
+  clickZ: number,
+  nodes: Pick<CausalNode, "id" | "omegaFragility">[],
+  layout: Map<string, { x: number; y: number }>,
+  field: ReliefField,
+  params: ReliefFieldParams = {},
+  maxDistance?: number,
+): string | null {
+  if (field.positions.length === 0) return null;
+
+  const { sigmaFraction } = { ...DEFAULTS, ...params };
+  const sigma = Math.max(60, Math.min(field.width, field.height) * sigmaFraction);
+  const cap = maxDistance ?? sigma * 1.5;
+  const cap2 = cap * cap;
+
+  let bestId: string | null = null;
+  let bestD2 = Infinity;
+  for (const n of nodes) {
+    const p = layout.get(n.id);
+    if (!p) continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    const localX = p.x - field.cx;
+    const localZ = p.y - field.cy;
+    const dx = clickX - localX;
+    const dz = clickZ - localZ;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD2 && d2 <= cap2) {
+      bestD2 = d2;
+      bestId = n.id;
+    }
+  }
+  return bestId;
 }

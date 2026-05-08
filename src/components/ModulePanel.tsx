@@ -11,6 +11,7 @@ import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
+  bocpdRegimeGate,
   csdRegimeGate,
   lpplsRegimeGate,
   phRegimeGate,
@@ -1049,18 +1050,21 @@ function ParetoPanel({
     const N = graphData.nodes.length;
     const avgOmega = N > 0 ? graphData.nodes.reduce((s, nd) => s + nd.omegaFragility.composite, 0) / N : 0;
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-    const phase = avgOmega * 0.3;
+    // Seed phase from the previous panel-derived heuristic — the grid is
+    // free to override but starts somewhere reasonable rather than at 0.
+    const seedPhase = avgOmega * 0.3;
 
     // Template values that used to be used verbatim; now a seed into the grid.
     const seed = {
       tc: 1 + csdEpochs / Math.max(1, csdEpochs + 50),
       omega: 6.36 + shockPressure * 2.1,
       m: 0.33 + shockPressure * 0.1,
+      phase: seedPhase,
     };
 
     if (n < 5) {
       // Not enough points to fit — show the seed curve over a 60-point preview.
-      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, phase);
+      const modelPoints = lpplsSeries(60, seed.tc, seed.omega, seed.m, seedPhase);
       return {
         timeSeries: observed,
         modelSeries: modelPoints,
@@ -1072,12 +1076,15 @@ function ParetoPanel({
         omega: seed.omega,
         m: seed.m,
         tc: seed.tc,
+        phase: seedPhase,
         fitted: false as const,
         evaluations: 0,
       };
     }
 
-    const fit = fitLppls(observed, { phase, seed });
+    // Fit all four free parameters (tc, ω, m, φ). The seed phase carries the
+    // panel's prior heuristic into the grid as a known-good starting point.
+    const fit = fitLppls(observed, { seed });
     const samplePenalty = Math.min(1, n / 30);
     const confidence = Math.max(0, Math.min(0.99, fit.rSquared * samplePenalty));
 
@@ -1092,10 +1099,64 @@ function ParetoPanel({
       omega: fit.omega,
       m: fit.m,
       tc: fit.tc,
+      phase: fit.phase,
       fitted: true as const,
       evaluations: fit.evaluations,
     };
   }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
+
+  // ── BOCPD: Bayesian online change-point detection on the same Ω trajectory ──
+  // Runs the run-length posterior over `scopedOmegaSeries` and exposes the
+  // per-step new-run probability as the criticality readout. Same Adams &
+  // MacKay (2007) implementation the discovery / calibration paths use —
+  // imported lazily so this module's bundle stays sane.
+  const bocpdData = useMemo(() => {
+    const observed = scopedOmegaSeries;
+    const n = observed.length;
+    if (n < 6) {
+      return {
+        timeSeries: observed,
+        modelSeries: undefined as number[] | undefined,
+        observedSeries: observed.length > 0 ? observed : undefined,
+        newRunProb: [] as number[],
+        confidence: 0,
+        sampleSize: n,
+        peakRecent: 0,
+        cv: 0,
+      };
+    }
+    // Lazy import keeps bocpd out of the initial chunk if BOCPD is gated
+    // off via the active profile's estimator list.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { bocpd } = require("@/lib/estimators/bocpd") as typeof import("@/lib/estimators/bocpd");
+    const result = bocpd(observed, { hazard: 1 / 50 });
+    const modelSeries = Array.from(result.predictiveMean);
+    const newRunProb = Array.from(result.newRunProb);
+    // Recent-window peak (matches bocpdRegimeGate semantics).
+    const windowStart = Math.max(0, n - 10);
+    let peakRecent = 0;
+    for (let t = windowStart; t < n; t++) {
+      if (newRunProb[t] > peakRecent) peakRecent = newRunProb[t];
+    }
+    // Coefficient of variation (variability over full posterior).
+    let mean = 0;
+    for (const v of newRunProb) mean += v;
+    mean /= n;
+    let varSum = 0;
+    for (const v of newRunProb) varSum += (v - mean) ** 2;
+    const std = Math.sqrt(varSum / n);
+    const cv = mean > 0 ? std / mean : 0;
+    return {
+      timeSeries: observed,
+      modelSeries,
+      observedSeries: observed,
+      newRunProb,
+      confidence: Math.max(0, Math.min(0.99, peakRecent)),
+      sampleSize: n,
+      peakRecent,
+      cv,
+    };
+  }, [scopedOmegaSeries]);
 
   // ── Relevance breakdown per model (F · E · G · S, smoothed via EMA) ──
   // Each ready estimator contributes an input. The composite replaces the
@@ -1145,6 +1206,22 @@ function ParetoPanel({
           nodeCount,
         }),
         sufficiency: topologySufficiency(nodeCount),
+      });
+    }
+
+    // BOCPD — only included when the active profile actually requests it.
+    // Same scoped Ω trajectory as CSD/LPPLS; F sub-score scores BOCPD's
+    // posterior-predictive mean against the observed series.
+    if (activeProfile.criticalityEstimators.includes("bocpd")) {
+      const bocpdObserved = bocpdData.observedSeries ?? bocpdData.timeSeries ?? [];
+      inputs.push({
+        key: "bocpd",
+        observed: bocpdObserved,
+        modelSeries: bocpdData.modelSeries ?? [],
+        // BOCPD effective parameter count: 4 NIG hyperparameters + 1 hazard.
+        freeParams: 5,
+        gate: bocpdRegimeGate({ newRunProb: bocpdData.newRunProb }),
+        sufficiency: trajectorySufficiency(bocpdData.sampleSize, edgeCount),
       });
     }
 
@@ -1206,7 +1283,7 @@ function ParetoPanel({
       prevCompositesRef.current.set(key, breakdown.composite);
     }
     return result;
-  }, [csdData, phData, lpplsData, graphData.edges, graphData.nodes, scopeLabel]);
+  }, [csdData, phData, lpplsData, bocpdData, graphData.edges, graphData.nodes, scopeLabel, activeProfile]);
 
   const paretoSectionExpanded = expandedChart === "pareto";
 
@@ -1311,49 +1388,45 @@ function ParetoPanel({
               shortDesc: meta.shortDesc,
               methodology: [
                 `Fits the LPPLS model y(t) = A + B(tc\u2212t)^m \u00B7 [1 + C\u00B7cos(\u03C9\u00B7ln(tc\u2212t) + \u03C6)] (Sornette 2003) to the same scoped mean-\u03A9 trajectory as CSD \u2014 ${scopeLabel}, n=${lpplsData.sampleSize}.`,
-                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure).`}`,
-                `Phase \u03C6 = mean-\u03A9 \u00D7 0.3 is tied to graph fragility; A=1, B=\u22121, C=0.2 held fixed. tc, \u03C9, m are free parameters fit against the observed window. Log-periodic oscillations with increasing frequency signal an approaching regime transition.`,
+                `${lpplsData.sampleSize >= 5 ? `(tc, \u03C9, m, \u03C6) fit by coarse-to-fine grid search minimising SSE (${lpplsData.evaluations} evaluations). R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% between observed and fitted LPPLS. ${lpplsData.rSquared > 0.6 ? "Strong LPPLS signature." : lpplsData.rSquared > 0.3 ? "Moderate LPPLS pattern." : "Weak fit \u2014 trajectory may not follow LPPLS dynamics."}` : `Need \u22655 observations to fit \u2014 dashed line is the seed curve only (tc from CSD countdown, \u03C9/m from shock pressure, \u03C6 seeded from graph fragility).`}`,
+                `Free parameters: tc (critical time), \u03C9 (angular frequency), m (power-law exponent), \u03C6 (phase \u2208 [\u2212\u03C0, \u03C0]). A=1, B=\u22121, C=0.2 held fixed. \u03C6 is now data-fit instead of hardcoded \u2014 the grid finds the actual best alignment of the log-periodic oscillation against the observed trajectory. Increasing-frequency oscillations signal an approaching regime transition.`,
               ],
-              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)}${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
+              formula: `\u03C9 = ${lpplsData.omega.toFixed(2)} | m = ${lpplsData.m.toFixed(3)} | tc = ${lpplsData.tc.toFixed(3)} | \u03C6 = ${lpplsData.phase.toFixed(2)} rad${lpplsData.fitted ? " (fit)" : " (seed)"} | ${lpplsData.sampleSize >= 5 ? `R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% (n=${lpplsData.sampleSize})` : `R\u00B2 = \u2014 (n=${lpplsData.sampleSize}, need \u22655)`}`,
               assessment: lpplsData.sampleSize < 5
                 ? `INSUFFICIENT DATA \u2014 only ${lpplsData.sampleSize} observation(s). Run a temporal replay or widen the selection to fit the LPPLS curve.`
-                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}.`,
+                : `LPPLS fit R\u00B2 = ${(lpplsData.rSquared * 100).toFixed(1)}% on n=${lpplsData.sampleSize} (${lpplsData.evaluations} grid evaluations). ${lpplsData.rSquared > 0.6 ? "Trajectory exhibits super-exponential growth with log-periodic structure \u2014 bubble-like dynamics detected." : lpplsData.rSquared > 0.3 ? "Partial LPPLS pattern; system may be entering the pre-critical regime." : "Weak LPPLS signature \u2014 trajectory does not yet match super-exponential growth."} Fit tc = ${lpplsData.tc.toFixed(3)} (fraction of window), \u03C9 = ${lpplsData.omega.toFixed(2)} rad, m = ${lpplsData.m.toFixed(3)}, \u03C6 = ${lpplsData.phase.toFixed(2)} rad.`,
             };
           }
-          // ── BOCPD ──────────────────────────────────────────────────
+          // ── BOCPD (live as a fourth criticality estimator on the
+          // scoped Ω trajectory — same series CSD/LPPLS use) ──────────
           if (id === "bocpd") {
-            const t1dSeries = extractT1DSeries(temporalData);
-            // Summarise data availability across all T1D nodes.
-            const seriesInfo = T1D_NODE_IDS.map((nid) => {
-              const s = t1dSeries.get(nid);
-              return s ? `${nid}: ${s.values.length}pt (${s.source})` : `${nid}: 0pt`;
-            });
-            const maxN = Math.max(
-              ...T1D_NODE_IDS.map((nid) => t1dSeries.get(nid)?.values.length ?? 0),
+            const rel = relevanceMap.get("bocpd");
+            const bocpdEpochs = Math.max(
+              0,
+              Math.round((1 - bocpdData.peakRecent) * 200),
             );
-            const bestEntry = T1D_NODE_IDS.map((nid) => t1dSeries.get(nid)).find(
-              (s) => s && s.values.length === maxN,
-            );
-            const inputs = `BOCPD requires ≥20 observations per series.\n` +
-              `Longest available series: ${maxN} point(s)` +
-              (bestEntry ? ` from ${bestEntry.source}` : "") + `.\n` +
-              `T1D node availability:\n${seriesInfo.join("\n")}`;
             return {
               key: "bocpd",
               abbrev: meta.abbrev,
               fullName: meta.fullName,
-              epochs: 0,
-              maxEpochs: 1,
-              color: meta.color,
-              confidence: 0,
-              timeSeries: [],
-              modelSeries: undefined,
+              epochs: bocpdEpochs,
+              maxEpochs: 200,
+              color: getCritColor(bocpdEpochs),
+              confidence: rel ? rel.composite : bocpdData.confidence,
+              relevance: rel,
+              timeSeries: bocpdData.timeSeries,
+              modelSeries: bocpdData.modelSeries,
               shortDesc: meta.shortDesc,
-              methodology: meta.methodology,
-              formula: `INSUFFICIENT DATA on curated graph nodes — need ≥20 points, have ${maxN}` +
-                (bestEntry ? ` (from ${bestEntry.source})` : ""),
-              assessment: `INSUFFICIENT DATA on curated graph nodes — BOCPD (Adams & MacKay 2007) requires ≥20 observations on each node to fit the run-length posterior. The 7 Tier-A T1D nodes currently carry 3–5 digitised trial time-points each (VX-880 FORWARD-101 has 3; TN-10 has 2–3; T1D Index has 5). Maximum available on this surface: ${maxN} point(s).\n\nNOTE: BOCPD is LIVE elsewhere in the platform — see the SPIRTES module's bocpd-hypo-calibration tab, which runs the same estimator on the D1NAMO public cohort (8,300+ CGM samples across 9 T1D subjects) and reports AUROC 0.679 / Brier 0.183 / ECE 0.175 against ground-truth hypoglycemic events. This Pareto card activates here when one of these curated graph nodes carries ≥20 longitudinal observations.`,
-              emptyState: { kind: "awaiting-data" as const, inputs },
+              methodology: [
+                `Adams & MacKay (2007) Bayesian Online Change-Point Detection on the same scoped mean-Ω trajectory as CSD / LPPLS (${scopeLabel}, n=${bocpdData.sampleSize}). Normal-Inverse-Gamma conjugate prior on (mean, variance) of Gaussian observations; tracks the run-length posterior P(r_t = k) at each step.`,
+                `Solid line: observed Ω trajectory. Dashed line: BOCPD's posterior-predictive mean E[x_{t+1} | x_{1:t}]. The criticality readout is `+
+                  `peakRecent — the maximum P(new run) over the trailing 10 steps — currently ${bocpdData.peakRecent.toFixed(3)}. CV of newRunProb across the full trace: ${bocpdData.cv.toFixed(3)}.`,
+                `Same kernel runs on D1NAMO CGM in the SPIRTES module's bocpd-hypo-calibration tab (8,300+ samples across 9 T1D subjects, AUROC 0.679 against hypoglycemic events). Here the same estimator scores Ω regime-shift activity on whatever trajectory the active scope produces.`,
+              ],
+              formula: `peakRecent = ${bocpdData.peakRecent.toFixed(3)} | CV = ${bocpdData.cv.toFixed(3)} | hazard = 1/50 | n = ${bocpdData.sampleSize}`,
+              assessment: bocpdData.sampleSize < 6
+                ? `INSUFFICIENT DATA — only ${bocpdData.sampleSize} observation(s) in the scoped Ω trajectory. BOCPD needs ≥6 to fit a meaningful posterior. Trigger a temporal replay or widen the selection.`
+                : `${bocpdData.peakRecent >= 0.5 ? "REGIME-CHANGE ACTIVE" : bocpdData.peakRecent >= 0.2 ? "Elevated regime-change probability" : "Stable regime"} — recent-window peak P(new run) = ${bocpdData.peakRecent.toFixed(3)} over the trailing 10 of n=${bocpdData.sampleSize} steps. Posterior variability CV = ${bocpdData.cv.toFixed(3)}; ${bocpdData.cv >= 0.5 ? "trace shows clear rises and falls — BOCPD has structure to detect." : "trace is flat — BOCPD is contributing little beyond its prior."}`,
             };
           }
           // ── TRANSFER ENTROPY ────────────────────────────────────────

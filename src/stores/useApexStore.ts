@@ -5,6 +5,7 @@ import {
   CausalEdge,
   ModuleId,
   ViewMode,
+  NodeSizeMetric,
   TruthFilter,
   CopilotMessage,
   CausalGraph,
@@ -24,6 +25,7 @@ import {
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
+import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
   id: string;
@@ -46,7 +48,7 @@ export const DATASET_COLORS = [
 ];
 import { mergeGraphs } from "@/lib/import/merge";
 import { EMPTY_GRAPH } from "@/lib/graph-data";
-import { simulateCascade } from "@/lib/cascade-simulator";
+import { simulateCascade, simulateCascadeAsync } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
 import { generateTemporalData } from "@/lib/temporal-data";
@@ -90,7 +92,7 @@ function prunePinsToGraph(graph: CausalGraph, pins: string[]): string[] {
   return filtered.length === pins.length ? pins : filtered;
 }
 
-interface ApexState {
+export interface ApexState {
   // Module navigation
   activeModule: ModuleId;
   setActiveModule: (id: ModuleId) => void;
@@ -108,6 +110,17 @@ interface ApexState {
   // View
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+
+  /**
+   * Drives 3D orb size. The 3D view can map the radius to either the
+   * static ΩF composite or to one of the live network-analysis metrics
+   * (eigenvector / betweenness centrality). Both centrality metrics are
+   * already computed during layout and surfaced in the right-side
+   * Network Analysis panel; this toggle lets the user swap which signal
+   * the orbs encode without leaving the canvas.
+   */
+  nodeSizeMetric: NodeSizeMetric;
+  setNodeSizeMetric: (metric: NodeSizeMetric) => void;
 
   // Truth filter
   truthFilter: TruthFilter;
@@ -129,6 +142,15 @@ interface ApexState {
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
+
+  // Which pillar (if any) is expanded inside NodeInspector. Lifted from
+  // NodeInspector local state to the store so the onboarding tour can
+  // gate the "click a pillar vertex" step on real interaction (the
+  // node-inspector step's awaitInteraction predicate reads this).
+  // Reset to null whenever the selected node changes — explanation card
+  // is per-node, not per-app.
+  expandedPillar: PillarKey | null;
+  setExpandedPillar: (key: PillarKey | null) => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -366,6 +388,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
   viewMode: "3d",
   setViewMode: (mode) => set({ viewMode: mode }),
 
+  // Default to eigenvector — that's what the 3D view shipped with before
+  // the toggle. Surfacing the choice as a visible UI control is the
+  // change; the existing read stays the default.
+  nodeSizeMetric: "eigenvector",
+  setNodeSizeMetric: (metric) => set({ nodeSizeMetric: metric }),
+
   // Truth filter
   truthFilter: "raw",
   tarskiReport: null,
@@ -375,7 +403,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     set((s) => {
       // Clear previous flags first
       const cleanGraph = clearTarskiFlags(s.graphData);
-      const report = runTarskiValidation(cleanGraph, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
+      const profileId = resolveDomainProfile(s.selectedDomains).id;
+      const report = runTarskiValidation(
+        cleanGraph,
+        s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        profileId,
+      );
       const flaggedGraph = applyTarskiFlags(cleanGraph, report);
       return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
     }),
@@ -443,9 +476,11 @@ export const useApexStore = create<ApexState>((set, get) => ({
       const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
       if (s.truthFilter === "verified") {
         const cleanGraph = clearTarskiFlags(nextGraph);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
         const report = runTarskiValidation(
           cleanGraph,
           s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
         // ΩF pillar wiring: refresh live deltas after the feed mutation
@@ -462,7 +497,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     set((s) => {
       if (f === "verified") {
         // Dynamically run Tarski validation against the live graph
-        const report = runTarskiValidation(s.graphData, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          s.graphData,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
         const flaggedGraph = applyTarskiFlags(s.graphData, report);
         return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
       } else {
@@ -474,7 +514,17 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // Selected node
   selectedNode: null,
-  setSelectedNode: (nodeId) => set({ selectedNode: nodeId }),
+  setSelectedNode: (nodeId) =>
+    set((s) => ({
+      selectedNode: nodeId,
+      // Reset the expanded pillar when the selected node changes; the
+      // explanation card belongs to the previous node and would read
+      // misleadingly against fresh ΩF values.
+      expandedPillar: nodeId === s.selectedNode ? s.expandedPillar : null,
+    })),
+
+  expandedPillar: null,
+  setExpandedPillar: (key) => set({ expandedPillar: key }),
 
   // Selected edge
   selectedEdgeId: null,
@@ -551,29 +601,35 @@ export const useApexStore = create<ApexState>((set, get) => ({
     }),
   resetAblation: () =>
     set({ ablatedNodeIds: [], ablatedEdgeIds: [], ablationMode: false }),
-  startAblationReplay: () =>
-    set((s) => {
-      // Build ablated graph by removing ablated nodes and edges
-      const ablatedGraph = {
-        ...s.graphData,
-        nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
-        edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
-        metadata: {
-          ...s.graphData.metadata,
-          totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
-          totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
-        },
-      };
-      const epochs = simulateCascade(ablatedGraph, s.shocks, s.severedEdges);
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        replayBranchEpoch: null,
-      };
-    }),
+  startAblationReplay: () => {
+    const s = get();
+    const ablatedGraph = {
+      ...s.graphData,
+      nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
+      edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
+      metadata: {
+        ...s.graphData.metadata,
+        totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
+        totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
+      },
+    };
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      replayBranchEpoch: null,
+    });
+
+    void simulateCascadeAsync(ablatedGraph, shocks, severedEdges).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ interventionEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   // Tarski axiom filter
   // Interdiction (chat-based)
@@ -844,19 +900,35 @@ export const useApexStore = create<ApexState>((set, get) => ({
   activeTimeline: "baseline",
   replayBranchEpoch: null,
 
-  startReplay: () =>
-    set((s) => {
-      const epochs = simulateCascade(s.graphData, s.shocks, s.severedEdges);
-      return {
-        baselineEpochs: epochs,
-        interventionEpochs: [],
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        activeTimeline: "baseline",
-        replayBranchEpoch: null,
-      };
-    }),
+  startReplay: () => {
+    // Snapshot inputs synchronously so a later state mutation can't
+    // change the substrate the simulation is running against.
+    const s = get();
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    // Phase 1: enter "computing" state immediately so the UI can show
+    // a starting indicator without waiting for the full 200-epoch run.
+    // replayPlaying stays false until the snapshots arrive.
+    set({
+      baselineEpochs: [],
+      interventionEpochs: [],
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      activeTimeline: "baseline" as TimelineId,
+      replayBranchEpoch: null,
+    });
+
+    // Phase 2: chunked simulation across idle frames (keeps the UI thread
+    // unblocked); flip to playing when results land. Bail if the user
+    // stopped the replay mid-flight.
+    void simulateCascadeAsync(graphData, shocks, severedEdges).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ baselineEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   stopReplay: () =>
     set({
@@ -895,27 +967,41 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setActiveTimeline: (id) => set({ activeTimeline: id, currentEpoch: 0 }),
 
-  branchFromCurrentEpoch: () =>
-    set((s) => {
-      if (!s.replayActive || s.baselineEpochs.length === 0) return s;
-      const branchSnapshot = s.baselineEpochs[s.currentEpoch];
-      if (!branchSnapshot) return s;
-      const epochs = simulateCascade(
-        s.graphData,
-        s.shocks,
-        s.severedEdges,
-        undefined,
-        undefined,
-        branchSnapshot.nodeStates
-      );
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayBranchEpoch: s.currentEpoch,
-        currentEpoch: 0,
-        replayPlaying: true,
-      };
-    }),
+  branchFromCurrentEpoch: () => {
+    const s = get();
+    if (!s.replayActive || s.baselineEpochs.length === 0) return;
+    const branchSnapshot = s.baselineEpochs[s.currentEpoch];
+    if (!branchSnapshot) return;
+
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+    const initialStates = branchSnapshot.nodeStates;
+    // Capture the branch point before we reset currentEpoch — the
+    // intervention timeline restarts at 0 but we need the original
+    // baseline epoch index for the side-by-side comparison UI.
+    const branchEpoch = s.currentEpoch;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayBranchEpoch: branchEpoch,
+      currentEpoch: 0,
+      replayPlaying: false,
+    });
+
+    void simulateCascadeAsync(
+      graphData,
+      shocks,
+      severedEdges,
+      undefined,
+      undefined,
+      initialStates,
+    ).then((epochs) => {
+      if (!get().replayActive) return;
+      set({ interventionEpochs: epochs, replayPlaying: true });
+    });
+  },
 
   // Timeline / Time Dial
   timelinePosition: Date.now(),

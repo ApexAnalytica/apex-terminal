@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -76,7 +80,7 @@ export async function POST(
     );
   }
 
-  const { error } = await service.from("leads").update(update).eq("id", id);
+  const { error } = await getService().from("leads").update(update).eq("id", id);
   if (error) {
     console.error("admin/leads update:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

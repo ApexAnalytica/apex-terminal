@@ -209,15 +209,18 @@ export default function CDOmegaMonitor({
             );
           })}
         </div>
+        {/* Buffer bar caption row. The third cell used to repeat the
+            derived status (ELEVATED / CRITICAL / SAFE) which the Status
+            Badge to the right already shows in larger type — duplicate
+            text in tight header space, called out by the user as filler.
+            Dropped; the Ω marker + percentage are the non-redundant
+            pieces and stay. */}
         <div className="flex justify-between">
           <span className="text-[9px] font-mono" style={{ color: "var(--accent-red)" }}>
             &Omega;
           </span>
           <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
             {hasNodes ? `${omegaPct.toFixed(1)}%` : `${state.buffer.toFixed(1)}%`}
-          </span>
-          <span className="text-[9px] font-mono hidden sm:block" style={{ color: "var(--accent-green)" }}>
-            {derivedStatus.status === "NOMINAL" ? "SAFE" : derivedStatus.status}
           </span>
         </div>
       </div>

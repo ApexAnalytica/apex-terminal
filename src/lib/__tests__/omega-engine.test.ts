@@ -304,11 +304,11 @@ describe("computeCascadeAnalysis", () => {
 // ─── getPresetShocks ────────────────────────────────────────────
 
 describe("getPresetShocks", () => {
-  it("returns 7 preset shocks", () => {
-    expect(getPresetShocks()).toHaveLength(7);
+  it("returns an empty array by default (preset library cleared)", () => {
+    expect(getPresetShocks()).toEqual([]);
   });
 
-  it("all shocks have severity in (0, 1]", () => {
+  it("never returns a preset with invalid severity (contract holds for any future entries)", () => {
     for (const s of getPresetShocks()) {
       expect(s.severity).toBeGreaterThan(0);
       expect(s.severity).toBeLessThanOrEqual(1);

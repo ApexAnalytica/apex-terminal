@@ -266,9 +266,470 @@ Remaining map-view perf opportunity if ever needed: the per-frame particle updat
 - `src/components/CausalDAGRelief.tsx` (+ ~50 / − 5) — error boundary, empty-buffer guards, removed redundant normal compute.
 - `docs/sessions/rendering-perf.md` — this entry.
 
+### 2026-05-03 — Shipped: Relief readability pass — peakier terrain, tilted camera, grid, top-K node labels
+
+**PR:** TBD (about to open).
+
+**Trigger.** User said the live Relief view "kinda just looks like a flat map" — the multi-domain mesh was reading as one soft mound instead of distinguishable peaks, the camera was too top-down to see silhouette, and there was no way to identify *which* nodes the ridges belonged to. Asked for tilt + axes/grid + node labels.
+
+**What shipped.**
+- **Sharper terrain.** `heightScale 30 → 90`, `sigmaFraction 0.12 → 0.06` (tighter Gaussian — peaks no longer smear into one another), and a new `heightGamma: 1.35` knob that powers the normalised elevation before mapping to vertex Y. Combined with the upstream `nodeWeight()` power-1.5 boost (PR #218 territory), peaks now read as discrete ridges with flat valleys instead of a single dome. `elevationColor()` still keys off the linear `norm` so the legend ramp stays readable.
+- **Tilted initial camera.** `dist * 0.55` Y-multiplier dropped to `0.35`, giving a ~20° elevation angle instead of a half-overhead view. The mesh now has actual silhouette on first frame; OrbitControls take over from there.
+- **`<ReliefGrid>`.** Flat `gridHelper` at `y = -2`, sized to 1.2 × the bounds and divided into 16 cells. Two-tone colors (`#1a1d2b` / `#0e1018`) sit just-visible against the `#050508` background — the mesh is no longer floating in featureless black.
+- **Top-K node labels.** New `computeNodeAnchors(nodes, layout, field, params, K=8)` in `graph-relief-field.ts` samples the field at each top-K node's position and returns mesh-local `(x, z, y)` so the component can drop drei `<Html>` cards above the highest peaks. Each label shows `{node.label}` + `Ω X.X` and a thin vertical tick down to the peak surface so the visual anchor is unambiguous. Defaults to 8 labels — enough to identify the dominant ridges, not so many that the canvas turns into label soup.
+- **`ReliefField` exposes `cx, cy`.** The world-space recentring origin used by both compute functions. Lets `computeNodeAnchors` (and any future picking work) convert raw layout coords to mesh-local without re-deriving the bounds.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `heightGamma` param + `cx/cy` field exports, height-gamma applied in both compute functions, new `computeNodeAnchors` + `NodeAnchor` exports.
+- `src/components/CausalDAGRelief.tsx` — `<ReliefGrid>`, `<NodeLabels>`, tilted `<CameraSetup>`, `Html` import from drei, anchors useMemo against the dominant peak field.
+- `src/lib/__tests__/graph-relief-field.test.ts` — added 4 tests: `cx/cy` exposed correctly; anchors top-K + sorted; anchors recentred to mesh-local; anchors empty on empty field.
+
+**Cost.** Anchor sampling is O(K × N) per recompute (K=8, N=node count). On a 200-node graph that's ~1,600 `exp()` calls — under 1ms. Memoised on `[graphData.nodes, layout]` so hover/scrub/orbit don't trigger.
+
+**Out of scope (deliberately).** Per-layer Y-stacking (option B in the user's pick) — the sharpened terrain alone already separates peaks readably, and stacking would compete with the additive color-mixing read. Picking through the mesh — still a future PR.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 696/696 pass (4 new tests).
+
+### 2026-05-03 — Shipped: Relief v3 — fused mesh, iso-contours, picking
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on the v2 multilayer was direct: *"the peaks are not really well differentiated. it's not really good… can't select any of these nodes."* They sent a Reddit reference (r/SideProject — "topographic map of 10 million research papers") showing how a real topographic map should look: discrete mountain ridges, iso-contour rings, dense labels, all clickable. The v2 additive multilayer fundamentally couldn't get there because every domain contributed everywhere, smearing peaks into haze.
+
+**What shipped (v3 — bigger rework).**
+- **Fused single mesh** replaces additive multilayer. New `computeFusedReliefField(nodes, layout, params)` builds ONE BufferGeometry by summing every domain's Gaussians into a total height field, but tracks the *dominant* domain at each grid cell. Vertex color = `dominantDomainColor × elevationTint × isoContourBand`. Each peak now reads as a discrete ridge with a single colour identity ("this peak is mostly Energy"), not the previous translucent pile-up. Returns a populated `legend` field — replaces the old per-layer legend rendering.
+- **Iso-contour bands** baked into the vertex colour. `(cos(norm × BANDS × 2π) + 1) / 2` modulates each vertex's intensity; bands at edge centres are bright, valleys between bands are 0.6× dimmer. 12 bands gives the topographic-map ringed look the user asked for, without needing a custom shader. Sat on top of the elevation tint so darker valleys ringfade gracefully.
+- **Picking.** New `pickNearestNode(clickX, clickZ, nodes, layout, field, params, maxDistance)` does a nearest-node search over mesh-local layout positions, capped at ~1.5 × sigma so a click on flat ground doesn't pick a far-away node. The mesh now has an `onClick` handler that takes the r3f hit point, calls picker, and dispatches `setSelectedNode(id)` into the store. Same selection signal the rest of the app already listens to (3D pillars, ModulePanel, RiskPropagationFlow). Plus a brief "SELECTED: {label}" hint at the bottom of the canvas for 1.4s so the user gets a visible confirmation.
+- **Beefier labels.** Top-K bumped 8 → 12, switched to high-contrast white-on-black-with-shadow cards (the previous bg-surface-elevated/80 read as washed-out against bright peaks), thicker ticks (0.5r × 18h vs 0.6r × 14h), distance factor tuned tighter so labels stay legible at common camera distances.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — new `computeFusedReliefField` + `FusedReliefField` + `FusedReliefLegendEntry` exports, new `pickNearestNode` exporter. Existing `computeReliefField` / `computeReliefLayers` / `computeNodeAnchors` unchanged for back-compat with tests and any future re-use.
+- `src/components/CausalDAGRelief.tsx` — drops `<ReliefLayerMesh>` from the render path entirely (the type stays imported only by tests). New `<ReliefMesh>` accepts `onPick` and routes click events. Pick hint UI element added. Lighting bumped (ambient 0.35→0.45, directional 0.7→0.85) so iso-contours read clearly against the now-tinted vertex colours.
+- `src/lib/__tests__/graph-relief-field.test.ts` — 6 new tests: `computeFusedReliefField` shape + legend ordering, dominant-domain colouring at distant clusters, empty-graph handling; `pickNearestNode` happy path, cap radius, empty field.
+
+**Out of scope.** Replay animation (bind field input to `currentSnapshot`), per-layer Y-stacking (option B from the original choice — moot now that the fused mesh reads cleanly), onboarding tooltip. Filed.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass (6 new in `graph-relief-field.test.ts`).
+
+### 2026-05-03 — Shipped: Topo v4 — heatmap palette, dense labels, more drama
+
+**PR:** TBD (about to open).
+
+**Trigger.** v3 user feedback: *"why did you randomly color these across? these are supposed to show colors getting brighter as peaks get larger — that's the whole thing, this is a heatmap. don't know if relief is the correct term either. can't see all the nodes. peaks and troughs still not differentiated."*
+
+The dominant-domain colour scheme from v3 read as patchwork. Users expect a topographic / heatmap visualisation to follow a single ramp where elevation = colour, full stop. Domain identity should live elsewhere (legend, label borders), not on the surface itself.
+
+**What shipped.**
+- **Heatmap palette on the surface.** `computeFusedReliefField` now uses the `elevationColor` ramp (deep blue → cyan → amber → red) for vertex colours instead of the dominant-domain tint. Iso-contour modulation stays — bright at band centres, 0.55× at edges. Result: brighter / hotter = higher peak, full stop. Domain bookkeeping (`legend`, `dominantDomain`) still computed and exposed for downstream UI but no longer drives surface colour.
+- **More vertical drama.** `heightScale 90 → 140`, `sigmaFraction 0.06 → 0.05`, `heightGamma 1.35 → 1.6`. Peaks now stand visibly above valleys in silhouette, not just colour.
+- **Lower camera tilt.** Initial Y multiplier `0.35 → 0.25` so users see real horizon-relative silhouette on first frame.
+- **Many more labels, scaled by Ω.** `topK` bumped 12 → 40. Each label's font size, tick height, tick width, and card opacity all scale linearly with `composite`: a top-Ω node gets 10.5px text + 28-unit tick + 1.0r tick + 0.95 card opacity; a borderline-3 node gets 7.5px text + 14-unit tick + 0.4r tick + 0.7 opacity. Label borders + Ω text get domain colour — that's where domain identity now lives.
+- **Renamed "RELIEF" → "TOPO" in the UI.** Internal `viewMode === "relief"` stays unchanged (would have rippled through types, store, and tests for no real benefit); button label is now "TOPO" and the rendering badge reads "WEBGL_TOPO". User flagged that RELIEF was unfamiliar and "TOPO" is closer to the layperson term for a topographic map.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — DEFAULTS bumped (heightScale 140, sigmaFraction 0.05, heightGamma 1.6); `computeFusedReliefField` colour pass swapped to `elevationColor` ramp.
+- `src/components/CausalDAGRelief.tsx` — `topK` 12 → 40, label-size scaling with composite, domain-coloured label borders, camera Y multiplier 0.35 → 0.25.
+- `src/components/dag3d/DAGOverlay.tsx` — view-mode button label and rendering-badge string updated to "TOPO" / "WEBGL_TOPO".
+- `src/lib/__tests__/graph-relief-field.test.ts` — replaced "dominant domain colour" test with "elevation ramp is monotonic with elevation" test (max-RGB-sum vertex is markedly brighter than min).
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
+
+### 2026-05-03 — Shipped: Topo v5 — fragment shader, denser geometry, smooth contours
+
+**PR:** TBD (about to open).
+
+**Trigger.** v4 user feedback: *"this is better, but it's pixelated-looking. I've seen platforms that have a lot clearer terrain. Is there a different framework we can use?"*
+
+The framework is fine — three.js / r3f is exactly what those reference platforms use. The "pixelated" look came from two things stacking: (1) the geometry was 80×80 cells, so triangles were visible at silhouette, and (2) the iso-contour bands were baked into per-vertex RGB and linearly interpolated across triangles, so a band drawn at norm=0.5 only landed on triangles whose edges crossed 0.5 — apparent line width followed the triangle grid, not the screen. Pixel-rate fragment shading fixes both.
+
+**What shipped.**
+- **Fragment-shader topo material.** New `<shaderMaterial>` with custom GLSL inside `CausalDAGRelief.tsx`. The vertex shader passes a single per-vertex `aNorm` (normalised height) as a varying; the fragment shader reconstructs the elevation colour ramp + iso-contour lines + Lambert shading **per pixel**. Result: silky smooth gradients and crisp anti-aliased contour lines, regardless of geometry resolution. Iso-contour line is `1 - smoothstep(uLineWidth, uLineWidth + 0.008, distToBandEdge)`, mixed at 0.75 strength against `0.35× baseColor` for visible-but-not-busy ringing. 14 bands by default (was 12). Ambient floor 0.45 + 0.55 Lambert.
+- **Per-vertex `norms` attribute** on `FusedReliefField`. Same length as `positions/3`. The shader reads it; vertex `colors` stay populated as a fallback for any code path that doesn't bind the shader.
+- **Geometry resolution 80 → 128.** Triangles still get smaller for a smoother silhouette, but we don't need to crank further because the surface smoothness now comes from the fragment shader, not mesh density. ~16K vertices, ~100ms compute on 200-node graphs.
+- The single-domain path (1 unique domain) keeps using `meshStandardMaterial` with vertex colours — the shader is wired conditionally on the presence of `norms`.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — DEFAULTS resolution 80 → 128; `FusedReliefField` adds `norms: Float32Array`; `computeFusedReliefField` writes per-vertex norms in pass 2 (vertex colours stay populated minus the iso-contour modulation, which moved to the shader).
+- `src/components/CausalDAGRelief.tsx` — `TOPO_VERTEX_SHADER` + `TOPO_FRAGMENT_SHADER` GLSL strings, `<ReliefMesh>` accepts `norms?: Float32Array` and conditionally renders `<shaderMaterial>` vs `<meshStandardMaterial>` based on its presence. Fused-mesh call site passes `fusedField.norms`.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 702/702 pass.
+
+### 2026-05-03 — Shipped: Topo replay animation — terrain morphs as the cascade runs
+
+**PR:** TBD (about to open).
+
+**Trigger.** User picked option 1 — turn TOPO from a static topology view into a scenario tool that morphs as the cascade replay advances. Bind the field input to `currentSnapshot.nodeStates[id].omegaComposite` so peaks rise / fall in sync with the replay scrubber.
+
+**What shipped.**
+- **Replay-aware field input.** `CausalDAGRelief` now reads `replayActive`, `activeTimeline`, `baselineEpochs` / `interventionEpochs`, and `currentEpoch` from the store. Derives a `currentSnapshot: EpochSnapshot | null` (clamped to range, like `CausalDAG2D` does). When non-null, builds a `fieldNodes` array that overrides each node's `omegaFragility.composite` with the snapshot's per-node ΩF. The fused / single field, the anchors, and the labels all read from `fieldNodes` — so the surface, the elevation, and the label Ω text all morph in lockstep as the user scrubs.
+- **Stable layout under scrub.** Switched the layout `useMemo` from `[graphData.nodes, graphData.edges]` (re-fires every scrub tick because `useTemporalGraph` allocates fresh arrays + node objects) to `[sig]` where `sig = graphSignature(nodes, edges)` (sorted node + edge id string). Topology changes still re-run the force-directed simulation; replay scrubs don't. Same pattern `CausalDAG2D` uses (`graphSignature` from `graph-layout-2d.ts`). Without this fix, scrubbing would also shuffle the canvas, which would compete with the field eval for the main thread and look terrible.
+- **REPLAY · EPOCH N / M pill** in the top-right. Amber-bordered, only renders when `currentSnapshot` is active. Tells users at a glance that the surface they're seeing is a replay frame, not the static graph.
+
+**Files.**
+- `src/components/CausalDAGRelief.tsx` — adds replay-state selectors, `currentSnapshot` derive, `fieldNodes` override, sig-keyed layout cache, REPLAY pill. Also adds imports: `graphSignature` from `graph-layout-2d`, `EpochSnapshot` type from `lib/types`.
+- `src/lib/__tests__/graph-relief-field.test.ts` — added 2 tests: `norms` length matches `positions/3` and ranges across [0,1]; replay contract — same nodes/layout, escalated ΩF → strictly higher peak.
+
+**Out of scope.** Throttling field recompute during fast scrubbing — at 128² × 169 samples × N domains the eval is ~100ms per frame, which is fine for click-stepping through epochs but would feel laggy for a real-time slider drag. If users actually scrub at 60fps, the right fix is either (a) lower-resolution preview during drag + full res on settle, or (b) port the kernel sum to a compute shader. Filed for later.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 704/704 pass (2 new in `graph-relief-field.test.ts`).
+
+### 2026-05-03 — Shipped: Topo label-on-peak fix + Ω intensity legend
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the way nodes render on top of it is really hard to follow. Right now they seem to be sitting at the bottom on a flat map. Also could we have a vertical scale showing what each striation is in terms of Ω."*
+
+**The bug.** `computeNodeAnchors` was sampling each node's height with the raw `composite` value:
+```ts
+h += s.composite * Math.exp(-(...) / sigma2);
+```
+But the field eval uses `nodeWeight(composite) = composite ^ WEIGHT_EXPONENT (1.5)`. For composite=10, that's 10 vs 31.6 — the anchor's `h / field.peak` ratio was ~0.3 of the actual mesh-vertex norm at that point, so `pow(norm, heightGamma) * heightScale` came out at ~20 when the surface peak was at 140. Labels rendered close to y=0 — exactly the "sitting at the bottom" the user reported. One-line fix: anchor sampling now mirrors the field-eval kernel.
+
+**What shipped.**
+- **Anchor height fix.** `computeNodeAnchors` now uses `nodeWeight(s.composite)` to match the field eval. Labels now float at the true peak height.
+- **`<ElevationLegend>` component.** Vertical heatmap-gradient strip on the right edge of the canvas, ~180px tall, with five label stops (Ω peak / HIGH / MID / LOW / Ω 0). Uses 14 horizontal tick lines that mirror the shader's `uBands = 14`, so the strip's tick density visually maps to the iso-rings on the surface. Right-side rotated "Ω INTENSITY" text. Pulls `peakOmega` from `fieldNodes` (replay-aware), so the top label updates as ΩF changes during a replay.
+- **`elevationColorJS`** small helper in the component — JS mirror of the shader's GLSL elevationColor ramp, used to paint the CSS gradient stops so the legend visually matches the surface palette. Comment ties them together; keep in sync if the ramp ever changes.
+
+**Files.**
+- `src/lib/graph-relief-field.ts` — `computeNodeAnchors` height kernel uses `nodeWeight()` instead of raw `composite`. Comment explaining the contract.
+- `src/components/CausalDAGRelief.tsx` — adds `<ElevationLegend>`, `elevationColorJS()` helper, `peakOmega` useMemo, render call site below the domain legend.
+- `src/lib/__tests__/graph-relief-field.test.ts` — new regression test "anchor y matches the actual mesh-vertex height at the node position": for an isolated source the anchor should reach ≥ 95% of the global mesh-vertex max-Y (was previously sitting at <30% of it).
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 711/711 pass.
+
+### 2026-05-03 — Shipped: 2D hover/select stability — custom EmphasizedEdge + Dag2DContext
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback: *"the 2D map is doing this weird thing where if I hover over any node, the whole map starts to blink consistently. And when I select any one node, the map just disappears temporarily."*
+
+**Root cause.** Both the `nodes` and `edges` useMemos depended on `emphasisMap` / `emphasisTarget` (= `hoveredNodeId ?? selectedNode`). Every mousemove that hit a node, and every click that selected one, re-fired both memos and produced **brand-new node + edge object arrays**. React Flow then diffs against its internal store, decides everything is new, and tears down + rebuilds every node and edge DOM element. With many edges and a 180ms opacity transition, that read as a canvas-wide blink. The select-then-disappear case was the same mechanism — `emphasisTarget = selectedNode` flipped the entire arrays, RF unmounted before the new tree was mounted.
+
+This was the work deferred in PR #198 with the note *"would need a custom edge component subscribing to emphasisTarget separately."*
+
+**What shipped.**
+- **`Dag2DContext`** — new React Context carrying `{ adjacency, hoveredNodeId, selectedEdgeId }`. The adjacency Map is the same one the parent already builds; it's stable across hovers because it's keyed on graph topology only.
+- **`computeNodeEmphasis(id, hoveredNodeId, selectedNode, multiSelected, adjacency)`** — pure helper that returns `"focus" | "neighbor" | "dim" | "none"` for a single node. Used by `CausalNode2D` directly. Same logic as the old `emphasisMap` builder, just per-node instead of all-up-front.
+- **`CausalNode2D` consumes context + store directly.** Reads `hoveredNodeId` from `Dag2DContext`, `selectedNode` and `multiSelectedNodes` from `useApexStore`. Computes its own emphasis. The parent's `nodes` useMemo no longer depends on emphasis-derived state, so hover / single-select don't rebuild the array.
+- **New `EmphasizedEdge` custom edge component.** Subscribes to context + store the same way. Carries structural data (`baseColor`, `baseWidth`, `baseOpacity`, propagation signal, isSelected, type flags) on `edge.data` — all stable per graph state, NOT per hover. In render, computes opacity / strokeWidth / dim modulation from current emphasis. Renders via drei's `BaseEdge` + `getBezierPath`.
+- **Parent's `edges` useMemo deps**: dropped `emphasisTarget`; kept `[graphData, truthFilter, currentSnapshot, selectedEdge]`. Hovering no longer rebuilds the edges array; `selectedEdge` (the edge inspector signal — separate from `selectedNode`) still does, which is correct.
+- Registered `edgeTypes = { emphasized: EmphasizedEdge }` and switched the per-edge `type` from `"default"` to `"emphasized"`.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — Context + helper added at top, `CausalNode2D` updated, `EmphasizedEdge` added, parent `nodes`/`edges` useMemos restructured, render wraps in `<Dag2DContext.Provider>`, `edgeTypes` passed to ReactFlow.
+
+**Out of scope (deliberate).**
+- The replay contraction `nodes` useMemo (`graphData, nodePositions, truthFilter, currentSnapshot, adjacency`) still re-fires on each replay tick, which is correct — node positions actually move during replay. The point of this PR was severing the *hover/select* dependency, not the replay dependency.
+- The "map disappears on select" symptom — same root cause as the blink (whole-array rebuild). Both are fixed by the same change.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 723/723 pass.
+
+### 2026-05-03 — Shipped: 3D readability — labels-on-demand, brighter orbs, size-metric toggle
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on the 3D diagram: *"looks busy / hard to track. Rather than every node labeled, only show labels when I select one. The orbs themselves are near invisible — make them easier to identify. Should we link the orb size to a network feature shown on the right? Maybe a toggle?"*
+
+**What shipped.**
+- **Labels on demand only.** `DAGNode3D` previously rendered every node's label permanently (hidden only during active orbit). Now the label only shows when the node is hovered, single-selected, or a neighbour of the selected node. The hover detail card (full ΩF profile + radar + network metrics) still surfaces full info on demand. Removes the "hodgepodge of overlapping text" the user flagged.
+- **Brighter orbs.** Three changes in concert: (a) base radius range 0.20–0.75 → 0.45–1.05 (≈ 2× across the board, lifts the floor so peripheral nodes still read as orbs not dots); (b) idle emissive intensity floor 0.4 → 0.7 (and hover 0.8 → 0.95); (c) outer glow-sphere opacity 0.06 / 0.12 → 0.16 / 0.32; (d) ΩF colour ring opacity 0.15 / 0.35 → 0.32 / 0.55. Orbs now have visible presence at idle, not just when hovered.
+- **`nodeSizeMetric` toggle.** New `NodeSizeMetric = "omega" | "eigenvector" | "betweenness"` type added to `lib/types.ts`. Store carries `nodeSizeMetric` (default `"eigenvector"` — same as before, just now selectable) + `setNodeSizeMetric` action. `DAGOverlay` exposes a small `SIZE: ΩF / EIG / BTW` button trio in the top-right control strip, only visible in 3D view. `DAGNode3D` reads the store value and computes radius from the chosen metric — `omega` maps `composite/10` to the unit interval; the centralities are passed through directly. Hover-card footer reflects the active metric ("size ∝ ΩF composite", etc.).
+
+**Files.**
+- `src/lib/types.ts` — new `NodeSizeMetric` type.
+- `src/stores/useApexStore.ts` — `nodeSizeMetric` slot + setter, default `"eigenvector"`.
+- `src/components/dag3d/DAGOverlay.tsx` — 3D-only `SIZE:` toggle wired to the store.
+- `src/components/dag3d/DAGNode3D.tsx` — radius formula honours the toggle, label conditional gate, glow / emissive intensity bumps, hover-card footer text.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass. (Three pre-existing lint warnings outside the diff.)
+
+### 2026-05-03 — Shipped: 2D floating edges + node-size toggle parity
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the 3D readability pass: *"some 2D lines are still all curvy. It almost seems like they have to be pointing to the bottom or top of any node. Can't we have them just pointing straight from whatever direction makes the most sense? Also the size differences should also be available in 2D rendering."*
+
+**Floating edges.** The previous `EmphasizedEdge` used `getBezierPath` against React Flow's handle-anchored `sourceX/Y` / `targetX/Y` — every line had to pass through one of the four invisible handles (top/bottom/left/right) on each circle, so a node placed to the left of another would still draw a line that detoured up to the top handle and curved back down. Replaced with the "floating edge" pattern from the RF docs: read the source/target `nodeInternals` via `useReactFlowStore`, compute centre-to-centre direction, trim each end to the circle perimeter, draw a single straight `M…L…` SVG path. Now lines go in the geometrically natural direction, no curvature, no detours. Arrowhead lands on the circle perimeter cleanly.
+
+**Node-size toggle parity.** The 3D `SIZE: ΩF / EIG / BTW` toggle now drives 2D node diameter too:
+- `CausalDAG2D` computes `networkMetrics` via the existing `computeNetworkMetrics` util (same one 3D uses) and caches on `graphSignature`. Replay scrubs / hover don't re-run the centrality sweep.
+- Each node's `data` now carries `metrics: NodeMetrics`.
+- `CausalNode2D` reads `nodeSizeMetric` from the store and maps the chosen signal into a 14–34 px diameter range.
+- `DAGOverlay` SIZE toggle visibility extended from `viewMode === "3d"` to `(viewMode === "3d" || viewMode === "2d")`. MAP / TOPO stay hidden since their visual primitive isn't a sized node.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — `EmphasizedEdge` switched to floating straight path via `useReactFlowStore`; `CausalNode2D` accepts `metrics` and reads `nodeSizeMetric`; parent `nodes` useMemo passes per-node metrics; `networkMetrics` useMemo cached on `sig`.
+- `src/components/dag3d/DAGOverlay.tsx` — SIZE toggle now visible in 2D as well.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 729/729 pass.
+
+### 2026-05-03 — Hotfix (out-of-scope but blocking prod): lazy-init Supabase clients in API routes
+
+**PR:** TBD (about to open).
+
+**Trigger.** User reported `manifold.apexanalytica.co` → Vercel **404 DEPLOYMENT_NOT_FOUND**. Local `npm run build` reproduced: `Error: supabaseUrl is required.` at the "Collecting page data" step, dying on `/api/admin/billing/expire`. Bisected — none of the rendering/perf commits touched these routes; the failure is structural.
+
+**Root cause.** Ten API route files were instantiating service-role Supabase clients (and one Resend client) **at module-load time** at the top of the file:
+
+```ts
+const service = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+```
+
+Next.js 16's Turbopack production builder is more aggressive about evaluating route modules during page-data collection, so any missing env var at build time crashes the entire build. On Vercel that took out the production deployment alias and produced the user-facing DEPLOYMENT_NOT_FOUND.
+
+**Fix.** All 10 routes wrapped the client creation in a `function getService() { return createClient(...) }` and switched callsites to call `getService()` (or `getSupabase()` / `getResend()`) inside the request handler. Module-load no longer touches env vars; the client is constructed at request time when env vars are guaranteed present (or fails with a clearer 500).
+
+**Files touched.**
+- `src/app/api/admin/billing/expire/route.ts`
+- `src/app/api/admin/billing/grant-tier/route.ts`
+- `src/app/api/admin/billing/customers/route.ts`
+- `src/app/api/admin/feedback/[id]/approve/route.ts`
+- `src/app/api/admin/feedback/[id]/reject/route.ts`
+- `src/app/api/admin/leads/[id]/route.ts`
+- `src/app/api/request-access/route.ts` (also lazy-inits Resend)
+- `src/app/api/feedback/route.ts`
+- `src/app/api/webhooks/github/route.ts`
+- `src/app/api/trusted-signup/route.ts`
+
+**Verification.** Local `npm run build` now passes the "Collecting page data" step (where it was failing). Static page pre-rendering still requires env vars present (e.g. `/forgot-password` uses `@supabase/ssr`); that's expected on Vercel where the env vars exist and was always working there.
+
+**Out of scope (deliberate).** This is auth/platform code, not rendering/perf. Logging the hotfix here because it's the only session that's been touching the codebase today and prod was down.
+
+### 2026-05-03 — Shipped: discoverable LEGEND popover replaces cryptic SIZE buttons
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the SIZE toggle landed: *"the toggle ΩF / EIG / BTW is still kind of confusing — what do they mean? Also what about the distance measures? What are those relative to the orbs? We need to be more specific and consistent."*
+
+The cryptic three-letter labels surfaced no meaning, and three other visual encodings (inter-node distance, edge thickness, edge colour) had **zero documentation** in the UI. Power users could probably guess, first-time users couldn't.
+
+**What shipped.**
+- New `EncodingLegend` popover component in `DAGOverlay`, anchored to a single `LEGEND` button that replaces the inline `SIZE: ΩF / EIG / BTW` strip. Same trigger in 2D and 3D.
+- **Size toggle moved inside the popover** with full names + one-line explanations:
+  - **Criticality (ΩF)** — Static fragility composite — 0–10. Default analytical signal.
+  - **Influence (eigenvector centrality)** — Importance via connections to other important nodes. Surfaces hubs.
+  - **Bridge (betweenness centrality)** — Lies on shortest paths between others. Surfaces chokepoints.
+- **Five read-only encoding rows**, each with a colour swatch + plain-English explanation:
+  - Node colour → domain
+  - Node glow → ΩF severity (red ≥ 9, amber 7–9, green < 7)
+  - Distance → force-directed: stronger correlation ⇒ shorter spring ⇒ closer
+  - Edge thickness → correlation magnitude
+  - Edge colour → causal (cyan) / temporal (amber) / confounded (orange) / Tarski-violation (red)
+- Click-outside + Escape dismiss the popover.
+
+**Tradeoff captured.** Size-metric switching is now a 2-click action (open legend → click metric) instead of 1-click. The discoverability win — users can finally tell what BTW *is* — was the bigger problem.
+
+**Files.**
+- `src/components/dag3d/DAGOverlay.tsx` — `EncodingLegend` + `LegendRow` components, `legendOpen` state, replaces the inline `SIZE:` button strip with a single `LEGEND` button + popover.
+
+**Verification.** `tsc --noEmit` clean; lint clean; vitest 729/729 pass.
+
+### 2026-05-03 — Shipped: edge thickness power-scale + plain-English edge legend
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback after the LEGEND landed: *"have we actually implemented edge thickness? They all seem to have pretty much the same thickness. The distance — is that actually being calculated appropriately? Also our blue lines vs yellow lines — I thought there were correlation and causal analytics. Please clarify."*
+
+**Diagnosis.**
+- Edge thickness *was* implemented: linear `0.5 + weight * 1.5`. But real edge weights cluster between **0.4 and 0.8** (86 at 0.6, 70 at 0.7, 37 at 0.8) → visible width range was **1.1–1.7 px** = barely distinguishable. Code was right, calibration was wrong.
+- Distance *is* implemented: 2D layout uses `distance = 65 + (1 - weight) * 100`, so weight 0.4 → 125, weight 0.8 → 85. Force-directed layout also balances charge / collision / centering, so distance is a *soft* signal that gets partially drowned out — not a literal weight readout.
+- Edge colours are correct but the legend was cryptic. Three real edge types in the dataset: `directed` = direct causal (cyan, 183 edges), `temporal` = lag-correlation (amber + animated particles, 135 edges), `confounded` = latent common cause (orange, dashed, 9 edges). Plus Tarski-violation overlay (red).
+
+**What shipped.**
+- **Edge thickness power-scale.** Both `CausalDAG2D` (`EmphasizedEdge`'s `baseWidth`) and `DAGEdge3D` switched from `0.5 + weight * 1.5` to `0.7 + pow(weight, 2.4) * 3.3`. The 0.4–0.8 weight band now produces 0.46–1.34 (multiplied by the constant), giving ~3× spread between thin and thick edges at typical weights. Min 0.7 floor keeps very weak edges still drawable.
+- **Legend rewritten** with plain-English edge type names. The single `EDGE COLOUR` row split into four:
+  - `CAUSAL (cyan →)` — Direct cause: A → B. Arrowed.
+  - `TEMPORAL (amber, animated)` — Lag-correlation: A leads B by some delay. Particles flow source → target.
+  - `CONFOUNDED (orange, dashed)` — A and B share a hidden common cause, no direct link.
+  - `INCONSISTENT (red)` — Tarski filter: edge violates a domain-aware axiom (only visible with verified-truth filter on).
+- **Distance row updated** to call out that the signal is *approximate* — force-directed layout, with charge / collision / centering forces competing.
+- **Edge thickness row updated** to match the new power-scale wording: "Correlation / causal magnitude — power-scaled so the typical 0.4–0.8 weight range reads as ~3× spread on screen."
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — `baseWidth` formula in the `edges` useMemo.
+- `src/components/dag3d/DAGEdge3D.tsx` — `lineWidth` formula at the top of the inner component.
+- `src/components/dag3d/DAGOverlay.tsx` — legend rows updated.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 732/732 pass.
+
+### 2026-05-03 — Shipped: 3D hover-vs-click parity with 2D
+
+**PR:** TBD (about to open).
+
+**Trigger.** User feedback on 3D: *"when I hover above a node, I'd like to see just the small label like 2D does. I didn't mean the huge box that appears — that should only appear when I physically click on it."*
+
+**What shipped.** Single one-line change in `DAGNode3D`: the heavy "ΩF profile + network metrics" hover card was gated on `hovered && !dimmed`. Switched to `isSelected && !dimmed`. The lightweight floating-label (`{node.label} | {domain} | Ω X.X`) still shows on hover (gate already includes `hovered || isSelected || isNeighborOfSelected`), so hover gives the small label and only an explicit click opens the heavy card. Mirrors the 2D pattern.
+
+**Files.**
+- `src/components/dag3d/DAGNode3D.tsx` — one conditional swap on the detail-card mount.
+
+**Verification.** `tsc --noEmit` clean; lint clean (pre-existing `ablationMode` warning unchanged); vitest 778/778 pass.
+
 ### 2026-05-03 — Next up
 
-- Verify hotfix lands the Relief view in production. If still broken, the user's browser console output will localise it (the new Error Boundary prints `[Relief view] render error: ...` instead of a top-level fault). If verified, remaining Relief follow-ups: picking (raycast → select node), replay animation (bind field input to `currentSnapshot`), iso-contour lines, onboarding tooltip. Outside Relief: deferred 3D `onPointerMove` throttle, map-view imperative-setData refactor.
+- Verify on production: hover a 3D orb → only the small label appears. Click an orb → the full detail card appears (and stays until you click elsewhere or hit ESC).
+- Backlog: deferred 3D `onPointerMove` throttle (PR #199), map-view imperative-setData refactor, real bundle-analyzer perf sweep using PR #222's tooling.
+
+### 2026-05-07 — Shipped: 2D click-dim softened, TOPO neighbour pillars, in-scene Ω legend, collapsible domain panel
+
+**PR:** TBD (about to open).
+
+**Trigger.** Four-item feedback batch from the user, in order:
+1. *"If you click on it, the screen all the notes disappear, so it kinda goes black. That needs to fixed."* — 2D click was producing a permanent dim (0.18 node, 0.10 edge) that read as a blacked-out canvas.
+2. *"Anytime you select the node … it should be persistent across all ball mapping options. … The same thing in topology as well."* — node + neighbours highlight existed in 2D and 3D, but TOPO only marked the selected node itself.
+3. *"It could be nice if that gradient identifier was actually hung up above the or around the mountains and so you could easily use it as a comparison element. Rather than … on the side of the screen."* — TOPO Ω legend was a DOM strip pinned to the right edge with no relationship to actual peak heights.
+4. *"The bottom-left domain selector … takes too much room. I think it should be a collapsible menu."*
+
+**What shipped.**
+
+- **Click-dim softened, hover-dim untouched.** In `CausalDAG2D` (the same `computeNodeEmphasis` + `EmphasizedEdge` path) the dim *strength* now branches on whether `hoveredNodeId` is set:
+  - Hover-driven (transient): nodes 0.18, edges 0.10 / multi 0.08 — full spotlight, what the user said is "kinda cool".
+  - Click-driven (persistent): nodes 0.50, edges 0.35 / multi 0.25 — non-neighbour orbs and edges still legible, no "black canvas" feel.
+  The clicked node itself is still "focus" via the existing emphasis path, so it stays vivid.
+- **TOPO neighbour pillars.** `SelectionMarkers` now also receives `edges` and renders a second "neighbour" tier: shorter, thinner, dimmer cyan pillars at every node adjacent to a primary selection. Same spotlight semantics as 2D and 3D — clicking a node in any view now lights up the same neighbourhood across all three.
+- **In-scene Ω elevation legend.** `ElevationLegend` (right-edge DOM strip) replaced by `InSceneElevationLegend` rendered inside the `<Canvas>` at the SE corner of the field. The column is a 1×128 `CanvasTexture` standing 140 world units tall — the same `heightScale` the surface uses — so the user can compare a peak's height directly to the legend's Ω ticks. Tick labels (`Ω 0`, two intermediates, `Ω peak`) are placed on the gamma-shaped curve (`pow(t, heightGamma=1.6) * 140`) so they line up with what the eye reads off a mountain at the same height.
+- **Collapsible bottom-left DOMAINS panel.** `DAGOverlay` got a `domainPanelOpen` state (default closed). Header is always visible with a chevron toggle and a count summary; the body (per-domain rows with click-to-highlight) only mounts when expanded.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — node + edge dim splits on `isHoverDriven`.
+- `src/components/CausalDAGRelief.tsx` — neighbour-pillar tier in `SelectionMarkers`, new `InSceneElevationLegend`, removed DOM-side `ElevationLegend`.
+- `src/components/dag3d/DAGOverlay.tsx` — chevron toggle on the DOMAINS panel.
+
+**Out of scope (flagged to data/engines).** "Nodes from unselected domains still appear" (likely a `selectedDomains` filter bug) and "domain grouping looks apples-to-oranges" (sovereign risk vs Saudi/Iran co-energy in the same group) — both belong with the engines team's domain-data layer, not with rendering.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 778/778 pass.
+
+### 2026-05-07 — Shipped: Map multi-select dim, 3D card-explosion fix, TOPO isolate, domain panel rolled up
+
+**PR:** TBD (about to open).
+
+**Trigger.** Four-item batch from the user after merging PR #262:
+
+1. *"On maps, it didn't actually shade out the rest of them. … in the same way that it did under 2D."* — Map only dimmed when `isolateSelection` was on; 2D dims unconditionally on multi-select.
+2. *"Under 3D, it has, like, a million different cards open. … It should only just have, like, that short little title above that node."* — When PR #261 moved the heavy detail card behind `isSelected`, multi-select set `isSelected=true` for every selected node, popping a wall of overlapping cards.
+3. *"Under topology … it hasn't isolated the region, which I guess is what it should be doing."* — TOPO didn't honour `isolateSelection` at all.
+4. *"Under the bottom-left domain section … sovereign risk Saudi Aramco Energy. These look like not the same level of complexity. And on top of that, you're also showing certain domains for which there are not any nodes."* — The panel iterated raw `n.domain` strings, which carry inconsistent abstraction (per-company vs per-theme), and showed buckets the user hadn't selected at landing.
+
+**What shipped.**
+
+- **Map dim-on-multi-select.** `nodeGeoJSON` now dims non-selected nodes whenever `selectedNodes.length > 0` (0.35 with isolate off, 0.15 with isolate on). Edges branch three ways: cull when isolate ON and not fully in scope, dim to 0.08 when isolate OFF and no endpoint is selected, otherwise render normally.
+- **3D `isSingleSelected` prop.** `DAGNode3D` now takes both `isSelected` (single OR multi → drives ring/scale/label) and `isSingleSelected` (the singular click target → drives the heavy detail card). Multi-selected nodes still get the floating label, never the card.
+- **TOPO isolate + tint.**
+  - With `isolateSelection && multiSelected.size > 0`, `fieldNodes` filters to the selected subset before the relief field is computed — non-selected mountains literally don't render.
+  - Without isolate but with a multi-selection, the surface gets a `uSurfaceTint=0.4` uniform multiplier (new in `TOPO_FRAGMENT_SHADER`) so mountains read as faded context behind the cyan selection pillars. Vanilla `meshStandardMaterial` path mirrors via `transparent + opacity`.
+  - Uniform held in `useState`, mutated imperatively through a `materialRef` to avoid rebuilding the shader pipeline on tint changes.
+- **Domain panel rolled up to card labels.** Replaced the raw `n.domain` enumeration with a card-keyed pipeline: reverse `DOMAIN_MAP` (selector-id → raw-domain[]) into raw → card, bucket nodes by card, show `card.label` (e.g. "Energy Systems") and `card.color`. Cross-domain connectors (`Geopolitical`, `Energy Grid`) keep their raw-name row since they have no card mapping. When `selectedDomains.length > 0`, non-cross-domain rows filter to the user's actual landing-page picks; otherwise fall back to "show everything in the visible graph". Click-to-highlight now selects every node whose raw `n.domain` is in the row's mapped set.
+
+**Files.**
+- `src/components/CausalDAGMap.tsx` — node + edge dim branches.
+- `src/components/dag3d/DAGNode3D.tsx` — new `isSingleSelected` prop, gate on detail card, memo equality.
+- `src/components/CausalDAG3D.tsx` — pass `isSingleSelected={selectedNode === node.id}` to `DAGNode3D`.
+- `src/components/CausalDAGRelief.tsx` — `uSurfaceTint` uniform + shader update; `surfaceTint` prop on `ReliefMesh`; `fieldNodes` isolate filter; multi-select state read in the parent.
+- `src/components/dag3d/DAGOverlay.tsx` — `domainPanelRows` (card-keyed), updated panel render + click handler.
+
+**Caveats / what's still data-side.** "Apples-to-oranges" was addressed at the rendering layer by displaying card labels instead of raw `n.domain` strings. The underlying data still has nodes labelled at multiple abstraction levels — that's an engines-team thing if the picker / canvas ever needs to surface the raw string.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 778/778 pass.
+
+### 2026-05-07 — Shipped: 2D click no longer reheats the layout sim
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"Click any one of the nodes under 2D, and then everything disappears … it disappears for, like, a few seconds, and then it rerenders again. But it's weird because when it rerenders, nothing is selected."*
+
+**Diagnosis.** RF fires `onNodeDragStart` on mousedown — even for a pure click. The handler called `sim.reheat(0.5)` + `startSimLoop()`, so every click ran the force-directed layout for ~1.5s while alpha decayed from 0.5 to 0.005. The orbs drifted (sometimes far enough to leave the viewport) and settled back, which the user perceived as "everything disappeared then re-rendered." The selection ring was technically still applied but invisible because the selected orb had moved off-frame mid-drift.
+
+**What shipped.** Click-vs-drag distinction in `CausalDAG2D`:
+- `onNodeDragStart` now only pins the node (cheap). No reheat, no sim loop.
+- `onNodeDrag` (which fires only when actual movement occurs) reheats and starts the sim on its first tick, then keeps re-pinning to the cursor.
+- `onNodeDragStop` only calls `sim.cool()` if a drag actually happened — pure-click → pin/unpin pair is a no-op for the simulator.
+A `draggedRef` tracks whether motion fired between drag start/stop.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — drag-vs-click handlers.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files; vitest 782/782 pass.
+
+### 2026-05-07 — Shipped: 3D card removed, TOPO legend anchored to peak, Map basemap de-cluttered
+
+**PR:** TBD (about to open).
+
+**Trigger.** Three-item batch:
+
+1. *"Under 3D, selecting any node still gives us a whole box that's hard to get rid of. All it needs to do is give a small title hovering above it along with its nearest neighbors. Like 2D."* — even after PR #265 narrowed the in-canvas detail card to single-click only, the user wants no in-canvas card at all. The 2D pattern is the model: small floating label + neighbour spotlight.
+2. *"The legend on the side of the topology diagram is really off to the side. It should kinda be floating above wherever we're scaling to so we can always kind of see how it compares."* — the SE-corner placement of `InSceneElevationLegend` was visually disconnected from the actual peaks.
+3. *"For the map, … it's almost a globe-like looking map. Looks somewhat like Google Maps, but it gets all the way down to the street. … This is just getting very busy."* — the CARTO `dark_all` basemap rendered street labels and city names under the causal-graph overlay.
+
+**What shipped.**
+
+- **3D in-canvas detail card removed entirely.** Dropped the `Html`-mounted card from `DAGNode3D` (was ~140 lines of JSX rendering a 280px panel with axis bars, network metrics, metadata). The small floating label above the orb is now the only on-canvas affordance — same gate as before (`!dimmed && !isOrbiting && (hovered || isSelected || isNeighborOfSelected)`). Full ΩF profile / network metrics still live in `NodeInspector` and `ModulePanel` as side panels — the right home for the heavy data. Cleanup: removed `isSingleSelected` prop, dead helpers (`getBarColor`, `getCentralityLabel`), unused imports (`getDomainColor`, `resolveDomainProfile`), and the `axes` / `selectedDomains` / `profile` / `pillarLabels` locals.
+- **TOPO legend anchored to the peak.** `InSceneElevationLegend` now takes a `peakAnchor` (translated x/z of the highest-Ω node, in surface coords) and stands the column 12 world units beside it. Cascade replay re-anchors as the peak shifts. Falls back to the SE corner if no anchor is available.
+- **Map basemap switched to `dark_nolabels` + zoom cap 6.** No more street labels / city names. `maxzoom: 6` caps tile detail at country / sub-region scale so the basemap stops loading new tiles past that — pinch-zooming further is allowed but doesn't reveal streets. Same dark theme; just much less competing visual density under the graph.
+
+**Files.**
+- `src/components/dag3d/DAGNode3D.tsx` — card removed; props + helpers / locals trimmed.
+- `src/components/CausalDAG3D.tsx` — stop passing `isSingleSelected`.
+- `src/components/CausalDAGRelief.tsx` — `peakNodeId` + `peakAnchor` derivation; `InSceneElevationLegend` accepts `peakAnchor`.
+- `src/components/CausalDAGMap.tsx` — `dark_nolabels` tile URL, `maxzoom: 6`.
+
+**Verification.** `tsc --noEmit` clean; lint clean on touched files (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
+
+### 2026-05-07 — Shipped: 3D Canvas pointer-move invalidates coalesced to one per rAF
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog item from PR #199 follow-up. The Canvas-level `onPointerMove` was an inline arrow that called `window.dispatchEvent(new Event("dag3d-invalidate"))` on every pointer-pixel-move. At typical 120Hz mouse polling that's ~120 dispatches/sec, each routing through `StoreInvalidator`'s listener and calling R3F's `invalidate()`. R3F coalesces frames internally so we weren't *rendering* 120Hz, but the per-event JS work (Event allocation + listener fire + invalidate bookkeeping) was non-trivial overhead just for keeping demand-mode responsive.
+
+**What shipped.** rAF-coalesced handler in `CausalDAG3D`. An `invalidatePendingRef` flag gates dispatches: first move sets the flag and schedules a rAF; the rAF callback clears the flag and dispatches the invalidate. Subsequent moves before the rAF fires are no-ops. Worst case is now 60 dispatches/sec (or display rate, whichever is lower), regardless of mouse polling.
+
+**Files.**
+- `src/components/CausalDAG3D.tsx` — `onCanvasPointerMove` callback replacing the inline arrow.
+
+**Verification.** `tsc --noEmit` clean; lint clean; vitest 793/793 pass.
+
+### 2026-05-07 — Shipped: panel-canvas colour alignment + globe projection
+
+**PR:** TBD (about to open).
+
+**Trigger.** Two interlocking complaints:
+1. *"The colours for the nodes aren't really matching what we have as colour coding for the main domains. Select any of the domains. It's not always the same colours rendering on the map. We should make them match."* — clicking a row in the bottom-left DOMAINS panel selected nodes that on canvas rendered in completely different colours from the panel row.
+2. *"For the map I've kinda seen these dimension-map outline approaches — I like that idea. So if we [had] a 3D map instead, you'd have the same ability to zoom in/out. Would be great. … We do need to address the ability to … zoom in down to the street type of thing if you need to."* — the 2D mercator basemap with `maxzoom: 6` (from PR #270) was correct for "less busy" but cut off the street-level option entirely.
+
+**What shipped.**
+
+- **Unified colour resolver.** New `getDomainCardColor(rawDomain)` in `@/lib/domains` reverse-maps raw `n.domain` strings → `DomainCard.color` via the existing `DOMAIN_MAP`. `DOMAIN_MAP` itself moved out of `useFilteredGraph.ts` into `@/lib/domains` (its natural home alongside `DOMAIN_CARDS` / `DOMAIN_GROUPS`); `useFilteredGraph` now re-exports it for back-compat. 2D / 3D / Map node renderers all resolve colour via `getDomainCardColor → datasetColor → getDomainColor → getCategoryColor` so a click on the panel's "Energy Systems" row now selects orbs that render in the same red the row shows. Trade-off: nodes within a multi-domain card (e.g. all `defense-isr` sub-domains) collapse to a single card colour; per-sub-domain colour signal is lost on the canvas. Side-panel chips (NodeInspector, ModulePanel, TimeSeriesOverlay) keep their per-domain palette since those views are detail-oriented.
+- **Globe projection on the Map view.** Added `projection: { type: "globe" }` to the maplibre style. Renders the world as a 3D sphere at low zoom and smoothly transitions to mercator as the user zooms in (built-in MapLibre v4 behaviour). Restored `maxzoom: 19` so street-level detail returns when the analysis demands it; the globe + `dark_nolabels` combination keeps the basemap visually quiet at typical zoom levels but doesn't hide the option to drill down.
+
+**Files.**
+- `src/lib/domains.ts` — new `DOMAIN_MAP`, `DOMAIN_TO_CARD`, `getDomainCardColor`.
+- `src/hooks/useFilteredGraph.ts` — `DOMAIN_MAP` re-export.
+- `src/components/CausalDAG2D.tsx` — colour resolver chain in `CausalNode2D`.
+- `src/components/dag3d/DAGNode3D.tsx` — same chain on `baseColor`.
+- `src/components/CausalDAGMap.tsx` — same chain on `domainColor`; `projection: globe`; `maxzoom` restored.
+
+**Verification.** `tsc --noEmit` clean; lint clean (pre-existing `ablationMode` warning unchanged); vitest 793/793 pass.
+
+### 2026-05-07 — Shipped: ISOLATE freeze unblocked + TOPO shift-lasso
+
+**PR:** TBD (about to open).
+
+**Trigger.** Two-item batch:
+1. *"On the bottom-left domains panel, if I click [a domain row] and then click ISOLATE, it kinda slows down and freezes. … If I use lasso, it doesn't do that."* — clicking ISOLATE after a multi-domain pick blocked the main thread while React unmounted ~150 DAGNode3D + ~270 DAGEdge3D children in a single render cycle (and rebuilt 4 GeoJSON FCs in the Map view). Lasso selections were typically smaller, but the real perceptual difference was that lasso users had already paid the multi-select cost during the drag — the ISOLATE click only triggered the re-render at peak fan-out.
+2. *"For the topological [view], a user should be able to select specific parts of the topology using the shift-lasso feature you have across the other views."* — TOPO had no marquee.
+
+**What shipped.**
+
+- **`startTransition` around the ISOLATE toggle.** `setIsolateSelection(...)` now runs inside `startTransition`, marking the resulting re-render as non-urgent. React keeps the current UI interactive while it computes the new tree (and processes the unmount cascade) in the background. The actual switch still takes its full ~150-300ms in the worst case, but the click feels instant — the button highlights immediately and the user can keep interacting with other controls. No data-shape changes; just a render-priority hint.
+- **TOPO shift+drag lasso.** New `TopoShiftMarquee` component inside the relief Canvas (mirrors the 3D `ShiftMarquee` pattern). Listens on `gl.domElement` for `pointerdown/move/up`, gates on `e.shiftKey`, tracks a screen-space rect, and on release projects each node's ground-plane position (`layout.x - field.cx`, `0`, `layout.y - field.cy` — same translation `SelectionMarkers` uses) into screen coords for hit-testing. OrbitControls disabled during the drag so the camera doesn't rotate. DOM rect overlay rendered outside the Canvas, identical class set to 2D / 3D / Map for visual consistency.
+
+**Files.**
+- `src/components/dag3d/DAGOverlay.tsx` — `startTransition(() => setIsolateSelection(...))`.
+- `src/components/CausalDAGRelief.tsx` — new `TopoShiftMarquee`; `selectionBoxRef`, `selectionRect`, `shiftDragging`, `handleShiftSelect` state in parent; OrbitControls.enabled bound to `!shiftDragging`; DOM overlay for the rect.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing `onboarding-metrics.test.ts` strictness errors inherited from main); lint clean; vitest 833/833 pass.
 
 ---
 

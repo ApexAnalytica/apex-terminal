@@ -1,6 +1,4 @@
 import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode, getLiveSignal } from "./types";
-import type { SystemStateSnapshot } from "./snapshots/types";
-import type { TarskiViolation } from "./snapshots/types";
 
 // ─── Axiom Library (Domain-Specific: Middle East Energy & Petrochemical) ──
 
@@ -471,9 +469,27 @@ export interface TarskiValidationReport {
   totalViolations: number;
 }
 
-export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<string>): TarskiValidationReport {
-  // If a subset is provided, only run those axioms
-  const isEnabled = (id: string) => !enabledAxiomIds || enabledAxiomIds.has(id);
+export function runTarskiValidation(
+  graph: CausalGraph,
+  enabledAxiomIds?: Set<string>,
+  activeProfileId?: string,
+): TarskiValidationReport {
+  // Profile scoping: an axiom with `appliesTo` declares which profiles it's
+  // valid for. When the caller supplies an active profile, drop checks
+  // whose axiom is scoped to a different profile so e.g. T1D-only graphs
+  // never see geopolitical chokepoint flags (and vice versa once T1D
+  // axioms grow check implementations). Without `activeProfileId` the
+  // legacy behaviour is preserved — every implemented check runs.
+  const profileAllows = (id: string) => {
+    if (!activeProfileId) return true;
+    const axiom = AXIOM_LIBRARY.find((a) => a.id === id);
+    if (!axiom?.appliesTo) return true; // universal
+    return axiom.appliesTo.includes(activeProfileId);
+  };
+  // If a subset is provided, only run those axioms — and intersect with
+  // the profile filter so explicit enable can't override profile scoping.
+  const isEnabled = (id: string) =>
+    (!enabledAxiomIds || enabledAxiomIds.has(id)) && profileAllows(id);
   const inconsistentEdgeIds = new Set<string>();
   const restrictedNodeIds = new Set<string>();
   const proofTraces: ProofTrace[] = [];
@@ -819,63 +835,12 @@ export function clearTarskiFlags(graph: CausalGraph): CausalGraph {
 // These are now generated dynamically by runTarskiValidation()
 export const PROOF_TRACES: ProofTrace[] = [];
 
-// ─── Axiom Check Functions (for snapshot validation) ─────────────
-export type AxiomCheckFn = (snapshot: SystemStateSnapshot) => TarskiViolation[];
-
-export const AXIOM_CHECKS: Record<string, AxiomCheckFn> = {
-  "A-01": (snapshot) => {
-    return snapshot.graph.edges
-      .filter((e) => e.weight < 0)
-      .map((e) => ({
-        axiomId: "A-01",
-        edgeId: e.id,
-        detail: `Negative weight (${e.weight.toFixed(3)}) violates temporal priority`,
-      }));
-  },
-  "A-02": (snapshot) => {
-    return snapshot.graph.nodes
-      .filter((n) => n.omega > 10)
-      .map((n) => ({
-        axiomId: "A-02",
-        nodeId: n.id,
-        detail: `Ω=${n.omega.toFixed(2)} exceeds conservation bound`,
-      }));
-  },
-  "A-03": (snapshot) => {
-    return snapshot.graph.edges
-      .filter((e) => e.weight === 0 && e.probability === 0)
-      .map((e) => ({
-        axiomId: "A-03",
-        edgeId: e.id,
-        detail: `Zero weight and probability — potential degenerate cycle`,
-      }));
-  },
-  "A-04": () => [],
-  "A-05": () => [],
-  "H-01": (snapshot) => {
-    return snapshot.graph.nodes
-      .filter((n) => n.omega > 9.0)
-      .map((n) => ({
-        axiomId: "H-01",
-        nodeId: n.id,
-        detail: `Ω=${n.omega.toFixed(2)} exceeds saturation threshold (9.0)`,
-      }));
-  },
-  "H-02": () => [],
-  "R-01": (snapshot) => {
-    const breached = new Set(
-      snapshot.graph.nodes.filter((n) => n.omega > 9.8).map((n) => n.id)
-    );
-    if (breached.size < 2) return [];
-    return snapshot.graph.edges
-      .filter((e) => !e.isSevered && e.weight > 0.8 && e.probability > 0.95)
-      .map((e) => ({
-        axiomId: "R-01",
-        edgeId: e.id,
-        detail: `High-confidence flow (p=${e.probability.toFixed(2)}) between Ω-breached nodes`,
-      }));
-  },
-  "R-02": () => [],
-  "R-03": () => [],
-  "R-04": () => [],
-};
+// ─── Snapshot validation lives in src/lib/snapshots/tarski-validator.ts ──
+// The two-validator architecture there (full path = runTarskiValidation
+// when a live CausalGraph is available; degraded path = DEGRADED_CHECKS
+// when only a SystemStateSnapshot is in hand) is the canonical seam.
+// An earlier `AXIOM_CHECKS` map shipped from this file but was never
+// imported anywhere — it was a dead third-validator surface with several
+// no-op stubs (A-04, A-05, H-02, R-02, R-03, R-04) that risked silently
+// disagreeing with the real validators. Removed in the Tarski profile-
+// scoping audit follow-up.

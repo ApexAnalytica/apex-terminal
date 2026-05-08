@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
-const service = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`.
+function getService() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 function verifySignature(payload: string, signature: string | null): boolean {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
@@ -58,7 +62,7 @@ async function handlePullRequest(payload: PullRequestEvent) {
     return { ignored: true, reason: "No Feedback-ID trailer" };
   }
 
-  const { error } = await service
+  const { error } = await getService()
     .from("feedback")
     .update({ status: "in_progress", pr_url: pr.html_url })
     .eq("id", feedbackId)
@@ -82,7 +86,7 @@ async function handleDeploymentStatus(payload: DeploymentStatusEvent) {
 
   // Any feedback row at in_progress (= PR merged to main) is necessarily part
   // of the latest prod deploy once it succeeds — flip all to shipped.
-  const { data, error } = await service
+  const { data, error } = await getService()
     .from("feedback")
     .update({ status: "shipped", shipped_at: new Date().toISOString() })
     .eq("status", "in_progress")

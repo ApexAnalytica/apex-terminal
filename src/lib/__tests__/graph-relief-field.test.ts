@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeFusedReliefField,
+  computeNodeAnchors,
   computeReliefField,
   computeReliefLayers,
+  pickNearestNode,
 } from "../graph-relief-field";
 import type { CausalNode } from "../types";
 
@@ -156,5 +159,233 @@ describe("computeReliefLayers", () => {
     const empty = new Map<string, { x: number; y: number }>();
     const layers = computeReliefLayers(nodes, empty);
     expect(layers).toEqual([]);
+  });
+
+  it("ReliefField exposes the cx/cy world center used for recentering", () => {
+    const nodes = [
+      makeNode("a", "X", 5),
+      makeNode("b", "X", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 100, y: 200 }],
+      ["b", { x: 200, y: 400 }],
+    ]);
+    const field = computeReliefField(nodes, layout, { resolution: 8 });
+    // cx/cy should be the midpoint of the padded bounds — the same recentering
+    // origin the mesh uses, so labels can convert (layout x,y) → mesh-local.
+    expect(field.cx).toBeCloseTo(150, 0);
+    expect(field.cy).toBeCloseTo(300, 0);
+  });
+});
+
+describe("computeNodeAnchors", () => {
+  it("returns at most topK anchors, sorted by composite descending", () => {
+    const nodes = [
+      makeNode("low", "X", 1),
+      makeNode("mid", "X", 5),
+      makeNode("high", "X", 9),
+      makeNode("higher", "X", 9.5),
+    ];
+    const layout = new Map([
+      ["low", { x: 0, y: 0 }],
+      ["mid", { x: 100, y: 0 }],
+      ["high", { x: 0, y: 100 }],
+      ["higher", { x: 100, y: 100 }],
+    ]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    const anchors = computeNodeAnchors(nodes, layout, field, {}, 2);
+    expect(anchors.length).toBe(2);
+    expect(anchors[0].id).toBe("higher");
+    expect(anchors[1].id).toBe("high");
+  });
+
+  it("anchors are recentered to mesh-local coords (matches field.cx/cy)", () => {
+    const nodes = [makeNode("a", "X", 8)];
+    const layout = new Map([["a", { x: 500, y: 300 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    const [anchor] = computeNodeAnchors(nodes, layout, field, {}, 1);
+    expect(anchor.x).toBeCloseTo(500 - field.cx, 1);
+    expect(anchor.z).toBeCloseTo(300 - field.cy, 1);
+    expect(anchor.y).toBeGreaterThan(0);
+  });
+
+  it("anchor y matches the actual mesh-vertex height at the node position", () => {
+    // Regression for the "labels look like they sit on the floor" bug —
+    // computeNodeAnchors must use the same nodeWeight kernel as the field
+    // eval, otherwise the normalised height diverges from the surface.
+    // For a single isolated source, the anchor at the source position is
+    // the global peak, so its norm should be ~1 and y ≈ heightScale.
+    const nodes = [makeNode("a", "X", 9)];
+    const layout = new Map([["a", { x: 0, y: 0 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 32 });
+    const [anchor] = computeNodeAnchors(nodes, layout, field, {}, 1);
+    // Find the maximum vertex height in the field — anchor must reach
+    // at least 95% of it (small floor-level slop from the discrete grid).
+    let maxY = 0;
+    for (let i = 1; i < field.positions.length; i += 3) {
+      if (field.positions[i] > maxY) maxY = field.positions[i];
+    }
+    expect(maxY).toBeGreaterThan(0);
+    expect(anchor.y).toBeGreaterThan(maxY * 0.95);
+  });
+
+  it("returns [] when the field is empty", () => {
+    const nodes = [makeNode("a", "X", 5)];
+    const empty = new Map<string, { x: number; y: number }>();
+    const field = computeReliefField(nodes, empty);
+    const anchors = computeNodeAnchors(nodes, empty, field);
+    expect(anchors).toEqual([]);
+  });
+});
+
+describe("computeFusedReliefField", () => {
+  it("produces a single mesh with N×N vertices and a populated legend", () => {
+    const nodes = [
+      makeNode("a", "Saudi Aramco Energy", 8),
+      makeNode("b", "Sovereign Risk", 7),
+      makeNode("c", "Saudi Aramco Energy", 6),
+    ];
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 200, y: 200 }],
+      ["c", { x: 50, y: 50 }],
+    ]);
+    const field = computeFusedReliefField(nodes, layout, { resolution: 16 });
+    expect(field.positions.length).toBe(16 * 16 * 3);
+    expect(field.indices.length).toBe(15 * 15 * 6);
+    expect(field.peak).toBeGreaterThan(0);
+    // Legend: 2 distinct domains, biggest first.
+    expect(field.legend.length).toBe(2);
+    expect(field.legend[0].domain).toBe("Saudi Aramco Energy");
+    expect(field.legend[0].nodeCount).toBe(2);
+  });
+
+  it("uses the elevation heatmap (peak vertices brighter than valley)", () => {
+    // Single hot cluster — vertex at the peak should be markedly brighter
+    // (sum of channels) than a vertex far from any source.
+    const nodes = [
+      makeNode("a1", "Saudi Aramco Energy", 10),
+      makeNode("a2", "Saudi Aramco Energy", 10),
+    ];
+    const layout = new Map([
+      ["a1", { x: 0, y: 0 }],
+      ["a2", { x: 20, y: 20 }],
+    ]);
+    const field = computeFusedReliefField(nodes, layout, { resolution: 32 });
+    // Brightest vertex (max RGB sum) should be near the cluster, dimmest
+    // far from it. We don't care about the colour identity — just that the
+    // ramp is monotonic with elevation.
+    let maxSum = -Infinity;
+    let minSum = Infinity;
+    for (let i = 0; i < field.colors.length; i += 3) {
+      const s = field.colors[i] + field.colors[i + 1] + field.colors[i + 2];
+      if (s > maxSum) maxSum = s;
+      if (s < minSum) minSum = s;
+    }
+    expect(maxSum).toBeGreaterThan(minSum + 0.5);
+  });
+
+  it("returns empty + legend=[] for graphs with no layout entries", () => {
+    const nodes = [makeNode("a", "X", 5)];
+    const empty = new Map<string, { x: number; y: number }>();
+    const field = computeFusedReliefField(nodes, empty);
+    expect(field.positions.length).toBe(0);
+    expect(field.legend).toEqual([]);
+  });
+
+  it("emits per-vertex norms aligned with positions length", () => {
+    const nodes = [
+      makeNode("a", "Saudi Aramco Energy", 8),
+      makeNode("b", "Sovereign Risk", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 100, y: 0 }],
+    ]);
+    const field = computeFusedReliefField(nodes, layout, { resolution: 16 });
+    expect(field.norms.length).toBe(field.positions.length / 3);
+    // norms should range across [0, 1] — the peak vertex hits 1, valley
+    // vertices stay ≈ 0.
+    let max = -Infinity, min = Infinity;
+    for (let i = 0; i < field.norms.length; i++) {
+      if (field.norms[i] > max) max = field.norms[i];
+      if (field.norms[i] < min) min = field.norms[i];
+    }
+    expect(max).toBeGreaterThan(0.5);
+    expect(min).toBeLessThanOrEqual(max);
+    expect(min).toBeGreaterThanOrEqual(0);
+    expect(max).toBeLessThanOrEqual(1);
+  });
+
+  it("field reacts to ΩF changes (replay-aware input → different peak)", () => {
+    // Two nodes at the same positions, but different omega values across
+    // two compute calls — the computed peak should track the input. This
+    // is the contract the replay path relies on: when an EpochSnapshot
+    // overrides composite, the field morphs.
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 80, y: 80 }],
+    ]);
+    const baseline = computeFusedReliefField(
+      [makeNode("a", "X", 4), makeNode("b", "Y", 3)],
+      layout,
+      { resolution: 16 },
+    );
+    const escalated = computeFusedReliefField(
+      [makeNode("a", "X", 9), makeNode("b", "Y", 8)],
+      layout,
+      { resolution: 16 },
+    );
+    expect(escalated.peak).toBeGreaterThan(baseline.peak);
+  });
+});
+
+describe("pickNearestNode", () => {
+  it("returns the node id closest to a click in mesh-local coords", () => {
+    const nodes = [
+      makeNode("a", "X", 5),
+      makeNode("b", "X", 5),
+      makeNode("c", "X", 5),
+    ];
+    const layout = new Map([
+      ["a", { x: 0, y: 0 }],
+      ["b", { x: 300, y: 0 }],
+      ["c", { x: 0, y: 300 }],
+    ]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    // Click near where node "b" sits in mesh-local coords.
+    const bLocal = { x: 300 - field.cx, z: 0 - field.cy };
+    const id = pickNearestNode(
+      bLocal.x,
+      bLocal.z,
+      nodes,
+      layout,
+      field,
+    );
+    expect(id).toBe("b");
+  });
+
+  it("returns null when the click is outside the cap radius", () => {
+    const nodes = [makeNode("a", "X", 5)];
+    const layout = new Map([["a", { x: 0, y: 0 }]]);
+    const field = computeReliefField(nodes, layout, { resolution: 16 });
+    // Click 100,000 units away — well outside any cap.
+    const id = pickNearestNode(
+      100_000,
+      100_000,
+      nodes,
+      layout,
+      field,
+      {},
+      50,
+    );
+    expect(id).toBeNull();
+  });
+
+  it("returns null on an empty field", () => {
+    const nodes = [makeNode("a", "X", 5)];
+    const empty = new Map<string, { x: number; y: number }>();
+    const field = computeReliefField(nodes, empty);
+    expect(pickNearestNode(0, 0, nodes, empty, field)).toBeNull();
   });
 });

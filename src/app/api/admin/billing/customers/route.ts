@@ -3,10 +3,14 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 import type { Tier, SubscriptionStatus } from "@/lib/billing";
 
-const service = createServiceClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy service-client construction — see comment in
+// `src/app/api/admin/billing/expire/route.ts`.
+function getService() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export interface AdminCustomerRow {
   id: string;
@@ -32,7 +36,7 @@ export async function GET() {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const { data, error } = await service
+  const { data, error } = await getService()
     .from("profiles")
     .select(
       "id, email, org_name, tier, subscription_status, current_period_start, current_period_end, mercury_invoice_id, seats, domain_access, trial_expires_at, created_at"

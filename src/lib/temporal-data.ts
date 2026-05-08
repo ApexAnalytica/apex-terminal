@@ -16,6 +16,12 @@ export interface NodeTemporalState {
   timestamp: number; // ms since epoch
   omegaComposite: number;
   omegaProfile: OmegaFragilityProfile;
+  /** Raw underlying value before omega normalization (e.g. 6.76 % food
+   *  inflation, 87.3 $/bbl Brent). Optional — only populated for nodes
+   *  driven by real-timeseries.ts via NODE_TIMESERIES_MAP. Lets the
+   *  TimeSeriesOverlay plot the actual metric instead of duplicating
+   *  the per-card sparkline's omega-scale view. */
+  rawValue?: number;
 }
 
 export interface TemporalNodeData {

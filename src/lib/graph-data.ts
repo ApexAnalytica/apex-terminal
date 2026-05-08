@@ -2411,6 +2411,373 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+
+  // ─── Frontier Science (6 placeholder nodes) ──────────────────────
+  // Scaffold for the Frontier Science card (DomainSelector.tsx). Six
+  // anchor nodes covering the four sub-areas the card description
+  // names: post-Standard Model physics, neutrino frontier, quantum
+  // gravity probes, dark sector detection. All carry
+  // `dataStatus: "blank-needs-data"` — the UI shows a "DATA NEEDED"
+  // badge so they're visibly placeholder rather than mistaken for live
+  // signals.
+  //
+  // Activation pattern (when the teammate physics data drop lands):
+  //   1. Wire each node to its experimental data source (FNAL/CERN
+  //      releases, Particle Data Group fits, LIGO catalogs, Planck
+  //      Legacy archive). Add entries to NODE_TIMESERIES_MAP.
+  //   2. Drop dataStatus override so getDataStatus() infers "live"
+  //      from liveData presence.
+  //   3. Add cross-domain bridge edges where mechanisms exist:
+  //        - Defense (`gpu_supply_itar` → `fs_dark_matter_direct`):
+  //          GPU-bound TPC reconstruction; flagged the same way the
+  //          ATHENA bridges are spliced in DomainSelector.
+  //        - Energy (Aramco/QE → `fs_neutrino_mass_hierarchy`):
+  //          fusion-reactor neutrino flux / nuclear-physics overlap
+  //          for ITER / Wendelstein-7X programs.
+  //   4. Replace these placeholder mechanisms with citations from the
+  //      data drop (PDG / arXiv / experiment paper).
+  //
+  // Until then: the nodes exist so the canvas can render, the legend
+  // includes Frontier Science, and the omega-fragility profiles are
+  // first-pass estimates from facility characteristics (one-of-a-kind
+  // detector ⇒ high irreplaceability + restoration latency).
+  {
+    id: "fs_neutrino_mass_hierarchy",
+    label: "Neutrino Mass Hierarchy",
+    shortLabel: "νMH",
+    category: "science",
+    omegaFragility: omega(8.5, 8.0, 1.0, 6.0, 9, 5.0),
+    globalConcentration: "Distributed: NOvA (Fermilab) + T2K (J-PARC) + JUNO (China) + DUNE (US, in construction)",
+    replacementTime: "10-15 years (single experiment); discovery requires generational facility",
+    physicalConstraint: "Normal vs inverted ordering of m_ν; resolves whether m_3 > m_1 or vice-versa. Critical for neutrinoless double-beta decay sensitivity targeting and CP-violation searches",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_dark_matter_direct",
+    label: "Dark Matter Direct Detection",
+    shortLabel: "DMd",
+    category: "science",
+    omegaFragility: omega(9.0, 9.0, 1.0, 5.5, 9, 4.0),
+    globalConcentration: "LZ (US, SURF) + XENONnT (Italy, LNGS) — two-experiment global frontier",
+    replacementTime: "8-12 years (xenon procurement + underground lab construction)",
+    physicalConstraint: "Spin-independent WIMP-nucleon cross-section limits; current sensitivity ~10⁻⁴⁸ cm² above 30 GeV. Loss of either lab cuts the global exclusion plot by 50%",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_axion_haloscope",
+    label: "Axion Haloscope Search",
+    shortLabel: "Axn",
+    category: "science",
+    omegaFragility: omega(7.5, 6.0, 2.0, 5.0, 8, 4.0),
+    globalConcentration: "ADMX (US) + HAYSTAC (Yale) + CAPP (Korea) + ORGAN (Australia)",
+    replacementTime: "5-8 years per cavity generation",
+    physicalConstraint: "Microwave-cavity searches for axion-photon coupling g_aγγ across 1-100 µeV. Probes QCD-axion band predicted by Peccei-Quinn solutions to the strong-CP problem",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_gravitational_wave_obs",
+    label: "Gravitational Wave Observatory",
+    shortLabel: "GWO",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 2.0, 6.0, 9, 4.5),
+    globalConcentration: "LIGO (US, 2 sites) + Virgo (Italy) + KAGRA (Japan); next-gen Cosmic Explorer + Einstein Telescope in design",
+    replacementTime: "10-15 years (interferometer arms + isolation systems)",
+    physicalConstraint: "Strain sensitivity h ~ 10⁻²² at 100 Hz; binary-merger detections at gigaparsec range. Quantum-gravity probes via merger ringdowns and Lorentz-invariance tests on multi-messenger events (GW170817 + GRB 170817A)",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_proton_decay_search",
+    label: "Proton Decay Search",
+    shortLabel: "p→",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 1.0, 6.0, 9, 4.0),
+    globalConcentration: "Super-Kamiokande (Japan); Hyper-K under construction; DUNE far detector (US) complementary",
+    replacementTime: "15-20 years (giant water-Cherenkov + photomultiplier arrays)",
+    physicalConstraint: "Lifetime limit τ_p > 1.6 × 10³⁴ years (Super-K, 2020). Direct test of GUT predictions; non-observation continues to constrain SU(5), SO(10), and supersymmetric extensions",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_hubble_tension",
+    label: "Hubble Tension (H₀)",
+    shortLabel: "H₀",
+    category: "science",
+    omegaFragility: omega(6.5, 3.0, 1.5, 7.0, 8, 5.5),
+    globalConcentration: "Planck (CMB, ~67 km/s/Mpc) vs SH0ES + JWST local-distance ladder (~73 km/s/Mpc); ~5σ tension since 2019",
+    replacementTime: "Active anomaly; ongoing JWST + Roman + Euclid measurements",
+    physicalConstraint: "5σ disagreement between early-universe (CMB-inferred) and late-universe (Cepheid + Type-Ia ladder) Hubble parameter. Either systematics in distance ladders, new physics in pre-recombination era (early dark energy, extra Neff), or post-recombination modification of expansion history",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: true,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+
+  // ─── AI Safety / IDS — Ghauri 2025 D.Eng. (17 nodes) ─────────
+  // Demonstrates the Ω-Robustness framework's IDS case studies as a
+  // third domain. Nodes draw from Chapters 5–8 of the dissertation.
+  // ── Datasets (3) ──
+  {
+    id: "ais_cicids_2017",
+    label: "CICIDS-2017 Dataset",
+    shortLabel: "CIC17",
+    category: "science",
+    omegaFragility: omega(4.8, 4.0, 2.0, 3.0, 8.0, 8.0),
+    globalConcentration: "Public benchmark, Canadian Institute for Cybersecurity",
+    replacementTime: "Immediate (other public IDS datasets exist)",
+    physicalConstraint: "Multi-day enterprise traffic capture with normal + 8 attack classes (DDoS, Brute Force, Heartbleed, Botnet, Infiltration, etc.). Bridges legacy intrusion-detection benchmarks (KDD99) and modern multi-protocol traffic. Primary substrate for the dissertation's continual-learning experiments.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_unsw_nb15",
+    label: "UNSW-NB15 Dataset",
+    shortLabel: "UNSW",
+    category: "science",
+    omegaFragility: omega(4.5, 4.0, 2.0, 3.0, 7.0, 7.0),
+    globalConcentration: "Public benchmark, UNSW Cyber Range Lab",
+    replacementTime: "Immediate (substitutable by CICIDS-2017 or AWID)",
+    physicalConstraint: "49 features, raw packet captures, nine attack categories (Exploits, DoS, Fuzzers, Worms, etc.). Designed to address KDD99 limitations with modern multi-protocol traffic. Bridge between early synthetic traffic and contemporary flow-based telemetry.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_awid_h23q",
+    label: "AWID-H23Q Dataset",
+    shortLabel: "AWID",
+    category: "science",
+    omegaFragility: omega(4.7, 5.0, 2.0, 3.0, 7.0, 7.0),
+    globalConcentration: "Public benchmark, Aegean University ICS Security Lab",
+    replacementTime: "Immediate (only public Wi-Fi-specific IDS benchmark; partial substitutability)",
+    physicalConstraint: "Wi-Fi 802.11 telemetry covering data-link and physical layer attacks; H23Q revision adds HTTP/2, HTTP/3, QUIC. Wireless-specific attack vectors (impersonation, injection, flooding) underrepresented in enterprise-LAN datasets.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ── Attack Classes (9) ──
+  {
+    id: "ais_attack_ddos",
+    label: "DDoS Attack",
+    shortLabel: "DDoS",
+    category: "communications",
+    omegaFragility: omega(6.1, 2.0, 4.0, 8.0, 9.0, 9.0),
+    globalConcentration: "Commodity attack pattern, ubiquitous threat",
+    replacementTime: "Hours (capacity provisioning, BGP rerouting, scrubbing services)",
+    physicalConstraint: "Volumetric or protocol-based traffic flood saturating network or service capacity. Cascade target par excellence — successful DDoS propagates to all dependent services. Dominant CICIDS-2017 attack class by traffic volume.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_brute_force",
+    label: "Brute Force Attack",
+    shortLabel: "BF",
+    category: "communications",
+    omegaFragility: omega(4.6, 2.0, 3.0, 6.0, 6.0, 7.0),
+    globalConcentration: "Commodity attack pattern, automated tooling widely available",
+    replacementTime: "Minutes (rate limiting, account lockout, MFA enforcement)",
+    physicalConstraint: "Credential-stuffing or password-spraying against authentication endpoints. Tractable to detect via flow-rate features but persistent — automated retries can mask in slow-low patterns that evade naive thresholds.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_heartbleed",
+    label: "Heartbleed Exploit",
+    shortLabel: "HB",
+    category: "communications",
+    omegaFragility: omega(7.4, 8.0, 7.0, 7.0, 7.0, 8.0),
+    globalConcentration: "OpenSSL CVE-2014-0160 specific; latent in unpatched legacy systems",
+    replacementTime: "Patch deployment cycles (months in legacy infrastructure)",
+    physicalConstraint: "TLS heartbeat-extension memory-disclosure exploit (OpenSSL 1.0.1 pre-2014). Highest-rarity attack class in CICIDS-2017 — IDS models trained without seeing it forget it quickly when streaming newer traffic. Anchor for the dissertation's catastrophic-forgetting demonstration: high-FR, high-mechanism-rarity node.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_exploits",
+    label: "Exploits (UNSW)",
+    shortLabel: "EXPL",
+    category: "communications",
+    omegaFragility: omega(5.8, 3.0, 4.0, 7.0, 8.0, 8.0),
+    globalConcentration: "Diverse class — buffer overflows, memory-corruption, RCE chains",
+    replacementTime: "Patch + signature update cycle (weeks)",
+    physicalConstraint: "Generic exploit class in UNSW-NB15 covering memory-corruption, code-injection, and protocol-violation attacks. Heterogeneous payloads make this class harder for the GAT learner to internalise as a coherent task; partial coverage easily forgotten.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_dos",
+    label: "DoS Attack (UNSW)",
+    shortLabel: "DoS",
+    category: "communications",
+    omegaFragility: omega(5.7, 2.0, 4.0, 8.0, 8.0, 8.0),
+    globalConcentration: "Single-source denial-of-service variants",
+    replacementTime: "Hours (filtering, rate limiting)",
+    physicalConstraint: "Single-attacker DoS variants in UNSW-NB15 — distinct from the multi-source DDoS class in CICIDS. Lower-volume, more pattern-stable; easier to learn but co-occurs with Exploits and Reconnaissance in mixed-attack windows.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_fuzzers",
+    label: "Fuzzers Attack",
+    shortLabel: "FUZZ",
+    category: "communications",
+    omegaFragility: omega(4.9, 4.0, 4.0, 5.0, 6.0, 6.0),
+    globalConcentration: "Automated input-mutation tools (AFL, libFuzzer family)",
+    replacementTime: "Days (input-validation hardening)",
+    physicalConstraint: "Mutation-based payload fuzzing against network services, generating high-entropy traffic that masquerades as exploration. UNSW-NB15 captures both random and structure-aware fuzzing patterns.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_wireless_injection",
+    label: "Wireless Injection",
+    shortLabel: "WI",
+    category: "communications",
+    omegaFragility: omega(5.9, 5.0, 5.0, 6.0, 7.0, 7.0),
+    globalConcentration: "Wireless-specific (802.11 frame injection, deauth, association)",
+    replacementTime: "Months (WPA3 migration, management-frame protection)",
+    physicalConstraint: "Frame-injection attacks at the 802.11 link layer — deauthentication floods, association replay, EAPOL injection. AWID-H23Q's signature attack class. Underrepresented in enterprise-LAN datasets, so models trained on CIC/UNSW alone forget this class entirely under continual learning.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_spoofing",
+    label: "Spoofing Attack",
+    shortLabel: "SPOOF",
+    category: "communications",
+    omegaFragility: omega(5.7, 4.0, 4.0, 7.0, 7.0, 7.0),
+    globalConcentration: "MAC / IP / ARP / DNS spoofing variants",
+    replacementTime: "Hours-days (protocol-level mitigations)",
+    physicalConstraint: "Identity-impersonation attacks across multiple OSI layers. AWID-H23Q covers wireless-specific MAC spoofing and association replay; corresponds to identity-misuse cascade target — once the AP trusts a spoofed identity, downstream authorization decisions cascade.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_mitm",
+    label: "MITM Attack",
+    shortLabel: "MITM",
+    category: "communications",
+    omegaFragility: omega(6.7, 5.0, 5.0, 8.0, 8.0, 8.0),
+    globalConcentration: "Man-in-the-middle across wireless & wired (KRACK, BEAST, downgrade)",
+    replacementTime: "Months (cipher-suite upgrades, HSTS rollout)",
+    physicalConstraint: "Active interception of traffic between two parties; particularly severe in wireless contexts (rogue AP, evil-twin). Causes silent data exposure cascading through authentication, confidentiality, and integrity guarantees simultaneously.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ── IDS Components / Architecture (5) ──
+  {
+    id: "ais_gat",
+    label: "Graph Attention Network",
+    shortLabel: "GAT",
+    category: "infrastructure",
+    omegaFragility: omega(7.3, 8.0, 7.0, 4.0, 10.0, 7.0),
+    globalConcentration: "Reference architecture from dissertation Ch 8 (3-layer GAT, 8 heads, dim 64, ELU, dropout 0.2)",
+    replacementTime: "Weeks (retrain alternative architecture, lose attention semantics)",
+    physicalConstraint: "Continual learner. Sits at the structural centre of the IDS pipeline — every attack class flows through it. Catastrophic-forgetting attractor: representations degrade window-by-window without explicit memory mechanism. Highest cascade-load node by topology in the dissertation graph.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_replay_buffer",
+    label: "Topology-Aware Replay Buffer",
+    shortLabel: "RB",
+    category: "infrastructure",
+    omegaFragility: omega(6.4, 6.0, 8.0, 3.0, 9.0, 6.0),
+    globalConcentration: "Custom χ★-biased buffer (Ghauri 2025 §6) — generic replay buffers commodity",
+    replacementTime: "Days (replace with naive replay; lose χ★ bias and forgetting reduction)",
+    physicalConstraint: "Tiny rehearsal buffer (~2% of per-window flows). Selection biased toward edges in χ★ — flows incident on bridge edges enter at p=0.9 vs p=0.05 baseline. Halves catastrophic forgetting in dissertation experiments without modifying topology.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attention_layer",
+    label: "Attention Head Layer",
+    shortLabel: "AH",
+    category: "infrastructure",
+    omegaFragility: omega(6.3, 7.0, 6.0, 3.0, 9.0, 6.0),
+    globalConcentration: "Multi-head attention; 8 heads × 3 layers in reference impl",
+    replacementTime: "Weeks (architecture change)",
+    physicalConstraint: "Where Bridge-Edge Strength (BES) is measured at inference time. Attention weight α_e per edge during training; BES = mean α_e over e ∈ χ★. Per Ghauri Ch 8 §4.1, BES peaks lead Forgetting Rate spikes by 0–1 windows — leading indicator of imminent cascade.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_training_scheduler",
+    label: "Training Scheduler",
+    shortLabel: "TS",
+    category: "infrastructure",
+    omegaFragility: omega(4.2, 4.0, 3.0, 2.0, 7.0, 5.0),
+    globalConcentration: "One-epoch-per-window streaming scheduler; commodity pattern",
+    replacementTime: "Hours (config change)",
+    physicalConstraint: "Segments each corpus into 24 non-overlapping one-hour windows; trains one epoch per window with weights frozen between windows. Simple but pivotal — windowing granularity directly affects forgetting curves. Shorter windows amplify FR; longer windows blur the regime-shift signal.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_eval_harness",
+    label: "Evaluation Harness",
+    shortLabel: "EH",
+    category: "infrastructure",
+    omegaFragility: omega(4.1, 3.0, 2.0, 4.0, 6.0, 6.0),
+    globalConcentration: "Standard continual-learning evaluation (FR, BES, HES, F1)",
+    replacementTime: "Days (re-instrument)",
+    physicalConstraint: "Computes Forgetting Rate (FR) per window, Bridge-Edge Strength (BES) over χ★, and Hub-Edge Strength (HES) over degree-top hubs. Output drives the topology-aware replay buffer's biased sampling — so evaluation feeds back into training, forming the closing loop in the architecture.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2839,8 +3206,53 @@ const EDGES: CausalEdge[] = [
   { id: "ip_fed_funds_effective__ip_real_rate_10y", source: "ip_fed_funds_effective", target: "ip_real_rate_10y", weight: 0.031, lag: 1, type: "directed", confidence: 0.51, isInconsistent: false, physicalMechanism: "Fed funds policy stance drives the long-end nominal yield, which feeds into the real rate after stripping inflation expectations. Empirical channel: US10y → synthetic real rate (constructed as us10y − 2.5%-anchored CPI-equivalent inflation proxy from IMF All Commodity smoothed YoY × 0.15 pass-through), long-run β=0.031 [-0.029, 0.091], n=280. Mechanical near-identity by construction — the meaningful empirical content sits in the next edge." },
   { id: "ip_real_rate_10y__ip_dxy", source: "ip_real_rate_10y", target: "ip_dxy", weight: 0.6, lag: 6, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Real-rate-differential channel: high US real rates pull capital in, strengthening the dollar. Engel-Mark-West 2007 + Stavrakeva-Tang 2024 estimate a 1pp rise in 10y real rate maps to +5-7% DXY appreciation over 12-18 months. Empirical refit on synthetic-proxy real rate (β=-0.000 [-0.001, 0.001], n=219) was too noisy for monthly returns — proxy doesn't separate real-rate moves from forward-guidance / risk-regime confounders. Literature-cited until FRED DFII10 (TIPS yield) becomes reachable." },
   { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description)." },
-  { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.6, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022): a 1% DXY appreciation maps to ~0.5-0.7% EM FX depreciation in the medium term. Literature-cited; refit pending EM FX panel access." },
-  { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.45, lag: 1, type: "directed", confidence: 0.6, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Literature-cited; refit pending EM reserves panel access." },
+  { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.44, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022). Two empirical refits triangulate the channel: (1) monthly ARDL on 7-EM mirror panel (Brazil, India, Mexico, South Africa, Thailand, Malaysia, Sri Lanka): long-run β = 0.381 [0.27, 0.49], n=325, 1999-02 to 2026-03 — tight CI, excludes high-vol EMs; (2) annual pooled OLS on 15-EM PIMCO panel including Turkey + Argentina + Colombia + Egypt + Pakistan: β = 0.520 [0.10, 0.94], n=195, 2011-2024 — wider CI but captures the literature-anchored EM volatility. Weight 0.44 sits between the two point estimates; confidence 0.85 reflects cross-panel agreement on sign + magnitude." },
+  { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.478, lag: 6, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Empirical refit on PIMCO sovereign reserves panel (14 EMs, annual 2011-2024, n=195): pooled OLS Δlog(reserves) ~ Δlog(DXY) yields β = -0.478 [-1.01, +0.05], sign-correct (negative). Lag=6 reflects the gradual annual-cadence response (reserves drain over 6-12 months); fitted_weight is the magnitude. CI just touches zero — channel is real but identification benefits from longer panel." },
+
+  // ─── Frontier Science placeholder edges (4) ──────────────────────
+  // Low-confidence intra-domain links so the canvas renders the
+  // sub-network instead of disconnected nodes. Mechanisms are
+  // textbook (not refit). Refit pending the teammate physics drop —
+  // see graph-data.ts comment block above the fs_* nodes for the
+  // activation pattern. Tarski R-04 won't flag these (intra-domain).
+  { id: "fs_neutrino_mass_hierarchy__fs_proton_decay_search", source: "fs_neutrino_mass_hierarchy", target: "fs_proton_decay_search", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both observables constrain GUT-scale physics: neutrino-mass ordering selects between SU(5)/SO(10) embeddings that predict different proton-decay branching ratios. Confounded by the underlying GUT scale rather than direct causation." },
+  { id: "fs_dark_matter_direct__fs_axion_haloscope", source: "fs_dark_matter_direct", target: "fs_axion_haloscope", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both probe the dark sector but in complementary mass windows: WIMP TPCs cover GeV-TeV; axion haloscopes cover µeV. Coordinated by the global dark-sector exclusion plot — confounded edge reflects shared theoretical motivation, not flow." },
+  { id: "fs_gravitational_wave_obs__fs_hubble_tension", source: "fs_gravitational_wave_obs", target: "fs_hubble_tension", weight: 0.5, lag: 0, type: "directed", confidence: 0.55, isInconsistent: false, physicalMechanism: "Standard-siren H₀ measurements from binary-neutron-star mergers (GW170817-style) provide a third route to the Hubble parameter independent of the CMB and Cepheid ladders. Tension resolution depends on enough sirens to discriminate ~5σ between 67 and 73 km/s/Mpc." },
+  { id: "fs_gravitational_wave_obs__fs_neutrino_mass_hierarchy", source: "fs_gravitational_wave_obs", target: "fs_neutrino_mass_hierarchy", weight: 0.3, lag: 0, type: "confounded", confidence: 0.45, isInconsistent: false, physicalMechanism: "Multi-messenger supernova detection (gravitational waves + IceCube neutrinos) pins down absolute mass scale via flight-time differences — Σm_ν < 0.4 eV from SN1987A. Constrains hierarchy when combined with cosmological Σm_ν bounds. Weak edge: hasn't fired since 1987 and channel uncertainty is high." },
+
+  // ─── AI Safety / IDS edges (18) — Ghauri 2025 D.Eng. ─────────
+  // Dataset → Attack Class (containment, 9)
+  { id: "ais_cicids_2017__ais_attack_ddos", source: "ais_cicids_2017", target: "ais_attack_ddos", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 corpus contains the DDoS attack class as a labelled sub-population." },
+  { id: "ais_cicids_2017__ais_attack_brute_force", source: "ais_cicids_2017", target: "ais_attack_brute_force", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 contains brute-force attack flows against SSH and FTP endpoints." },
+  { id: "ais_cicids_2017__ais_attack_heartbleed", source: "ais_cicids_2017", target: "ais_attack_heartbleed", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 includes Heartbleed exploit traffic — minority class, anchor for catastrophic-forgetting demos." },
+  { id: "ais_unsw_nb15__ais_attack_exploits", source: "ais_unsw_nb15", target: "ais_attack_exploits", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 contains the Exploits attack class spanning memory-corruption and code-injection variants." },
+  { id: "ais_unsw_nb15__ais_attack_dos", source: "ais_unsw_nb15", target: "ais_attack_dos", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 contains single-source DoS variants, distinct from CICIDS's multi-source DDoS class." },
+  { id: "ais_unsw_nb15__ais_attack_fuzzers", source: "ais_unsw_nb15", target: "ais_attack_fuzzers", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 captures mutation-based fuzzing payloads against network services." },
+  { id: "ais_awid_h23q__ais_attack_wireless_injection", source: "ais_awid_h23q", target: "ais_attack_wireless_injection", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q's signature attack class — 802.11 frame injection at link layer." },
+  { id: "ais_awid_h23q__ais_attack_spoofing", source: "ais_awid_h23q", target: "ais_attack_spoofing", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q contains MAC and association-replay spoofing attacks." },
+  { id: "ais_awid_h23q__ais_attack_mitm", source: "ais_awid_h23q", target: "ais_attack_mitm", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q includes wireless MITM scenarios (rogue AP, evil-twin)." },
+
+  // Dataset → GAT (training input, 3)
+  { id: "ais_cicids_2017__ais_gat", source: "ais_cicids_2017", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "CICIDS-2017 traffic windows feed the continual GAT learner one epoch per window." },
+  { id: "ais_unsw_nb15__ais_gat", source: "ais_unsw_nb15", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "UNSW-NB15 flows feed the GAT in cross-corpus continual-learning evaluations." },
+  { id: "ais_awid_h23q__ais_gat", source: "ais_awid_h23q", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "AWID-H23Q wireless flows extend the GAT's training distribution to link-layer attack vectors." },
+
+  // Internal architecture (6)
+  { id: "ais_training_scheduler__ais_gat", source: "ais_training_scheduler", target: "ais_gat", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Scheduler segments each corpus into 24 one-hour windows and gates one training epoch per window. Window granularity directly shapes the forgetting curve." },
+  { id: "ais_gat__ais_attention_layer", source: "ais_gat", target: "ais_attention_layer", weight: 0.85, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Attention heads sit inside the GAT and emit per-edge attention weights α_e at inference time — the substrate for BES measurement." },
+  { id: "ais_attention_layer__ais_replay_buffer", source: "ais_attention_layer", target: "ais_replay_buffer", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Attention-derived BES values inform which flows the replay buffer prioritises (χ★-incident flows enter at p=0.9)." },
+  { id: "ais_replay_buffer__ais_gat", source: "ais_replay_buffer", target: "ais_gat", weight: 0.65, lag: 1, type: "temporal", confidence: 0.8, isInconsistent: false, physicalMechanism: "Replay buffer feeds rehearsal samples back into the next-window training batch. Closes the topology-aware-replay loop; halves catastrophic forgetting in Ch 8 §6 experiments." },
+  { id: "ais_gat__ais_eval_harness", source: "ais_gat", target: "ais_eval_harness", weight: 0.85, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Evaluation harness reads GAT predictions per window and computes FR, BES, HES, and F1 trajectories." },
+  { id: "ais_eval_harness__ais_replay_buffer", source: "ais_eval_harness", target: "ais_replay_buffer", weight: 0.6, lag: 1, type: "temporal", confidence: 0.75, isInconsistent: false, physicalMechanism: "FR / BES outputs inform the next-window replay-buffer sampling weights — closing the structure-aware feedback loop between evaluation and training." },
+
+  // ── AI Safety / IDS ↔ Infrastructure / Financial cross-domain links (3) ──
+  // The IDS attack classes aren't only academic — they're the realised
+  // threat vectors that drive systemic-risk events in the geopolitical
+  // graph. DDoS targets telecom hubs → cascading latency; MITM targets
+  // cross-border banking → financial-message integrity loss.
+  { id: "ais_attack_ddos__ic_telecom_egypt", source: "ais_attack_ddos", target: "ic_telecom_egypt", weight: 0.55, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "DDoS attacks target telecom-aggregation hubs (Telecom Egypt's 10 landing stations are a high-value target by traffic concentration). Successful saturation cascades to all transit cables landing there." },
+  { id: "ais_attack_ddos__ic_latency_risk", source: "ais_attack_ddos", target: "ic_latency_risk", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Volumetric DDoS against transit infrastructure produces measurable latency spikes — the same risk surface measured by ic_latency_risk for cable-failure scenarios." },
+  { id: "ais_attack_mitm__fc_cross_border_banking", source: "ais_attack_mitm", target: "fc_cross_border_banking", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "MITM attacks targeting interbank message integrity (SWIFT, downgrade, downgrade-after-handshake) erode the trust assumptions cross-border settlement depends on. Manifests as latency + reconciliation drift in the financial-contagion graph." },
 ];
 
 const METADATA: GraphMetadata = {
@@ -2987,6 +3399,8 @@ export function getDomainColor(domain: string): string {
     case "T1D Metabolic": return "#69f0ae";      // mint green
     case "T1D Intervention": return "#ffab00";   // amber
     case "T1D Complications": return "#ff6d00";  // deep orange
+    // AI Safety / endogenous catastrophe (Ghauri 2025 D.Eng.)
+    case "AI Safety / IDS": return "#7B68EE";    // medium slate violet
     default: return "#5a5e72";
   }
 }

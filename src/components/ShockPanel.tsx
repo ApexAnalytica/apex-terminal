@@ -74,44 +74,50 @@ export default function ShockPanel({
         <div className="text-[9px] text-text-muted font-mono tracking-wider mb-2">
           SCENARIOS
         </div>
-        {presets.map((shock) => {
-          const isActive = activeShocks.some((s) => s.id === shock.id);
-          return (
-            <button
-              key={shock.id}
-              onClick={() => !isActive && onShockAdd(shock)}
-              disabled={isActive}
-              className="w-full text-left mb-1.5 p-2 rounded border transition-all"
-              style={{
-                borderColor: isActive ? "var(--border-bright)" : "var(--border)",
-                opacity: isActive ? 0.4 : 1,
-                backgroundColor: isActive ? "transparent" : "var(--surface-elevated)",
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-[10px]"
-                  style={{
-                    color: getCategoryColor(shock.category),
-                  }}
-                >
-                  {getCategoryIcon(shock.category)}
-                </span>
-                <span className="text-[10px] font-mono text-foreground truncate">
-                  {shock.name}
-                </span>
-              </div>
-              <div className="text-[9px] text-text-muted mt-0.5 ml-5 truncate">
-                {shock.description}
-              </div>
-              {shock.physicalConstraint && (
-                <div className="text-[9px] text-accent-amber/60 mt-0.5 ml-5 truncate">
-                  &laquo; {shock.physicalConstraint} &raquo;
+        {presets.length === 0 ? (
+          <div className="text-[9px] text-text-muted/80 font-mono leading-relaxed">
+            No preset scenarios loaded. Click any node on the canvas to inject a shock at that vertex, or supply your own scenario set via the API or import path.
+          </div>
+        ) : (
+          presets.map((shock) => {
+            const isActive = activeShocks.some((s) => s.id === shock.id);
+            return (
+              <button
+                key={shock.id}
+                onClick={() => !isActive && onShockAdd(shock)}
+                disabled={isActive}
+                className="w-full text-left mb-1.5 p-2 rounded border transition-all"
+                style={{
+                  borderColor: isActive ? "var(--border-bright)" : "var(--border)",
+                  opacity: isActive ? 0.4 : 1,
+                  backgroundColor: isActive ? "transparent" : "var(--surface-elevated)",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[10px]"
+                    style={{
+                      color: getCategoryColor(shock.category),
+                    }}
+                  >
+                    {getCategoryIcon(shock.category)}
+                  </span>
+                  <span className="text-[10px] font-mono text-foreground truncate">
+                    {shock.name}
+                  </span>
                 </div>
-              )}
-            </button>
-          );
-        })}
+                <div className="text-[9px] text-text-muted mt-0.5 ml-5 truncate">
+                  {shock.description}
+                </div>
+                {shock.physicalConstraint && (
+                  <div className="text-[9px] text-accent-amber/60 mt-0.5 ml-5 truncate">
+                    &laquo; {shock.physicalConstraint} &raquo;
+                  </div>
+                )}
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
   );

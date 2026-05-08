@@ -77,8 +77,11 @@ Inputs index instead of Baltic Dry / Drewry).
 | EIA-mirror (datasets/)  | Brent, WTI                                 | monthly | 1987-05 → present |
 | EIA-mirror              | Henry Hub natgas                           | monthly | 1997-01 → present |
 | US Treasury mirror      | 10y constant-maturity yield                | monthly | 1953-04 → present |
+| Shiller (datasets/)     | CPI level + Long Interest Rate (S&P-500)   | monthly | 1871-01 → 2023-09 |
+| FRED H.10 mirror        | 22-currency FX panel (LCU/USD)             | monthly | 1971-01 → present |
 | statsmodels.macrodata   | US GDP, CPI, unemp, fed funds              | quarter | 1959Q1 → 2009Q3  |
 | timeseries.json         | PWT China + Brazil GDP / employment / TFP  | annual  | 1979 → recent    |
+| pimco_sovereign panel   | 20 EM FX rates + FX reserves               | annual  | 2010 → 2024      |
 | disruption_events.json  | 6 facility shock events (Abqaiq, Hormuz, …)| event   | 2017 → 2026      |
 
 All sources are public, free, no API key. Sandboxed runs use only
@@ -130,7 +133,12 @@ research/macro/
 │   └── event_study.py      pre/post abnormal-return
 ├── fits/
 │   ├── edge_fits.py        15 cross-domain edges (PR #129)
-│   └── dxy_fits.py         4 DXY edges (PR #134)
+│   ├── dxy_fits.py         4 DXY edges (PR #134)
+│   └── dxy_em_fits.py      DXY → EM FX panel + reserves (PR #221 + #228)
+├── scripts/
+│   ├── probe_fred.py       check FRED reachability
+│   └── build_macro_timeseries.py  builds public/datasets/claire/macro_timeseries.json
+│                                  (drives ip_* node sparklines, PR #221)
 ├── validation/             synthetic-data correctness tests
 │   ├── ardl_synthetic.py
 │   ├── event_study_synthetic.py
@@ -138,7 +146,8 @@ research/macro/
 ├── output/
 │   ├── _cache/             gitignored
 │   ├── edge_fits.json      cross-domain fit results
-│   └── dxy_fits.json       DXY edge fit results
+│   ├── dxy_fits.json       DXY edge fit results
+│   └── dxy_em_fits.json    DXY → EM FX (monthly + annual) + reserves
 ├── README.md
 └── requirements.txt
 ```
@@ -214,11 +223,63 @@ within tolerance.
 | Wheat → IMF Food Price Index            |  0.184              | (see fits.json)      | 316 | 1980 – 2017   |
 | Industrial Inputs → All Commodity Idx   |  ~0.79              | (see fits.json)      | 446 | 1980 – 2017   |
 | China Iron-Ore → Industrial Inputs      |  0.193              | (see fits.json)      | 446 | 1980 – 2017   |
+| DXY → EM FX (monthly, 7-EM mirror)      |  0.381              | [0.27, 0.49]         | 325 | 1999 – 2026   |
+| DXY → EM FX (annual, 15-EM PIMCO)       |  0.520              | [0.10, 0.94]         | 195 | 2011 – 2024   |
+| DXY → EM FX (cap-weighted, 15-EM)       |  0.521              | [0.08, 0.96]         | 195 | 2011 – 2024   |
+| DXY → EM FX reserves (annual, 14-EM)    | −0.478              | [−1.01, +0.05]       | 195 | 2011 – 2024   |
+
+Robustness: the cap-weighted variant (WLS with each country's rows
+weighted by 2011-2024 mean current-USD GDP) lands at β = 0.521,
+indistinguishable from the equal-weighted β = 0.520. The DXY → EM FX
+channel doesn't depend on whether Brazil + Mexico + Turkey carry more
+weight than Sri Lanka + Tunisia + Ghana — Hofmann-Patel-Wu's literature
+0.5-0.7 holds at both weighting schemes. Edge weight stays at the
+0.44 blend (between monthly tier-2 and annual tier-3); confidence stays
+0.85.
 
 Cross-check: Abqaiq-Khurais 2019 attack drove +23% abnormal cumulative
 return on Brent in the 90 days post (t=2.26, p≈0.02) — consistent with
 the channel elasticity of 0.918 applied to a 57.6% peak Saudi
 production disruption.
+
+## Empirical playbook for cross-domain edges
+
+When a new edge needs to be refit empirically, work the data sources in
+this order. Each tier is a strictly weaker fallback when the prior tier
+is unreachable from the sandbox.
+
+```
+1. FRED API     (FRED_API_KEY set) — canonical, monthly, US-specific
+2. GitHub mirror of the FRED-equivalent series (datasets/oil-prices,
+                  datasets/exchange-rates, datasets/bond-yields-us-10y,
+                  datasets/commodity-prices, datasets/s-and-p-500)
+3. PIMCO sovereign workbook (claire/timeseries.json → pimco_sovereign)
+                  — annual, 20 EMs incl. Turkey/Argentina/Colombia/Egypt/
+                  Pakistan that the FRED H.10 mirror skips
+4. statsmodels.macrodata bundled CSVs — quarterly, 1959-2009
+5. Literature-cited weight, transparently disclosed in the edge
+                  description with mechanism + reference + "refit
+                  pending <data>" tag
+```
+
+The DXY → EM FX refits (PR #221, PR #228) are the canonical worked
+example: tier-2 monthly fit for the high-confidence point estimate,
+tier-3 annual fit for panel breadth (catches Turkey + Argentina that
+tier-2 misses), final edge weight is a defensible blend of both with
+the description citing each panel's tradeoff. Same pattern applies to
+any future EM-side edge.
+
+When you can only get to tier-5 (literature), keep it small and stamped:
+
+```
+"physicalMechanism": "...<channel description>... <Author Year>:
+                     <expected magnitude>. Literature-cited; refit
+                     pending <missing data>."
+```
+
+The Tarski validator's R-04 (Cross-Domain Dependency) flags any cross-
+domain edge with confidence < 0.7, so literature-cited weights surface
+as audit candidates until they get refit.
 
 ## Follow-ons
 
@@ -226,6 +287,9 @@ production disruption.
 2. ~~**Baltic Dry / Drewry WCI**~~ — Baltic Dry isn't free (proprietary); FRED CASSFI (Cass Freight Index) is the closest substitute and ships in PR #192.
 3. ~~**DXY / USD-strength node**~~ — shipped in PR #134.
 4. **Real-rate refit with TIPS** — shipped in PR #190 with a synthetic proxy; the topology is correct but the proxy is too noisy for monthly returns. Refit with FRED `DFII10` (10y TIPS yield) once FRED key is set; weight tightens, topology unchanged.
+5. ~~**DXY → EM FX / reserves**~~ — empirical refits shipped in PR #221 (monthly 7-EM mirror) and PR #228 (annual 15-EM PIMCO panel including Turkey + Argentina).
+6. ~~**Macro historical sparklines**~~ — `macro_timeseries.json` builder + 14 ip_* node mappings shipped in PR #221. Backfilling the 25 mi_* labor nodes still needs FRED API access (build script runs the same path with `FRED_API_KEY` set).
+7. ~~**Cap-weighted EM FX panel**~~ — shipped. World Bank current-USD GDP from `datasets/gdp` mirror; WLS variant in `dxy_em_fits.py:fit_dxy_to_em_fx_cap_weighted`. β = 0.521, indistinguishable from equal-weighted 0.520 — confirms the channel is symmetric across panel composition.
 
 ## Sub-domain audit notes
 

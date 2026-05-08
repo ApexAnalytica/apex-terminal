@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   outOfSampleFit,
   akaikeEvidenceWeights,
+  bocpdRegimeGate,
   csdRegimeGate,
   lpplsRegimeGate,
   phRegimeGate,
@@ -92,9 +93,23 @@ describe("akaikeEvidenceWeights", () => {
 describe("csdRegimeGate", () => {
   it("scores higher for a series with rising variance and autocorr", () => {
     // Trajectory whose variance and autocorrelation grow over time.
+    // Seeded RNG so the test is deterministic — was previously using
+    // unseeded Math.random() and intermittently failed when the random
+    // draw produced rising < flat at the assertion threshold.
+    const rng = (() => {
+      // Mulberry32 inline so the test stays in this single file.
+      let a = 20260506 >>> 0;
+      return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    })();
     const rising: number[] = [];
     for (let i = 0; i < 30; i++) {
-      const noise = (Math.random() - 0.5) * (i / 30);
+      const noise = (rng() - 0.5) * (i / 30);
       const trend = i / 30;
       rising.push(trend + noise);
     }
@@ -139,6 +154,43 @@ describe("lpplsRegimeGate", () => {
   it("returns 0 for series shorter than 6 points", () => {
     const r = lpplsRegimeGate({ observed: [1, 2, 3], modelSeries: [1, 2, 3] });
     expect(r.score).toBe(0);
+  });
+});
+
+describe("bocpdRegimeGate", () => {
+  it("returns 0 for series shorter than 6 points", () => {
+    const r = bocpdRegimeGate({ newRunProb: [0.1, 0.2, 0.3] });
+    expect(r.score).toBe(0);
+    expect(r.detail).toMatch(/n=3/);
+  });
+
+  it("scores high for a posterior with a recent peak above threshold", () => {
+    // Quiet then spikes recently — peak window catches the rise.
+    const newRunProb = [
+      0.02, 0.02, 0.03, 0.02, 0.02, 0.02, 0.02, 0.02,
+      0.7, 0.85, 0.9, 0.6,
+    ];
+    const r = bocpdRegimeGate({ newRunProb });
+    expect(r.score).toBeGreaterThan(0.4);
+  });
+
+  it("scores low for a flat-line posterior", () => {
+    const flat = Array.from({ length: 20 }, () => 0.02);
+    const r = bocpdRegimeGate({ newRunProb: flat });
+    expect(r.score).toBeLessThan(0.1);
+  });
+
+  it("scores higher with structure than without (ordering invariant)", () => {
+    const flat = Array.from({ length: 30 }, () => 0.02);
+    const structured = [
+      0.02, 0.02, 0.05, 0.4, 0.7, 0.5, 0.2, 0.05,
+      0.02, 0.02, 0.02, 0.05, 0.5, 0.85, 0.6, 0.2,
+      0.05, 0.02, 0.02, 0.02, 0.05, 0.4, 0.7, 0.55,
+      0.2, 0.05, 0.02, 0.5, 0.8, 0.6,
+    ];
+    expect(
+      bocpdRegimeGate({ newRunProb: structured }).score,
+    ).toBeGreaterThan(bocpdRegimeGate({ newRunProb: flat }).score);
   });
 });
 

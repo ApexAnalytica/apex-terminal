@@ -24,40 +24,81 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
-/** Tiny sparkline SVG for a node's omega history */
+/**
+ * Tiny sparkline SVG for a node's omega history.
+ *
+ * x-axis: real time, mapped from `xStart`/`xEnd` (passed from the
+ * caller — the global timelineRange) so every tile shares the same
+ * x-axis as the TimeDial scrubber and the bottom overlay. Without
+ * this the previous index-based x stretched a 2-point series to
+ * cover the whole tile while a 24-point series got compressed —
+ * tiles looked completely heterogeneous.
+ *
+ * Sparse-data behaviour: when only 1 point is in range we draw a
+ * horizontal hold-forward line at that value, so every tile has a
+ * line edge-to-edge. When 0 points are in range the component
+ * returns null and the parent renders the "LIVE — building" hint.
+ */
 function OmegaSparkline({
   history,
   width,
   height,
   color,
   highlightIdx,
+  xStart,
+  xEnd,
 }: {
   history: NodeTemporalState[];
   width: number;
   height: number;
   color: string;
   highlightIdx: number | null;
+  xStart: number;
+  xEnd: number;
 }) {
-  if (history.length < 2) return null;
+  if (history.length === 0) return null;
+
+  const pad = 2;
+  const xRange = xEnd - xStart || 1;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const toX = (ts: number) => pad + ((ts - xStart) / xRange) * innerW;
 
   const omegas = history.map((h) => h.omegaComposite);
   const min = Math.min(...omegas);
   const max = Math.max(...omegas);
   const range = max - min || 1;
-  const pad = 2;
+  const toY = (v: number) => height - pad - ((v - min) / range) * innerH;
 
-  const points = omegas
-    .map((v, i) => {
-      const x = (i / (omegas.length - 1)) * (width - pad * 2) + pad;
-      const y = height - pad - ((v - min) / range) * (height - pad * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  // Fill area under the line
-  const firstX = pad;
-  const lastX = (width - pad * 2) * ((omegas.length - 1) / (omegas.length - 1)) + pad;
+  // Build the polyline points. For a single observation we draw a
+  // horizontal hold-forward line; for ≥2 we connect each point in
+  // chronological order and then hold the last value forward to xEnd
+  // so the line always reaches the right edge of the tile.
+  const polyPts: string[] = [];
+  if (history.length === 1) {
+    const onlyY = toY(history[0].omegaComposite);
+    polyPts.push(`${toX(history[0].timestamp)},${onlyY}`);
+    polyPts.push(`${pad + innerW},${onlyY}`);
+  } else {
+    for (const h of history) {
+      polyPts.push(`${toX(h.timestamp)},${toY(h.omegaComposite)}`);
+    }
+    const last = history[history.length - 1];
+    polyPts.push(`${pad + innerW},${toY(last.omegaComposite)}`);
+  }
+  const points = polyPts.join(" ");
+  const firstX = toX(history[0].timestamp);
+  const lastX = pad + innerW;
   const fillPoints = `${firstX},${height - pad} ${points} ${lastX},${height - pad}`;
+
+  // Highlight dot — clamp to a real point in case the parent's
+  // highlightIdx is stale relative to a freshly-filtered history.
+  const idx = Math.max(
+    0,
+    Math.min(history.length - 1, highlightIdx ?? history.length - 1),
+  );
+  const dotX = toX(history[idx].timestamp);
+  const dotY = toY(history[idx].omegaComposite);
 
   return (
     <svg width={width} height={height} className="flex-shrink-0">
@@ -66,9 +107,9 @@ function OmegaSparkline({
         <line
           key={frac}
           x1={pad}
-          y1={pad + (1 - frac) * (height - pad * 2)}
+          y1={pad + (1 - frac) * innerH}
           x2={width - pad}
-          y2={pad + (1 - frac) * (height - pad * 2)}
+          y2={pad + (1 - frac) * innerH}
           stroke="rgba(255,255,255,0.04)"
           strokeWidth={0.5}
         />
@@ -84,17 +125,8 @@ function OmegaSparkline({
         strokeLinejoin="round"
       />
       {/* Current value dot */}
-      {(() => {
-        const idx = highlightIdx ?? omegas.length - 1;
-        const x = (idx / (omegas.length - 1)) * (width - pad * 2) + pad;
-        const y = height - pad - ((omegas[idx] - min) / range) * (height - pad * 2);
-        return (
-          <>
-            <circle cx={x} cy={y} r={3} fill={color} opacity={0.4} />
-            <circle cx={x} cy={y} r={1.5} fill={color} />
-          </>
-        );
-      })()}
+      <circle cx={dotX} cy={dotY} r={3} fill={color} opacity={0.4} />
+      <circle cx={dotX} cy={dotY} r={1.5} fill={color} />
     </svg>
   );
 }
@@ -495,7 +527,7 @@ export default function RiskPropagationFlow() {
                       onMouseMove={(e) => handleChartHover(card.nodeId, e)}
                       onMouseLeave={() => setHoveredDay(null)}
                     >
-                      {history.length > 1 ? (
+                      {history.length >= 1 ? (
                         <OmegaSparkline
                           history={history}
                           width={isActive ? 254 : 174}
@@ -508,6 +540,8 @@ export default function RiskPropagationFlow() {
                               : getBarColor(currentOmega)
                           }
                           highlightIdx={hoveredDay ?? currentHistoryIdx}
+                          xStart={timelineRange.start}
+                          xEnd={timelineRange.end}
                         />
                       ) : (
                         <div className="h-9 flex items-center justify-center gap-1.5">
@@ -519,7 +553,7 @@ export default function RiskPropagationFlow() {
                           </span>
                         </div>
                       )}
-                      {usingLiveHistory && history.length > 1 && (
+                      {usingLiveHistory && history.length >= 1 && (
                         <span
                           className="absolute top-0 right-0 text-[6px] font-mono tracking-wider px-1 rounded-sm"
                           style={{
@@ -533,14 +567,16 @@ export default function RiskPropagationFlow() {
                       )}
                     </div>
 
-                    {/* Date range labels */}
-                    {history.length > 1 && (
+                    {/* Date range labels — show timeline window edges so every
+                        tile reads with the same axis labels regardless of how
+                        many points it actually has in range. */}
+                    {history.length >= 1 && (
                       <div className="flex justify-between mt-0.5 text-[7px] font-mono text-text-muted/50">
                         <span>
-                          {new Date(history[0].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                          {new Date(timelineRange.start).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
                         </span>
                         <span>
-                          {new Date(history[history.length - 1].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                          {new Date(timelineRange.end).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
                         </span>
                       </div>
                     )}

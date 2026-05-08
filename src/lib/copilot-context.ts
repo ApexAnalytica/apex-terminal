@@ -4,11 +4,15 @@ import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 import type { TemporalDataset } from "./temporal-data";
 import { getEventsInRange, getNodeStateAt } from "./temporal-data";
-import { DOMAIN_CARDS } from "@/components/DomainSelector";
+import { DOMAIN_CARDS } from "@/lib/domains";
 import {
   renderEngineStateText,
   summarizeEngineState,
 } from "./engine-state-summary";
+import { renderToolsForPrompt } from "./copilot/tool-registry";
+// Side-effect import: ensures all built-in tools are registered
+// before we render the prompt section.
+import "./copilot/tools";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -57,37 +61,10 @@ export function serializeGraphContext(
 ): string {
   const lines: string[] = [];
 
-  // Available actions
-  lines.push("=== COPILOT ACTIONS ===");
-  lines.push("You can control the graph by emitting action tags in your response.");
-  lines.push("Format: <<<ACTION:type:param>>>");
-  lines.push("Available actions:");
-  lines.push("  select_node:<node_id or label> — Select and highlight a node");
-  lines.push("  set_domains:<id1,id2,...> — Filter network to specific domains (rebuilds graph)");
-  lines.push("  add_shock:<shock_id> — Inject a stress scenario");
-  lines.push("  remove_shock:<shock_id> — Remove an active shock");
-  lines.push("  sever_edge:<edge_id> — Pearl link-break on an edge");
-  lines.push("  reset_severed — Reset all severed edges");
-  lines.push("  set_module:<spirtes|tarski|pearl|pareto> — Switch analysis module");
-  lines.push("  set_view:<2d|3d> — Switch visualization mode");
-  lines.push("  start_replay / stop_replay — Control cascade animation");
-  lines.push("  solve_interdiction:budget=N,mode=edge|node|both — Run greedy minimax solver to find optimal defensive cuts (budget=1-10)");
-  lines.push("  apply_interdiction:all — Apply all recommended interdictions from the last solve");
-  lines.push("  apply_interdiction:1,2 — Apply specific recommendations by index (1-based)");
-  lines.push("");
-  lines.push("INTERDICTION WORKFLOW — CRITICAL: When a user asks about interdiction, optimal cuts, defensive cuts,");
-  lines.push("where to intervene, how to defend, what to sever, minimax, or any variant of 'find/solve/recommend cuts',");
-  lines.push("you MUST emit the solve_interdiction action. Do not just describe — trigger it. Steps:");
-  lines.push("  1. If no shocks are active, first inject one: <<<ACTION:add_shock:SHOCK_ID>>>");
-  lines.push("  2. Emit the solver action on its own line: <<<ACTION:solve_interdiction:budget=3,mode=edge>>>");
-  lines.push("     (the solver auto-switches to the PEARL module and renders the results panel)");
-  lines.push("  3. After the action fires, explain the returned cuts in plain language and their damage reduction");
-  lines.push("  4. Offer to apply: <<<ACTION:apply_interdiction:all>>> or specific indices like <<<ACTION:apply_interdiction:1,2>>>");
-  lines.push("  5. Optionally visualize: <<<ACTION:start_replay>>>");
-  lines.push("EXAMPLE user turn -> expected response:");
-  lines.push("  USER: 'where should we cut to defend against this?'");
-  lines.push("  YOU:  'Running the minimax interdiction solver now. <<<ACTION:solve_interdiction:budget=3,mode=edge>>>'");
-  lines.push("        (then explain results once they come back)");
+  // Available actions — auto-generated from the tool registry. Adding
+  // a new tool means defining it in src/lib/copilot/tools.ts; the
+  // prompt picks it up here automatically.
+  lines.push(renderToolsForPrompt());
   lines.push("");
   lines.push("=== AVAILABLE DOMAINS ===");
   const available = DOMAIN_CARDS.filter((d) => d.hasData);

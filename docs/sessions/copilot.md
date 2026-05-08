@@ -2,7 +2,19 @@
 
 Owns the copilot as the **primary linguistic interface to the platform**. Long-term: this session evolves into Apex's own hybrid LLM/agent — the linguistic surface of the "platform-as-cortex" framing, where engine sessions (SPIRTES, TARSKI, PEARL, PARETO) are the cortex and this session is the access layer.
 
-> **Status:** Newly split from TARSKI on 2026-05-04. Inherits a working substrate: `serializeGraphContext` already injects an `=== ENGINE STATE SNAPSHOT ===` block (PR #215 + #217), and `copilot-actions.ts` already parses `<<<ACTION:type:param>>>` blocks with 14 action types wired to the store. First-PR ask is to extend that scaffold into a richer **tool-use primitive** so users can drive the platform by language.
+> **Status:** Active. Tool registry + `isolate_nodes` shipped ([#249](https://github.com/ApexAnalytica/apex-terminal/pull/249)). Trace store shipped ([#251](https://github.com/ApexAnalytica/apex-terminal/pull/251)) — every copilot turn now lands as a structured row in `public.copilot_traces`. Provider abstraction (Vercel AI SDK) is the next planned PR. Earlier substrate: `serializeGraphContext` injects `=== ENGINE STATE SNAPSHOT ===` (PR #215 + #217).
+
+## Defaults & invariants (DO NOT change without explicit user direction)
+
+- **Copilot LLM defaults to Gemini.** Hardcoded in `SystemCopilot.tsx:93` (`copilotProvider = llmProvider === "ollama" ? "ollama" : "gemini"`); see also the comment at `SystemCopilot.tsx:31`: *"Copilot is locked to Gemini; Claude is used exclusively for compute."* Gemini is the chat path because the chat is high-frequency and Gemini is the cheaper / faster choice; Claude is reserved for the low-frequency, heavy-reasoning compute path (snapshot validation, Tarski runs, etc).
+- **Switching providers requires explicit user action** (today: picking Ollama in the settings panel). Nothing flips automatically.
+- **The planned Vercel AI SDK abstraction preserves this default.** It adds *optionality* (model picker, easier A/B), not a default change. The out-of-the-box on-load provider stays Gemini. Any change to that default is a separate, explicit user decision — not bundled into the abstraction PR.
+- **Trace shape is provider-agnostic.** `model_provider` is a column on `copilot_traces`, so we can compare Gemini vs. Claude vs. local Ollama on the same conversation distribution if/when the user opts in — but the comparison is read from the data, not assumed in the prompt or prompt-rendering code.
+
+## What's shipped
+
+- **PR #249 — tool registry**. Replaced the hand-written switch in `copilot-actions.ts` with declarative `defineTool` registrations. Schema-typed params (string / string[] / number / enum / boolean with required / default / min / max). Auto-generated system prompt via `renderToolsForPrompt()` so the LLM-visible action list can never drift from the code. JSON Schema export (`renderToolsAsJsonSchema`) ready for native Anthropic `tool_use` migration. 14 existing actions migrated. Two new tools: `isolate_nodes` (filter visible graph by query or ids), `reset_isolation`.
+- **PR #251 — trace store**. Every turn becomes a row in `public.copilot_traces`. One row = one turn (user msg → assistant msg) with all tool calls colocated in `tool_calls jsonb[]` (`{name, params, result, error, latency_ms}`). RLS: users read their own rows; writes via service role only. GIN index on `tool_calls` for fast `@>` containment queries. Logging is fire-and-forget — failures never break chat. SQL migration: `supabase-copilot-traces.sql`.
 
 ## Scope summary (in)
 

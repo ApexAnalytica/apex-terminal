@@ -11,6 +11,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { deriveEdgeAppearance } from "@/lib/edge-styling";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
@@ -60,6 +61,8 @@ function CausalDAGMapInner() {
     selectedNodes,
     setSelectedNodes,
     isolateSelection,
+    truthFilter,
+    ablatedEdgeIds,
   } = useApexStore();
   // Use the same filtered graph as 2D and 3D views for consistent data
   const activeGraph = useFilteredGraph();
@@ -244,6 +247,8 @@ function CausalDAGMapInner() {
     };
   }, [activeGraph]);
 
+  const ablatedEdgeSet = useMemo(() => new Set(ablatedEdgeIds), [ablatedEdgeIds]);
+
   const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarHaloGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
@@ -266,20 +271,28 @@ function CausalDAGMapInner() {
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
-      // Three modes for edges when a multi-selection is active:
-      //  - isolate ON   → cull edges that don't connect two selected nodes
-      //  - isolate OFF  → render but dim edges with no selected endpoint
-      //                   (matches 2D's `multiInScope` spotlight)
-      //  - no selection → render normally
-      const inScope =
+      // Selection-driven dimming. Mirrors 3D (`CausalDAG3D.tsx` →
+      // `DAGEdge3D` `selectionDim` + multi-select scoping).
+      //  - multi-select isolate ON   → cull edges not bridging two selected
+      //  - multi-select isolate OFF  → dim edges with no selected endpoint
+      //  - single-select (no multi)  → dim edges not touching the selection
+      //  - no selection              → render normally
+      const inMultiScope =
         selectedSet.size === 0 ||
         selectedSet.has(edge.source) ||
         selectedSet.has(edge.target);
-      const fullScope =
+      const fullMultiScope =
         selectedSet.size === 0 ||
         (selectedSet.has(edge.source) && selectedSet.has(edge.target));
-      if (isolateSelection && selectedSet.size > 0 && !fullScope) return;
-      const edgeIsDimmed = !isolateSelection && selectedSet.size > 0 && !inScope;
+      if (isolateSelection && selectedSet.size > 0 && !fullMultiScope) return;
+      const dimmedByMulti =
+        !isolateSelection && selectedSet.size > 0 && !inMultiScope;
+      const dimmedBySingle =
+        selectedSet.size === 0 &&
+        selectedNode !== null &&
+        edge.source !== selectedNode &&
+        edge.target !== selectedNode;
+      const edgeIsDimmed = dimmedByMulti || dimmedBySingle;
 
       // Curved line via midpoint offset (MapLibre renders LineStrings as
       // straight segments between vertices, so we sample the quadratic
@@ -316,23 +329,25 @@ function CausalDAGMapInner() {
         }
       }
 
-      // Edge color — matches 3D exactly. Severed gets a distinct slate color
-      // so Pearl link-breaks don't look like Tarski-inconsistent edges.
+      // Color / dash / width come from the shared helper that mirrors 3D's
+      // edge styling. Keeps the four mismatches the Asana ticket called out
+      // (ablation magenta, gated inconsistent red, consequence-edge orange,
+      // power-scaled width) in sync without each view drifting on its own.
       const isSevered = edge.isSevered ?? false;
-      const edgeColor = isSevered
-        ? "#78909c"
-        : edge.isInconsistent
-          ? "#ff1744"
-          : edge.type === "temporal"
-            ? "#ffab00"
-            : edge.type === "confounded"
-              ? "#ff6d00"
-              : "#00e5ff";
+      const isAblated = ablatedEdgeSet.has(edge.id);
+      const { color: edgeColor, isDashed, widthFactor } = deriveEdgeAppearance({
+        edge,
+        truthFilter,
+        isAblated,
+      });
 
-      // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
-      const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
+      // Map screen-space scale: the helper returns a 0.7–4.0 factor; the
+      // map's previous mapping was `weight * 2 + 1.5` (≈1.5–3.5). Multiplying
+      // by ~0.9 keeps the absolute pixel range comparable while restoring
+      // the perceptual contrast 3D / 2D already use.
+      const widthPx = widthFactor * 0.9 + 0.3;
 
-      const baseOpacity = isSevered ? 0.45 : 0.5;
+      const baseOpacity = isSevered || isAblated ? 0.45 : 0.5;
       const opacity = edgeIsDimmed ? 0.08 : baseOpacity;
 
       const feature: Feature<LineString> = {
@@ -347,7 +362,7 @@ function CausalDAGMapInner() {
           type: edge.type,
           opacity,
           color: edgeColor,
-          width: edge.weight * 2 + 1.5,
+          width: widthPx,
         },
       };
 
@@ -358,10 +373,14 @@ function CausalDAGMapInner() {
       }
 
       // Halo: rendered behind the main edge for any edge in χ★.
-      // Skipped on severed (their slate styling takes priority) and
-      // on dimmed multi-selection out-of-scope edges (would compete
-      // with the dim treatment).
-      if (chiStarInfo.chiStarSet.has(edge.id) && !isSevered && !edgeIsDimmed) {
+      // Skipped on severed/ablated (their styling takes priority) and on
+      // dimmed out-of-scope edges (would compete with the dim treatment).
+      if (
+        chiStarInfo.chiStarSet.has(edge.id) &&
+        !isSevered &&
+        !isAblated &&
+        !edgeIsDimmed
+      ) {
         haloFeatures.push({
           type: "Feature",
           geometry: { type: "LineString", coordinates },
@@ -369,7 +388,7 @@ function CausalDAGMapInner() {
             id: `${edge.id}-halo`,
             // Halo width scales with the edge's width so thin and
             // thick edges both read as having a halo.
-            width: edge.weight * 2 + 4.5,
+            width: widthPx + 3,
           },
         });
       }
@@ -380,7 +399,16 @@ function CausalDAGMapInner() {
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
       chiStarHaloGeoJSON: { type: "FeatureCollection" as const, features: haloFeatures },
     };
-  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo]);
+  }, [
+    activeGraph.nodes,
+    activeGraph.edges,
+    selectedNode,
+    selectedNodes,
+    isolateSelection,
+    chiStarInfo,
+    truthFilter,
+    ablatedEdgeSet,
+  ]);
 
   // Extract temporal edge paths directly from the solid edge GeoJSON features
   // so particles follow the exact same sampled bezier polyline as the

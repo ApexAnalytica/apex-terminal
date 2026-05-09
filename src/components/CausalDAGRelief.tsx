@@ -17,6 +17,7 @@ import {
   type NodeAnchor,
   type ReliefField,
 } from "@/lib/graph-relief-field";
+import { chiStar } from "@/lib/estimators/chi-star";
 
 /* ─── Topo shader ──────────────────────────────────────────────────
  *
@@ -800,11 +801,62 @@ export default function CausalDAGRelief() {
   );
 }
 
+/**
+ * χ★ midpoint markers — small violet octahedral pips at each χ★
+ * edge midpoint, opt-in (default off; toggled on via the Relief
+ * canvas's "χ★" button). Stays out of the way by default because
+ * Relief's job is the fragility heatmap; this overlay answers the
+ * separate question "where do critical chokepoints sit relative to
+ * those fragility regions?".
+ *
+ * Translation matches SelectionMarkers — layout (x, y) in the 2D
+ * plane → scene (x, y_height, z) with field.cx / cy subtracted.
+ * Markers float at a fixed height above the 0-plane so they read
+ * over peaks AND valleys.
+ */
+function ChiStarMidpointMarkers({
+  midpoints,
+}: {
+  midpoints: { id: string; x: number; z: number }[];
+}) {
+  if (midpoints.length === 0) return null;
+  const HOVER_Y = 60;
+  const PIP_RADIUS = 1.6;
+  return (
+    <group>
+      {midpoints.map((m) => (
+        <group key={`chi-${m.id}`} position={[m.x, HOVER_Y, m.z]}>
+          {/* Outer halo — soft violet glow */}
+          <mesh>
+            <sphereGeometry args={[PIP_RADIUS * 2.2, 12, 12]} />
+            <meshBasicMaterial color="#7B68EE" transparent opacity={0.18} />
+          </mesh>
+          {/* Inner pip — sharper violet octahedron, distinguishable
+              from spherical SelectionMarkers caps and node labels. */}
+          <mesh rotation={[Math.PI / 4, 0, Math.PI / 4]}>
+            <octahedronGeometry args={[PIP_RADIUS, 0]} />
+            <meshBasicMaterial color="#7B68EE" transparent opacity={0.85} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const [pickHint, setPickHint] = useState<string | null>(null);
+  // χ★ overlay toggle. Default OFF: Relief is for the fragility heat
+  // distribution; the chokepoint structure is a separate question
+  // best surfaced in 3D / 2D / Map where edges are the rendering
+  // primitive. When the user opts in, octahedral pips render at χ★
+  // edge midpoints to answer "do my hottest fragility regions sit on
+  // top of the load-bearing skeleton?". State is local — the toggle
+  // doesn't need to persist across view swaps and other views don't
+  // read it.
+  const [chiStarOverlayOn, setChiStarOverlayOn] = useState(false);
 
   // Shift+drag marquee state — mirrors the pattern in CausalDAG3D /
   // CausalDAG2D / CausalDAGMap so the user can lasso a region of the
@@ -960,6 +1012,43 @@ function CausalDAGReliefInner() {
     return computeNodeAnchors(fieldNodes, layout, activeField, {}, 40);
   }, [activeField, isEmpty, fieldNodes, layout]);
 
+  // χ★ midpoints (scene-local). Brandes O(V·E) keyed on the same
+  // graph signature the layout uses, so it doesn't recompute on
+  // replay scrub ticks — only on real graph-structure changes.
+  // Severed edges excluded so user-driven cuts reflect immediately.
+  const chiStarMidpoints = useMemo(() => {
+    if (!activeField || isEmpty || graphData.edges.length === 0) return [];
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    const chiSet = new Set(r.chiStar);
+    const out: { id: string; x: number; z: number }[] = [];
+    for (const e of graphData.edges) {
+      if (e.isSevered) continue;
+      if (!chiSet.has(e.id)) continue;
+      const a = layout.get(e.source);
+      const b = layout.get(e.target);
+      if (
+        !a || !b ||
+        !Number.isFinite(a.x) || !Number.isFinite(a.y) ||
+        !Number.isFinite(b.x) || !Number.isFinite(b.y)
+      ) {
+        continue;
+      }
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      out.push({
+        id: e.id,
+        x: mx - activeField.cx,
+        z: my - activeField.cy,
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, activeField, isEmpty, layout]);
+
   // Click handler — convert the mesh-local hit point to nearest node id
   // and dispatch into the store. Same selection signal the rest of the app
   // already listens to (3D pillars, 2D React Flow, ModulePanel, etc.).
@@ -1033,6 +1122,9 @@ function CausalDAGReliefInner() {
           />
         )}
         {!isEmpty && <NodeLabels anchors={anchors} />}
+        {!isEmpty && chiStarOverlayOn && (
+          <ChiStarMidpointMarkers midpoints={chiStarMidpoints} />
+        )}
         {!isEmpty && activeField && (
           <CameraSetup
             width={activeField.width}
@@ -1079,6 +1171,36 @@ function CausalDAGReliefInner() {
       )}
       {!isEmpty && multilayer && fusedField && (
         <DomainLegend field={fusedField} />
+      )}
+      {/* χ★ overlay toggle. Default off — Relief's primary purpose
+          is the fragility heat distribution; the chokepoint
+          structure is opt-in supplementary context. Pip count in
+          the label tells the user what to expect before they enable. */}
+      {!isEmpty && chiStarMidpoints.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setChiStarOverlayOn((v) => !v)}
+          title={
+            chiStarOverlayOn
+              ? "Hide χ★ chokepoint markers"
+              : "Show χ★ chokepoint markers (violet pips at edge midpoints)"
+          }
+          className="absolute bottom-4 right-4 z-10 px-2.5 py-1.5 rounded border backdrop-blur-sm transition-colors"
+          style={{
+            borderColor: chiStarOverlayOn ? "#7B68EE" : "var(--border)",
+            backgroundColor: chiStarOverlayOn
+              ? "rgba(123,104,238,0.10)"
+              : "var(--surface-elevated)",
+            color: chiStarOverlayOn ? "#7B68EE" : "var(--text-muted)",
+          }}
+        >
+          <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider">
+            χ★ {chiStarOverlayOn ? "ON" : "OFF"}
+          </span>
+          <span className="ml-1.5 text-[8px] font-mono opacity-70 tabular-nums">
+            ({chiStarMidpoints.length})
+          </span>
+        </button>
       )}
       {/* ElevationLegend (DOM, right edge) has been replaced by
           InSceneElevationLegend, which renders a vertical column

@@ -11,6 +11,7 @@ import { getDomainColor } from "@/lib/graph-data";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { isTinyDrag, nodesInsideRect, type ProjectedNode } from "@/lib/box-select";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
@@ -78,6 +79,11 @@ function CausalDAGMapInner() {
   const [selectionRect, setSelectionRect] = useState<{
     x1: number; y1: number; x2: number; y2: number;
   } | null>(null);
+  // Rect tracked in a ref so onPointerUp can hit-test the final box without
+  // depending on the asynchronously-batched selectionRect state.
+  const currentRectRef = useRef<{
+    x1: number; y1: number; x2: number; y2: number;
+  } | null>(null);
   const shiftDragRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
@@ -100,7 +106,9 @@ function CausalDAGMapInner() {
       const y = e.clientY - rect.top;
       shiftDragRef.current = true;
       dragStartRef.current = { x, y };
-      setSelectionRect({ x1: x, y1: y, x2: x, y2: y });
+      const initial = { x1: x, y1: y, x2: x, y2: y };
+      currentRectRef.current = initial;
+      setSelectionRect(initial);
       // Disable map panning during box select
       mapRef.current?.getMap().dragPan.disable();
     };
@@ -110,9 +118,11 @@ function CausalDAGMapInner() {
       const rect = container.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      setSelectionRect((prev) =>
-        prev ? { ...prev, x2: x, y2: y } : null,
-      );
+      const next = currentRectRef.current
+        ? { ...currentRectRef.current, x2: x, y2: y }
+        : null;
+      currentRectRef.current = next;
+      setSelectionRect(next);
     };
 
     const onPointerUp = () => {
@@ -120,34 +130,31 @@ function CausalDAGMapInner() {
       shiftDragRef.current = false;
       mapRef.current?.getMap().dragPan.enable();
 
-      setSelectionRect((rect) => {
-        if (!rect) return null;
-        const minX = Math.min(rect.x1, rect.x2);
-        const maxX = Math.max(rect.x1, rect.x2);
-        const minY = Math.min(rect.y1, rect.y2);
-        const maxY = Math.max(rect.y1, rect.y2);
+      // Snapshot the rect, clear it, and run hit-testing outside the
+      // setSelectionRect updater. Calling another state setter inside an
+      // updater callback can fire twice in StrictMode and led to spurious
+      // re-selections of stale ids.
+      const rect = currentRectRef.current;
+      currentRectRef.current = null;
+      setSelectionRect(null);
+      if (!rect) return;
 
-        // Ignore tiny drags (< 5px)
-        if (maxX - minX < 5 && maxY - minY < 5) return null;
+      // Tiny drags are click-equivalents — leave selection untouched.
+      // Mirrors the 3D shift-drag handler.
+      if (isTinyDrag(rect)) return;
 
-        const map = mapRef.current?.getMap();
-        if (!map) return null;
+      const map = mapRef.current?.getMap();
+      if (!map) return;
 
-        const ids: string[] = [];
-        for (const node of nodeCoords) {
-          const projected = map.project(node.lngLat as [number, number]);
-          if (
-            projected.x >= minX && projected.x <= maxX &&
-            projected.y >= minY && projected.y <= maxY
-          ) {
-            ids.push(node.id);
-          }
-        }
-        if (ids.length > 0) {
-          setSelectedNodes(ids);
-        }
-        return null;
+      const projected: ProjectedNode[] = nodeCoords.map((node) => {
+        const p = map.project(node.lngLat as [number, number]);
+        return { id: node.id, screenX: p.x, screenY: p.y };
       });
+      const ids = nodesInsideRect(rect, projected);
+      // Empty drag clears multi-select — matches 3D's `onSelect([])`
+      // contract. Previously the map silently dropped empty selections,
+      // so users had to click on blank canvas to wipe a stale selection.
+      setSelectedNodes(ids);
     };
 
     container.addEventListener("pointerdown", onPointerDown);
@@ -616,16 +623,25 @@ function CausalDAGMapInner() {
     ? activeGraph.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
     : "";
 
-  // Nodes the map should currently frame. When isolating with a selection,
-  // frame only the selected subset (matches 3D isolate semantics); otherwise
-  // frame the full filtered graph.
+  // Nodes the map should currently frame. Mirrors 3D's CameraRig priority:
+  //   1. Multi-selection (shift-drag or shift-click) → frame the selection.
+  //   2. Single selection → frame just that node (small zoom-in).
+  //   3. Otherwise → frame the full filtered graph.
+  // Previously the map only auto-framed when ISOLATE was also engaged, so
+  // shift-drag landed a selection but the user still had to find ISOLATE
+  // to see it framed — divergent from 3D, which centers on the selection
+  // unconditionally.
   const nodesToFit = useMemo(() => {
-    if (isolateSelection && selectedNodes.length > 0) {
+    if (selectedNodes.length > 0) {
       const sel = new Set(selectedNodes);
       return activeGraph.nodes.filter((n) => sel.has(n.id));
     }
+    if (selectedNode) {
+      const single = activeGraph.nodes.find((n) => n.id === selectedNode);
+      if (single) return [single];
+    }
     return activeGraph.nodes;
-  }, [activeGraph.nodes, isolateSelection, selectedNodes]);
+  }, [activeGraph.nodes, selectedNode, selectedNodes]);
 
   // Stable key over the *set* of framed node ids. Re-fits when the set of
   // visible nodes changes, including count-preserving swaps (e.g. changing

@@ -21,6 +21,7 @@ import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
 import { serializeGraphContext, serializeSnapshotContext, serializeTimeWindowContext } from "@/lib/copilot-context";
 import { buildSnapshot } from "@/lib/snapshots/serializer";
+import CopilotTraceHistory from "@/components/CopilotTraceHistory";
 
 const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "DISCOVER STRUCTURE", action: "DISCOVER_STRUCTURE", color: "var(--accent-cyan)" },
@@ -137,6 +138,7 @@ export default function SystemCopilot() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDatasets, setShowDatasets] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -844,7 +846,7 @@ export default function SystemCopilot() {
             </button>
             {importedDatasets.length > 0 && (
               <button
-                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) setShowSettings(false); }}
+                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) { setShowSettings(false); setShowHistory(false); } }}
                 className={`text-[11px] transition-colors p-1 ${
                   showDatasets ? "text-accent-amber" : "text-text-muted hover:text-accent-amber"
                 }`}
@@ -854,7 +856,16 @@ export default function SystemCopilot() {
               </button>
             )}
             <button
-              onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowDatasets(false); }}
+              onClick={() => { setShowHistory(!showHistory); if (!showHistory) { setShowSettings(false); setShowDatasets(false); } }}
+              className={`text-[11px] transition-colors p-1 ${
+                showHistory ? "text-accent-green" : "text-text-muted hover:text-accent-green"
+              }`}
+              title="Your Conversation History"
+            >
+              {showHistory ? "\u2715" : "\u29C9"}
+            </button>
+            <button
+              onClick={() => { setShowSettings(!showSettings); if (!showSettings) { setShowDatasets(false); setShowHistory(false); } }}
               className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
               title="LLM Settings"
             >
@@ -1020,6 +1031,21 @@ export default function SystemCopilot() {
                   )}
                 </div>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Trace history panel — opens via the ⧉ icon next to settings */}
+        <AnimatePresence>
+          {showHistory && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <CopilotTraceHistory open={showHistory} />
             </motion.div>
           )}
         </AnimatePresence>

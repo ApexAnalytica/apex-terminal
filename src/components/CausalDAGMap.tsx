@@ -10,6 +10,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
+import { chiStar } from "@/lib/estimators/chi-star";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
@@ -215,7 +216,35 @@ function CausalDAGMapInner() {
   //   confounded → orange (#ff6d00) — dashed
   //   inconsistent → red (#ff1744) — dashed  (Tarski)
   //   severed → slate (#78909c) — dashed     (Pearl link-break)
-  const { solidEdgeGeoJSON, dashedEdgeGeoJSON } = useMemo(() => {
+  // χ★ result on the live filtered graph. Powers (a) the violet halo
+  // GeoJSON layer that renders behind the main edge lines, and (b)
+  // the per-edge BES + bridge / top-k context surfaced by the
+  // EdgeInspector — same data flow as CausalDAG3D / CausalDAG2D.
+  const chiStarInfo = useMemo(() => {
+    if (activeGraph.edges.length === 0) {
+      return {
+        chiStarSet: new Set<string>(),
+        bridgeSet: new Set<string>(),
+        bes: new Map<string, number>(),
+        rank: new Map<string, number>(),
+      };
+    }
+    const r = chiStar({
+      nodes: activeGraph.nodes,
+      edges: activeGraph.edges.filter((e) => !e.isSevered),
+      metadata: activeGraph.metadata,
+    });
+    const rank = new Map<string, number>();
+    r.besRanking.forEach((entry, idx) => rank.set(entry.edgeId, idx));
+    return {
+      chiStarSet: new Set(r.chiStar),
+      bridgeSet: new Set(r.bridges),
+      bes: r.bes,
+      rank,
+    };
+  }, [activeGraph]);
+
+  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarHaloGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
       nodeMap.set(
@@ -227,6 +256,10 @@ function CausalDAGMapInner() {
     const selectedSet = new Set(selectedNodes);
     const solidFeatures: Feature<LineString>[] = [];
     const dashedFeatures: Feature<LineString>[] = [];
+    // χ★ halo features — wider violet lines rendered behind the
+    // main edge lines for any edge in the χ★ set. Same coordinates
+    // as the source feature; only the styling differs.
+    const haloFeatures: Feature<LineString>[] = [];
 
     activeGraph.edges.forEach((edge) => {
       const source = nodeMap.get(edge.source);
@@ -323,13 +356,31 @@ function CausalDAGMapInner() {
       } else {
         solidFeatures.push(feature);
       }
+
+      // Halo: rendered behind the main edge for any edge in χ★.
+      // Skipped on severed (their slate styling takes priority) and
+      // on dimmed multi-selection out-of-scope edges (would compete
+      // with the dim treatment).
+      if (chiStarInfo.chiStarSet.has(edge.id) && !isSevered && !edgeIsDimmed) {
+        haloFeatures.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates },
+          properties: {
+            id: `${edge.id}-halo`,
+            // Halo width scales with the edge's width so thin and
+            // thick edges both read as having a halo.
+            width: edge.weight * 2 + 4.5,
+          },
+        });
+      }
     });
 
     return {
       solidEdgeGeoJSON: { type: "FeatureCollection" as const, features: solidFeatures },
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
+      chiStarHaloGeoJSON: { type: "FeatureCollection" as const, features: haloFeatures },
     };
-  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection]);
+  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo]);
 
   // Extract temporal edge paths directly from the solid edge GeoJSON features
   // so particles follow the exact same sampled bezier polyline as the
@@ -679,6 +730,25 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
+        {/* χ★ bridge-set halo — rendered FIRST so MapLibre paints it
+            beneath the main edge lines below. Violet (#7B68EE) matches
+            the AI Safety / chi-star color used by 3D + 2D + LEGEND. */}
+        <Source id="edges-chi-star-halo" type="geojson" data={chiStarHaloGeoJSON}>
+          <Layer
+            id="edge-lines-chi-star-halo"
+            type="line"
+            paint={{
+              "line-color": "#7B68EE",
+              "line-opacity": 0.45,
+              "line-width": ["get", "width"],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
         {/* Solid edge lines: directed (cyan) + temporal (amber) */}
         <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
@@ -881,6 +951,16 @@ function CausalDAGMapInner() {
             sourceLabel={selectedEdgeSourceLabel}
             targetLabel={selectedEdgeTargetLabel}
             onClose={() => setSelectedEdge(null)}
+            chiStarInfo={
+              chiStarInfo.chiStarSet.has(selectedEdge.id)
+                ? {
+                    isBridge: chiStarInfo.bridgeSet.has(selectedEdge.id),
+                    bes: chiStarInfo.bes.get(selectedEdge.id) ?? 0,
+                    rank: chiStarInfo.rank.get(selectedEdge.id) ?? null,
+                    totalEdges: chiStarInfo.bes.size,
+                  }
+                : null
+            }
           />
         )}
       </AnimatePresence>

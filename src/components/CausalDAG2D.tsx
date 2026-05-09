@@ -27,6 +27,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
 import { getDomainCardColor } from "@/lib/domains";
+import { chiStar } from "@/lib/estimators/chi-star";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
@@ -394,6 +395,13 @@ interface EmphasizedEdgeData {
   isSelected: boolean;
   propagationSignal: number;
   showArrow: boolean;
+  /**
+   * Edge is in the χ★ bridge set (Tarjan strict bridges ∪ top-k BES).
+   * EmphasizedEdge renders a wider violet path behind the main edge
+   * so the load-bearing skeleton is visible at a glance — same
+   * treatment as the 3D canvas, adapted to ReactFlow's SVG layer.
+   */
+  isChiStar: boolean;
 }
 
 function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
@@ -500,18 +508,36 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   void adjacency;
 
   return (
-    <BaseEdge
-      id={id}
-      path={edgePath}
-      markerEnd={markerEnd}
-      style={{
-        stroke,
-        strokeWidth,
-        strokeDasharray,
-        opacity,
-        transition: "opacity 180ms ease-out",
-      }}
-    />
+    <>
+      {/* χ★ halo — wider violet path behind the main edge, matching
+          the 3D canvas treatment (DAGEdge3D). Skipped when the
+          element-specific overrides (selection, propagation flash)
+          are active so they remain unambiguous. Halo opacity scales
+          with the edge's overall opacity so a dimmed χ★ edge stays
+          visually consistent with its main line. */}
+      {d.isChiStar && !isThisSelected && d.propagationSignal === 0 && (
+        <path
+          d={edgePath}
+          stroke="#7B68EE"
+          strokeWidth={strokeWidth + 3}
+          fill="none"
+          opacity={opacity * 0.45}
+          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
+        />
+      )}
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          stroke,
+          strokeWidth,
+          strokeDasharray,
+          opacity,
+          transition: "opacity 180ms ease-out",
+        }}
+      />
+    </>
   );
 }
 
@@ -781,6 +807,21 @@ function CausalDAG2DInner() {
     return nodes.filter((n) => selSet.has(n.id));
   }, [nodes, isolateSelection, multiSelectedNodes]);
 
+  // χ★ bridge-set membership per edge id. Computed once per graph
+  // structure and consumed by the edges memo below — gates the violet
+  // halo rendered behind χ★ edges in EmphasizedEdge. Brandes' BES is
+  // O(V·E); this memo runs only when graphData changes (not on every
+  // selection / hover).
+  const chiStarSet = useMemo(() => {
+    if (graphData.edges.length === 0) return new Set<string>();
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    return new Set(r.chiStar);
+  }, [graphData]);
+
   // Edges carry only structural / replay / truth-filter state. Hover and
   // single-select emphasis are computed inside `EmphasizedEdge` itself, so
   // this useMemo doesn't depend on hoveredNodeId or selectedNode — and
@@ -833,10 +874,11 @@ function CausalDAG2DInner() {
             isSelected,
             propagationSignal,
             showArrow,
+            isChiStar: chiStarSet.has(e.id),
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot, selectedEdge]
+    [graphData, truthFilter, currentSnapshot, selectedEdge, chiStarSet]
   );
 
   // Filter edges for isolation mode

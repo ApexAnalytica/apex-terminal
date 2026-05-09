@@ -20,6 +20,40 @@ const PAD = { top: 12, bottom: 20, left: 32, right: 12 };
 const SPARSE_POINT_THRESHOLD = 20;
 
 /**
+ * Derive the ordered list of nodes the comparison panel should plot. The
+ * panel unions canvas selection with manual pins so clicking a node on the
+ * canvas surfaces its series automatically — selection leads (single focus
+ * first, then multi-select), manual pins follow, duplicates are dropped.
+ *
+ * Exported for unit testing. Pure: same inputs always yield the same array.
+ */
+export function deriveVisibleNodeIds(
+  selectedNode: string | null,
+  selectedNodes: readonly string[],
+  manuallyPinned: readonly string[],
+): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  if (selectedNode && !seen.has(selectedNode)) {
+    ordered.push(selectedNode);
+    seen.add(selectedNode);
+  }
+  for (const id of selectedNodes) {
+    if (!seen.has(id)) {
+      ordered.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of manuallyPinned) {
+    if (!seen.has(id)) {
+      ordered.push(id);
+      seen.add(id);
+    }
+  }
+  return ordered;
+}
+
+/**
  * Build a hold-forward step-line path string for the given history,
  * extended to xEnd. For each segment [i, i+1] the value is held at
  * history[i].omegaComposite until history[i+1].timestamp. After the
@@ -105,15 +139,55 @@ function formatRawValue(value: number): string {
 }
 
 export default function TimeSeriesOverlay() {
-  const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
+  const manuallyPinned = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
   const clearPinned = useApexStore((s) => s.clearPinnedTimeSeries);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+  const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const temporalData = useApexStore((s) => s.temporalData);
   const graphData = useApexStore((s) => s.graphData);
   const timelineRange = useApexStore((s) => s.timelineRange);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
   const timelineDragging = useApexStore((s) => s.timelineDragging);
+
+  // Comparison panel renders the union of canvas selection + manual pins.
+  // Selecting a node on the canvas now auto-shows its series — without this
+  // the user had to find the pin button on the per-node card to ever see
+  // the bottom-panel chart. Manual pins still persist across selection
+  // changes so the user can build durable comparisons.
+  const pinnedNodes = useMemo(
+    () => deriveVisibleNodeIds(selectedNode, selectedNodes, manuallyPinned),
+    [selectedNode, selectedNodes, manuallyPinned],
+  );
+
+  // Removing a chip in the legend has different semantics depending on why
+  // the curve is on screen. Manual pins → unpin. Selection-driven rows →
+  // clear that node from the selection so the canvas no longer marks it
+  // active. Without this branch the X on a selection-driven chip would
+  // toggle a pin the user never created (silent state surprise).
+  const removeFromPanel = useCallback(
+    (nodeId: string) => {
+      if (manuallyPinned.includes(nodeId)) {
+        togglePinned(nodeId);
+        return;
+      }
+      if (selectedNode === nodeId) setSelectedNode(null);
+      if (selectedNodes.includes(nodeId)) {
+        setSelectedNodes(selectedNodes.filter((id) => id !== nodeId));
+      }
+    },
+    [
+      manuallyPinned,
+      togglePinned,
+      selectedNode,
+      setSelectedNode,
+      selectedNodes,
+      setSelectedNodes,
+    ],
+  );
 
   const [hoverX, setHoverX] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -767,7 +841,7 @@ export default function TimeSeriesOverlay() {
               return (
                 <button
                   key={curve.nodeId}
-                  onClick={() => togglePinned(curve.nodeId)}
+                  onClick={() => removeFromPanel(curve.nodeId)}
                   className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border hover:border-accent-red/40 transition-colors group"
                   title={tooltipParts.join(" · ")}
                 >
@@ -823,7 +897,7 @@ export default function TimeSeriesOverlay() {
             {noDataNodes.map((nd) => (
               <button
                 key={nd.nodeId}
-                onClick={() => togglePinned(nd.nodeId)}
+                onClick={() => removeFromPanel(nd.nodeId)}
                 className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border/50 hover:border-accent-red/40 transition-colors group opacity-50"
                 title={`${nd.label} — no time series data available`}
               >

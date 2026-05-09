@@ -254,16 +254,28 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
   );
 }
 
+// Per-edge χ★ context for the inspector — see EdgeInspector.tsx's
+// ChiStarEdgeInfo for the canonical definition. Local copy here so
+// the 2D canvas's locally-defined inspector stays self-contained.
+interface ChiStarEdgeInfo {
+  isBridge: boolean;
+  bes: number;
+  rank: number | null;
+  totalEdges: number;
+}
+
 function EdgeInspector({
   edge,
   sourceLabel,
   targetLabel,
   onClose,
+  chiStarInfo,
 }: {
   edge: CausalEdge;
   sourceLabel: string;
   targetLabel: string;
   onClose: () => void;
+  chiStarInfo?: ChiStarEdgeInfo | null;
 }) {
   const typeColor =
     edge.type === "temporal"
@@ -369,6 +381,45 @@ function EdgeInspector({
             />
           </div>
         </div>
+
+        {/* χ★ membership — same render as EdgeInspector.tsx; kept
+            in sync manually since 2D defines its own inspector. */}
+        {chiStarInfo && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                χ★ BRIDGE SET
+              </div>
+              <div
+                className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider tabular-nums"
+                style={{ color: "#7B68EE" }}
+              >
+                {chiStarInfo.isBridge ? "STRICT BRIDGE" : "TOP-BES"}
+              </div>
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              {chiStarInfo.isBridge
+                ? "Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it."
+                : "High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."}
+            </div>
+            <div className="mt-1.5 flex gap-4 text-[10px] font-mono tabular-nums">
+              <div>
+                <span className="text-text-muted">BES </span>
+                <span style={{ color: "#7B68EE" }}>
+                  {chiStarInfo.bes.toFixed(3)}
+                </span>
+              </div>
+              {chiStarInfo.rank !== null && chiStarInfo.totalEdges > 0 && (
+                <div>
+                  <span className="text-text-muted">RANK </span>
+                  <span className="text-foreground">
+                    {chiStarInfo.rank + 1} / {chiStarInfo.totalEdges}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -807,20 +858,35 @@ function CausalDAG2DInner() {
     return nodes.filter((n) => selSet.has(n.id));
   }, [nodes, isolateSelection, multiSelectedNodes]);
 
-  // χ★ bridge-set membership per edge id. Computed once per graph
-  // structure and consumed by the edges memo below — gates the violet
-  // halo rendered behind χ★ edges in EmphasizedEdge. Brandes' BES is
-  // O(V·E); this memo runs only when graphData changes (not on every
-  // selection / hover).
-  const chiStarSet = useMemo(() => {
-    if (graphData.edges.length === 0) return new Set<string>();
+  // χ★ result on the live filtered graph. Powers (a) the violet halo
+  // behind χ★ edges in EmphasizedEdge below, and (b) the per-edge
+  // BES + bridge-vs-top-k context surfaced by the EdgeInspector.
+  // Brandes' BES is O(V·E); memoised on graphData so it runs only
+  // when the graph changes, not on selection / hover.
+  const chiStarInfo = useMemo(() => {
+    if (graphData.edges.length === 0) {
+      return {
+        chiStarSet: new Set<string>(),
+        bridgeSet: new Set<string>(),
+        bes: new Map<string, number>(),
+        rank: new Map<string, number>(),
+      };
+    }
     const r = chiStar({
       nodes: graphData.nodes,
       edges: graphData.edges.filter((e) => !e.isSevered),
       metadata: graphData.metadata,
     });
-    return new Set(r.chiStar);
+    const rank = new Map<string, number>();
+    r.besRanking.forEach((entry, idx) => rank.set(entry.edgeId, idx));
+    return {
+      chiStarSet: new Set(r.chiStar),
+      bridgeSet: new Set(r.bridges),
+      bes: r.bes,
+      rank,
+    };
   }, [graphData]);
+  const chiStarSet = chiStarInfo.chiStarSet;
 
   // Edges carry only structural / replay / truth-filter state. Hover and
   // single-select emphasis are computed inside `EmphasizedEdge` itself, so
@@ -1151,6 +1217,16 @@ function CausalDAG2DInner() {
             sourceLabel={selectedSourceLabel}
             targetLabel={selectedTargetLabel}
             onClose={() => setSelectedEdge(null)}
+            chiStarInfo={
+              chiStarInfo.chiStarSet.has(selectedEdge.id)
+                ? {
+                    isBridge: chiStarInfo.bridgeSet.has(selectedEdge.id),
+                    bes: chiStarInfo.bes.get(selectedEdge.id) ?? 0,
+                    rank: chiStarInfo.rank.get(selectedEdge.id) ?? null,
+                    totalEdges: chiStarInfo.bes.size,
+                  }
+                : null
+            }
           />
         )}
       </AnimatePresence>

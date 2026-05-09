@@ -216,6 +216,22 @@ function EncodingLegend({
             </div>
           }
         />
+        <LegendRow
+          label="χ★ BRIDGE (violet halo)"
+          help="Edge sits in the χ★ bridge set: either a strict bridge (removing it disconnects the graph) or a top-k Bridge-Edge Strength edge (high shortest-path load). Click any haloed edge for the BES value + bridge / top-k status. Source: Ghauri 2025 D.Eng."
+          swatch={
+            <div className="flex items-center gap-0.5">
+              <span
+                className="h-1.5 w-6 rounded-sm"
+                style={{
+                  backgroundColor: "#7B68EE",
+                  opacity: 0.45,
+                }}
+              />
+              <span className="h-0.5 w-6 -ml-6" style={{ backgroundColor: "#00e5ff" }} />
+            </div>
+          }
+        />
       </div>
     </div>
   );

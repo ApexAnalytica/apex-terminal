@@ -8,6 +8,7 @@ import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
+import { chiStar } from "@/lib/estimators/chi-star";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -210,6 +211,25 @@ export default function NodeInspector() {
       (e) => e.source === selectedNode || e.target === selectedNode
     );
   }, [selectedNode, graphData.edges]);
+
+  // χ★ bridge-set membership for the live graph. Bridge-centrality
+  // = how many of this node's edges are in χ★ — answers "is this
+  // node embedded in the load-bearing skeleton?". Computed once
+  // per graph (Brandes O(V·E)), independent of which node is
+  // selected, so node-flip is free.
+  const chiStarSet = useMemo(() => {
+    if (graphData.edges.length === 0) return new Set<string>();
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    return new Set(r.chiStar);
+  }, [graphData]);
+  const bridgeCentrality = useMemo(
+    () => connectedEdges.filter((e) => chiStarSet.has(e.id)).length,
+    [connectedEdges, chiStarSet],
+  );
 
   // Get temporal history for this node (for data context)
   const nodeHistory = useMemo<NodeTemporalState[]>(() => {
@@ -532,6 +552,19 @@ export default function NodeInspector() {
                   RESTRICTED
                 </span>
               )}
+              {bridgeCentrality > 0 && (
+                <span
+                  className="text-[7px] px-1.5 py-0.5 rounded font-mono"
+                  style={{
+                    color: "#7B68EE",
+                    backgroundColor: "rgba(123,104,238,0.08)",
+                    border: "1px solid rgba(123,104,238,0.30)",
+                  }}
+                  title={`${bridgeCentrality} of ${connectedEdges.length} edges from this node are in χ★ (Tarjan strict bridges ∪ top-k Bridge-Edge Strength). High bridge-centrality means this node sits on the load-bearing skeleton.`}
+                >
+                  χ★ × {bridgeCentrality}
+                </span>
+              )}
             </div>
 
             {/* Connected Edges */}
@@ -546,10 +579,19 @@ export default function NodeInspector() {
                     const otherNode = graphData.nodes.find(
                       (n) => n.id === (isSource ? edge.target : edge.source)
                     );
+                    const isInChiStar = chiStarSet.has(edge.id);
                     return (
                       <div
                         key={edge.id}
-                        className="edge-card text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated min-w-0"
+                        className="edge-card text-[8px] font-mono p-1.5 rounded border bg-surface-elevated min-w-0"
+                        style={{
+                          borderColor: isInChiStar
+                            ? "rgba(123,104,238,0.45)"
+                            : "var(--border)",
+                          boxShadow: isInChiStar
+                            ? "inset 0 0 0 1px rgba(123,104,238,0.12)"
+                            : undefined,
+                        }}
                       >
                         <div className="flex items-start gap-1">
                           <span className="text-text-muted">
@@ -558,6 +600,15 @@ export default function NodeInspector() {
                           <span className="text-foreground truncate flex-1">
                             {otherNode?.shortLabel ?? "?"}
                           </span>
+                          {isInChiStar && (
+                            <span
+                              className="text-[7px] tracking-wider flex-shrink-0"
+                              style={{ color: "#7B68EE" }}
+                              title="Edge is in \u03c7\u2605 \u2014 strict bridge or top-k Bridge-Edge Strength"
+                            >
+                              \u03c7\u2605
+                            </span>
+                          )}
                         </div>
                         <span className="edge-meta-hidden text-text-muted text-[7px] min-w-0 break-words block mt-0.5">
                           {edge.physicalMechanism}

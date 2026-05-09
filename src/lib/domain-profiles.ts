@@ -390,23 +390,16 @@ export const AI_SAFETY_PROFILE: DomainProfile = {
   pillarLabels: AI_SAFETY_PILLARS,
   pillarDetails: AI_SAFETY_PILLAR_DETAILS,
   compositeMethodology: AI_SAFETY_METHODOLOGY,
-  // Six tabs:
-  //   csd / ph / lppls / bocpd — graph-Ω-trajectory estimators inherited
-  //     from the geopolitical fallback. Sharp transitions in the GAT's
-  //     ΩF trajectory under catastrophic-forgetting events are exactly
-  //     the regime they were designed for.
-  //   cvar-w1 — canonical Tail Depth pillar estimator (Ghauri 2025
-  //     Ch. 4 §3 Ω-Robustness). Renders as "awaiting-data" until a loss
-  //     sample (per-attack-class observed harm, per-incident cascade
-  //     depth, etc.) is wired into the store.
-  //   chi-star — topology-aware criticality artefact (Ghauri 2025
-  //     Ch. 5–8 — IDS substrate + topology-aware replay). Computes
-  //     strict bridges (Tarjan) ∪ top-k Bridge-Edge Strength (Brandes)
-  //     on the live graph. Ready out of the box — operates on the
-  //     graph topology directly.
-  // FR + BES temporal monitoring arrive in Phase 3 once the Pearl
-  // session wires them up.
-  criticalityEstimators: ["csd", "ph", "lppls", "bocpd", "cvar-w1", "chi-star"],
+  // Pareto criticality strip = four time-series estimators that share
+  // a common shape (observed-vs-model fit on a Ω-trajectory, with an
+  // "epochs to critical" reading). cvar-w1 and chi-star are SNAPSHOT
+  // estimators — they read the per-node ΩF distribution / graph
+  // topology in one shot, with no time axis and no observed-vs-model
+  // fit. Forcing them into this strip required synthesising a fake
+  // "epochs" reading and confused users about what they were looking
+  // at, so they live in the SnapshotDiagnostics panel instead.
+  // FR + BES temporal monitoring arrive in Phase 3.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
 };
 
 // ─── Resolution ─────────────────────────────────────────────────────

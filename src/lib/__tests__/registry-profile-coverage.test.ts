@@ -38,9 +38,16 @@ const PRODUCTION_PROFILES = [
  * entry needs a one-line justification.
  */
 const EXEMPT_READY_ESTIMATORS: Partial<Record<EstimatorId, string>> = {
-  // No exemptions today. Add entries here only when an estimator is
-  // genuinely ready but intentionally not surfaced in any default
-  // profile (e.g. a flagship-feature gated behind a paid tier).
+  // Snapshot estimators (Ghauri 2025 — distributionally-robust risk
+  // and topology-aware criticality). Live-computable but they don't
+  // share the time-series-criticality shape the Pareto strip is built
+  // around (observed vs model fit on a Ω-trajectory). Surfaced in the
+  // SnapshotDiagnostics panel instead, plus the canvas halos and
+  // system-metrics strip — none of those go through criticalityEstimators.
+  "cvar-w1":
+    "Snapshot Tail Depth diagnostic — surfaced in SnapshotDiagnostics, not the Pareto criticality strip.",
+  "chi-star":
+    "Snapshot topology diagnostic — surfaced in SnapshotDiagnostics + canvas halos + system-metrics strip, not the Pareto criticality strip.",
 };
 
 describe("criticality-registry × domain-profile coverage", () => {

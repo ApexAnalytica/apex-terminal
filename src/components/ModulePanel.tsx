@@ -9,11 +9,6 @@ import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tars
 import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";
-// omegaBridgeDensity wraps chiStar (Tarjan + Brandes BES) and surfaces
-// the |χ★| / |E| scalar plus the full ChiStarResult — used by the
-// chi-star Pareto-card branch and the system-metrics strip.
-import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density";
-import { cvarW1, tailDepthScore } from "@/lib/estimators/cvar-w1";
 import { extractT1DSeries, T1D_NODE_IDS } from "@/lib/t1d-estimator-inputs";
 import {
   bocpdRegimeGate,
@@ -36,6 +31,7 @@ import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
 import NewsInterpreterPanel from "./NewsInterpreterPanel";
 import NodeInspector from "./NodeInspector";
+import SnapshotDiagnostics from "./SnapshotDiagnostics";
 
 // Tab-gated sub-panels lazy-loaded so the default Spirtes tab doesn't
 // pull their JS on first paint:
@@ -1599,175 +1595,6 @@ function ParetoPanel({
               };
             }
           }
-          // ── CVaR-W₁ (canonical Tail Depth pillar estimator) ───────
-          // Loss sample = per-node ΩF composite values across the
-          // filtered graph. Profile-agnostic: every CausalNode carries
-          // omegaFragility.composite, so wherever the user has
-          // selected, this estimator has a sample to work with.
-          //
-          // α = 0.9 standard. W₁ ambiguity radius ε = 0 — until a
-          // calibrated radius lands per profile (cross-validation on
-          // historical incidents would set it), the robust value
-          // collapses to the empirical CVaR. Documented in the
-          // methodology so the user knows what's missing.
-          if (id === "cvar-w1") {
-            const samples = graphData.nodes
-              .map((n) => n.omegaFragility?.composite)
-              .filter(
-                (v): v is number => typeof v === "number" && !Number.isNaN(v),
-              );
-            if (samples.length < 5) {
-              return {
-                key: "cvar-w1",
-                abbrev: meta.abbrev,
-                fullName: meta.fullName,
-                epochs: 0,
-                maxEpochs: 100,
-                color: meta.color,
-                confidence: 0,
-                timeSeries: [],
-                modelSeries: undefined,
-                shortDesc: meta.shortDesc,
-                methodology: meta.methodology,
-                formula: meta.formula,
-                assessment: `INSUFFICIENT DATA — only ${samples.length} ΩF composite value(s) in the current filtered graph. CVaR's boundary interpolation needs ≥5 samples to be stable.`,
-                emptyState: {
-                  kind: "awaiting-data" as const,
-                  inputs:
-                    "At least 5 nodes with omegaFragility.composite values in the filtered graph. Widen the domain selection or load a domain with more nodes.",
-                },
-              };
-            }
-            const alpha = 0.9;
-            const result = cvarW1(samples, { alpha, radius: 0 });
-            // Pillar score in [0, 10] using the conventional ΩF range
-            // (composites are 0–10 by construction). High CVaR → high
-            // tail depth → high pillar score.
-            const pillarScore = tailDepthScore(result.empirical, 0, 10);
-            // Sort descending so the chart shows the upper tail's
-            // shape rather than the cumulative distribution. Same
-            // convention as the chi-star BES ranking.
-            const sorted = [...samples].sort((a, b) => b - a);
-            // Epochs: low pillar score → far from critical (high T-);
-            // high pillar score → close to critical (low T-). Mirrors
-            // the direction csd / lppls / chi-star use.
-            const epochs = Math.max(
-              0,
-              Math.round((1 - pillarScore / 10) * 100),
-            );
-            return {
-              key: "cvar-w1",
-              abbrev: meta.abbrev,
-              fullName: meta.fullName,
-              epochs,
-              maxEpochs: 100,
-              color: meta.color,
-              // pillarScore / 10 lands in [0, 1] — same shape as the
-              // other estimators' confidence values. High = elevated
-              // tail risk.
-              confidence: pillarScore / 10,
-              timeSeries: sorted,
-              modelSeries: undefined,
-              shortDesc: meta.shortDesc,
-              methodology: [
-                `Empirical α-CVaR on n=${samples.length} ΩF composite values across the live filtered graph (${graphData.nodes.length} nodes total). α = ${alpha}, so CVaR_α is the expected ΩF in the worst ${((1 - alpha) * 100).toFixed(0)}% tail.`,
-                `α-VaR (${alpha}-quantile) = ${result.varEmpirical.toFixed(3)}. Empirical CVaR = ${result.empirical.toFixed(3)}. Robust CVaR = ${result.robust.toFixed(3)} (W₁ ambiguity radius ε = ${result.radius} — no calibrated radius wired upstream yet, so robust collapses to empirical for now).`,
-                meta.methodology[0] ?? "",
-              ],
-              formula: `α = ${alpha} | n = ${samples.length} | VaR = ${result.varEmpirical.toFixed(3)} | empirical CVaR = ${result.empirical.toFixed(3)} | pillar = ${pillarScore.toFixed(2)}/10`,
-              assessment:
-                pillarScore >= 8
-                  ? `CRITICAL TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Expected ΩF in the worst ${((1 - alpha) * 100).toFixed(0)}% tail is in the high-fragility band. Pillar score ${pillarScore.toFixed(1)}/10.`
-                  : pillarScore >= 5
-                    ? `ELEVATED TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Worst-${((1 - alpha) * 100).toFixed(0)}% tail sits above the median fragility. Pillar score ${pillarScore.toFixed(1)}/10.`
-                    : `CONTAINED TAIL — empirical CVaR_${alpha} = ${result.empirical.toFixed(2)} on n=${samples.length}. Worst-${((1 - alpha) * 100).toFixed(0)}% tail stays in the lower-fragility regime. Pillar score ${pillarScore.toFixed(1)}/10.`,
-            };
-          }
-          // ── χ★ BRIDGE SETS (live on filtered graph topology) ──────
-          // Snapshot estimator: no time-series, no observed-vs-model
-          // fit. Computes Tarjan strict bridges + Brandes BES on the
-          // current filtered graph and renders the live numerics.
-          // The chart shows the descending-BES distribution as a
-          // Pareto-shape curve — informative as a "concentration"
-          // visualisation even though the x-axis is rank not time.
-          if (id === "chi-star") {
-            const liveEdgeCount = graphData.edges.filter((e) => !e.isSevered).length;
-            if (liveEdgeCount === 0) {
-              return {
-                key: "chi-star",
-                abbrev: meta.abbrev,
-                fullName: meta.fullName,
-                epochs: 0,
-                maxEpochs: 100,
-                color: meta.color,
-                confidence: 0,
-                timeSeries: [],
-                modelSeries: undefined,
-                shortDesc: meta.shortDesc,
-                methodology: meta.methodology,
-                formula: meta.formula,
-                assessment:
-                  "INSUFFICIENT GRAPH STRUCTURE — no live edges in the current filtered graph. χ★ requires edges to compute strict bridges and Bridge-Edge Strength.",
-                emptyState: {
-                  kind: "awaiting-data" as const,
-                  inputs:
-                    "At least one edge in the current filtered graph. Select a domain that contains edges (or widen the filter).",
-                },
-              };
-            }
-            const obd = omegaBridgeDensity({
-              ...graphData,
-              edges: graphData.edges.filter((e) => !e.isSevered),
-            });
-            const density = obd.density;
-            const bridgeFraction = obd.bridgeFraction;
-            const chiStarSize = obd.chiStarSize;
-            const bridgeCount = obd.chiStar.bridges.length;
-            const topBesAdds = chiStarSize - bridgeCount;
-            const topBesEdge = obd.chiStar.besRanking[0];
-            // BES descending series — informative shape for the chart
-            // (Pareto-style fall-off when one edge dominates, flat
-            // when betweenness is evenly distributed). Not a time
-            // axis — labelled in the methodology copy.
-            const besSeries = obd.chiStar.besRanking.map((r) => r.bes);
-            // Bridge-fraction is the natural [0, 1] confidence proxy:
-            // 0 means "no strict chokepoints, alternate paths
-            // everywhere"; 1 means "tree topology, every edge load-
-            // bearing." Higher = more critical.
-            const confidence = bridgeFraction;
-            // Epochs gauge: invert density so high-density (near-tree)
-            // graphs show a low T- value (closer to critical), and
-            // redundant graphs show high T- (far from critical).
-            // Same direction as csd/lppls semantics ("epochs to
-            // critical").
-            const epochs = Math.max(0, Math.round((1 - density) * 100));
-            return {
-              key: "chi-star",
-              abbrev: meta.abbrev,
-              fullName: meta.fullName,
-              epochs,
-              maxEpochs: 100,
-              color: meta.color,
-              confidence,
-              timeSeries: besSeries,
-              modelSeries: undefined,
-              shortDesc: meta.shortDesc,
-              methodology: [
-                `Tarjan strict bridges + Brandes Bridge-Edge Strength (BES) on the live filtered graph (${graphData.nodes.length} nodes, ${liveEdgeCount} non-severed edges). Found ${bridgeCount} strict bridges (edges whose removal disconnects the graph) and ${topBesAdds} top-BES additions, for a χ★ size of ${chiStarSize}.`,
-                `Ω-Bridge Density = |χ★| / |E| = ${chiStarSize} / ${liveEdgeCount} = ${density.toFixed(3)}. Strict-bridges-only fraction = ${bridgeFraction.toFixed(3)}. Top BES = ${topBesEdge ? topBesEdge.bes.toFixed(3) : "—"} on edge ${topBesEdge ? topBesEdge.edgeId : "—"}.`,
-                meta.methodology[0] ?? "",
-              ],
-              formula: `|χ★| = ${chiStarSize} | bridges = ${bridgeCount} | density = ${density.toFixed(3)} | top BES = ${topBesEdge ? topBesEdge.bes.toFixed(3) : "—"}`,
-              assessment:
-                density > 0.6
-                  ? `FRAGILE — Ω-Bridge Density ${density.toFixed(3)} > 0.60. Near-tree topology; ${chiStarSize} χ★ edges (${bridgeCount} strict bridges) carry the cascade pathways. Removing any of them fragments the graph.`
-                  : density > 0.3
-                    ? `ELEVATED — Ω-Bridge Density ${density.toFixed(3)} ∈ (0.30, 0.60]. ${chiStarSize} edges form the load-bearing skeleton; more bridge-like structure than typical for real causal graphs.`
-                    : density < 0.05
-                      ? `REDUNDANT — Ω-Bridge Density ${density.toFixed(3)} < 0.05. Cycle-rich; few chokepoints. Alternate paths absorb most disruptions; ${bridgeCount} strict bridges in ${liveEdgeCount} edges.`
-                      : `NOMINAL — Ω-Bridge Density ${density.toFixed(3)} ∈ [0.05, 0.30]. Well-connected with ${chiStarSize} chokepoint edges (${bridgeCount} strict bridges, ${topBesAdds} top-BES). Typical regime for real causal graphs.`,
-            };
-          }
           // Estimator has a static-registry entry with no live runtime yet:
           // render the card in an empty state that still teaches what the
           // method does and which inputs it needs.
@@ -1860,6 +1687,13 @@ function ParetoPanel({
           </>
         );
       })()}
+
+      {/* Snapshot Diagnostics — Tail (CVaR-W₁) + Topology (χ★).
+          Whole-system readouts on the live filtered graph, separate
+          from the time-series criticality strip above. */}
+      <div className="mt-3 pt-3 border-t border-border/50">
+        <SnapshotDiagnostics />
+      </div>
 
       {/* Ω-Fragility Ranking — collapsible, default closed */}
       <div className="mt-3">

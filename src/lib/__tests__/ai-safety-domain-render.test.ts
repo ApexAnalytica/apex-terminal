@@ -41,8 +41,12 @@ describe("AI Safety / IDS — end-to-end domain render", () => {
     const p = resolveDomainProfile(["ai-safety-ids"]);
     expect(p.id).toBe("ai-safety");
     expect(p.displayName).toBe("AI Safety / Endogenous Catastrophe");
-    expect(p.criticalityEstimators).toContain("chi-star");
-    expect(p.criticalityEstimators).toContain("cvar-w1");
+    // Pareto criticality strip = four time-series estimators only.
+    // The dissertation's snapshot estimators (cvar-w1, chi-star) are
+    // surfaced in SnapshotDiagnostics + canvas halos + the system-
+    // metrics strip — see registry-profile-coverage's
+    // EXEMPT_READY_ESTIMATORS for the rationale.
+    expect(p.criticalityEstimators).toEqual(["csd", "ph", "lppls", "bocpd"]);
   });
 
   it("internal AI Safety edges all resolve when filtered to ai-safety-ids only", () => {

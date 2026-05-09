@@ -33,19 +33,6 @@ const TEAM = [
     education:
       "Ph.D. in Mathematics, Trinity College Dublin. Visiting Ph.D. Scholar at Stanford University.",
   },
-  {
-    name: "Brynna Shale",
-    role: "Head of Operations",
-    color: "purple",
-    initials: "BS",
-    photo: "/team/brynna.png",
-    linkedin: null,
-    scholar: null,
-    expertise: "Business strategy, data analytics, and operational efficiency.",
-    background:
-      "Goldman Sachs Analyst in Capital Reporting. Background in business, computer science, and data analytics.",
-    education: "NYU Stern School of Business — Business and Data Science.",
-  },
 ] as const;
 
 const ADVISORS = [
@@ -135,7 +122,7 @@ export default function TeamPage() {
       {/* Core team — mosaic grid */}
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
-          label="// CORE TEAM"
+          label="// LEADERSHIP"
           path="apex.team"
           right={`${TEAM.length} MEMBERS`}
           color="cyan"

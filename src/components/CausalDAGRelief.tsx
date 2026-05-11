@@ -817,7 +817,7 @@ export default function CausalDAGRelief() {
 function ChiStarMidpointMarkers({
   midpoints,
 }: {
-  midpoints: { id: string; x: number; z: number }[];
+  midpoints: { id: string; x: number; z: number; tier: "bridge" | "top-bes" }[];
 }) {
   if (midpoints.length === 0) return null;
   const HOVER_Y = 60;
@@ -826,17 +826,31 @@ function ChiStarMidpointMarkers({
     <group>
       {midpoints.map((m) => (
         <group key={`chi-${m.id}`} position={[m.x, HOVER_Y, m.z]}>
-          {/* Outer halo — soft violet glow */}
-          <mesh>
-            <sphereGeometry args={[PIP_RADIUS * 2.2, 12, 12]} />
-            <meshBasicMaterial color="#7B68EE" transparent opacity={0.18} />
-          </mesh>
-          {/* Inner pip — sharper violet octahedron, distinguishable
-              from spherical SelectionMarkers caps and node labels. */}
-          <mesh rotation={[Math.PI / 4, 0, Math.PI / 4]}>
-            <octahedronGeometry args={[PIP_RADIUS, 0]} />
-            <meshBasicMaterial color="#7B68EE" transparent opacity={0.85} />
-          </mesh>
+          {m.tier === "bridge" ? (
+            <>
+              {/* Strict bridge — filled octahedron + soft halo */}
+              <mesh>
+                <sphereGeometry args={[PIP_RADIUS * 2.2, 12, 12]} />
+                <meshBasicMaterial color="#7B68EE" transparent opacity={0.18} />
+              </mesh>
+              <mesh rotation={[Math.PI / 4, 0, Math.PI / 4]}>
+                <octahedronGeometry args={[PIP_RADIUS, 0]} />
+                <meshBasicMaterial color="#7B68EE" transparent opacity={0.9} />
+              </mesh>
+            </>
+          ) : (
+            // Top-BES — wireframe octahedron only. Reads as "marked
+            // but not as severe" vs. the filled-bridge counterpart.
+            <mesh rotation={[Math.PI / 4, 0, Math.PI / 4]}>
+              <octahedronGeometry args={[PIP_RADIUS * 1.1, 0]} />
+              <meshBasicMaterial
+                color="#7B68EE"
+                transparent
+                opacity={0.75}
+                wireframe
+              />
+            </mesh>
+          )}
         </group>
       ))}
     </group>
@@ -1016,7 +1030,9 @@ function CausalDAGReliefInner() {
   // graph signature the layout uses, so it doesn't recompute on
   // replay scrub ticks — only on real graph-structure changes.
   // Severed edges excluded so user-driven cuts reflect immediately.
-  const chiStarMidpoints = useMemo(() => {
+  const chiStarMidpoints = useMemo<
+    { id: string; x: number; z: number; tier: "bridge" | "top-bes" }[]
+  >(() => {
     if (!activeField || isEmpty || graphData.edges.length === 0) return [];
     const r = chiStar({
       nodes: graphData.nodes,
@@ -1024,7 +1040,8 @@ function CausalDAGReliefInner() {
       metadata: graphData.metadata,
     });
     const chiSet = new Set(r.chiStar);
-    const out: { id: string; x: number; z: number }[] = [];
+    const bridgeSet = new Set(r.bridges);
+    const out: { id: string; x: number; z: number; tier: "bridge" | "top-bes" }[] = [];
     for (const e of graphData.edges) {
       if (e.isSevered) continue;
       if (!chiSet.has(e.id)) continue;
@@ -1043,6 +1060,7 @@ function CausalDAGReliefInner() {
         id: e.id,
         x: mx - activeField.cx,
         z: my - activeField.cy,
+        tier: bridgeSet.has(e.id) ? "bridge" : "top-bes",
       });
     }
     return out;

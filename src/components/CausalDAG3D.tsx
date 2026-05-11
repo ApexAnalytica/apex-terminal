@@ -1175,7 +1175,13 @@ export default function CausalDAG3D() {
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
                 onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}
                 epochState={currentSnapshot?.edgeStates[edge.id]}
-                isChiStar={chiStarSet.has(edge.id)}
+                chiStarTier={
+                  chiStarInfo.bridgeSet.has(edge.id)
+                    ? "bridge"
+                    : chiStarInfo.chiStarSet.has(edge.id)
+                      ? "top-bes"
+                      : null
+                }
               />
             );
           })}

@@ -14,6 +14,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TraceListRow } from "@/app/api/copilot/traces/route";
+import CopilotEvalCaseExporter from "@/components/CopilotEvalCaseExporter";
 
 interface Props {
   /** When true, fetch fresh on mount and on every reopen. */
@@ -114,6 +115,7 @@ function TraceRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const [exporting, setExporting] = useState(false);
   const ts = new Date(trace.created_at);
   const tsLabel = `${ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   const userPreview = (trace.user_message ?? "").slice(0, 80) || "(no user message)";
@@ -178,11 +180,31 @@ function TraceRow({
                   </ul>
                 </div>
               )}
-              <div className="flex gap-3 text-[9px] text-text-muted/60 pt-1">
+              <div className="flex gap-3 text-[9px] text-text-muted/60 pt-1 items-center">
                 {trace.model_id && <span>{trace.model_id}</span>}
                 {trace.dataset && <span>dataset: {trace.dataset}</span>}
                 {trace.active_module && <span>module: {trace.active_module}</span>}
+                <span className="flex-1" />
+                {!exporting && (
+                  <button
+                    onClick={() => setExporting(true)}
+                    className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan hover:text-foreground transition-colors"
+                    title="Generate a TestCase TS snippet for src/lib/copilot/eval/cases/seed.ts"
+                  >
+                    + EVAL CASE
+                  </button>
+                )}
               </div>
+
+              {exporting && (
+                <CopilotEvalCaseExporter
+                  trace={{
+                    user_message: trace.user_message,
+                    tool_calls: trace.tool_calls,
+                  }}
+                  onClose={() => setExporting(false)}
+                />
+              )}
             </div>
           </motion.div>
         )}

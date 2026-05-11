@@ -26,13 +26,20 @@ interface DAGEdge3DProps {
   onEdgeClick?: () => void;
   epochState?: EdgeEpochState;
   /**
-   * Edge is in the χ★ bridge set (Tarjan strict bridges ∪ top-k BES).
-   * Renders a wider violet halo line behind the main edge so the
-   * graph's load-bearing skeleton is visible at a glance. Computed
-   * once per graph at the parent level — see CausalDAG3D's chiStarSet
-   * useMemo.
+   * χ★ tier — discrete midpoint marker tells the user this edge is
+   * in the load-bearing skeleton without smudging the cyan / amber
+   * line color (which encodes causal type). Two visual tiers so the
+   * categorical difference between strict bridges and top-BES reads
+   * at a glance:
+   *   "bridge"  — filled violet octahedron. Cutting this disconnects
+   *                the (undirected) graph.
+   *   "top-bes" — hollow violet octahedron (wireframe). High shortest-
+   *                path load, but not a disconnector.
+   *   null / undef — edge isn't in χ★; no marker rendered.
+   * Computed once per graph at the parent level — see CausalDAG3D's
+   * chiStarInfo useMemo.
    */
-  isChiStar?: boolean;
+  chiStarTier?: "bridge" | "top-bes" | null;
 }
 
 /**
@@ -71,7 +78,7 @@ function DAGEdge3DInner({
   onAblationClick,
   onEdgeClick,
   epochState,
-  isChiStar = false,
+  chiStarTier = null,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
   const particleRef = useRef<THREE.Mesh>(null);
@@ -197,20 +204,6 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* χ★ halo — rendered BEFORE the main edge so the latter overlays
-          on top. Subtle wider violet line in the AI Safety / chi-star
-          color (#7B68EE). Skipped on severed/ablated edges since their
-          own visual treatments take priority. */}
-      {isChiStar && !isSevered && !isAblated && (
-        <Line
-          points={curvePoints}
-          color="#7B68EE"
-          lineWidth={Math.max(2.5, lineWidth + 2.5)}
-          transparent
-          opacity={0.35}
-        />
-      )}
-
       {/* Edge line — using drei Line for reliable rendering:
           directed = solid cyan
           temporal = solid amber (+ animated particle)
@@ -270,6 +263,41 @@ function DAGEdge3DInner({
           </mesh>
         </group>
       )}
+
+      {/* χ★ midpoint marker. Discrete violet octahedron at the curve
+          midpoint, so the load-bearing skeleton reads as a constellation
+          of pips rather than smudging the cyan/amber edge color the
+          user is using to track causality. Skipped on severed / ablated
+          (their own marker takes priority) and during cascade replay
+          flash. Two tiers so the strict-bridge vs top-BES distinction
+          is at-a-glance — solid for bridge, wireframe for top-BES. */}
+      {chiStarTier && !isSevered && !isAblated && (
+        <group position={[midpoint.x, midpoint.y, midpoint.z]}>
+          {chiStarTier === "bridge" ? (
+            <>
+              <mesh>
+                <octahedronGeometry args={[1.0, 0]} />
+                <meshBasicMaterial color="#7B68EE" transparent opacity={0.95} />
+              </mesh>
+              {/* Soft outer glow so the pip carries on dense graphs */}
+              <mesh>
+                <octahedronGeometry args={[1.7, 0]} />
+                <meshBasicMaterial color="#7B68EE" transparent opacity={0.2} />
+              </mesh>
+            </>
+          ) : (
+            <mesh>
+              <octahedronGeometry args={[1.1, 0]} />
+              <meshBasicMaterial
+                color="#7B68EE"
+                transparent
+                opacity={0.8}
+                wireframe
+              />
+            </mesh>
+          )}
+        </group>
+      )}
     </group>
   );
 }
@@ -309,7 +337,7 @@ function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
   if (prev.scissorsMode !== next.scissorsMode) return false;
   if (prev.isAblated !== next.isAblated) return false;
   if (prev.ablationMode !== next.ablationMode) return false;
-  if (prev.isChiStar !== next.isChiStar) return false;
+  if (prev.chiStarTier !== next.chiStarTier) return false;
   // epochState — only `propagationSignal` is read (drives shouldAnimate).
   const pe = prev.epochState;
   const ne = next.epochState;

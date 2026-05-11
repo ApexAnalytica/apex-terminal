@@ -15,6 +15,9 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TraceListRow } from "@/app/api/copilot/traces/route";
 import CopilotEvalCaseExporter from "@/components/CopilotEvalCaseExporter";
+import CopilotTraceStats from "@/components/CopilotTraceStats";
+
+type Tab = "list" | "stats";
 
 interface Props {
   /** When true, fetch fresh on mount and on every reopen. */
@@ -30,9 +33,12 @@ type LoadState =
 export default function CopilotTraceHistory({ open }: Props) {
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("list");
 
   useEffect(() => {
-    if (!open) return;
+    // Only fetch the per-row list when its tab is showing — the
+    // stats tab fetches its own data through CopilotTraceStats.
+    if (!open || tab !== "list") return;
     let cancelled = false;
     // Wrap in an async IIFE so all setState calls happen inside
     // the awaited microtask, never synchronously in the effect
@@ -55,16 +61,23 @@ export default function CopilotTraceHistory({ open }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, tab]);
 
   if (!open) return null;
 
   return (
     <div className="mt-2 pt-2 border-t border-border space-y-2">
-      <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted flex items-center justify-between">
-        <span>YOUR CONVERSATIONS</span>
-        {state.kind === "loaded" && (
-          <span className="text-text-muted/60">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider">
+          <TabButton active={tab === "list"} onClick={() => setTab("list")}>
+            LIST
+          </TabButton>
+          <TabButton active={tab === "stats"} onClick={() => setTab("stats")}>
+            STATS
+          </TabButton>
+        </div>
+        {tab === "list" && state.kind === "loaded" && (
+          <span className="text-[8px] font-mono text-text-muted/60 tracking-wider">
             {state.traces.length === 0
               ? "no rows"
               : `${state.traces.length} turn${state.traces.length === 1 ? "" : "s"}`}
@@ -72,35 +85,61 @@ export default function CopilotTraceHistory({ open }: Props) {
         )}
       </div>
 
-      {state.kind === "loading" && (
-        <div className="text-[10px] font-mono text-text-muted">Loading…</div>
+      {tab === "list" && (
+        <>
+          {state.kind === "loading" && (
+            <div className="text-[10px] font-mono text-text-muted">Loading…</div>
+          )}
+          {state.kind === "error" && (
+            <div className="text-[10px] font-mono text-accent-amber">
+              Couldn&apos;t load history: {state.message}
+            </div>
+          )}
+          {state.kind === "loaded" && state.traces.length === 0 && (
+            <div className="text-[10px] font-mono text-text-muted leading-relaxed">
+              No turns yet. Send a message to the copilot — it&apos;ll appear here.
+            </div>
+          )}
+          {state.kind === "loaded" && state.traces.length > 0 && (
+            <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+              {state.traces.map((trace) => (
+                <TraceRow
+                  key={trace.id}
+                  trace={trace}
+                  expanded={expanded === trace.id}
+                  onToggle={() => setExpanded(expanded === trace.id ? null : trace.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {state.kind === "error" && (
-        <div className="text-[10px] font-mono text-accent-amber">
-          Couldn&apos;t load history: {state.message}
-        </div>
-      )}
-
-      {state.kind === "loaded" && state.traces.length === 0 && (
-        <div className="text-[10px] font-mono text-text-muted leading-relaxed">
-          No turns yet. Send a message to the copilot — it&apos;ll appear here.
-        </div>
-      )}
-
-      {state.kind === "loaded" && state.traces.length > 0 && (
-        <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-          {state.traces.map((trace) => (
-            <TraceRow
-              key={trace.id}
-              trace={trace}
-              expanded={expanded === trace.id}
-              onToggle={() => setExpanded(expanded === trace.id ? null : trace.id)}
-            />
-          ))}
-        </div>
-      )}
+      {tab === "stats" && <CopilotTraceStats open />}
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2 py-0.5 rounded transition-colors"
+      style={{
+        color: active ? "var(--accent-cyan)" : "var(--text-muted)",
+        backgroundColor: active ? "rgba(0,229,255,0.08)" : "transparent",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

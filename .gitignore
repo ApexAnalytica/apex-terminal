@@ -40,6 +40,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# copilot eval — local artifacts from `npm run eval:copilot`
+eval-report.json
+eval-output.txt
+baseline-*.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

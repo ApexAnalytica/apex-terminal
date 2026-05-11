@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeLayout3D, computeNetworkMetrics, NodePosition } from "@/lib/graph-layout";
+import { chiStar } from "@/lib/estimators/chi-star";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
@@ -614,6 +615,38 @@ export default function CausalDAG3D() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topologyKey]);
 
+  // χ★ result on the live filtered graph. Lets the renderer highlight
+  // the load-bearing skeleton AND lets the EdgeInspector surface
+  // per-edge BES + bridge / top-k membership without recomputing.
+  // Memoised on topologyKey so it only recomputes when the graph
+  // structure actually changes — Brandes' BES is O(V·E) and
+  // re-running every render would be wasteful.
+  const chiStarInfo = useMemo(() => {
+    if (graphData.edges.length === 0) {
+      return {
+        chiStarSet: new Set<string>(),
+        bridgeSet: new Set<string>(),
+        bes: new Map<string, number>(),
+        rank: new Map<string, number>(),
+      };
+    }
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    const rank = new Map<string, number>();
+    r.besRanking.forEach((entry, idx) => rank.set(entry.edgeId, idx));
+    return {
+      chiStarSet: new Set(r.chiStar),
+      bridgeSet: new Set(r.bridges),
+      bes: r.bes,
+      rank,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+  const chiStarSet = chiStarInfo.chiStarSet;
+
   // Store baseline omega scores (live/initial values) as a reference point.
   // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
   const baselineOmegaRef = useRef<Record<string, number>>({});
@@ -1142,6 +1175,7 @@ export default function CausalDAG3D() {
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
                 onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}
                 epochState={currentSnapshot?.edgeStates[edge.id]}
+                isChiStar={chiStarSet.has(edge.id)}
               />
             );
           })}
@@ -1169,6 +1203,16 @@ export default function CausalDAG3D() {
             sourceLabel={selectedEdgeSourceLabel}
             targetLabel={selectedEdgeTargetLabel}
             onClose={() => setSelectedEdge(null)}
+            chiStarInfo={
+              chiStarInfo.chiStarSet.has(selectedEdge.id)
+                ? {
+                    isBridge: chiStarInfo.bridgeSet.has(selectedEdge.id),
+                    bes: chiStarInfo.bes.get(selectedEdge.id) ?? 0,
+                    rank: chiStarInfo.rank.get(selectedEdge.id) ?? null,
+                    totalEdges: chiStarInfo.bes.size,
+                  }
+                : null
+            }
           />
         )}
       </AnimatePresence>

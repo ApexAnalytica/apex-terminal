@@ -75,6 +75,40 @@ export async function logTurnTrace(trace: TurnTrace): Promise<boolean> {
 // ─── Helpers ────────────────────────────────────────────────────
 
 /**
+ * Resolve which dataset is "active" given a list of selected
+ * domain ids. Used to populate `TurnTrace.dataset` so analytics
+ * can slice traces by dataset (`select * from copilot_traces
+ * where dataset = 't1d'` etc).
+ *
+ * Resolution rule when domains span multiple datasets (only
+ * possible in CROSS persona): prefer the most specialized
+ * dataset over the generic "main" — t1d > vx880 > athena > main.
+ * That better reflects what graph the user is reasoning over.
+ *
+ * Returns null when no domains are selected (pre-onboarding,
+ * or after a reset). Callers should pass null through to the
+ * trace row in that case.
+ */
+export function resolveActiveDataset(
+  selectedDomains: string[],
+  domainCards: ReadonlyArray<{ id: string; dataset: string }>,
+): string | null {
+  if (selectedDomains.length === 0) return null;
+  const datasets = new Set(
+    selectedDomains
+      .map((id) => domainCards.find((c) => c.id === id)?.dataset)
+      .filter((d): d is string => d !== undefined),
+  );
+  if (datasets.size === 0) return null;
+  // Specialization order — most specific wins.
+  for (const candidate of ["t1d", "vx880", "athena", "main"]) {
+    if (datasets.has(candidate)) return candidate;
+  }
+  // Fallback: arbitrary first dataset for any unknown identifier.
+  return [...datasets][0];
+}
+
+/**
  * Cheap, deterministic, non-cryptographic hash of a string. Used
  * as the system_prompt_hash so we can tell whether two turns
  * shared a prompt without storing the prompt itself. djb2 is

@@ -4,6 +4,23 @@ import { motion } from "framer-motion";
 import type { CausalEdge } from "@/lib/types";
 
 /**
+ * Per-edge χ★ context — when present, the edge is in the χ★ set
+ * (Tarjan strict bridges ∪ top-k Bridge-Edge Strength). Surfaces
+ * BES + bridge / top-k membership inline so users can answer "why
+ * is this edge highlighted with the violet halo?" without leaving
+ * the inspector. Computed once at the canvas level — see
+ * CausalDAG3D's chiStarInfo useMemo.
+ */
+export interface ChiStarEdgeInfo {
+  isBridge: boolean;
+  bes: number;
+  /** 0-indexed BES rank (0 = highest BES). null if not ranked. */
+  rank: number | null;
+  /** Total edges in the BES ranking — context for the rank value. */
+  totalEdges: number;
+}
+
+/**
  * Shared edge inspector popup — used by 2D, 3D, and Map views.
  * Shows causal link details when an edge is clicked.
  */
@@ -12,11 +29,13 @@ export default function EdgeInspector({
   sourceLabel,
   targetLabel,
   onClose,
+  chiStarInfo,
 }: {
   edge: CausalEdge;
   sourceLabel: string;
   targetLabel: string;
   onClose: () => void;
+  chiStarInfo?: ChiStarEdgeInfo | null;
 }) {
   const typeColor =
     edge.type === "temporal"
@@ -124,6 +143,46 @@ export default function EdgeInspector({
             />
           </div>
         </div>
+
+        {/* χ★ membership — only rendered when this edge is in χ★.
+            The violet color (#7B68EE) matches the canvas halo + the
+            chi-star color in the criticality registry. */}
+        {chiStarInfo && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                χ★ BRIDGE SET
+              </div>
+              <div
+                className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider tabular-nums"
+                style={{ color: "#7B68EE" }}
+              >
+                {chiStarInfo.isBridge ? "STRICT BRIDGE" : "TOP-BES"}
+              </div>
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              {chiStarInfo.isBridge
+                ? "Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it."
+                : "High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."}
+            </div>
+            <div className="mt-1.5 flex gap-4 text-[10px] font-mono tabular-nums">
+              <div>
+                <span className="text-text-muted">BES </span>
+                <span style={{ color: "#7B68EE" }}>
+                  {chiStarInfo.bes.toFixed(3)}
+                </span>
+              </div>
+              {chiStarInfo.rank !== null && chiStarInfo.totalEdges > 0 && (
+                <div>
+                  <span className="text-text-muted">RANK </span>
+                  <span className="text-foreground">
+                    {chiStarInfo.rank + 1} / {chiStarInfo.totalEdges}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );

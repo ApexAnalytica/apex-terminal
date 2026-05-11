@@ -6,7 +6,7 @@ import {
   __resetRegistryForTests,
   type ToolCallTrace,
 } from "@/lib/copilot/tool-registry";
-import { hashPrompt, newConversationId, logTurnTrace } from "@/lib/copilot/trace-logger";
+import { hashPrompt, newConversationId, logTurnTrace, resolveActiveDataset } from "@/lib/copilot/trace-logger";
 import type { ApexState } from "@/stores/useApexStore";
 
 // ─── Registry trace shape ───────────────────────────────────────
@@ -203,5 +203,51 @@ describe("logTurnTrace — fail-safe semantics", () => {
     expect(JSON.parse(callArgs.body as string)).toEqual(validTrace);
 
     vi.unstubAllGlobals();
+  });
+});
+
+// ─── resolveActiveDataset ───────────────────────────────────────
+
+describe("resolveActiveDataset", () => {
+  const cards = [
+    { id: "energy-systems", dataset: "main" },
+    { id: "fx-stress", dataset: "main" },
+    { id: "defense-supply", dataset: "athena" },
+    { id: "t1d-mech", dataset: "t1d" },
+    { id: "vx880-trial", dataset: "vx880" },
+  ];
+
+  it("returns null when no domains are selected", () => {
+    expect(resolveActiveDataset([], cards)).toBeNull();
+  });
+
+  it("returns 'main' for a generic geopolitical selection", () => {
+    expect(resolveActiveDataset(["energy-systems", "fx-stress"], cards)).toBe("main");
+  });
+
+  it("returns the only dataset when one domain is selected", () => {
+    expect(resolveActiveDataset(["t1d-mech"], cards)).toBe("t1d");
+  });
+
+  it("prefers t1d > vx880 > athena > main when domains span datasets", () => {
+    // t1d wins over vx880 wins over athena wins over main
+    expect(
+      resolveActiveDataset(["energy-systems", "vx880-trial", "t1d-mech"], cards),
+    ).toBe("t1d");
+    expect(
+      resolveActiveDataset(["energy-systems", "defense-supply", "vx880-trial"], cards),
+    ).toBe("vx880");
+    expect(
+      resolveActiveDataset(["energy-systems", "defense-supply"], cards),
+    ).toBe("athena");
+  });
+
+  it("returns null if every selected id is unknown", () => {
+    expect(resolveActiveDataset(["does-not-exist"], cards)).toBeNull();
+  });
+
+  it("falls back to the first dataset for unrecognized dataset values", () => {
+    const customCards = [{ id: "future-domain", dataset: "future-dataset" }];
+    expect(resolveActiveDataset(["future-domain"], customCards)).toBe("future-dataset");
   });
 });

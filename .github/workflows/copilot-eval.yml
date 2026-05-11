@@ -1,0 +1,125 @@
+# ─── Copilot eval gate ────────────────────────────────────────────────
+#
+# Runs `npm run eval:copilot` against Gemini Flash on every PR that
+# touches the copilot surface. Catches regressions in tool-selection
+# accuracy and response shape before they ship.
+#
+# Path filter is intentionally narrow: this is a paid LLM call (~$0.02
+# per run, ~30s wall time), not a free unit test. We only spend on it
+# when copilot code actually changed.
+#
+# Secret required: GEMINI_API_KEY. Add it in repo Settings → Secrets
+# and variables → Actions. If the secret is missing (e.g. PR from a
+# fork, Dependabot run), the job exits 0 with a clear "skipped" line
+# so we don't fail every external PR for an unrelated reason.
+#
+# Flake handling: Gemini at temperature 0 is empirically not fully
+# deterministic — observed during the eval seed expansion. We do a
+# single retry on first failure to absorb that noise without doubling
+# the cost in the common (passing) case.
+
+name: Copilot eval
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/copilot/**"
+      - "src/app/api/copilot/**"
+      - "src/components/SystemCopilot.tsx"
+      - "src/components/CopilotTraceHistory.tsx"
+      - "src/lib/copilot-actions.ts"
+      - "src/lib/copilot-context.ts"
+      - "src/lib/copilot-engine.ts"
+      - "scripts/eval-copilot.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/copilot-eval.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/copilot/**"
+      - "src/app/api/copilot/**"
+      - "src/components/SystemCopilot.tsx"
+      - "src/components/CopilotTraceHistory.tsx"
+      - "src/lib/copilot-actions.ts"
+      - "src/lib/copilot-context.ts"
+      - "src/lib/copilot-engine.ts"
+      - "scripts/eval-copilot.ts"
+
+concurrency:
+  group: copilot-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: copilot · eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Skip cleanly when the secret isn't available (fork PRs,
+      # Dependabot, etc). Fail-open for those — we don't want
+      # unrelated PRs to be blocked by a missing key.
+      - name: Check API key availability
+        id: keycheck
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning ::GEMINI_API_KEY not set in repo secrets — skipping eval. Add it in Settings → Secrets and variables → Actions to enable this gate."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run eval (with one retry on flake)
+        if: steps.keycheck.outputs.available == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set +e
+          npm run eval:copilot -- --json eval-report.json | tee eval-output.txt
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo ""
+            echo "::warning ::First eval pass had failures — retrying once to absorb Gemini's mild non-determinism at temperature 0."
+            echo ""
+            npm run eval:copilot -- --json eval-report.json | tee eval-output.txt
+            STATUS=$?
+          fi
+          exit $STATUS
+
+      - name: Append eval rollup to step summary
+        if: always() && steps.keycheck.outputs.available == 'true'
+        run: |
+          if [ -f eval-output.txt ]; then
+            {
+              echo "## Copilot eval result"
+              echo ""
+              echo '```'
+              # Only the final report block (after the per-case stream).
+              tail -n 30 eval-output.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload eval JSON report
+        if: always() && steps.keycheck.outputs.available == 'true' && hashFiles('eval-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: copilot-eval-report
+          path: eval-report.json
+          retention-days: 30

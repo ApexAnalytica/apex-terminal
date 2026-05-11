@@ -185,4 +185,155 @@ export const SEED_CASES: TestCase[] = [
     ],
     tags: ["tool-selection", "interdiction"],
   },
+
+  // ─── Module navigation (each engine) ────────────────────────────
+
+  {
+    id: "switch_module_tarski",
+    description: "User asks to switch to TARSKI — set_module:tarski.",
+    user_message: "switch to the TARSKI module",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_module", params_match: { module: "tarski" } }],
+    tags: ["tool-selection", "navigation"],
+  },
+  {
+    id: "switch_module_pareto",
+    description: "User asks to switch to PARETO — set_module:pareto.",
+    user_message: "open the pareto module",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_module", params_match: { module: "pareto" } }],
+    tags: ["tool-selection", "navigation"],
+  },
+  {
+    id: "switch_module_spirtes",
+    description: "User asks to switch to SPIRTES — set_module:spirtes.",
+    user_message: "go to the SPIRTES discovery module",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_module", params_match: { module: "spirtes" } }],
+    tags: ["tool-selection", "navigation"],
+  },
+
+  // ─── View toggles ───────────────────────────────────────────────
+
+  {
+    id: "set_view_3d",
+    description: "User asks for 3D view — set_view:3d.",
+    user_message: "give me the 3D view please",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_view", params_match: { mode: "3d" } }],
+    tags: ["tool-selection", "view"],
+  },
+  {
+    id: "set_view_2d",
+    description: "User asks for 2D view — set_view:2d.",
+    user_message: "switch to 2D",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_view", params_match: { mode: "2d" } }],
+    tags: ["tool-selection", "view"],
+  },
+  {
+    id: "set_node_size_metric_eigenvector",
+    description:
+      "User asks to size orbs by eigenvector centrality — set_node_size_metric:eigenvector.",
+    user_message: "size the nodes by eigenvector centrality",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [
+      { name: "set_node_size_metric", params_match: { metric: "eigenvector" } },
+    ],
+    tags: ["tool-selection", "view"],
+  },
+
+  // ─── Filtering / verification ───────────────────────────────────
+
+  {
+    id: "set_truth_filter_verified",
+    description:
+      "User asks for verified-only view — set_truth_filter:verified.",
+    user_message: "only show me verified edges",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [
+      { name: "set_truth_filter", params_match: { mode: "verified" } },
+    ],
+    tags: ["tool-selection", "filtering"],
+  },
+
+  // ─── Replay ─────────────────────────────────────────────────────
+
+  {
+    id: "start_replay",
+    description: "User asks to play the cascade — start_replay.",
+    user_message: "play the cascade replay",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "start_replay" }],
+    tags: ["tool-selection", "replay"],
+  },
+
+  // ─── Direct selection / isolation ───────────────────────────────
+
+  {
+    id: "select_node_by_label",
+    description:
+      "User names a node by label and asks to select it — select_node OR explain_node both acceptable.",
+    user_message: "select TSMC Fab",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [
+      { name: "select_node", params_match: { node: { includes: "TSMC" } } },
+      { name: "select_node", params_match: { node: { includes: "FAB" } } },
+      // Some models reasonably interpret "select X" as "tell me about X".
+      { name: "explain_node", params_match: { node: { includes: "TSMC" } } },
+    ],
+    tags: ["tool-selection", "selection"],
+  },
+  {
+    id: "isolate_by_explicit_ids",
+    description:
+      "User names two nodes by id — should isolate to that pair.",
+    user_message:
+      "show only USA_GRID and FAB_TW, hide everything else",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [
+      {
+        name: "isolate_nodes",
+        params_match: { ids: { array_includes: "USA_GRID" } },
+      },
+    ],
+    tags: ["tool-selection", "filtering"],
+  },
+
+  // ─── Definitional Q&A (no tools) ───────────────────────────────
+
+  {
+    id: "plain_qa_tarski",
+    description:
+      "User asks what Tarski validation checks. Question reads both ways — pure prose OR run_tarski + explanation are both legitimate. We don't constrain tool selection here; we just require the response to explain the concept.",
+    user_message: "what does the Tarski engine actually check?",
+    graph_fixture: "geopolitical_main",
+    // No accepted_tool_calls + no forbid_tool_calls = any tool behavior passes.
+    required_in_response: [/(constraint|axiom|consistency|verif)/i],
+    tags: ["explanation", "ambiguous-intent"],
+  },
+  {
+    id: "plain_qa_pearl_methodology",
+    description:
+      "User asks how do-calculus / Pearl interventions work. Same ambiguous-intent shape as plain_qa_tarski — we accept any tool behavior, just require the response to mention the relevant concepts.",
+    user_message: "how does the Pearl module reason about interventions?",
+    graph_fixture: "geopolitical_main",
+    // No tool constraint — accept either pure prose OR tools + explanation.
+    required_in_response: [/(do.calculus|intervention|counterfactual|do\(|backdoor|sever)/i],
+    tags: ["explanation", "ambiguous-intent"],
+  },
+
+  // ─── Out-of-scope handling ─────────────────────────────────────
+
+  {
+    id: "off_topic_redirect",
+    description:
+      "User asks something completely off-topic. Model should NOT emit tools (no tool fits) and ideally redirect or say it's outside scope rather than hallucinate weather data.",
+    user_message: "what's the weather in Manhattan today?",
+    graph_fixture: "geopolitical_main",
+    forbid_tool_calls: true,
+    // Either an explicit redirect, or absence of a confident weather answer.
+    forbidden_in_response: [/\d+\s*°|sunny|cloudy|rain(\s|y|ing)|temperature/i],
+    tags: ["refusal", "no-tool", "off-topic"],
+  },
 ];

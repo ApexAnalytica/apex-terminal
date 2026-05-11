@@ -217,18 +217,37 @@ function EncodingLegend({
           }
         />
         <LegendRow
-          label="χ★ BRIDGE (violet halo)"
-          help="Edge sits in the χ★ bridge set: either a strict bridge (removing it disconnects the graph) or a top-k Bridge-Edge Strength edge (high shortest-path load). Click any haloed edge for the BES value + bridge / top-k status. Source: Ghauri 2025 D.Eng."
+          label="χ★ STRICT BRIDGE (filled violet ◆)"
+          help="Filled violet diamond at the edge midpoint. Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it. Click the edge for BES + rank. Source: Ghauri 2025 D.Eng."
           swatch={
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center justify-center">
               <span
-                className="h-1.5 w-6 rounded-sm"
+                className="inline-block"
                 style={{
+                  width: 8,
+                  height: 8,
                   backgroundColor: "#7B68EE",
-                  opacity: 0.45,
+                  transform: "rotate(45deg)",
                 }}
               />
-              <span className="h-0.5 w-6 -ml-6" style={{ backgroundColor: "#00e5ff" }} />
+            </div>
+          }
+        />
+        <LegendRow
+          label="χ★ TOP-BES (hollow violet ◇)"
+          help="Hollow violet diamond outline at the edge midpoint. High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."
+          swatch={
+            <div className="flex items-center justify-center">
+              <span
+                className="inline-block"
+                style={{
+                  width: 8,
+                  height: 8,
+                  border: "1.5px solid #7B68EE",
+                  backgroundColor: "transparent",
+                  transform: "rotate(45deg)",
+                }}
+              />
             </div>
           }
         />

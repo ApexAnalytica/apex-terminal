@@ -244,7 +244,7 @@ function CausalDAGMapInner() {
     };
   }, [activeGraph]);
 
-  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarHaloGeoJSON } = useMemo(() => {
+  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarMarkerGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
       nodeMap.set(
@@ -256,10 +256,12 @@ function CausalDAGMapInner() {
     const selectedSet = new Set(selectedNodes);
     const solidFeatures: Feature<LineString>[] = [];
     const dashedFeatures: Feature<LineString>[] = [];
-    // χ★ halo features — wider violet lines rendered behind the
-    // main edge lines for any edge in the χ★ set. Same coordinates
-    // as the source feature; only the styling differs.
-    const haloFeatures: Feature<LineString>[] = [];
+    // χ★ midpoint markers — discrete violet pips at each χ★ edge's
+    // visual midpoint (the t=0.5 point along the bezier polyline)
+    // rather than smudging the line color with a halo. Tier property
+    // ('bridge' / 'top-bes') drives the circle layer's fill via a
+    // paint expression below.
+    const markerFeatures: Feature<Point>[] = [];
 
     activeGraph.edges.forEach((edge) => {
       const source = nodeMap.get(edge.source);
@@ -357,28 +359,33 @@ function CausalDAGMapInner() {
         solidFeatures.push(feature);
       }
 
-      // Halo: rendered behind the main edge for any edge in χ★.
-      // Skipped on severed (their slate styling takes priority) and
-      // on dimmed multi-selection out-of-scope edges (would compete
-      // with the dim treatment).
+      // χ★ marker: discrete violet pip at the bezier midpoint
+      // (t=0.5 along the sampled polyline) rather than a halo around
+      // the line. Skipped on severed (their slate styling takes
+      // priority) and on dimmed multi-selection out-of-scope edges
+      // (would compete with the dim treatment). Tier property drives
+      // the circle layer paint expression — filled for strict
+      // bridges, hollow outline for top-BES.
       if (chiStarInfo.chiStarSet.has(edge.id) && !isSevered && !edgeIsDimmed) {
-        haloFeatures.push({
-          type: "Feature",
-          geometry: { type: "LineString", coordinates },
-          properties: {
-            id: `${edge.id}-halo`,
-            // Halo width scales with the edge's width so thin and
-            // thick edges both read as having a halo.
-            width: edge.weight * 2 + 4.5,
-          },
-        });
+        const midIdx = Math.floor(coordinates.length / 2);
+        const mid = coordinates[midIdx];
+        if (mid) {
+          markerFeatures.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: mid },
+            properties: {
+              id: `${edge.id}-chi`,
+              tier: chiStarInfo.bridgeSet.has(edge.id) ? "bridge" : "top-bes",
+            },
+          });
+        }
       }
     });
 
     return {
       solidEdgeGeoJSON: { type: "FeatureCollection" as const, features: solidFeatures },
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
-      chiStarHaloGeoJSON: { type: "FeatureCollection" as const, features: haloFeatures },
+      chiStarMarkerGeoJSON: { type: "FeatureCollection" as const, features: markerFeatures },
     };
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo]);
 
@@ -730,25 +737,6 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
-        {/* χ★ bridge-set halo — rendered FIRST so MapLibre paints it
-            beneath the main edge lines below. Violet (#7B68EE) matches
-            the AI Safety / chi-star color used by 3D + 2D + LEGEND. */}
-        <Source id="edges-chi-star-halo" type="geojson" data={chiStarHaloGeoJSON}>
-          <Layer
-            id="edge-lines-chi-star-halo"
-            type="line"
-            paint={{
-              "line-color": "#7B68EE",
-              "line-opacity": 0.45,
-              "line-width": ["get", "width"],
-            }}
-            layout={{
-              "line-cap": "round",
-              "line-join": "round",
-            }}
-          />
-        </Source>
-
         {/* Solid edge lines: directed (cyan) + temporal (amber) */}
         <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
@@ -780,6 +768,32 @@ function CausalDAGMapInner() {
             layout={{
               "line-cap": "round",
               "line-join": "round",
+            }}
+          />
+        </Source>
+
+        {/* χ★ midpoint markers — discrete violet pips at the bezier
+            midpoint of each χ★ edge. Rendered AFTER the edge lines so
+            the pip sits on top of the line, BEFORE the node circles so
+            nodes remain the dominant focal points. Two tiers via a
+            paint expression: filled circle for strict bridges, hollow
+            outline-only ring for top-BES. */}
+        <Source id="edges-chi-star-markers" type="geojson" data={chiStarMarkerGeoJSON}>
+          <Layer
+            id="edge-chi-star-markers"
+            type="circle"
+            paint={{
+              "circle-color": [
+                "case",
+                ["==", ["get", "tier"], "bridge"],
+                "#7B68EE",
+                "rgba(0,0,0,0)",
+              ],
+              "circle-radius": 4,
+              "circle-stroke-color": "#7B68EE",
+              "circle-stroke-width": 1.5,
+              "circle-opacity": 0.95,
+              "circle-stroke-opacity": 0.95,
             }}
           />
         </Source>

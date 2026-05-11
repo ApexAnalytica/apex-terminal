@@ -447,12 +447,13 @@ interface EmphasizedEdgeData {
   propagationSignal: number;
   showArrow: boolean;
   /**
-   * Edge is in the χ★ bridge set (Tarjan strict bridges ∪ top-k BES).
-   * EmphasizedEdge renders a wider violet path behind the main edge
-   * so the load-bearing skeleton is visible at a glance — same
-   * treatment as the 3D canvas, adapted to ReactFlow's SVG layer.
+   * χ★ tier — drives the discrete violet midpoint marker rendered
+   * after the BaseEdge. Two tiers so the strict-bridge vs top-BES
+   * distinction reads at-a-glance (filled diamond vs hollow outline).
+   * null when the edge isn't in χ★. Same treatment as the 3D canvas
+   * adapted to ReactFlow's SVG layer.
    */
-  isChiStar: boolean;
+  chiStarTier: "bridge" | "top-bes" | null;
 }
 
 function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
@@ -478,6 +479,8 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   const targetNode = useReactFlowStore((s) => s.nodeInternals.get(target));
 
   let edgePath: string | null = null;
+  let midX: number | null = null;
+  let midY: number | null = null;
   if (sourceNode && targetNode) {
     const sw = sourceNode.width ?? 30;
     const sh = sourceNode.height ?? 30;
@@ -503,6 +506,8 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
       const x2 = txC - ndx * tr;
       const y2 = tyC - ndy * tr;
       edgePath = `M ${x1} ${y1} L ${x2} ${y2}`;
+      midX = (x1 + x2) / 2;
+      midY = (y1 + y2) / 2;
     }
   }
   if (!edgePath) return null;
@@ -558,24 +563,21 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   // `adjacency` import — only nodes need it; edges go via source/target.
   void adjacency;
 
+  // χ★ midpoint marker geometry. Diamond = 45°-rotated square; SVG
+  // <polygon> takes the four vertex coordinates.
+  const CHI_HALF = 5;
+  const chiStarPolygon =
+    midX !== null && midY !== null
+      ? `${midX},${midY - CHI_HALF} ${midX + CHI_HALF},${midY} ${midX},${midY + CHI_HALF} ${midX - CHI_HALF},${midY}`
+      : null;
+  const showChiStarMarker =
+    d.chiStarTier !== null &&
+    !isThisSelected &&
+    d.propagationSignal === 0 &&
+    chiStarPolygon !== null;
+
   return (
     <>
-      {/* χ★ halo — wider violet path behind the main edge, matching
-          the 3D canvas treatment (DAGEdge3D). Skipped when the
-          element-specific overrides (selection, propagation flash)
-          are active so they remain unambiguous. Halo opacity scales
-          with the edge's overall opacity so a dimmed χ★ edge stays
-          visually consistent with its main line. */}
-      {d.isChiStar && !isThisSelected && d.propagationSignal === 0 && (
-        <path
-          d={edgePath}
-          stroke="#7B68EE"
-          strokeWidth={strokeWidth + 3}
-          fill="none"
-          opacity={opacity * 0.45}
-          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
-        />
-      )}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -588,6 +590,24 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
           transition: "opacity 180ms ease-out",
         }}
       />
+      {/* χ★ midpoint marker — discrete violet diamond at the edge
+          midpoint instead of a halo, so the load-bearing skeleton
+          reads as a constellation of pips rather than smudging the
+          cyan / amber edge color. Two tiers: filled diamond for
+          strict bridges (cutting disconnects the graph), hollow
+          outline for top-BES (high shortest-path load without
+          disconnecting). Skipped on the selected edge + during
+          propagation flash so those signals stay unambiguous. */}
+      {showChiStarMarker && (
+        <polygon
+          points={chiStarPolygon!}
+          fill={d.chiStarTier === "bridge" ? "#7B68EE" : "none"}
+          stroke="#7B68EE"
+          strokeWidth={1.5}
+          opacity={opacity * 0.95}
+          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
+        />
+      )}
     </>
   );
 }
@@ -886,7 +906,6 @@ function CausalDAG2DInner() {
       rank,
     };
   }, [graphData]);
-  const chiStarSet = chiStarInfo.chiStarSet;
 
   // Edges carry only structural / replay / truth-filter state. Hover and
   // single-select emphasis are computed inside `EmphasizedEdge` itself, so
@@ -940,11 +959,15 @@ function CausalDAG2DInner() {
             isSelected,
             propagationSignal,
             showArrow,
-            isChiStar: chiStarSet.has(e.id),
+            chiStarTier: chiStarInfo.bridgeSet.has(e.id)
+              ? ("bridge" as const)
+              : chiStarInfo.chiStarSet.has(e.id)
+                ? ("top-bes" as const)
+                : null,
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot, selectedEdge, chiStarSet]
+    [graphData, truthFilter, currentSnapshot, selectedEdge, chiStarInfo]
   );
 
   // Filter edges for isolation mode

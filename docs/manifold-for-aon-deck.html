@@ -691,7 +691,7 @@
 
     <div class="hero-statement">
       <p class="lead">Stress tests show <span class="em">how big</span>.<br/>Causal graphs show <span class="em">how it propagates</span>.</p>
-      <p class="sub">Most risk frameworks have the first and skip the second. Manifold builds the second on top of the structure your existing models assume away. The team comes from inside financial modelling, not adjacent to it: ex-HSBC AI, reinsurance, JHU systems engineering.</p>
+      <p class="sub">Most risk frameworks have the first and skip the second. Manifold builds the second on top of the structure your existing models assume away. The team comes from inside the modelling discipline, not adjacent to it: HSBC AI quants, Johns Hopkins systems engineering, and twenty-plus years of cross-sector quantitative work.</p>
     </div>
 
     <div class="slide-foot">
@@ -713,22 +713,24 @@
     <h2 class="slide-title">Four engines, one configurable platform.</h2>
     <div class="slide-rule"></div>
 
+    <p class="slide-lede">Each engine is named for the researcher whose work it builds on. Together they take your data, build a structural model, and answer questions about how shocks propagate through it.</p>
+
     <div class="engine-grid">
       <div class="engine-card">
-        <p class="name">SPIRTES &nbsp;·&nbsp; CAUSAL DISCOVERY</p>
-        <p class="desc">Infers causal structure from claim, exposure, and balance-sheet panels. PCMCI on lagged returns and exposure deltas surfaces dependencies the historical fit missed.</p>
+        <p class="name">SPIRTES &nbsp;·&nbsp; FINDS THE STRUCTURE</p>
+        <p class="desc">Looks at your data (claims, exposures, balance-sheet positions, time-series returns) and identifies which factors actually drive which outcomes. Builds the graph that your statistical model implicitly assumes but never makes visible.</p>
       </div>
       <div class="engine-card">
-        <p class="name">TARSKI &nbsp;·&nbsp; FORMAL VERIFICATION</p>
-        <p class="desc">Verifies treaty terms, regulatory constraints, and ILS / parametric trigger structures against the inferred graph. Red-lines connections that violate the stated conditions.</p>
+        <p class="name">TARSKI &nbsp;·&nbsp; CHECKS THE RULES</p>
+        <p class="desc">Takes your written rules (treaty terms, regulatory conditions, trigger structures, internal policies) and checks them against the structure Spirtes built. Flags every place a stated rule fails to hold under the data.</p>
       </div>
       <div class="engine-card">
-        <p class="name">PEARL &nbsp;·&nbsp; COUNTERFACTUAL INTERVENTION</p>
-        <p class="desc">Do-calculus on the graph. Answers the question stress tests gesture at and don't resolve: if you cut this exposure, what does the cascade look like.</p>
+        <p class="name">PEARL &nbsp;·&nbsp; ANSWERS WHAT-IF</p>
+        <p class="desc">Answers the question stress tests gesture at but never resolve: <em>if you cut, harden, or restructure this position, how does the loss profile change?</em> Quantifies the effect with confidence intervals, not just direction.</p>
       </div>
       <div class="engine-card">
-        <p class="name">PARETO &nbsp;·&nbsp; CASCADE SIMULATION</p>
-        <p class="desc">Per-node criticality estimators (BOCPD, persistent homology, transfer entropy) and full cascade simulation across the tower under stress.</p>
+        <p class="name">PARETO &nbsp;·&nbsp; STRESS-TESTS THE NETWORK</p>
+        <p class="desc">Simulates how shocks propagate through the structure. Returns a fragility score per node, a ranked list of the most fragile positions, and the cascade paths each shock travels.</p>
       </div>
     </div>
 
@@ -748,36 +750,36 @@
     </div>
 
     <div class="slide-eyebrow">The Scoring Framework</div>
-    <h2 class="slide-title"><span class="apex-omega">Ω</span>F. Five pillars, per-node fragility.</h2>
+    <h2 class="slide-title"><span class="apex-omega">Ω</span>F. Five questions, asked of every position.</h2>
     <div class="slide-rule"></div>
 
-    <p class="slide-lede">Every node in the graph (counterparty, peril, treaty, jurisdiction, line of business) gets a score on five orthogonal pillars. The composite <span class="apex-omega">Ω</span>F runs with bootstrap confidence intervals, so the readout shows uncertainty alongside the point estimate.</p>
+    <p class="slide-lede">Every node in the structure (a counterparty, a treaty, a peril, a jurisdiction, a line of business) gets scored on five questions. Each question maps to one letter. The composite <span class="apex-omega">Ω</span>F is the weighted answer to all five, with a confidence interval attached.</p>
 
     <div class="pillar-grid">
       <div class="pillar-card">
         <div class="glyph">I</div>
         <div class="label">Irreplaceability</div>
-        <p class="desc">Substitutability of a counterparty, facility, or treaty under a freeze. Common-collateral choke points.</p>
+        <p class="desc">If this position disappeared tomorrow, could you replace it? If not, it's a single point of failure.</p>
       </div>
       <div class="pillar-card">
         <div class="glyph">R</div>
         <div class="label">Restoration Latency</div>
-        <p class="desc">Time to replace capacity after catastrophic failure. Recapitalisation speed under stress.</p>
+        <p class="desc">If capacity is lost, how long does it take to recover? Days, weeks, quarters, or longer.</p>
       </div>
       <div class="pillar-card">
         <div class="glyph">J</div>
         <div class="label">Jurisdictional Hazard</div>
-        <p class="desc">Sanctions cascade, regulatory regime shifts, currency-zone fragmentation, cross-border CCP fragility.</p>
+        <p class="desc">How exposed is this position to political risk: sanctions, regulatory shifts, capital controls.</p>
       </div>
       <div class="pillar-card">
         <div class="glyph">C</div>
         <div class="label">Cascade Load</div>
-        <p class="desc">Downstream exposure depth through the reinsurance tower. Common-collateral fire-sale loops.</p>
+        <p class="desc">If this node fails, how many others go with it? How deep does the contagion run.</p>
       </div>
       <div class="pillar-card">
         <div class="glyph">T</div>
         <div class="label">Tail Depth</div>
-        <p class="desc">Distributional depth beyond VaR (99.9% / EVT regime). Correlation-collapse asymmetry.</p>
+        <p class="desc">How bad does it get in the extreme cases that average-loss models understate. The worst plausible outcome.</p>
       </div>
     </div>
 

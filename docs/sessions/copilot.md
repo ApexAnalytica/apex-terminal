@@ -2,79 +2,142 @@
 
 Owns the copilot as the **primary linguistic interface to the platform**. Long-term: this session evolves into Apex's own hybrid LLM/agent — the linguistic surface of the "platform-as-cortex" framing, where engine sessions (SPIRTES, TARSKI, PEARL, PARETO) are the cortex and this session is the access layer.
 
-> **Status:** Active. Tool registry + `isolate_nodes` shipped ([#249](https://github.com/ApexAnalytica/apex-terminal/pull/249)). Trace store shipped ([#251](https://github.com/ApexAnalytica/apex-terminal/pull/251)) — every copilot turn lands as a structured row in `public.copilot_traces`. Provider abstraction shipped ([#296](https://github.com/ApexAnalytica/apex-terminal/pull/296)) — `/api/copilot` runs through Vercel AI SDK's `streamText`. Picker UI to flip Gemini/Claude/Ollama from settings is in flight (PR3.2). Earlier substrate: `serializeGraphContext` injects `=== ENGINE STATE SNAPSHOT ===` (PR #215 + #217).
+> **Status:** Active. The LLM roadmap (tool registry → trace store → provider abstraction → model picker → eval harness → eval CI gate → conversation memory → trace browser & analytics) shipped through 12 PRs landing 2026-05-06 → 05-11. The chat now drives platform actions via a declarative tool registry, every turn lands in `public.copilot_traces` for replay + analytics, and a 20-case eval harness gates every copilot PR via GitHub Actions. The two remaining roadmap items — **native `tool_use` migration** and **distillation** — are deliberately held: the first is a refactor with marginal upside (the text wire format works), the second is gated on traces ≥ 10K.
 
 ## Defaults & invariants (DO NOT change without explicit user direction)
 
-- **Copilot LLM defaults to Gemini.** `useApexStore.ts` initializes `llmProvider: "gemini"`, and `SystemCopilot.tsx` flows that straight through into `copilotProvider` — no override mapping. Gemini is the chat path because the chat is high-frequency and Gemini is the cheaper / faster choice; Claude is the heavy-reasoning *compute* path (snapshot validation, Tarski runs) — that split stays.
+- **Copilot LLM defaults to Gemini.** `useApexStore.ts` initializes `llmProvider: "gemini"`, and `SystemCopilot.tsx` flows that straight through into `copilotProvider`. Gemini is the chat path because the chat is high-frequency and Gemini is the cheaper / faster choice; Claude is the heavy-reasoning *compute* path (snapshot validation, Tarski runs) — that split stays.
 - **Switching providers requires explicit user action.** The picker in the chat settings panel can flip to Anthropic (Claude) or local Ollama, but nothing flips automatically; on-load default is always Gemini.
-- **Adding a new provider is one line in `/api/copilot/route.ts`.** Provider abstraction landed in #296 — `streamText` with adapters from `@ai-sdk/anthropic`, `@ai-sdk/google`, and `ollama-ai-provider-v2`. New providers (OpenAI, Mistral, Groq, vLLM, OpenRouter, …) plug into `resolveModel`; the streaming + auth + wire-format work is delegated to the SDK adapters.
+- **Adding a new provider is one line in `/api/copilot/route.ts`** — `resolveModel` is a switch over `LLMProvider` returning an `@ai-sdk/...` adapter. OpenAI / Mistral / Groq / vLLM / OpenRouter all plug in there. Streaming + auth + wire-format details are delegated to the SDK.
 - **Trace shape is provider-agnostic.** `model_provider` is a column on `copilot_traces`, so we can compare Gemini vs. Claude vs. local Ollama on the same conversation distribution. Comparison reads from the data; the prompt and registry don't change with provider.
+- **Wire format stays text** (`<<<ACTION:name:k=v>>>`). Universal — works with every model including Ollama. Native `tool_use` blocks are deprioritized because the text format works and the refactor is high-cost / low-marginal-value.
 
-## What's shipped
+## What's shipped (12 PRs, 2026-05-06 → 05-11)
 
-- **PR #249 — tool registry**. Replaced the hand-written switch in `copilot-actions.ts` with declarative `defineTool` registrations. Schema-typed params (string / string[] / number / enum / boolean with required / default / min / max). Auto-generated system prompt via `renderToolsForPrompt()` so the LLM-visible action list can never drift from the code. JSON Schema export (`renderToolsAsJsonSchema`) ready for native Anthropic `tool_use` migration. 14 existing actions migrated. Two new tools: `isolate_nodes` (filter visible graph by query or ids), `reset_isolation`.
-- **PR #251 — trace store**. Every turn becomes a row in `public.copilot_traces`. One row = one turn (user msg → assistant msg) with all tool calls colocated in `tool_calls jsonb[]` (`{name, params, result, error, latency_ms}`). RLS: users read their own rows; writes via service role only. GIN index on `tool_calls` for fast `@>` containment queries. Logging is fire-and-forget — failures never break chat. SQL migration: `supabase-copilot-traces.sql`.
-- **PR #296 — provider abstraction**. Three hand-rolled per-provider streaming functions in `/api/copilot/route.ts` collapsed into one `streamText` call via Vercel AI SDK. Provider switch in `resolveModel` picks the model adapter (`createAnthropic` / `createGoogleGenerativeAI`); new providers are a one-line addition. Wire contract preserved (text/plain stream of UTF-8 bytes), so the client and trace store don't change. Side fix: lazy-init the Supabase admin client in the trace route (matches PR #253's pattern).
+| PR | What |
+|---|---|
+| [#249](https://github.com/ApexAnalytica/apex-terminal/pull/249) | **Tool registry.** Declarative `defineTool` replaces the hand-written switch. Schema-typed params (string / string[] / number / enum / boolean with required / default / min / max). Auto-generated system prompt via `renderToolsForPrompt()` — LLM-visible action list can never drift from the code. JSON-Schema export ready for native tool_use. 14 actions migrated + `isolate_nodes` and `reset_isolation` added. |
+| [#251](https://github.com/ApexAnalytica/apex-terminal/pull/251) | **Trace store.** Every turn → row in `public.copilot_traces`. All tool calls colocated in `tool_calls jsonb[]` (`{name, params, result, error, latency_ms}`). RLS: users read own rows; writes via service role. GIN index on `tool_calls` for `@>` containment queries. Fire-and-forget logging — failures never break chat. SQL migration: `supabase-copilot-traces.sql`. |
+| [#264](https://github.com/ApexAnalytica/apex-terminal/pull/264) | **5 more tools.** `explain_node`, `compare_nodes`, `run_tarski`, `set_node_size_metric`, `reset_ablation`. |
+| [#296](https://github.com/ApexAnalytica/apex-terminal/pull/296) | **Provider abstraction (PR3.1).** Three hand-rolled per-provider streaming functions collapsed into one `streamText` call via Vercel AI SDK. Wire contract preserved (text/plain stream). Side fix: lazy-init the Supabase admin client in the trace route. |
+| [#298](https://github.com/ApexAnalytica/apex-terminal/pull/298) | **Model picker UI (PR3.2).** Settings toggle `[GEMINI ⏐ CLAUDE ⏐ OLLAMA]`. Header surfaces active model id. Default-on-load stays Gemini. |
+| [#302](https://github.com/ApexAnalytica/apex-terminal/pull/302) | **Eval harness (PR4).** 7 seed cases, CLI (`npm run eval:copilot`), 20 unit tests for assertion logic. Validated live: 7/7 PASS on Gemini Flash. |
+| [#310](https://github.com/ApexAnalytica/apex-terminal/pull/310) | **Dataset routing.** Trace rows carry `dataset` (`main` / `athena` / `t1d` / `vx880`) derived from `selectedDomains`. Specialization rule t1d > vx880 > athena > main when domains span datasets. |
+| [#315](https://github.com/ApexAnalytica/apex-terminal/pull/315) | **Trace browser UI.** ⧉ button in chat header → "Your Conversations" panel with per-turn drill-in. RLS-protected (auth-aware server client). |
+| [#317](https://github.com/ApexAnalytica/apex-terminal/pull/317) | **Eval seed 7 → 20.** Module switches, view toggles, eigenvector size, truth filter, replay, isolation by ids, ambiguous-intent definitional Q&A, off-topic redirect. Surfaced + fixed ambiguous-intent design issue. 20/20 PASS post-change. |
+| [#319](https://github.com/ApexAnalytica/apex-terminal/pull/319) | **Eval CI gate.** `.github/workflows/copilot-eval.yml`. Runs on every PR touching the copilot surface. Single retry on flake. Fail-open with `::warning::` if `GEMINI_API_KEY` secret missing. Verified live (24s wall, 20/20 PASS on its own PR). |
+| [#324](https://github.com/ApexAnalytica/apex-terminal/pull/324) | **"+ EVAL CASE" exporter button.** Click any trace row in the browser → inline form auto-populated from the captured turn → copy snippet → paste into `seed.ts`. Closes the trace→eval bootstrap loop. |
+| [#331](https://github.com/ApexAnalytica/apex-terminal/pull/331) | **Conversation window.** Sliding-window prune on `copilotMessages` before send (last 12 messages). Surfaces "N earlier turns omitted from context" hint when truncating. |
+| [#332](https://github.com/ApexAnalytica/apex-terminal/pull/332) | **Trace analytics view.** STATS tab on the trace browser. Total turns / tool calls / conversations; per-tool count + error rate + mean & p95 latency; per-model rollup. |
 
-## Scope summary (in)
+## Architecture map
 
-- **Tool-use primitive**: the `<<<ACTION:...>>>` mechanism — its parser, action vocabulary, parameter schema (currently single-string; needs richer payload), and the executor that maps actions to `useApexStore` mutations.
-- **Intent routing**: turning natural-language input ("show me nodes related to sanctions") into structured tool calls. Includes prompt-engineering of the system prompt that teaches the LLM which tools exist.
-- **Node isolation / graph filtering** as a copilot-driven action — first new tool: `isolate_nodes(query | ids[])` filters the graph to a relevant subset.
-- **Conversation memory & turn management** — what the copilot remembers across turns, how prior tool calls feed the next prompt.
-- **System prompt composition** — the section ordering, what's elided, how engine-state context is summarized for the model.
-- **LLM provider plumbing** — `src/lib/llm-providers.ts`, model selection, streaming, fallback.
-- **Eventual hybrid LLM/agent** — when this session matures, it owns the in-house model: training-data curation, fine-tuning surface, agent loop, evaluation harness.
+```
+src/lib/copilot/
+  tool-registry.ts        defineTool / schemas / parsers / coercion / prompt rendering / JSON Schema export
+  tools.ts                every built-in tool (~21 of them as of #264)
+  system-prompt.ts        COPILOT_SYSTEM_PROMPT — shared between route + eval (extracted in #302)
+  trace-logger.ts         logTurnTrace + hashPrompt + newConversationId + resolveActiveDataset (#310)
+  conversation-window.ts  pruneConversation(messages, limit=12) — sliding window (#331)
+  analytics.ts            summarize(rows) — pure aggregator (#332)
+  eval/
+    types.ts              TestCase / EvalResult / AssertionResult shapes
+    assertions.ts         pure-function predicates (toolCallMatches, checkResponseText, …)
+    runner.ts             streamText + parse via registry + score → EvalReport
+    cases/seed.ts         20 seed cases + graph fixtures
+    case-snippet.ts       buildCaseSnippet — pure fn that produces the TS literal (#324)
+    README.md             how to run, how to add a case, limits
 
-## Scope summary (out — route elsewhere)
+src/lib/
+  copilot-actions.ts      thin compat shim — parseActions / processLlmActions / processLlmActionsWithTrace
+  copilot-context.ts      serializeGraphContext — system-prompt builder, calls renderToolsForPrompt()
+  copilot-engine.ts       streamLlmQuery — server-routed for Anthropic/Gemini, browser-direct for Ollama
+  llm-providers.ts        LLMProvider type + PROVIDER_MODELS catalog
 
-- **Engine state itself** (graph metadata, feed counts, Tarski violations, ΩF overlays) → owned by **TARSKI** / **SPIRTES** / **PEARL** / **PARETO**. This session only consumes via `summarizeEngineState` (`src/lib/engine-state-summary.ts`).
-- **Chat panel chrome** (layout, scrolling, message bubbles, input affordances) → **UX & Onboarding**.
-- **Canvas filtering visuals** (how isolated nodes are visually emphasized, how the rest fades) → **Rendering**. This session decides *which* nodes are isolated; Rendering decides *how* the filter looks.
-- **Auth / API gating / rate limits on `/api/copilot`** → **Platform**.
+src/app/api/copilot/
+  route.ts                POST — Vercel AI SDK streamText, provider switch in resolveModel
+  trace/route.ts          POST — validate + insert copilot_traces (lazy-inits service-role client)
+  traces/route.ts         GET  — RLS-filtered list of user's recent turns (#315)
+  traces/analytics/route.ts  GET — RLS-filtered aggregations (#332)
+
+src/components/
+  SystemCopilot.tsx           chat UI + trace-capture wiring + window prune + picker
+  CopilotTraceHistory.tsx     panel with [LIST | STATS] tabs (#315 + #332)
+  CopilotTraceStats.tsx       aggregates view (#332)
+  CopilotEvalCaseExporter.tsx + EVAL CASE form (#324)
+
+scripts/
+  eval-copilot.ts         CLI: npm run eval:copilot [--provider X --model Y --tag T --json out.json]
+
+.github/workflows/
+  copilot-eval.yml        Path-filtered CI gate (#319)
+
+supabase-copilot-traces.sql   migration (already run in production)
+```
+
+## Scope (in)
+
+- **Tool registry + new tools** — anything that adds, removes, or changes a `defineTool` registration in `src/lib/copilot/tools.ts`.
+- **System prompt composition** — section ordering, what's elided when context is tight, how engine state is summarized for the model. `serializeGraphContext` and the static `COPILOT_SYSTEM_PROMPT` both live here.
+- **Wire format + parser** — the `<<<ACTION:name:k=v>>>` text format, the kv parser, the registry's coercion + validation layer.
+- **Trace store + analytics** — schema, ingestion route, read routes, RLS, aggregations. The DDL lives in `supabase-copilot-traces.sql`.
+- **Eval harness** — seed cases, runner, assertion shapes, CI gate, the "+ EVAL CASE" exporter.
+- **Conversation memory** — currently a sliding window (#331); future summarization or retrieval-augmented memory lives here.
+- **LLM provider plumbing** — `resolveModel` in the route, the model picker UI, `LLMProvider` type.
+- **Eventual hybrid LLM/agent** — when this session matures, it owns the in-house model: training-data curation, fine-tuning surface, agent loop, eval harness extensions.
+
+## Scope (out — route elsewhere)
+
+- **Engine state itself** (graph metadata, feed counts, Tarski violations, ΩF overlays) → owned by **TARSKI** / **SPIRTES** / **PEARL** / **PARETO**. This session consumes via `summarizeEngineState` only.
+- **Chat panel chrome** (layout, scrolling, message bubbles, input affordances, autocomplete) → **UX & Onboarding**. The copilot session writes to `SystemCopilot.tsx` only for behavior that's logically part of the copilot (trace capture, prompt assembly, picker wiring).
+- **Canvas filtering visuals** (how isolated nodes look dimmed) → **Rendering**.
+- **Auth / API gating / rate limits** → **Platform**.
 - **Domain-specific axiom or graph data** → respective data sessions.
 
-## Boundary clarifications
+## How to extend (quick reference for future agents)
 
-- **Engine context provision**: TARSKI ships `summarizeEngineState`. This session decides how that summary is rendered into the prompt and which parts get elided when context budget is tight.
-- **Action execution**: store mutations (`setSelectedNode`, `severEdge`, `addShock`, etc.) are owned by their respective engine/UI sessions. This session owns the *router* that dispatches to them.
-- **Snapshot mechanics**: shared with PEARL/PARETO/TARSKI via the System State Snapshot schema; agree on a common schema rather than diverging.
-- **System prompt vs engine context**: system prompt (how the model should behave, what tools it has) lives here. Engine context (current graph state) is composed by `serializeGraphContext` here but sourced from engine helpers.
+### Add a new tool
 
-## Anchor files
+1. Edit `src/lib/copilot/tools.ts`. Call `defineTool({ name, description, params, handler, ... })`.
+2. The system prompt picks it up automatically via `renderToolsForPrompt()`.
+3. Add an eval case in `src/lib/copilot/eval/cases/seed.ts` exercising it.
+4. Run `npm run eval:copilot` locally to confirm Gemini picks it up.
 
-- `src/lib/copilot-context.ts` — composes the prompt sent to the LLM. Already injects `=== ENGINE STATE SNAPSHOT ===`, `=== GRAPH METADATA ===`, `=== SELECTED NODE ===` (when a node is clicked).
-- `src/lib/copilot-actions.ts` — action parser + executor. 14 action types live here (`select_node`, `add_shock`, `sever_edge`, `set_domains`, `solve_interdiction`, etc.). Parser is regex-based and single-arg — needs upgrade for multi-arg tools.
-- `src/lib/copilot-engine.ts` — copilot's domain knowledge / reasoning helpers.
-- `src/lib/athena-copilot-engine.ts` — Athena dataset variant.
-- `src/lib/llm-providers.ts` — provider abstraction (Claude API, etc.).
-- `src/app/api/copilot/route.ts` — the API endpoint the chat UI POSTs to.
-- `src/components/SystemCopilot.tsx` — the chat UI surface (chrome owned by UX, but this session writes to it).
-- `src/lib/engine-state-summary.ts` — TARSKI-owned helper; consumed read-only.
+### Add an eval case
 
-## Notes on current state
+1. Either hand-edit `src/lib/copilot/eval/cases/seed.ts`, or
+2. Open the trace browser (⧉) in the chat → find a representative turn → click **+ EVAL CASE** → copy snippet → paste into `seed.ts`.
+3. Run `npm run eval:copilot` to validate locally.
+4. The CI gate (`.github/workflows/copilot-eval.yml`) runs the full set on every PR touching the copilot surface.
 
-- The action mechanism (`<<<ACTION:type:param>>>`) works but is single-string and brittle. Multi-arg tools (e.g. `isolate_nodes(["sanctions", "iran"])`) need either a richer parser or a JSON payload format.
-- The system prompt is composed in `serializeGraphContext` and is well-structured (sections, ordering, deterministic) — this is a strong foundation for tool-use.
-- The copilot already routes to live engine state (PR #215 + #217). It does **not** yet have node-selection / isolation by query — clicking a node is the only way to deepen context today.
-- LLM provider is configurable; Anthropic SDK is the current path. Prompt caching is not yet wired.
+### Change the default provider
 
-## Open follow-ups
+Don't. See "Defaults & invariants" above. If you genuinely need to, the change is:
+1. `useApexStore.ts` initial `llmProvider` value.
+2. Update the Defaults & invariants section here so future agents see the new rule.
+3. Tell the user — it's a behavioral change, not a code refactor.
 
-1. **Tool-use scaffold + `isolate_nodes` (first PR)** — extend the action format from `<<<ACTION:type:param>>>` to a multi-arg form (proposal: `<<<ACTION:type:JSON_PAYLOAD>>>`) while keeping the existing 14 actions backward-compatible. Add `isolate_nodes` action that takes either a query string or `ids[]`, filters `graphData` to the matching subset, and tells Rendering to emphasize them. Update the system prompt to teach the LLM when to call it ("when the user names a topic, theme, or set of entities, isolate the matching nodes before answering").
-2. **Intent-routing prompt design** — write the section of the system prompt that lists available tools, when to call each, and example invocations. Today the LLM emits actions ad-hoc; with a richer vocabulary we need explicit tool docs in the prompt.
-3. **Conversation memory** — currently each turn rebuilds context from scratch. Decide what persists across turns (prior tool calls, isolated subgraph, mentioned entities) and how it's surfaced.
-4. **Prompt caching** — Anthropic prompt-caching on the static portion of the system prompt (engine context changes per turn, but the tool docs and behavior rules don't). Lowers cost + latency.
-5. **Evaluation harness** — once the tool vocabulary stabilizes, a small set of natural-language inputs → expected tool-call traces, run on PR.
-6. **Hybrid LLM/agent (long-term)** — own-model surface. Out of scope until the tool-use vocabulary is mature; flagged here as the session's stated end-state.
+### Add a new provider
+
+1. Install the `@ai-sdk/<provider>` adapter.
+2. Add a branch to `resolveModel` in `src/app/api/copilot/route.ts`.
+3. Add the provider's models to `PROVIDER_MODELS` in `src/lib/llm-providers.ts`.
+4. Add the provider option to the picker in `SystemCopilot.tsx` (mirror the existing GEMINI / CLAUDE / OLLAMA pattern).
+
+## Open follow-ups (priority-ordered)
+
+1. **Native `tool_use` migration (PR3.3)** — held. Wire format would change from text regex to `tool_use` blocks for providers that support them; text format stays as the fallback for Ollama / older models. Marginal upside (slightly better tool selection on frontier models, structured arg streaming) at high refactor cost. Revisit if production traces start showing tool-selection errors that native blocks would fix.
+2. **Distillation (PR5)** — gated on traces ≥ 10K + eval set ≥ 30 cases. Toolchain: Unsloth → Llama 3.1 8B (or Qwen 3 14B) fine-tuned on Claude/Gemini traces from this platform → vLLM serving. Cloud H100 rentals (Lambda / RunPod / Modal). Not actionable until trace volume gets there.
+3. **Multi-shot stability sampling in the eval runner** — Gemini at temperature 0 is empirically not fully deterministic (observed during seed expansion). The CI gate has a single retry to absorb that; a more principled fix is N-shot sampling with a stability % reported alongside pass rate.
+4. **Conversation memory upgrade** — current implementation is a sliding window (#331). When traces show users hitting deep coherent conversations that suffer from dropped context, swap the window for LLM-generated "earlier in this conversation, X happened" summarization. Further: per-user retrieval index built off `copilot_traces` for cross-conversation memory.
+5. **Prompt caching** — Anthropic's prompt-cache headers on the static portion of the system prompt (tool docs + behavior rules, ~2KB). Lowers cost + latency on the Claude path. Only matters when usage on Claude is meaningful.
 
 ## Cross-session etiquette
 
-- Every new tool that mutates engine state must be co-designed with the owning engine session. This session writes the router and the prompt; the engine session writes the store mutator and its invariants.
+- Every new tool that mutates engine state must be co-designed with the owning engine session. This session writes the router + the prompt; the engine session writes the store mutator and its invariants.
 - If a request asks for engine-state expansion (more Tarski axioms, more feeds, new ΩF metric), route to TARSKI / data sessions. This session only consumes engine state via `summarizeEngineState`.
-- If a request asks for chat-panel UX (bubble layout, animations, message styling), route to UX & Onboarding.
+- If a request asks for chat-panel UX (bubble layout, animations, message styling), route to UX & Onboarding. SystemCopilot.tsx is co-owned at the file level — this session edits the trace-capture, prompt-assembly, and picker logic; UX edits the layout, autocomplete, and visual chrome.
 
 ## Stated end-state goal
 
-Users drive the entire platform by natural language. Typing "show me sanctioned entities exposed to Iranian crude" isolates the right subgraph, surfaces the relevant Tarski violations, and explains the cascade — without the user touching any panel chrome. The copilot is the linguistic cortex; the engine sessions are the substrate.
+Users drive the entire platform by natural language. Typing "show me sanctioned entities exposed to Iranian crude" isolates the right subgraph, surfaces the relevant Tarski violations, and explains the cascade — without the user touching any panel chrome. The copilot is the linguistic cortex; the engine sessions are the substrate. The eval harness keeps the model honest. The trace store keeps a record we can replay, analyze, and eventually distill into a self-hosted model.

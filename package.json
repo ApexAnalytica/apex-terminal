@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "eval:copilot": "tsx scripts/eval-copilot.ts"
+    "eval:copilot": "tsx scripts/eval-copilot.ts",
+    "check:feeds": "tsx scripts/check-feed-health.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.76",

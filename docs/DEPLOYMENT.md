@@ -56,6 +56,21 @@ The application expects the following variables. Every single one must be set in
 
 `.env.local` at the repo root holds the same variables for `npm run dev`. This file is gitignored. To bring a new engineer up, the platform team copies the current Production values via the Vercel dashboard and pastes them into `.env.local` on the new laptop. `EIA_API_KEY` is the only optional entry — the EIA-fed feeds fall back to mock data when it is unset.
 
+A committed `.env.example` at the repo root documents which keys to set and where to register for each. New engineers `cp .env.example .env.local` and fill in the values.
+
+### 2.1a Verifying a feed key took effect
+
+After rotating or first-setting a feed key on Vercel (e.g. `FRED_API_KEY`), trigger a redeploy and then run:
+
+```bash
+npm run check:feeds            # checks prod (manifold.apexanalytica.co)
+BASE=http://localhost:3000 npm run check:feeds    # checks local dev
+```
+
+The script hits `/api/feeds/fred/series` and `/api/feeds/world-bank/series`, parses the response, and prints a `LIVE` / `MOCK` / `MISS` verdict for every series in `FRED_SERIES[]` and `WB_SERIES[]`. Exits non-zero if any series is missing from the response (deploy-lag indicator) or if zero series are live.
+
+The most common failure mode is **all-FRED-mock** — that means `FRED_API_KEY` isn't set in the environment the build is running under. Set it on the matching Vercel environment (Production / Preview / Development) and redeploy.
+
 ### 2.2 Scoping rules
 
 - `NEXT_PUBLIC_*` variables are embedded at build time. Changing one requires a **new deploy**; a redeploy of an existing build will not pick up a new value.

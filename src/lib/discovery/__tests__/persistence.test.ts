@@ -16,6 +16,7 @@ import {
   listRuns,
   setServiceClientForTesting,
   isPersistenceAvailable,
+  probeDiscoveryTable,
 } from "../persistence";
 import type { DiscoveryRun } from "../run-types";
 
@@ -258,5 +259,108 @@ describe("persistence — service connected", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].id).toBe("run-A");
     expect(runs[0].cohortSourceHash).toBe("hashA");
+  });
+});
+
+// ─── probeDiscoveryTable — deploy-state diagnostic ──────────────────
+
+/**
+ * Fake supabase client whose `select("*", { count, head })` resolves
+ * with the configured probe result. Used by the probe tests below.
+ * Kept separate from the main fake because the count+head variant
+ * resolves directly (the builder is await-able) rather than chaining
+ * through .order().limit().
+ */
+function makeProbeServiceClient(probeResult: {
+  count?: number | null;
+  error?: { message: string } | null;
+}) {
+  const selectSpy = vi.fn().mockResolvedValue({
+    count: probeResult.count ?? null,
+    error: probeResult.error ?? null,
+    data: null,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fake: any = {
+    from: vi.fn().mockReturnValue({
+      select: selectSpy,
+    }),
+  };
+  return { fake, selectSpy };
+}
+
+describe("probeDiscoveryTable", () => {
+  beforeEach(() => {
+    setServiceClientForTesting(null);
+  });
+  afterEach(() => {
+    setServiceClientForTesting(null);
+  });
+
+  it("envWired=false / tableExists=null / rowCount=null when no service client", async () => {
+    const r = await probeDiscoveryTable();
+    expect(r.envWired).toBe(false);
+    expect(r.tableExists).toBeNull();
+    expect(r.rowCount).toBeNull();
+    expect(r.error).toBeNull();
+  });
+
+  it("envWired=true / tableExists=true / rowCount=N on successful probe", async () => {
+    const { fake, selectSpy } = makeProbeServiceClient({ count: 42 });
+    setServiceClientForTesting(fake);
+
+    const r = await probeDiscoveryTable();
+    expect(r.envWired).toBe(true);
+    expect(r.tableExists).toBe(true);
+    expect(r.rowCount).toBe(42);
+    expect(r.error).toBeNull();
+
+    // Verify the cheap-count shape: head:true + count:exact so no
+    // rows are serialised.
+    expect(selectSpy).toHaveBeenCalledWith("*", {
+      count: "exact",
+      head: true,
+    });
+  });
+
+  it("envWired=true / tableExists=false / error=<msg> when SELECT fails", async () => {
+    // What happens before the SQL migration has been run: the table
+    // doesn't exist, supabase-js returns a 42P01 / 'relation does not
+    // exist' error.
+    const { fake } = makeProbeServiceClient({
+      error: { message: 'relation "public.discovery_runs" does not exist' },
+    });
+    setServiceClientForTesting(fake);
+
+    const r = await probeDiscoveryTable();
+    expect(r.envWired).toBe(true);
+    expect(r.tableExists).toBe(false);
+    expect(r.rowCount).toBeNull();
+    expect(r.error).toContain("does not exist");
+  });
+
+  it("rowCount=0 reads cleanly on an empty table", async () => {
+    // The 'just deployed' state — table exists, no runs yet.
+    const { fake } = makeProbeServiceClient({ count: 0 });
+    setServiceClientForTesting(fake);
+
+    const r = await probeDiscoveryTable();
+    expect(r.envWired).toBe(true);
+    expect(r.tableExists).toBe(true);
+    expect(r.rowCount).toBe(0);
+  });
+
+  it("never throws on a client that explodes mid-call", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exploding: any = {
+      from: () => {
+        throw new Error("network died");
+      },
+    };
+    setServiceClientForTesting(exploding);
+    const r = await probeDiscoveryTable();
+    expect(r.envWired).toBe(true);
+    expect(r.tableExists).toBe(false);
+    expect(r.error).toContain("network died");
   });
 });

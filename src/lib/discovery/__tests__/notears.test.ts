@@ -360,6 +360,85 @@ describe("notearsAlgorithm — output shape", () => {
 //   2. The acyclicity convergence holds under every permutation.
 //   3. Edge magnitudes for surviving edges are bounded.
 
+// ─── L-BFGS convergence behaviour ─────────────────────────────────────
+//
+// NOTEARS v0.2 switched the inner loop from plain proximal-gradient to
+// L-BFGS-B on the (W⁺, W⁻) split (the same approach the reference
+// Python notears package uses with scipy.optimize.minimize). These
+// tests assert the resulting per-iteration efficiency: L-BFGS reaches
+// acyclicity in far fewer inner iterations than the previous proximal
+// loop, which needed ~200 to hit the same tolerance.
+
+describe("notearsAlgorithm — L-BFGS convergence", () => {
+  it("achieves acyclicity (h(W) < 5e-3) with maxInnerIter=20", () => {
+    // With the previous proximal-gradient inner loop, maxInnerIter=20
+    // was insufficient to drive h(W) below tolerance on this DGP.
+    // L-BFGS uses curvature information from the (s, y) history and
+    // converges in roughly an order of magnitude fewer inner steps.
+    const cohort = buildCohort({
+      variableIds: ["x", "y", "z"],
+      generate: (_, rand) => {
+        const x = gauss(rand);
+        const y = 0.9 * x + 0.3 * gauss(rand);
+        const z = 0.9 * y + 0.3 * gauss(rand);
+        return { x, y, z };
+      },
+      nSubjects: 4,
+      nSteps: 400,
+      seed: 800,
+    });
+    const result = notearsAlgorithm.run(cohort, { maxInnerIter: 20 });
+    const finalH = (result.diagnostics as { finalH: number }).finalH;
+    expect(Math.abs(finalH)).toBeLessThan(5e-3);
+  });
+
+  it("recovers the chain adjacency at maxInnerIter=20", () => {
+    const cohort = buildCohort({
+      variableIds: ["x", "y", "z"],
+      generate: (_, rand) => {
+        const x = gauss(rand);
+        const y = 0.9 * x + 0.3 * gauss(rand);
+        const z = 0.9 * y + 0.3 * gauss(rand);
+        return { x, y, z };
+      },
+      nSubjects: 4,
+      nSteps: 400,
+      seed: 801,
+    });
+    const result = notearsAlgorithm.run(cohort, { maxInnerIter: 20 });
+    const xy =
+      findEdge(result.edges, "x", "y") || findEdge(result.edges, "y", "x");
+    const yzOrXz =
+      findEdge(result.edges, "y", "z") ||
+      findEdge(result.edges, "z", "y") ||
+      findEdge(result.edges, "x", "z") ||
+      findEdge(result.edges, "z", "x");
+    expect(xy).toBeDefined();
+    expect(yzOrXz).toBeDefined();
+  });
+
+  it("respects lbfgsMemory parameter (m=3 still converges on chain)", () => {
+    // The L-BFGS memory size m caps the (s, y) history. Smaller m means
+    // a coarser inverse-Hessian approximation but lower per-iter cost.
+    // m=3 is on the low end — verify it still drives acyclicity.
+    const cohort = buildCohort({
+      variableIds: ["x", "y", "z"],
+      generate: (_, rand) => {
+        const x = gauss(rand);
+        const y = 0.9 * x + 0.3 * gauss(rand);
+        const z = 0.9 * y + 0.3 * gauss(rand);
+        return { x, y, z };
+      },
+      nSubjects: 4,
+      nSteps: 400,
+      seed: 802,
+    });
+    const result = notearsAlgorithm.run(cohort, { lbfgsMemory: 3 });
+    const finalH = (result.diagnostics as { finalH: number }).finalH;
+    expect(Math.abs(finalH)).toBeLessThan(5e-3);
+  });
+});
+
 describe("notearsAlgorithm — varsortability stress (Reisach et al. 2021)", () => {
   function buildChainCohort(seed: number): Cohort {
     return buildCohort({

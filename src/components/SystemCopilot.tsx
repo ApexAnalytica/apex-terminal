@@ -18,6 +18,7 @@ import {
   resolveActiveDataset,
   type TurnTrace,
 } from "@/lib/copilot/trace-logger";
+import { pruneConversation } from "@/lib/copilot/conversation-window";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
@@ -142,6 +143,10 @@ export default function SystemCopilot() {
   const [showDatasets, setShowDatasets] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
+  // Number of older turns dropped from the prompt window on the
+  // most recent send. Drives a small hint in the chat input area
+  // so the user knows we're not sending the full history.
+  const [truncatedTurns, setTruncatedTurns] = useState<number>(0);
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -393,11 +398,16 @@ export default function SystemCopilot() {
       });
 
       try {
-        // Build messages list including the new user message
-        const allMessages = [
+        // Build messages list including the new user message, then
+        // prune to a sliding window. Older turns drop out so prompts
+        // stay lean as conversations grow. droppedCount drives the
+        // small UI hint below the chat input.
+        const fullHistory = [
           ...copilotMessages.filter((m) => m.role !== "system"),
           { id: "temp", role: "user" as const, content: userContent, timestamp: Date.now() },
         ];
+        const { kept: allMessages, droppedCount } = pruneConversation(fullHistory);
+        setTruncatedTurns(droppedCount);
 
         // Enrich system context with snapshot data if available
         let snapshotContext = snapshotHistory.length > 0
@@ -1069,6 +1079,15 @@ export default function SystemCopilot() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Truncation hint — shown when older turns dropped from the
+            prompt window. Surfaces so the user knows we're not
+            sending the entire history. */}
+        {truncatedTurns > 0 && (
+          <div className="mt-1.5 text-[8px] font-mono tracking-wider text-text-muted/70">
+            {truncatedTurns} earlier turn{truncatedTurns === 1 ? "" : "s"} omitted from context
+          </div>
+        )}
       </div>
 
       {/* Messages + Datasets overlay container */}

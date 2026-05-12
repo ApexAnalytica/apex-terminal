@@ -2,21 +2,78 @@
 // Tests Next.js server-side API routes which import Node built-ins (crypto).
 // happy-dom externalizes those as browser stubs and the route module fails to
 // load in Vercel's build env.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/discovery/run/route";
 import { GET } from "@/app/api/discovery/algorithms/route";
+import {
+  setAuthClientForTesting,
+  generateApiKey,
+  API_KEY_HEADER,
+} from "../api-key-auth";
 import type { Cohort } from "../cohort-types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
+
+// Auth fake: a Supabase client mock that accepts any valid-shape key
+// as a known customer. Routes are gated by requireApiKey(req); tests
+// inject this so the auth check passes without a real DB. See
+// api-key-auth.test.ts for the standalone auth-module coverage.
+function makeAcceptingAuthClient() {
+  const maybeSingle = vi.fn().mockResolvedValue({
+    data: {
+      id: "test-key-id",
+      customer_id: "test-customer",
+      key_prefix: "apx_live_TestPfx",
+      scopes: ["discovery:read", "discovery:write"],
+      revoked_at: null,
+    },
+    error: null,
+  });
+  const updateThenable = {
+    then: (
+      resolve: () => void,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _reject?: (e: unknown) => void,
+    ) => {
+      resolve();
+      return { catch: () => {} };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const queryBuilder: any = {
+    select: () => queryBuilder,
+    eq: () => queryBuilder,
+    maybeSingle,
+    update: () => ({ eq: () => updateThenable }),
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { from: vi.fn().mockReturnValue(queryBuilder) } as any;
+}
+
+// One key generated for the whole file. The auth mock above returns
+// the same fixed customer for any well-formed key, so the actual
+// bytes don't matter as long as it passes the prefix-length check.
+const TEST_KEY = generateApiKey().key;
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { [API_KEY_HEADER]: TEST_KEY, ...extra };
+}
 
 function reqJson(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/discovery/run", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
+    headers: authHeaders({ "content-type": "application/json" }),
   });
 }
+
+beforeEach(() => {
+  setAuthClientForTesting(makeAcceptingAuthClient());
+});
+afterEach(() => {
+  setAuthClientForTesting(null);
+});
 
 function fixtureCohort(opts: {
   nSubjects: number;
@@ -71,11 +128,25 @@ function fixtureCohort(opts: {
 
 describe("GET /api/discovery/algorithms", () => {
   it("returns the catalog with at least lag-correlation registered", async () => {
-    const res = await GET();
+    const res = await GET(
+      new Request("http://localhost/api/discovery/algorithms", {
+        headers: authHeaders(),
+      }),
+    );
     expect(res.status).toBe(200);
     const data = (await res.json()) as { algorithms: { id: string; version: string }[] };
     expect(Array.isArray(data.algorithms)).toBe(true);
     expect(data.algorithms.find((a) => a.id === "lag-correlation")).toBeDefined();
+  });
+
+  it("returns 401 when the API key header is missing", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/discovery/algorithms"),
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.error).toBe("unauthorized");
+    expect(body.reason).toBe("missing-header");
   });
 });
 
@@ -153,10 +224,20 @@ describe("POST /api/discovery/run", () => {
     const req = new NextRequest("http://localhost/api/discovery/run", {
       method: "POST",
       body: "{ not json",
-      headers: { "content-type": "application/json" },
+      headers: authHeaders({ "content-type": "application/json" }),
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  it("returns 401 when the API key header is missing on POST /run", async () => {
+    const req = new NextRequest("http://localhost/api/discovery/run", {
+      method: "POST",
+      body: JSON.stringify({ algorithm: { id: "lag-correlation" } }),
+      headers: { "content-type": "application/json" }, // intentional: no API key
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
   });
 
   it("returns 400 when algorithm.id is missing", async () => {

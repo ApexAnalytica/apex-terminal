@@ -232,3 +232,84 @@ export async function listRuns(
 export function isPersistenceAvailable(): boolean {
   return getService() !== null;
 }
+
+export interface DiscoveryTableProbe {
+  /** Env is wired (URL + service-role key are real, not stub). */
+  envWired: boolean;
+  /**
+   * Result of a `select count(*)` against `discovery_runs`. null when
+   * env isn't wired (no probe attempted). Otherwise true if the
+   * SELECT succeeded; false if the table doesn't exist or any other
+   * Supabase error fired.
+   */
+  tableExists: boolean | null;
+  /** Row count returned by the SELECT. null when no probe was made. */
+  rowCount: number | null;
+  /**
+   * Supabase error message if the probe failed. Useful for diagnosing
+   * "SQL never ran" (table-missing error) vs. permission / RLS issues
+   * (different error string).
+   */
+  error: string | null;
+}
+
+/**
+ * Deploy-state diagnostic: probes the `discovery_runs` table with a
+ * cheap `select count(*)`. Distinguishes between three states the
+ * existing `isPersistenceAvailable()` can't:
+ *
+ *   1. envWired=false                          → env vars are stub or
+ *                                                 missing (CI / unset)
+ *   2. envWired=true,  tableExists=false       → real env but SQL
+ *                                                 schema has not been
+ *                                                 applied yet — run
+ *                                                 supabase-discovery-runs.sql
+ *   3. envWired=true,  tableExists=true        → fully deployed
+ *
+ * Used by `GET /api/discovery/health` so the operator can verify the
+ * deploy state without poking the Supabase dashboard. Cheap enough to
+ * call frequently — `count(*)` over an index is sub-millisecond on an
+ * empty table and bounded by row-count on a full one (we expect this
+ * table to stay small; if it grows past 1M rows we'll switch to a
+ * head-only query).
+ */
+export async function probeDiscoveryTable(): Promise<DiscoveryTableProbe> {
+  const service = getService();
+  if (!service) {
+    return {
+      envWired: false,
+      tableExists: null,
+      rowCount: null,
+      error: null,
+    };
+  }
+  try {
+    // Supabase's `count: 'exact', head: true` returns the count
+    // without serialising rows. `head: true` means no body — just
+    // the Content-Range header — so this is the cheapest probe shape.
+    const { count, error } = await service
+      .from("discovery_runs")
+      .select("*", { count: "exact", head: true });
+    if (error) {
+      return {
+        envWired: true,
+        tableExists: false,
+        rowCount: null,
+        error: error.message,
+      };
+    }
+    return {
+      envWired: true,
+      tableExists: true,
+      rowCount: count ?? 0,
+      error: null,
+    };
+  } catch (e) {
+    return {
+      envWired: true,
+      tableExists: false,
+      rowCount: null,
+      error: `unexpected: ${(e as Error).message}`,
+    };
+  }
+}

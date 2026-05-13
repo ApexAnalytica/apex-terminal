@@ -149,6 +149,19 @@ export default function SystemCopilot() {
   const [truncatedTurns, setTruncatedTurns] = useState<number>(0);
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
+  // ─── Voice conversation mode ──────────────────────────────
+  // When `voiceMode` is true, the chat runs hands-free:
+  //   listening → processing → speaking → listening (auto-loop)
+  // Stage drives the visual indicator and the auto-restart wiring
+  // around speech recognition + TTS.
+  const [voiceMode, setVoiceMode] = useState(false);
+  type VoiceStage = "idle" | "listening" | "processing" | "speaking";
+  const [voiceStage, setVoiceStage] = useState<VoiceStage>("idle");
+  // Refs the speech handlers read to avoid stale closures.
+  const voiceModeRef = useRef(false);
+  const voiceStageRef = useRef<VoiceStage>("idle");
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
+  useEffect(() => { voiceStageRef.current = voiceStage; }, [voiceStage]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
@@ -161,6 +174,9 @@ export default function SystemCopilot() {
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenMsgRef = useRef<string | null>(null);
+  // Voice-mode TTS callback restarts listening — needs a ref so we
+  // don't have to thread startListening through useEffect deps.
+  const startListeningRef = useRef<(() => void) | null>(null);
   // Conversation identity for trace logging. Stable across the
   // session; resets when the chat is cleared. turn_index is a
   // monotonically increasing counter so we can replay traces in
@@ -209,8 +225,11 @@ export default function SystemCopilot() {
   }, []);
 
   // ─── Voice Output (Text-to-Speech) ─────────────────────
-  const speakText = useCallback((text: string) => {
-    if (!ttsEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+  const speakText = useCallback((text: string, onFinish?: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onFinish?.();
+      return;
+    }
     window.speechSynthesis.cancel();
 
     const clean = text
@@ -220,7 +239,10 @@ export default function SystemCopilot() {
       .replace(/\n/g, ", ")
       .trim();
 
-    if (!clean) return;
+    if (!clean) {
+      onFinish?.();
+      return;
+    }
 
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.rate = 0.95;
@@ -234,20 +256,44 @@ export default function SystemCopilot() {
       ?? voices.find((v) => v.lang.startsWith("en"));
     if (preferred) utterance.voice = preferred;
 
-    window.speechSynthesis.speak(utterance);
-  }, [ttsEnabled]);
+    // Hooks: onend fires when the utterance finishes OR is cancelled.
+    // Voice-mode uses onFinish to auto-restart listening.
+    utterance.onend = () => onFinish?.();
+    utterance.onerror = () => onFinish?.();
 
-  // Auto-speak assistant responses when TTS is enabled
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  // Auto-speak assistant responses when TTS or voiceMode is on.
+  // In voiceMode, the onFinish hook auto-restarts listening so the
+  // chat loops listening → processing → speaking → listening.
   useEffect(() => {
-    if (!ttsEnabled) return;
+    if (!ttsEnabled && !voiceMode) return;
     const lastMsg = copilotMessages[copilotMessages.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.content) return;
     if (lastMsg.id === lastSpokenMsgRef.current) return;
     if (isLlmStreaming) return;
 
     lastSpokenMsgRef.current = lastMsg.id;
-    speakText(lastMsg.content);
-  }, [copilotMessages, ttsEnabled, isLlmStreaming, speakText]);
+    if (voiceMode) {
+      setVoiceStage("speaking");
+      speakText(lastMsg.content, () => {
+        // Only restart listening if voice mode is still on (user
+        // may have toggled it off mid-speech).
+        if (voiceModeRef.current) {
+          setVoiceStage("listening");
+          // Defer to next tick so any state mutations land first.
+          setTimeout(() => {
+            if (voiceModeRef.current) startListeningRef.current?.();
+          }, 50);
+        } else {
+          setVoiceStage("idle");
+        }
+      });
+    } else {
+      speakText(lastMsg.content);
+    }
+  }, [copilotMessages, ttsEnabled, voiceMode, isLlmStreaming, speakText]);
 
   // Load voices (some browsers load them async)
   useEffect(() => {
@@ -601,12 +647,24 @@ export default function SystemCopilot() {
       return;
     }
 
+    // If TTS is mid-utterance and the user is starting to talk,
+    // cut the assistant off — feels more natural than waiting for
+    // the AI to finish before you can interrupt.
+    if (typeof window !== "undefined" && window.speechSynthesis?.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onstart = () => setIsListening(true);
+    let submitted = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      if (voiceModeRef.current) setVoiceStage("listening");
+    };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       let transcript = "";
@@ -617,6 +675,7 @@ export default function SystemCopilot() {
 
       if (event.results[event.results.length - 1].isFinal) {
         setInput(transcript);
+        submitted = true;
         setTimeout(() => {
           const trimmed = transcript.trim();
           if (trimmed) {
@@ -627,6 +686,7 @@ export default function SystemCopilot() {
               timestamp: Date.now(),
             };
             addCopilotMessage(userMsg);
+            if (voiceModeRef.current) setVoiceStage("processing");
             if (isLlmActive) {
               handleStreamingQuery(trimmed);
             } else {
@@ -634,22 +694,75 @@ export default function SystemCopilot() {
               responses.forEach((msg) => addCopilotMessage(msg));
             }
             setInput("");
+          } else if (voiceModeRef.current) {
+            // Empty utterance but voice mode is on — restart so the
+            // user can try again without re-toggling.
+            setTimeout(() => {
+              if (voiceModeRef.current) startListeningRef.current?.();
+            }, 100);
           }
         }, 100);
       }
     };
 
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => {
+      setIsListening(false);
+      // In voice mode, recover from transient errors by restarting
+      // unless the user explicitly toggled voice mode off.
+      if (voiceModeRef.current) {
+        setTimeout(() => {
+          if (voiceModeRef.current && voiceStageRef.current !== "processing") {
+            startListeningRef.current?.();
+          }
+        }, 500);
+      }
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      // If we never got a final result AND voice mode is on, restart.
+      // (Long silences trigger onend without onresult.)
+      if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
+        setTimeout(() => {
+          if (voiceModeRef.current && voiceStageRef.current === "listening") {
+            startListeningRef.current?.();
+          }
+        }, 200);
+      }
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
   }, [addCopilotMessage, isLlmActive, handleStreamingQuery, graphData]);
 
+  // Keep the ref pointing at the latest closure so voiceMode
+  // auto-restart logic can call startListening without circular deps.
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
+
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
     setIsListening(false);
   }, []);
+
+  // ─── Voice-mode toggle ──────────────────────────────────
+  // Single button. When entering, kick off listening; when
+  // exiting, cancel any speech and stop the recognition loop.
+  const toggleVoiceMode = useCallback(() => {
+    const next = !voiceMode;
+    setVoiceMode(next);
+    if (next) {
+      // Cancel any in-flight TTS before starting (clean state).
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setVoiceStage("listening");
+      setTimeout(() => startListeningRef.current?.(), 50);
+    } else {
+      // Tear down cleanly. recognition.stop() will fire onend, but
+      // voiceModeRef is already false so the restart branch skips.
+      recognitionRef.current?.stop();
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setIsListening(false);
+      setVoiceStage("idle");
+    }
+  }, [voiceMode]);
 
   const handleAction = (action: CopilotAction) => {
     const userContent = action.replace(/_/g, " ");
@@ -845,6 +958,28 @@ export default function SystemCopilot() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* Voice conversation mode (hands-free loop) */}
+            <button
+              onClick={toggleVoiceMode}
+              className={`text-[11px] transition-colors p-1 ${
+                voiceMode
+                  ? voiceStage === "listening"
+                    ? "text-accent-cyan animate-pulse"
+                    : voiceStage === "speaking"
+                      ? "text-accent-green"
+                      : voiceStage === "processing"
+                        ? "text-accent-amber"
+                        : "text-accent-cyan"
+                  : "text-text-muted hover:text-accent-cyan"
+              }`}
+              title={
+                voiceMode
+                  ? `Voice Conversation: ${voiceStage}. Click to exit.`
+                  : "Start Voice Conversation (hands-free)"
+              }
+            >
+              {voiceMode ? "🎙️" : "🎤"}
+            </button>
             {/* TTS toggle */}
             <button
               onClick={() => {
@@ -1079,6 +1214,32 @@ export default function SystemCopilot() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Voice-mode stage indicator — shown only when voice
+            conversation mode is active. Lets the user see at a
+            glance whether the chat is waiting on them, processing,
+            or speaking. */}
+        {voiceMode && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[9px] font-mono tracking-wider">
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                voiceStage === "listening"
+                  ? "bg-accent-cyan animate-pulse"
+                  : voiceStage === "processing"
+                    ? "bg-accent-amber animate-pulse"
+                    : voiceStage === "speaking"
+                      ? "bg-accent-green"
+                      : "bg-text-muted/40"
+              }`}
+            />
+            <span className="text-text-muted">
+              VOICE: {voiceStage.toUpperCase()}
+              {voiceStage === "listening" && " (talk now)"}
+              {voiceStage === "processing" && " (thinking)"}
+              {voiceStage === "speaking" && " (you can interrupt)"}
+            </span>
+          </div>
+        )}
 
         {/* Truncation hint — shown when older turns dropped from the
             prompt window. Surfaces so the user knows we're not

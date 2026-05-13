@@ -157,6 +157,11 @@ export default function SystemCopilot() {
   const [voiceMode, setVoiceMode] = useState(false);
   type VoiceStage = "idle" | "listening" | "processing" | "speaking";
   const [voiceStage, setVoiceStage] = useState<VoiceStage>("idle");
+  // Surfaced near the input when set. Cleared on next successful
+  // recognition.onstart. Distinct from voiceStage because "error"
+  // is orthogonal — you can be in 'listening' with a stale error
+  // from a previous retry.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   // Refs the speech handlers read to avoid stale closures.
   const voiceModeRef = useRef(false);
   const voiceStageRef = useRef<VoiceStage>("idle");
@@ -246,14 +251,31 @@ export default function SystemCopilot() {
 
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.rate = 0.95;
-    utterance.pitch = 0.85;
+    utterance.pitch = 1.05;
     utterance.volume = 1;
 
+    // Preference order: British female by named voice → any en-GB
+    // female → any en-GB → any English female → any English.
+    // The named-voice list covers what macOS / Windows / Chrome
+    // typically ship: Kate, Serena, Susan, Hazel are en-GB female.
     const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(
-      (v) => v.name.includes("Daniel") || v.name.includes("Google UK English Male") || v.name.includes("Alex")
-    ) ?? voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("male"))
-      ?? voices.find((v) => v.lang.startsWith("en"));
+    const nameMatches = (v: SpeechSynthesisVoice, ...needles: string[]) =>
+      needles.some((n) => v.name.includes(n));
+    const isFemaleName = (v: SpeechSynthesisVoice) =>
+      v.name.toLowerCase().includes("female") ||
+      nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie", "Fiona", "Tessa", "Karen", "Moira", "Samantha", "Allison", "Ava");
+    const preferred =
+      // First: named en-GB female voices.
+      voices.find((v) => v.lang === "en-GB" && nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie")) ??
+      // Then: any en-GB voice tagged female (Google's "Google UK English Female", Microsoft "Hazel").
+      voices.find((v) => v.lang === "en-GB" && isFemaleName(v)) ??
+      voices.find((v) => v.name.includes("Google UK English Female")) ??
+      // Then: any en-GB voice.
+      voices.find((v) => v.lang === "en-GB") ??
+      // Then: any English female.
+      voices.find((v) => v.lang.startsWith("en") && isFemaleName(v)) ??
+      // Then: any English.
+      voices.find((v) => v.lang.startsWith("en"));
     if (preferred) utterance.voice = preferred;
 
     // Hooks: onend fires when the utterance finishes OR is cancelled.
@@ -662,7 +684,8 @@ export default function SystemCopilot() {
     let submitted = false;
 
     recognition.onstart = () => {
-      /* listening state now reflected via voiceStage */
+      // Clear any stale error from a prior retry — we're listening now.
+      setVoiceError(null);
       if (voiceModeRef.current) setVoiceStage("listening");
     };
 
@@ -705,11 +728,45 @@ export default function SystemCopilot() {
       }
     };
 
-    recognition.onerror = () => {
-      /* listening state now reflected via voiceStage */
-      // In voice mode, recover from transient errors by restarting
-      // unless the user explicitly toggled voice mode off.
-      if (voiceModeRef.current) {
+    recognition.onerror = (event: Event) => {
+      // SpeechRecognitionErrorEvent isn't in lib.dom.d.ts but it
+      // carries an `error` string with the Web Speech API codes
+      // ("not-allowed", "audio-capture", "network", etc).
+      const code = (event as Event & { error?: string }).error ?? "unknown";
+      const permanent =
+        code === "not-allowed" ||
+        code === "service-not-allowed" ||
+        code === "audio-capture";
+
+      const message =
+        code === "not-allowed"
+          ? "Microphone permission denied. Click the lock icon in the address bar to allow microphone access, then click the mic again."
+          : code === "service-not-allowed"
+            ? "Speech recognition service unavailable in this browser."
+            : code === "audio-capture"
+              ? "No microphone detected on this device."
+              : code === "network"
+                ? "Speech recognition needs an internet connection."
+                : code === "no-speech"
+                  ? null // common, not worth surfacing
+                  : code === "aborted"
+                    ? null // we aborted intentionally
+                    : `Speech recognition error: ${code}`;
+
+      if (message) setVoiceError(message);
+
+      if (permanent) {
+        // Hard stop — drop out of voice mode so the user sees the
+        // error + can fix it without an infinite restart loop.
+        setVoiceMode(false);
+        setVoiceStage("idle");
+        return;
+      }
+
+      // Transient: retry from the listening stage (skip if we
+      // already moved to processing — that path is owned by
+      // onresult/handleStreamingQuery).
+      if (voiceModeRef.current && voiceStageRef.current !== "processing") {
         setTimeout(() => {
           if (voiceModeRef.current && voiceStageRef.current !== "processing") {
             startListeningRef.current?.();
@@ -718,7 +775,6 @@ export default function SystemCopilot() {
       }
     };
     recognition.onend = () => {
-      /* listening state now reflected via voiceStage */
       // If we never got a final result AND voice mode is on, restart.
       // (Long silences trigger onend without onresult.)
       if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
@@ -731,7 +787,23 @@ export default function SystemCopilot() {
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    // Guard against InvalidStateError when start() is called too
+    // soon after stop(). Browsers vary on the cooldown — if we
+    // catch it, schedule a retry after a longer delay.
+    try {
+      recognition.start();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Most common: "Failed to execute 'start' on 'SpeechRecognition':
+      // recognition has already started." Wait a beat and retry.
+      if (voiceModeRef.current && msg.toLowerCase().includes("already")) {
+        setTimeout(() => {
+          if (voiceModeRef.current) startListeningRef.current?.();
+        }, 300);
+      } else {
+        setVoiceError(`Couldn't start microphone: ${msg}`);
+      }
+    }
   }, [addCopilotMessage, isLlmActive, handleStreamingQuery, graphData]);
 
   // Keep the ref pointing at the latest closure so voiceMode
@@ -1233,6 +1305,24 @@ export default function SystemCopilot() {
               {voiceStage === "processing" && " (thinking)"}
               {voiceStage === "speaking" && " (you can interrupt)"}
             </span>
+          </div>
+        )}
+
+        {/* Voice error — surfaces recognition failures (mic denied,
+            no mic, network) instead of silently looping. Shown
+            whether voice mode is currently on or already kicked
+            out of voice mode by a permanent error. */}
+        {voiceError && (
+          <div className="mt-1.5 flex items-start gap-1.5 text-[9px] font-mono tracking-wider text-accent-amber">
+            <span className="shrink-0">⚠</span>
+            <span className="flex-1">{voiceError}</span>
+            <button
+              onClick={() => setVoiceError(null)}
+              className="shrink-0 text-text-muted/70 hover:text-foreground"
+              title="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
 

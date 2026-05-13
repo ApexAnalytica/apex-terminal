@@ -147,7 +147,7 @@ export default function SystemCopilot() {
   // most recent send. Drives a small hint in the chat input area
   // so the user knows we're not sending the full history.
   const [truncatedTurns, setTruncatedTurns] = useState<number>(0);
-  const [isListening, setIsListening] = useState(false);
+  // (Old isListening state removed — voiceStage covers it now.)
   const [ttsEnabled, setTtsEnabled] = useState(false);
   // ─── Voice conversation mode ──────────────────────────────
   // When `voiceMode` is true, the chat runs hands-free:
@@ -662,7 +662,7 @@ export default function SystemCopilot() {
     let submitted = false;
 
     recognition.onstart = () => {
-      setIsListening(true);
+      /* listening state now reflected via voiceStage */
       if (voiceModeRef.current) setVoiceStage("listening");
     };
 
@@ -706,7 +706,7 @@ export default function SystemCopilot() {
     };
 
     recognition.onerror = () => {
-      setIsListening(false);
+      /* listening state now reflected via voiceStage */
       // In voice mode, recover from transient errors by restarting
       // unless the user explicitly toggled voice mode off.
       if (voiceModeRef.current) {
@@ -718,7 +718,7 @@ export default function SystemCopilot() {
       }
     };
     recognition.onend = () => {
-      setIsListening(false);
+      /* listening state now reflected via voiceStage */
       // If we never got a final result AND voice mode is on, restart.
       // (Long silences trigger onend without onresult.)
       if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
@@ -738,11 +738,6 @@ export default function SystemCopilot() {
   // auto-restart logic can call startListening without circular deps.
   useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    setIsListening(false);
-  }, []);
-
   // ─── Voice-mode toggle ──────────────────────────────────
   // Single button. When entering, kick off listening; when
   // exiting, cancel any speech and stop the recognition loop.
@@ -759,7 +754,7 @@ export default function SystemCopilot() {
       // voiceModeRef is already false so the restart branch skips.
       recognitionRef.current?.stop();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
-      setIsListening(false);
+      /* listening state now reflected via voiceStage */
       setVoiceStage("idle");
     }
   }, [voiceMode]);
@@ -1494,18 +1489,10 @@ export default function SystemCopilot() {
               autoComplete="off"
             />
           </div>
-          <button
-            onClick={isListening ? stopListening : startListening}
-            disabled={isLlmStreaming}
-            className={`text-[12px] px-1.5 py-1.5 rounded transition-colors disabled:opacity-40 ${
-              isListening
-                ? "text-accent-red bg-accent-red/10 animate-pulse"
-                : "text-text-muted hover:text-accent-cyan hover:bg-accent-cyan/10"
-            }`}
-            title={isListening ? "Stop listening" : "Voice input"}
-          >
-            {isListening ? "\u23F9" : "\uD83C\uDF99"}
-          </button>
+          {/* Voice input lives in the header now (\uD83C\uDFA4 voice mode toggle).
+              The old one-shot dictation button below the input was
+              redundant \u2014 two mic icons, one of which was a mode-toggle
+              and one a push-to-talk, with no visual distinction. */}
           <button
             onClick={handleSubmit}
             disabled={isLlmStreaming}

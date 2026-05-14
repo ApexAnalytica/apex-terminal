@@ -291,29 +291,51 @@ export default function SystemCopilot() {
   // chat loops listening → processing → speaking → listening.
   useEffect(() => {
     if (!ttsEnabled && !voiceMode) return;
-    const lastMsg = copilotMessages[copilotMessages.length - 1];
-    if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.content) return;
-    if (lastMsg.id === lastSpokenMsgRef.current) return;
+
+    // Find the MOST RECENT assistant message — not necessarily the
+    // last message overall. After a turn fires actions, the runtime
+    // appends a "SYS: ACTIONS EXECUTED: ..." message. If we keyed off
+    // the absolute last message, the role check would fail and the
+    // effect would bail, leaving voice mode stuck on "processing".
+    let lastAssistant: CopilotMessage | undefined;
+    for (let i = copilotMessages.length - 1; i >= 0; i--) {
+      if (copilotMessages[i].role === "assistant") {
+        lastAssistant = copilotMessages[i];
+        break;
+      }
+    }
+    if (!lastAssistant) return;
+    if (lastAssistant.id === lastSpokenMsgRef.current) return;
     if (isLlmStreaming) return;
 
-    lastSpokenMsgRef.current = lastMsg.id;
+    lastSpokenMsgRef.current = lastAssistant.id;
+
+    // Voice-mode loop closer: flips state back to listening and
+    // restarts speech recognition. Used both after TTS finishes
+    // AND when there's no text to speak (empty assistant message
+    // — possible if the LLM emitted only actions with no prose).
+    const closeVoiceLoop = () => {
+      if (voiceModeRef.current) {
+        setVoiceStage("listening");
+        setTimeout(() => {
+          if (voiceModeRef.current) startListeningRef.current?.();
+        }, 50);
+      } else {
+        setVoiceStage("idle");
+      }
+    };
+
     if (voiceMode) {
+      if (!lastAssistant.content) {
+        // Nothing to speak — bypass TTS and restart listening so
+        // the loop doesn't deadlock on actions-only turns.
+        closeVoiceLoop();
+        return;
+      }
       setVoiceStage("speaking");
-      speakText(lastMsg.content, () => {
-        // Only restart listening if voice mode is still on (user
-        // may have toggled it off mid-speech).
-        if (voiceModeRef.current) {
-          setVoiceStage("listening");
-          // Defer to next tick so any state mutations land first.
-          setTimeout(() => {
-            if (voiceModeRef.current) startListeningRef.current?.();
-          }, 50);
-        } else {
-          setVoiceStage("idle");
-        }
-      });
-    } else {
-      speakText(lastMsg.content);
+      speakText(lastAssistant.content, closeVoiceLoop);
+    } else if (lastAssistant.content) {
+      speakText(lastAssistant.content);
     }
   }, [copilotMessages, ttsEnabled, voiceMode, isLlmStreaming, speakText]);
 

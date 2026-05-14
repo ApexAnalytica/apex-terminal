@@ -314,7 +314,13 @@ export default function SystemCopilot() {
     // restarts speech recognition. Used both after TTS finishes
     // AND when there's no text to speak (empty assistant message
     // — possible if the LLM emitted only actions with no prose).
+    //
+    // Idempotent: the fallback timeout below and utterance.onend
+    // can both fire (browser-dependent). First one wins.
+    let closed = false;
     const closeVoiceLoop = () => {
+      if (closed) return;
+      closed = true;
       if (voiceModeRef.current) {
         setVoiceStage("listening");
         setTimeout(() => {
@@ -334,6 +340,21 @@ export default function SystemCopilot() {
       }
       setVoiceStage("speaking");
       speakText(lastAssistant.content, closeVoiceLoop);
+
+      // ─── Chrome onend fallback ────────────────────────────
+      // speechSynthesis.onend is well-known to be flaky in
+      // Chrome — for utterances over ~15s it often never fires,
+      // which deadlocks voice mode on "speaking" forever. The
+      // fix: estimate TTS duration from word count and schedule
+      // a fallback close. Whichever fires first wins (closed
+      // flag dedups).
+      //
+      // ~140 wpm at our rate=0.95 + 2.5s ceiling buffer. The
+      // closeVoiceLoop is idempotent so if real onend fires
+      // first it just no-ops.
+      const wordCount = lastAssistant.content.split(/\s+/).filter(Boolean).length;
+      const estimatedMs = Math.max(3000, (wordCount / 140) * 60_000 * 1.15 + 2500);
+      setTimeout(closeVoiceLoop, estimatedMs);
     } else if (lastAssistant.content) {
       speakText(lastAssistant.content);
     }

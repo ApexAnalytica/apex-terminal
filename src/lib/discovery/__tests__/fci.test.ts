@@ -8,6 +8,7 @@ import {
   applyR2,
   applyR3,
   applyR4,
+  findDiscriminatingPath,
   type SkeletonResult,
   type OrientedEdge,
 } from "../algorithms/fci";
@@ -627,6 +628,273 @@ describe("applyR4 — discriminating-path rule (length-3 / 4-node MV)", () => {
     ]);
     const changed = applyR4(edges, adj, sepset);
     expect(changed).toBe(false);
+  });
+});
+
+// ─── Longer discriminating paths (R4 v0.5) ────────────────────────────
+//
+// Zhang's R4 now searches for discriminating paths of any length up to
+// `maxLength`. The fixtures below construct length-4 and length-5 paths
+// where the new BFS-based R4 should fire — the previous v0.4
+// implementation would have missed these because it only iterated
+// over the single-intermediate (length-3) neighborhood.
+
+describe("findDiscriminatingPath — BFS through parents-of-C colliders", () => {
+  it("returns the length-3 endpoint W on the canonical 4-node path", () => {
+    // W(0) *→ V(1) ←* B(2) − C(3) with V → C and W not adjacent to C.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [1, 3],
+        [2, 3],
+      ],
+      4,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [1, 3, "tail", "arrow"],
+      [2, 3, "circle", "circle"],
+    ]);
+    const w = findDiscriminatingPath(2, 3, edges, adj, 5);
+    expect(w).toBe(0);
+  });
+
+  it("returns the length-4 endpoint W on a 5-node path with two intermediates", () => {
+    // Path: W(0) - U(1) - V(2) - B(3) - C(4)
+    //   W *→ U (arrow at U)
+    //   U ↔ V (both colliders — arrows on both sides of U-V)
+    //   V ↔ B (arrow at V — V is collider on the U-V-B path)
+    //   U → C, V → C (both parents of C)
+    //   W not adjacent to C
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // W *→ U
+      [1, 2, "arrow", "arrow"], // U ↔ V (both colliders along path)
+      [2, 3, "arrow", "arrow"], // V ↔ B (V is collider toward B)
+      [3, 4, "circle", "circle"], // B-C unoriented (R4 will fire here)
+      [1, 4, "tail", "arrow"], // U → C (parent)
+      [2, 4, "tail", "arrow"], // V → C (parent)
+    ]);
+    const w = findDiscriminatingPath(3, 4, edges, adj, 5);
+    expect(w).toBe(0);
+  });
+
+  it("returns null when an intermediate is not a parent of C", () => {
+    // Same skeleton as the length-4 case, but V-C is circle-at-V instead
+    // of tail-at-V, so V is not a definite parent of C — the
+    // discriminating-path precondition fails.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "arrow", "arrow"],
+      [3, 4, "circle", "circle"],
+      [1, 4, "tail", "arrow"],
+      [2, 4, "circle", "arrow"], // V-C: circle at V (NOT parent of C)
+    ]);
+    const w = findDiscriminatingPath(3, 4, edges, adj, 5);
+    expect(w).toBeNull();
+  });
+
+  it("returns null when an intermediate is not a collider on the path", () => {
+    // V-B has circle at V instead of arrow — V is not a collider on U-V-B.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "circle", "arrow"], // V-B: circle at V (not collider toward B)
+      [3, 4, "circle", "circle"],
+      [1, 4, "tail", "arrow"],
+      [2, 4, "tail", "arrow"],
+    ]);
+    const w = findDiscriminatingPath(3, 4, edges, adj, 5);
+    expect(w).toBeNull();
+  });
+
+  it("respects maxLength — caps the search at length-3 with maxLength=1", () => {
+    // 5-node length-4 path exists, but maxLength=1 forbids it.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "arrow", "arrow"],
+      [3, 4, "circle", "circle"],
+      [1, 4, "tail", "arrow"],
+      [2, 4, "tail", "arrow"],
+    ]);
+    const w = findDiscriminatingPath(3, 4, edges, adj, 1);
+    expect(w).toBeNull();
+  });
+});
+
+describe("applyR4 — longer discriminating paths (v0.5)", () => {
+  it("orients B → C on a length-4 path when B is in sepset(W, C)", () => {
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:4", [3]); // sepset(W, C) = {B} → orient B → C
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "arrow", "arrow"],
+      [3, 4, "circle", "circle"],
+      [1, 4, "tail", "arrow"],
+      [2, 4, "tail", "arrow"],
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(true);
+    const bc = edges.get("3:4")!;
+    const bMark = bc.a === 3 ? bc.markA : bc.markB;
+    const cMark = bc.a === 4 ? bc.markA : bc.markB;
+    expect(bMark).toBe("tail");
+    expect(cMark).toBe("arrow");
+  });
+
+  it("orients B ↔ C (bidirected) on a length-4 path when B is NOT in sepset(W, C)", () => {
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:4", [1, 2]); // sepset = {U, V}, no B → bidirected
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "arrow", "arrow"],
+      [3, 4, "circle", "circle"],
+      [1, 4, "tail", "arrow"],
+      [2, 4, "tail", "arrow"],
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(true);
+    const bc = edges.get("3:4")!;
+    expect(bc.markA).toBe("arrow");
+    expect(bc.markB).toBe("arrow");
+  });
+
+  it("does not orient when no discriminating path exists at any allowed length", () => {
+    // Same 5-node skeleton, but neither U nor V is a definite parent of C
+    // (both U-C and V-C have circle at U / V instead of tail). With no
+    // parents of C among the candidate intermediates, no discriminating
+    // path of any length can exist for any of the focus edges.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [1, 4],
+        [2, 4],
+      ],
+      5,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:4", [3]);
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"],
+      [1, 2, "arrow", "arrow"],
+      [2, 3, "arrow", "arrow"],
+      [3, 4, "circle", "circle"],
+      [1, 4, "circle", "arrow"], // U-C: U not parent of C
+      [2, 4, "circle", "arrow"], // V-C: V not parent of C
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(false);
+  });
+
+  it("orients on a length-5 path (6 nodes, 3 intermediates all parents of C)", () => {
+    // Path: W(0) - T(1) - U(2) - V(3) - B(4) - C(5)
+    // All of T, U, V are colliders AND parents of C.
+    const adj = buildAdj(
+      [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [4, 5],
+        [1, 5],
+        [2, 5],
+        [3, 5],
+      ],
+      6,
+    );
+    const sepset = new Map<string, number[]>();
+    sepset.set("0:5", [4]); // sepset(W, C) = {B} → B → C
+    const edges = buildEdges([
+      [0, 1, "circle", "arrow"], // W *→ T
+      [1, 2, "arrow", "arrow"], // T ↔ U
+      [2, 3, "arrow", "arrow"], // U ↔ V
+      [3, 4, "arrow", "arrow"], // V ↔ B
+      [4, 5, "circle", "circle"], // B-C unoriented
+      [1, 5, "tail", "arrow"], // T → C
+      [2, 5, "tail", "arrow"], // U → C
+      [3, 5, "tail", "arrow"], // V → C
+    ]);
+    const changed = applyR4(edges, adj, sepset);
+    expect(changed).toBe(true);
+    const bc = edges.get("4:5")!;
+    const bMark = bc.a === 4 ? bc.markA : bc.markB;
+    const cMark = bc.a === 5 ? bc.markA : bc.markB;
+    expect(bMark).toBe("tail");
+    expect(cMark).toBe("arrow");
   });
 });
 

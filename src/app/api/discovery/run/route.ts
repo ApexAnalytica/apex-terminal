@@ -31,6 +31,7 @@ import {
 } from "@/lib/discovery/cohort-validator";
 import { buildDiscoveryRun } from "@/lib/discovery/run-types";
 import { persistRun } from "@/lib/discovery/persistence";
+import { requireApiKey } from "@/lib/discovery/api-key-auth";
 
 interface RunRequestBody {
   cohort: unknown;
@@ -41,6 +42,13 @@ interface RunRequestBody {
 }
 
 export async function POST(req: NextRequest) {
+  // Gate behind the per-customer API key header (X-Apex-Api-Key).
+  // Returns 401 / 503 verbatim if absent or invalid. Successful
+  // calls attach the validated customer context to the request via
+  // the returned object; downstream code uses auth.customerId.
+  const auth = await requireApiKey(req);
+  if (!auth.ok) return auth.response;
+
   let body: RunRequestBody;
   try {
     body = (await req.json()) as RunRequestBody;

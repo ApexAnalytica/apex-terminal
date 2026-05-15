@@ -10,6 +10,7 @@ import ImportButton from "./import/ImportButton";
 import TextSizeToggle from "./TextSizeToggle";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "@/lib/domains";
+import DomainIcon from "./DomainIcon";
 import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
 
 // Top-bar tabs are pinned to the four canonical labels regardless of active
@@ -79,13 +80,13 @@ export default function HeaderBar() {
                 const domain = DOMAIN_CARDS.find((d) => d.id === id);
                 if (!domain) return null;
                 return (
-                  <span
+                  <DomainIcon
                     key={id}
-                    className="text-sm"
+                    name={domain.icon}
+                    size={14}
+                    color={domain.color}
                     title={domain.label}
-                  >
-                    {domain.icon}
-                  </span>
+                  />
                 );
               })}
               <span className="text-[8px] font-mono text-text-muted group-hover:text-accent-cyan transition-colors ml-0.5 hidden md:inline">

@@ -8,10 +8,15 @@
 // imports the heavy graph-data modules and is meant for code paths
 // that already need them (DomainSelector, copilot-actions, etc.).
 
+import type { DomainIconName } from "@/components/DomainIcon";
+
 export interface DomainCard {
   id: string;
   label: string;
-  icon: string;
+  /** Icon name resolved by `DomainIcon`. Previously an emoji string —
+   *  swapped for typed line-art icons so the modal matches the rest of
+   *  the platform's monochrome terminal aesthetic. */
+  icon: DomainIconName;
   color: string;
   colorVar: string;
   description: string;
@@ -72,7 +77,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "energy-systems",
         label: "Energy Systems",
-        icon: "\u{26A1}",
+        icon: "bolt",
         color: "#ff1744",
         colorVar: "var(--accent-red)",
         description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
@@ -82,7 +87,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "manufacturing",
         label: "Fertilizer & Agrochemical",
-        icon: "\u{1F3ED}",
+        icon: "factory",
         color: "#448aff",
         colorVar: "var(--accent-blue)",
         description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
@@ -92,7 +97,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "supply-chain",
         label: "Supply Chain Shock Risk",
-        icon: "\u{1F517}",
+        icon: "chain",
         color: "#00e5ff",
         colorVar: "var(--accent-cyan)",
         description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission",
@@ -108,7 +113,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "financial-contagion",
         label: "Financial Contagion Risk",
-        icon: "\u{1F3E6}",
+        icon: "bank",
         color: "#ff6d00",
         colorVar: "var(--accent-orange)",
         description: "Systemic banking failures, credit default cascades, liquidity traps",
@@ -118,7 +123,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "sovereign-risk",
         label: "Emerging Market Sovereign Risk",
-        icon: "\u{1F30D}",
+        icon: "globe",
         color: "#ffab00",
         colorVar: "var(--accent-amber)",
         description: "Currency crises, debt restructuring, capital flight contagion",
@@ -134,7 +139,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "infrastructure",
         label: "Infrastructure Resilience",
-        icon: "\u{1F3D7}",
+        icon: "cable",
         color: "#7c4dff",
         colorVar: "var(--accent-purple)",
         description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine",
@@ -144,7 +149,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "defense-isr",
         label: "Defense & ISR",
-        icon: "\u{1F6E1}️",
+        icon: "shield",
         color: "#00e676",
         colorVar: "var(--accent-green)",
         description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
@@ -160,7 +165,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "macro-labor",
         label: "Labor, Growth & Housing",
-        icon: "\u{1F4CA}",
+        icon: "chart-bar",
         color: "#40c4ff",
         colorVar: "var(--accent-cyan)",
         description: "Nonfarm payrolls, unemployment, wages, JOLTS, GDP, retail sales, industrial production, ISM PMI, housing",
@@ -170,7 +175,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "macro-inflation",
         label: "Inflation & Policy",
-        icon: "\u{1F4B9}",
+        icon: "trending",
         color: "#ff80ab",
         colorVar: "var(--accent-pink)",
         description: "CPI/PPI/PCE inflation, breakeven expectations, Fed funds rate, SOFR, Fed policy transmission",
@@ -186,7 +191,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "t1d-beta-cell",
         label: "T1D β-Cell Restoration",
-        icon: "\u{1F9EC}",
+        icon: "dna",
         color: "#40c4ff",
         colorVar: "var(--accent-blue)",
         description: "Autoimmune → β-cell loss → glycemic collapse → complications; teplizumab / stem-cell intervention paths",
@@ -196,7 +201,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "t1d-vx880",
         label: "T1D Stem-Cell Transplant (VX-880)",
-        icon: "\u{1F489}",
+        icon: "syringe",
         color: "#40c4ff",
         colorVar: "var(--accent-blue)",
         description: "Vertex VX-880 trial topology: HLA/autoantibody risk → dose + immunosuppression → engraftment → graft β-mass → MMTT / insulin-independence / severe-hypo endpoints",
@@ -212,7 +217,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "ai-safety-ids",
         label: "AI Safety / Endogenous Catastrophe",
-        icon: "\u{1F9E0}",
+        icon: "brain",
         color: "#7B68EE",
         colorVar: "var(--accent-violet)",
         description: "Catastrophic forgetting in continual-learning IDS, χ★-bridge cascade, adversarial drift — built from CICIDS-2017 / UNSW-NB15 / AWID-H23Q substrate (Ghauri 2025 D.Eng.)",
@@ -228,7 +233,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       {
         id: "frontier-science",
         label: "Frontier Science",
-        icon: "⚛️",
+        icon: "atom",
         color: "#e040fb",
         colorVar: "var(--accent-magenta)",
         description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",

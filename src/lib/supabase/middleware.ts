@@ -32,8 +32,14 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Public routes — no auth required
-  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access"];
+  // Public routes — no auth required at the middleware layer. This
+  // list controls *session-cookie* auth gating; routes here can still
+  // implement their own auth (e.g. API-key header, webhook signature)
+  // inside the handler. Adding `/api/discovery` so the per-route
+  // API-key validator from PR #337 actually gets to run — the
+  // session middleware was 307-redirecting valid API-key requests to
+  // /login before the validator could see them.
+  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access", "/api/discovery"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||

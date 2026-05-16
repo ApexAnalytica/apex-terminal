@@ -1,22 +1,4 @@
-# Referral Partner Agreement — Zak / Apex Analytica
-
-> **Status:** Final values locked 2026-05-08 — effective date 2026-05-11, Apex Analytica, Inc. (Maryland corporation, 6001 Bricker Rd., Dayton, MD 21036), governing law Maryland, all placeholders filled, Pareto Technologies references removed at user direction. Brand-styled HTML at `docs/referral-agreement-zak.html`; rendered PDF at `docs/pdf/Apex-Referral-Agreement-Zak.pdf` is the artifact to share with Zak. Markdown below is the readable / searchable version of the same content. Have qualified legal counsel review before either party signs — I'm not a lawyer and this is a working draft, not legally vetted advice.
->
-> **Suggested cover email (paste-ready, sits on top of the attached PDF rendering of this agreement):**
->
-> > Zak — great chat earlier. Quick follow-up to lock in the rev share we discussed for any of your Montreal contacts (or anyone else you put in touch with us).
-> >
-> > Attached is a clean Referral Partner Agreement. Headline terms: **15% of Year-1 contract value, 5% on Years 2 and 3, 12-month attribution window.** On a $150k Enterprise deal that's roughly $37,500 to you across the first three years. The agreement also covers attribution rules, what's excluded (Founding 10 promotional pricing, self-serve trials), and 30-day mutual termination.
-> >
-> > Reply with any edits or questions. Once we're both comfortable, I'll send a clean copy for e-signature.
-> >
-> > And as I mentioned — your trusted access is already live, so play with the platform whenever you want. Use the feedback button generously.
-> >
-> > Junaid
-
----
-
-## REFERRAL PARTNER AGREEMENT
+# REFERRAL PARTNER AGREEMENT
 
 **This Referral Partner Agreement** (the "**Agreement**") is entered into as of **May 11, 2026** (the "**Effective Date**") by and between:
 
@@ -192,16 +174,14 @@ Email:&nbsp;&nbsp;junaid@apexanalytica.co
 
 \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
-Houssam Zak
+Name:&nbsp;&nbsp;**Houssam Zak**
 
-Date:&nbsp;&nbsp;\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Address:&nbsp;&nbsp;\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
 Email:&nbsp;&nbsp;houssamzak@gmail.com
+
+Date:&nbsp;&nbsp;\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
 
 ---
 
 *\[End of Agreement\]*
-
----
-
-> **Disclaimer:** This document was prepared as a working draft for the Parties' review and is not legal advice. Before execution, both Parties should review the Agreement with qualified legal counsel familiar with applicable employment, contract, securities, and tax laws in the relevant jurisdiction.

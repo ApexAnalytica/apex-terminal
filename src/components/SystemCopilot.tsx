@@ -207,6 +207,24 @@ export default function SystemCopilot() {
   // Voice-mode TTS callback restarts listening — needs a ref so we
   // don't have to thread startListening through useEffect deps.
   const startListeningRef = useRef<(() => void) | null>(null);
+  // ─── Singleton-recognition machinery ────────────────────────
+  // Web Speech API in Chrome misbehaves badly when multiple
+  // recognitions race: silent audio-acquisition failure, cascading
+  // start/onend storms when backgrounded timers all fire at once,
+  // etc. Three guards keep exactly one recognition alive at a time:
+  //
+  //  - recognitionGenerationRef: incremented on each start. Every
+  //    event handler captures its generation and no-ops if a
+  //    newer recognition has taken over.
+  //  - lastStartAtRef: enforces a 300ms cooldown between starts,
+  //    so a flood of queued setTimeouts collapses to one start.
+  //  - restartScheduledRef: when onend/closeVoiceLoop want to
+  //    restart, they set this flag. Any further restart attempts
+  //    while the flag is set are skipped, then the flag clears
+  //    when the scheduled restart runs.
+  const recognitionGenerationRef = useRef(0);
+  const lastStartAtRef = useRef(0);
+  const restartScheduledRef = useRef(false);
   // Conversation identity for trace logging. Stable across the
   // session; resets when the chat is cleared. turn_index is a
   // monotonically increasing counter so we can replay traces in
@@ -747,6 +765,33 @@ export default function SystemCopilot() {
       return;
     }
 
+    // ─── Cooldown ─────────────────────────────────────────────
+    // If a flood of queued setTimeouts all fire after a tab
+    // un-throttles (background → foreground), every one of them
+    // calls startListening. The cooldown collapses that storm
+    // into a single start.
+    const now = Date.now();
+    const sinceLastStart = now - lastStartAtRef.current;
+    if (sinceLastStart < 300) {
+      voiceLog("startListening cooldown — skipping", { sinceLastStart });
+      return;
+    }
+    lastStartAtRef.current = now;
+
+    // ─── Singleton: invalidate any previous recognition ──────
+    // Bump the generation token first so any in-flight handlers
+    // from older recognitions become no-ops on their next event.
+    // Then stop the old one cleanly. The old onend will fire but
+    // will skip the restart branch because of the gen check.
+    const myGen = ++recognitionGenerationRef.current;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore — recognition may already be finished
+      }
+    }
+
     // If TTS is mid-utterance and the user is starting to talk,
     // cut the assistant off — feels more natural than waiting for
     // the AI to finish before you can interrupt.
@@ -760,15 +805,43 @@ export default function SystemCopilot() {
     recognition.lang = "en-US";
 
     let submitted = false;
+    // Stale-handler guard. Every event handler bails immediately
+    // if the global generation has advanced (i.e. a newer
+    // recognition has taken over).
+    const isStale = () => myGen !== recognitionGenerationRef.current;
 
     recognition.onstart = () => {
-      voiceLog("recognition.onstart", { voiceModeRef: voiceModeRef.current });
+      if (isStale()) return;
+      voiceLog("recognition.onstart", { voiceModeRef: voiceModeRef.current, gen: myGen });
       // Clear any stale error from a prior retry — we're listening now.
       setVoiceError(null);
       if (voiceModeRef.current) setVoiceStage("listening");
     };
 
+    // Helper to schedule a single restart, debounced via the
+    // ref so concurrent triggers (onerror + onend + close) all
+    // collapse to one outstanding restart.
+    const scheduleRestart = (delayMs: number, reason: string) => {
+      if (restartScheduledRef.current) {
+        voiceLog("restart already scheduled — skipping", { reason });
+        return;
+      }
+      restartScheduledRef.current = true;
+      setTimeout(() => {
+        restartScheduledRef.current = false;
+        voiceLog("scheduled restart firing", { reason });
+        if (
+          voiceModeRef.current &&
+          voiceStageRef.current !== "processing" &&
+          voiceStageRef.current !== "speaking"
+        ) {
+          startListeningRef.current?.();
+        }
+      }, delayMs);
+    };
+
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (isStale()) return;
       let transcript = "";
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
@@ -780,6 +853,7 @@ export default function SystemCopilot() {
         setInput(transcript);
         submitted = true;
         setTimeout(() => {
+          if (isStale()) return;
           const trimmed = transcript.trim();
           if (trimmed) {
             const userMsg: CopilotMessage = {
@@ -800,15 +874,14 @@ export default function SystemCopilot() {
           } else if (voiceModeRef.current) {
             // Empty utterance but voice mode is on — restart so the
             // user can try again without re-toggling.
-            setTimeout(() => {
-              if (voiceModeRef.current) startListeningRef.current?.();
-            }, 100);
+            scheduleRestart(200, "empty-final-result");
           }
         }, 100);
       }
     };
 
     recognition.onerror = (event: Event) => {
+      if (isStale()) return;
       // SpeechRecognitionErrorEvent isn't in lib.dom.d.ts but it
       // carries an `error` string with the Web Speech API codes
       // ("not-allowed", "audio-capture", "network", etc).
@@ -817,6 +890,7 @@ export default function SystemCopilot() {
         code,
         voiceModeRef: voiceModeRef.current,
         voiceStageRef: voiceStageRef.current,
+        gen: myGen,
       });
       const permanent =
         code === "not-allowed" ||
@@ -852,56 +926,42 @@ export default function SystemCopilot() {
       // already moved to processing — that path is owned by
       // onresult/handleStreamingQuery).
       if (voiceModeRef.current && voiceStageRef.current !== "processing") {
-        setTimeout(() => {
-          voiceLog("onerror restart scheduled", {
-            voiceModeRef: voiceModeRef.current,
-            voiceStageRef: voiceStageRef.current,
-          });
-          if (voiceModeRef.current && voiceStageRef.current !== "processing") {
-            startListeningRef.current?.();
-          }
-        }, 500);
+        scheduleRestart(500, `onerror:${code}`);
       }
     };
     recognition.onend = () => {
+      if (isStale()) {
+        // An older recognition's onend firing because a newer one
+        // started — totally fine, log and move on.
+        voiceLog("recognition.onend (stale, ignored)", { gen: myGen });
+        return;
+      }
       voiceLog("recognition.onend", {
         submitted,
         voiceModeRef: voiceModeRef.current,
         voiceStageRef: voiceStageRef.current,
+        gen: myGen,
       });
       // If we never got a final result AND voice mode is on, restart.
       // (Long silences trigger onend without onresult.)
       if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
-        setTimeout(() => {
-          if (voiceModeRef.current && voiceStageRef.current === "listening") {
-            startListeningRef.current?.();
-          }
-        }, 200);
+        scheduleRestart(200, "onend-no-result");
       }
     };
 
     recognitionRef.current = recognition;
-    // Guard against InvalidStateError when start() is called too
-    // soon after stop(). Browsers vary on the cooldown.
-    //
-    // Hardening note: we used to retry only on "already" errors.
-    // That left voice mode dead on ANY other start() failure (e.g.
-    // a stale recognition state, a transient browser quirk). Now
-    // we retry on any error while voice mode is still on, surface
-    // a non-fatal voiceError after a few failed attempts.
     try {
       recognition.start();
-      voiceLog("recognition.start() called");
+      voiceLog("recognition.start() called", { gen: myGen });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      voiceLog("recognition.start() threw", { msg });
+      voiceLog("recognition.start() threw", { msg, gen: myGen });
       if (voiceModeRef.current) {
-        // "already started" needs slightly longer cooldown than
-        // generic transient errors; everyone else gets a quick retry.
-        const delay = msg.toLowerCase().includes("already") ? 300 : 150;
-        setTimeout(() => {
-          if (voiceModeRef.current) startListeningRef.current?.();
-        }, delay);
+        // Cooldown is already in effect, but explicit start
+        // failures get their own debounced retry too. Longer
+        // delay than the cooldown so we don't immediately bounce
+        // back into this same path.
+        scheduleRestart(msg.toLowerCase().includes("already") ? 400 : 200, "start-threw");
       } else {
         setVoiceError(`Couldn't start microphone: ${msg}`);
       }
@@ -925,11 +985,21 @@ export default function SystemCopilot() {
       setVoiceStage("listening");
       setTimeout(() => startListeningRef.current?.(), 50);
     } else {
-      // Tear down cleanly. recognition.stop() will fire onend, but
-      // voiceModeRef is already false so the restart branch skips.
-      recognitionRef.current?.stop();
+      // Tear down cleanly:
+      //  1. Bump the generation so any in-flight handlers no-op.
+      //  2. Clear any scheduled restart so it doesn't fire after
+      //     the user explicitly opted out.
+      //  3. Stop the active recognition (onend will fire but be
+      //     ignored as stale).
+      //  4. Cancel any TTS in progress.
+      recognitionGenerationRef.current += 1;
+      restartScheduledRef.current = false;
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore
+      }
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
-      /* listening state now reflected via voiceStage */
       setVoiceStage("idle");
     }
   }, [voiceMode]);

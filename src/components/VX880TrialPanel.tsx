@@ -13,7 +13,7 @@ import {
   VX880_COVARIATE_BASELINE,
   computeCovariateLogHR,
 } from "@/lib/vx880-trial-data";
-import { solveInterdiction } from "@/lib/interdiction-engine";
+import { solveInterdictionAsync } from "@/lib/interdiction-engine";
 import type { CausalShock } from "@/lib/types";
 
 // ─── C-peptide trajectory chart ─────────────────────────────────────
@@ -524,16 +524,27 @@ export default function VX880TrialPanel() {
   // broadcast across science-category nodes saturates the cascade and
   // collapses the solver's marginal-reduction step to "no candidate cuts".
   const runPreset = useCallback(
-    (preset: VX880Preset) => {
+    async (preset: VX880Preset) => {
       if (!hasVx880) return;
-      const result = solveInterdiction(
-        graphData,
-        preset.shocks,
-        severedEdges,
-        3,
-        "edge",
-      );
-      setLastInterdictionResult(result);
+      // VX-880 subgraph is small (~30 nodes) so the solver finishes in
+      // < 1s sync. Going async still wins because it stops blocking the
+      // C-peptide / Cox panel rerenders that fire off this click handler.
+      try {
+        const result = await solveInterdictionAsync(
+          graphData,
+          preset.shocks,
+          severedEdges,
+          3,
+          "edge",
+        );
+        setLastInterdictionResult(result);
+      } catch (e) {
+        // AbortError is benign (component unmounting mid-run); anything
+        // else is a real solver failure worth logging.
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          console.error("[VX880TrialPanel] preset solver failed:", e);
+        }
+      }
     },
     [hasVx880, graphData, severedEdges, setLastInterdictionResult],
   );

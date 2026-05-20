@@ -13,8 +13,15 @@ import {
   listRuns,
   isPersistenceAvailable,
 } from "@/lib/discovery/persistence";
+import { requireApiKey } from "@/lib/discovery/api-key-auth";
 
 export async function GET(req: NextRequest) {
+  // API key gate first — anonymous callers shouldn't see the run list
+  // (and once PR 3 lands customer_id scoping, this is what gives the
+  // listRuns query its filter context).
+  const auth = await requireApiKey(req);
+  if (!auth.ok) return auth.response;
+
   if (!isPersistenceAvailable()) {
     return NextResponse.json(
       {

@@ -13,8 +13,50 @@ import { NextRequest } from "next/server";
 import { GET as GET_BY_ID } from "@/app/api/discovery/runs/[id]/route";
 import { GET as GET_LIST } from "@/app/api/discovery/runs/route";
 import { setServiceClientForTesting } from "../persistence";
+import {
+  setAuthClientForTesting,
+  generateApiKey,
+  API_KEY_HEADER,
+} from "../api-key-auth";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
+
+// Auth fake — same shape as api-routes.test.ts. Routes are gated by
+// requireApiKey; this lets the gate pass without a real DB.
+function makeAcceptingAuthClient() {
+  const maybeSingle = vi.fn().mockResolvedValue({
+    data: {
+      id: "test-key-id",
+      customer_id: "test-customer",
+      key_prefix: "apx_live_TestPfx",
+      scopes: [],
+      revoked_at: null,
+    },
+    error: null,
+  });
+  const updateThenable = {
+    then: (
+      resolve: () => void,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _reject?: (e: unknown) => void,
+    ) => {
+      resolve();
+      return { catch: () => {} };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const queryBuilder: any = {
+    select: () => queryBuilder,
+    eq: () => queryBuilder,
+    maybeSingle,
+    update: () => ({ eq: () => updateThenable }),
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { from: vi.fn().mockReturnValue(queryBuilder) } as any;
+}
+
+const TEST_KEY = generateApiKey().key;
+const authedHeaders = { [API_KEY_HEADER]: TEST_KEY };
 
 function makeFakeRow(id = "run-X") {
   return {
@@ -52,14 +94,20 @@ function makeFakeServiceClient(opts: {
   return { from: vi.fn().mockReturnValue(queryBuilder) } as any;
 }
 
-beforeEach(() => setServiceClientForTesting(null));
-afterEach(() => setServiceClientForTesting(null));
+beforeEach(() => {
+  setServiceClientForTesting(null);
+  setAuthClientForTesting(makeAcceptingAuthClient());
+});
+afterEach(() => {
+  setServiceClientForTesting(null);
+  setAuthClientForTesting(null);
+});
 
 // ─── Tests ────────────────────────────────────────────────────────────
 
 describe("GET /api/discovery/runs/[id]", () => {
   it("503 when persistence unavailable", async () => {
-    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/x"), {
+    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/x", { headers: authedHeaders }), {
       params: Promise.resolve({ id: "x" }),
     });
     expect(res.status).toBe(503);
@@ -73,7 +121,7 @@ describe("GET /api/discovery/runs/[id]", () => {
         getResult: { data: makeFakeRow("run-Z"), error: null },
       }),
     );
-    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/run-Z"), {
+    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/run-Z", { headers: authedHeaders }), {
       params: Promise.resolve({ id: "run-Z" }),
     });
     expect(res.status).toBe(200);
@@ -88,7 +136,7 @@ describe("GET /api/discovery/runs/[id]", () => {
         getResult: { data: null, error: null },
       }),
     );
-    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/nope"), {
+    const res = await GET_BY_ID(new Request("http://localhost/api/discovery/runs/nope", { headers: authedHeaders }), {
       params: Promise.resolve({ id: "nope" }),
     });
     expect(res.status).toBe(404);
@@ -97,7 +145,7 @@ describe("GET /api/discovery/runs/[id]", () => {
 
 describe("GET /api/discovery/runs", () => {
   it("503 when persistence unavailable", async () => {
-    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs"));
+    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs", { headers: authedHeaders }));
     expect(res.status).toBe(503);
   });
 
@@ -105,7 +153,7 @@ describe("GET /api/discovery/runs", () => {
     setServiceClientForTesting(
       makeFakeServiceClient({ listResult: { data: [], error: null } }),
     );
-    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs"));
+    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs", { headers: authedHeaders }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { runs: unknown[]; count: number };
     expect(body.count).toBe(0);
@@ -121,7 +169,7 @@ describe("GET /api/discovery/runs", () => {
         },
       }),
     );
-    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs"));
+    const res = await GET_LIST(new NextRequest("http://localhost/api/discovery/runs", { headers: authedHeaders }));
     const body = (await res.json()) as {
       runs: { id: string; cohortId: string }[];
       count: number;
@@ -136,7 +184,7 @@ describe("GET /api/discovery/runs", () => {
       makeFakeServiceClient({ listResult: { data: [], error: null } }),
     );
     const res = await GET_LIST(
-      new NextRequest("http://localhost/api/discovery/runs?limit=999"),
+      new NextRequest("http://localhost/api/discovery/runs?limit=999", { headers: authedHeaders }),
     );
     expect(res.status).toBe(400);
   });
@@ -148,8 +196,19 @@ describe("GET /api/discovery/runs", () => {
     const res = await GET_LIST(
       new NextRequest(
         "http://localhost/api/discovery/runs?cohortId=c1&algorithmId=pcmci-linear&limit=20",
+        { headers: authedHeaders },
       ),
     );
     expect(res.status).toBe(200);
+  });
+
+  it("401 when the API key header is missing", async () => {
+    const res = await GET_LIST(
+      new NextRequest("http://localhost/api/discovery/runs"),
+    );
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string; reason: string };
+    expect(body.error).toBe("unauthorized");
+    expect(body.reason).toBe("missing-header");
   });
 });

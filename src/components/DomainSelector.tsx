@@ -18,6 +18,7 @@ import {
 } from "@/lib/build-domain-graph";
 import type { NodeCategory } from "@/lib/types";
 import TTSControls from "@/components/TTSControls";
+import DomainIcon from "@/components/DomainIcon";
 import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
 import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
 
@@ -337,7 +338,12 @@ export default function DomainSelector() {
                               : "none",
                           }}
                         >
-                          <span className="text-xl flex-shrink-0">{domain.icon}</span>
+                          <DomainIcon
+                            name={domain.icon}
+                            size={22}
+                            color={isSelected || domain.hasData ? domain.color : "var(--text-muted)"}
+                            className="flex-shrink-0"
+                          />
                           <div className="flex-1 min-w-0">
                             <div
                               className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"

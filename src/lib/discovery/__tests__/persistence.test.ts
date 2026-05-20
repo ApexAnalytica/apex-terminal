@@ -108,17 +108,17 @@ describe("persistence — graceful degrade", () => {
   });
 
   it("persistRun returns {persisted:false, reason:'service-unavailable'} when no service", async () => {
-    const r = await persistRun(makeRun());
+    const r = await persistRun(makeRun(), { customerId: "acme" });
     expect(r.persisted).toBe(false);
     expect(r.reason).toBe("service-unavailable");
   });
 
   it("getRun returns null when no service", async () => {
-    expect(await getRun("run-001")).toBeNull();
+    expect(await getRun("run-001", "acme")).toBeNull();
   });
 
   it("listRuns returns [] when no service", async () => {
-    expect(await listRuns()).toEqual([]);
+    expect(await listRuns({ customerId: "acme" })).toEqual([]);
   });
 });
 
@@ -130,16 +130,17 @@ describe("persistence — service connected", () => {
     setServiceClientForTesting(null);
   });
 
-  it("persistRun translates DiscoveryRun → DB row and inserts", async () => {
+  it("persistRun translates DiscoveryRun → DB row and inserts (with customer_id)", async () => {
     const { fake, insertSpy } = makeFakeServiceClient();
     setServiceClientForTesting(fake);
 
-    const r = await persistRun(makeRun());
+    const r = await persistRun(makeRun(), { customerId: "acme-corp" });
     expect(r.persisted).toBe(true);
     expect(insertSpy).toHaveBeenCalledTimes(1);
 
     const insertedRow = insertSpy.mock.calls[0][0];
     expect(insertedRow.id).toBe("run-001");
+    expect(insertedRow.customer_id).toBe("acme-corp");
     expect(insertedRow.cohort_id).toBe("test-cohort");
     expect(insertedRow.cohort_source_hash).toBe("deadbeef");
     expect(insertedRow.algorithm_id).toBe("lag-correlation");
@@ -154,7 +155,7 @@ describe("persistence — service connected", () => {
     });
     setServiceClientForTesting(fake);
 
-    const r = await persistRun(makeRun());
+    const r = await persistRun(makeRun(), { customerId: "acme" });
     expect(r.persisted).toBe(false);
     expect(r.reason).toBe("duplicate key");
   });
@@ -167,7 +168,7 @@ describe("persistence — service connected", () => {
       },
     };
     setServiceClientForTesting(exploding);
-    const r = await persistRun(makeRun());
+    const r = await persistRun(makeRun(), { customerId: "acme" });
     expect(r.persisted).toBe(false);
     expect(r.reason).toMatch(/network died/);
   });
@@ -177,6 +178,7 @@ describe("persistence — service connected", () => {
       selectMaybeSingle: {
         data: {
           id: "run-002",
+          customer_id: "acme",
           cohort_id: "c2",
           cohort_source_hash: null,
           algorithm_id: "pcmci-linear",
@@ -193,7 +195,7 @@ describe("persistence — service connected", () => {
     });
     setServiceClientForTesting(fake);
 
-    const run = await getRun("run-002");
+    const run = await getRun("run-002", "acme");
     expect(run).not.toBeNull();
     expect(run!.id).toBe("run-002");
     expect(run!.cohortId).toBe("c2");
@@ -201,12 +203,30 @@ describe("persistence — service connected", () => {
     expect(run!.algorithm.id).toBe("pcmci-linear");
   });
 
+  it("getRun filters on (id, customer_id) so cross-customer lookups return null", async () => {
+    // Fake returns null even for a real-looking row — simulates the
+    // DB filter rejecting because customer_id doesn't match.
+    const { fake, lastQuery } = makeFakeServiceClient({
+      selectMaybeSingle: { data: null, error: null },
+    });
+    setServiceClientForTesting(fake);
+
+    const run = await getRun("run-owned-by-acme", "evil-corp");
+    expect(run).toBeNull();
+    // Both filters must hit the query, in the order id → customer_id
+    // (matches the function body).
+    expect(lastQuery.eqs).toEqual([
+      ["id", "run-owned-by-acme"],
+      ["customer_id", "evil-corp"],
+    ]);
+  });
+
   it("getRun returns null on miss", async () => {
     const { fake } = makeFakeServiceClient({
       selectMaybeSingle: { data: null, error: null },
     });
     setServiceClientForTesting(fake);
-    expect(await getRun("nonexistent")).toBeNull();
+    expect(await getRun("nonexistent", "acme")).toBeNull();
   });
 
   it("getRun returns null on db error", async () => {
@@ -214,22 +234,40 @@ describe("persistence — service connected", () => {
       selectMaybeSingle: { data: null, error: { message: "boom" } },
     });
     setServiceClientForTesting(fake);
-    expect(await getRun("any")).toBeNull();
+    expect(await getRun("any", "acme")).toBeNull();
   });
 
-  it("listRuns applies filters and respects the 200 hard cap", async () => {
+  it("listRuns scopes to the customer, applies filters, respects 200 cap", async () => {
     const { fake, lastQuery } = makeFakeServiceClient({
       selectList: { data: [], error: null },
     });
     setServiceClientForTesting(fake);
 
-    await listRuns({ cohortId: "c1", algorithmId: "lag-correlation", limit: 500 });
+    await listRuns({
+      customerId: "acme-corp",
+      cohortId: "c1",
+      algorithmId: "lag-correlation",
+      limit: 500,
+    });
+    // customer_id is FIRST — leading column of the
+    // (customer_id, created_at desc) index — then narrowing filters.
     expect(lastQuery.eqs).toEqual([
+      ["customer_id", "acme-corp"],
       ["cohort_id", "c1"],
       ["algorithm_id", "lag-correlation"],
     ]);
     expect(lastQuery.limit).toBe(200); // hard-capped from 500
     expect(lastQuery.order).toBe("created_at");
+  });
+
+  it("listRuns always carries customer_id even without other filters", async () => {
+    const { fake, lastQuery } = makeFakeServiceClient({
+      selectList: { data: [], error: null },
+    });
+    setServiceClientForTesting(fake);
+
+    await listRuns({ customerId: "acme-corp" });
+    expect(lastQuery.eqs).toEqual([["customer_id", "acme-corp"]]);
   });
 
   it("listRuns returns rowToRun-mapped runs", async () => {
@@ -255,7 +293,7 @@ describe("persistence — service connected", () => {
     });
     setServiceClientForTesting(fake);
 
-    const runs = await listRuns({ limit: 10 });
+    const runs = await listRuns({ customerId: "acme", limit: 10 });
     expect(runs).toHaveLength(1);
     expect(runs[0].id).toBe("run-A");
     expect(runs[0].cohortSourceHash).toBe("hashA");

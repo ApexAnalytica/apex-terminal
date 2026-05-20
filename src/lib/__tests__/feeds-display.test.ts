@@ -97,6 +97,31 @@ describe("formatLiveSignal", () => {
     expect(f.qualifier).toBe("4 prog");
   });
 
+  it("formats a storm signal with knots and storm-classification qualifier", () => {
+    const hurricane = formatLiveSignal(
+      point({
+        kind: "storm",
+        value: 80,
+        capacity: 64,
+        unit: "kt",
+        source: "NOAA NHC · Atlantic · 1 active (top: HU HAROLD @ 80kt)",
+      }),
+    );
+    expect(hurricane.shortLabel).toBe("NOAA");
+    expect(hurricane.primaryValue).toBe("80 kt");
+    expect(hurricane.qualifier).toBe("hurricane");
+
+    const major = formatLiveSignal(
+      point({ kind: "storm", value: 120, capacity: 64, unit: "kt", source: "NOAA NHC · EP" }),
+    );
+    expect(major.qualifier).toBe("major hurricane");
+
+    const tropical = formatLiveSignal(
+      point({ kind: "storm", value: 45, capacity: 64, unit: "kt", source: "NOAA NHC · EP" }),
+    );
+    expect(tropical.qualifier).toBe("tropical storm");
+  });
+
   it("formats a governance signal with signed value and avg qualifier", () => {
     const below = formatLiveSignal(
       point({

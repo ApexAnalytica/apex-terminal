@@ -116,6 +116,20 @@ export default function TimeSeriesOverlay() {
   const timelineDragging = useApexStore((s) => s.timelineDragging);
 
   const [hoverX, setHoverX] = useState<number | null>(null);
+  // X-axis zoom mode.
+  //  - "dial": chart x-axis mirrors the TimeDial's 60-day window so the
+  //    chart cursor lines up with the scrubber below. Default, matches the
+  //    pre-existing behaviour. Curves with multi-year history (e.g. World
+  //    Bank annual series — fertilizer consumption, debt-to-GDP) compress
+  //    to a hold-forward flat line at the current value because every
+  //    historical point falls before xStart.
+  //  - "data": chart x-axis expands to span the pinned curves' actual
+  //    history. Multi-year WB / annual series render as real curves;
+  //    the TimeDial below is unchanged (it stays a 60-day scrubber) so
+  //    the chart cursor no longer aligns with the dial in this mode.
+  //    This is the explicit trade-off — comparison mode for sparse
+  //    series, alignment mode otherwise.
+  const [xAxisMode, setXAxisMode] = useState<"dial" | "data">("dial");
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // The SVG uses preserveAspectRatio="none", so viewBox width is set to the
@@ -316,14 +330,51 @@ export default function TimeSeriesOverlay() {
     return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
   }, [curves]);
 
-  // Always mirror the TimeDial's visible window so a timestamp renders at
-  // the same fractional x on both. Previously this fell back to the curves'
-  // own min/max when not zoomed, which made the vertical cursor drift off
-  // the TimeDial scrub below.
-  const { xStart, xEnd } = useMemo(
-    () => ({ xStart: timelineRange.start, xEnd: timelineRange.end }),
-    [timelineRange],
-  );
+  // Data-driven x-axis bounds: min/max across every pinned curve's history.
+  // Used by the "data" zoom mode and by the FIT button's availability check.
+  // When no curve has history, this falls back to the dial range so callers
+  // can use it as a safe default.
+  const dataXBounds = useMemo(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const c of curves) {
+      for (const h of c.history) {
+        if (h.timestamp < lo) lo = h.timestamp;
+        if (h.timestamp > hi) hi = h.timestamp;
+      }
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
+      return { start: timelineRange.start, end: timelineRange.end };
+    }
+    // 2% padding on each side so endpoints don't sit flush against the
+    // chart edges (matters visually for hold-forward markers).
+    const pad = (hi - lo) * 0.02;
+    return { start: lo - pad, end: hi + pad };
+  }, [curves, timelineRange]);
+
+  // FIT is only meaningful when at least one pinned curve has history that
+  // extends meaningfully outside the dial window. We require >25% of the
+  // span to fall before timelineRange.start to flag this — that's the
+  // regime where the curve would render as a flat hold-forward line in
+  // "dial" mode and the user would benefit from zooming out.
+  const shouldOfferFit = useMemo(() => {
+    if (curves.length === 0) return false;
+    const dialSpan = timelineRange.end - timelineRange.start || 1;
+    const overshootStart = Math.max(0, timelineRange.start - dataXBounds.start);
+    return overshootStart > dialSpan * 0.25;
+  }, [curves, dataXBounds, timelineRange]);
+
+  // Resolved x-axis. "dial" mirrors timelineRange (chart aligns with the
+  // TimeDial scrubber). "data" uses the curves' actual history span — the
+  // chart cursor visually decouples from the dial below, in exchange for
+  // making multi-year / annual series readable as curves rather than flat
+  // hold-forward lines. See the xAxisMode comment above for context.
+  const { xStart, xEnd } = useMemo(() => {
+    if (xAxisMode === "data") {
+      return { xStart: dataXBounds.start, xEnd: dataXBounds.end };
+    }
+    return { xStart: timelineRange.start, xEnd: timelineRange.end };
+  }, [xAxisMode, timelineRange, dataXBounds]);
 
   // Convert data coordinates to SVG coordinates. Per-curve normalization:
   // when curveId is provided, the value is mapped to its own 0..1 range
@@ -454,7 +505,33 @@ export default function TimeSeriesOverlay() {
         </div>
         <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted flex-1">
           {"\u03A9"}F COMPARISON — {curves.length} CURVE{curves.length !== 1 ? "S" : ""}
+          {xAxisMode === "data" && (
+            <span className="ml-2 text-accent-cyan/80">
+              {"·"} ZOOMED {new Date(xStart).getFullYear()}{"–"}{new Date(xEnd).getFullYear()}
+            </span>
+          )}
         </span>
+        {/* FIT toggle — surfaces only when at least one pinned curve has
+            history that extends meaningfully before the dial window (the
+            regime where dial-aligned x-axis renders a flat hold-forward
+            line). Click flips between dial-aligned and data-span axis. */}
+        {(shouldOfferFit || xAxisMode === "data") && (
+          <button
+            onClick={() => setXAxisMode((m) => (m === "dial" ? "data" : "dial"))}
+            className={`text-[8px] font-mono transition-colors px-1.5 py-0.5 rounded border ${
+              xAxisMode === "data"
+                ? "text-accent-cyan border-accent-cyan/40 hover:border-accent-cyan"
+                : "text-text-muted border-border hover:border-accent-cyan/30 hover:text-accent-cyan"
+            }`}
+            title={
+              xAxisMode === "data"
+                ? "Showing data span. Click to return to dial-aligned x-axis (matches TimeDial scrubber below)."
+                : "Some curves have history older than the dial window. Click to zoom out and show their full span (chart cursor will decouple from TimeDial)."
+            }
+          >
+            FIT: {xAxisMode === "data" ? "DATA" : "DIAL"}
+          </button>
+        )}
         <button
           onClick={clearPinned}
           className="text-[8px] font-mono text-text-muted hover:text-accent-red transition-colors px-1.5 py-0.5 rounded border border-border hover:border-accent-red/30"

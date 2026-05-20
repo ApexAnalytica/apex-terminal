@@ -44,7 +44,7 @@ export default function Home() {
         {/* Big mantis watermark — bleeds off the right edge, low opacity, behind content */}
         <div
           className="absolute -right-32 top-1/2 -translate-y-1/2 pointer-events-none select-none hidden md:block"
-          style={{ opacity: 0.07 }}
+          style={{ opacity: 0.1 }}
           aria-hidden
         >
           <Image
@@ -645,7 +645,7 @@ function NodeReadout() {
                   <span className="font-mono text-xs text-foreground/95">{p.value.toFixed(1)}</span>
                 </div>
                 <div className="h-1 w-full bg-surface-elevated border border-border rounded-full overflow-hidden">
-                  <div className="h-full" style={{ width: `${p.value * 10}%`, background: p.raw, opacity: 0.85 }} />
+                  <div className="h-full" style={{ width: `${(p.value || 0) * 10}%`, background: p.raw, opacity: 0.85 }} />
                 </div>
                 <div className="mt-2 font-mono text-[10px] tracking-wider text-text-muted/80 leading-snug">
                   {p.name}
@@ -689,7 +689,7 @@ function NodeReadout() {
                     {d.impact.toFixed(2)}
                   </div>
                   <div className="h-1 w-full bg-surface border border-border rounded-full overflow-hidden">
-                    <div className="h-full" style={{ width: `${d.impact * 100}%`, background: d.color, opacity: 0.85 }} />
+                    <div className="h-full" style={{ width: `${(d.impact || 0) * 100}%`, background: d.color, opacity: 0.85 }} />
                   </div>
                 </div>
               ))}

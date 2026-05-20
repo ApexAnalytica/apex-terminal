@@ -153,7 +153,7 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | 5c | Per-card live-data sparkline | `LiveDataPoint.history` field + `upsertLiveSignal` accumulation (capped at 60 entries, sorted, deduped). Card sparkline prefers live history when present, falls back to synthetic omega when not. LIVE badge + mode-colored stroke distinguish live curves visually. | **shipped** |
 | 6 | USGS critical minerals | Phosphate / potash / sulfur — needs Excel-scraping (no JSON API) | blocked: needs scraper |
 | 7 | BLS labor stats | ~10 labor/employment nodes | not started |
-| 8 | NOAA storm tracks | ~5 conflict-zone proxies | not started |
+| 8 | NOAA NHC active tropical cyclones | Per-basin storm aggregates (Atlantic / EP / CP) attached to shipping nodes via labelPatterns | **shipped** |
 | 9 | World Bank Pink Sheet | Commodity prices (wheat, fertilizer, phosphate, urea, ammonia) — needs CSV scraper | blocked: needs scraper |
 | 10 | EIA expansion | Saudi crude production, US refinery utilization, Henry Hub natural gas | not started |
 

@@ -700,21 +700,51 @@ export function runTarskiValidation(
   }
 
   // ── R-04: Cross-Domain Low-Confidence ──
-  // Edges connecting nodes from different domains with confidence < 0.7
+  // Edges connecting nodes from different domains with confidence below the
+  // verification threshold. The threshold defaults to 0.7, but tightens to
+  // 0.85 when either endpoint sits in a weak-governance jurisdiction (WGI
+  // Rule of Law < 0 ≈ below world average, surfaced as a "governance"
+  // live signal on the endpoint via the World Bank provider). Rationale:
+  // cross-domain causal claims under weak regulatory enforcement require
+  // stronger empirical backing to clear UNVERIFIED status.
+  const R04_STATIC_THRESHOLD = 0.7;
+  const R04_LIVE_THRESHOLD = 0.85;
+  const R04_GOVERNANCE_FLOOR = 0;
   if (isEnabled("R-04")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
-    if (sourceNode && targetNode) {
-      if (sourceNode.domain !== targetNode.domain && edge.confidence < 0.7) {
-        inconsistentEdgeIds.add(edge.id);
-        proofTraces.push({
-          edgeId: edge.id,
-          violatedAxioms: ["R-04"],
-          verdict: "FLAGGED",
-          solverUsed: "cvc5",
-          checkTimeMs: Math.round(Math.random() * 8 + 4),
-        });
-      }
+    if (!sourceNode || !targetNode) continue;
+    if (sourceNode.domain === targetNode.domain) continue;
+
+    const sourceGov = getLiveSignal(sourceNode, "governance");
+    const targetGov = getLiveSignal(targetNode, "governance");
+    let threshold = R04_STATIC_THRESHOLD;
+    let detail: string | undefined;
+    const weakEnds: Array<{ node: CausalNode; gov: typeof sourceGov }> = [];
+    if (sourceGov && sourceGov.value < R04_GOVERNANCE_FLOOR) {
+      weakEnds.push({ node: sourceNode, gov: sourceGov });
+    }
+    if (targetGov && targetGov.value < R04_GOVERNANCE_FLOOR) {
+      weakEnds.push({ node: targetNode, gov: targetGov });
+    }
+    if (weakEnds.length > 0) {
+      threshold = R04_LIVE_THRESHOLD;
+      const weakest = weakEnds.reduce((a, b) =>
+        a.gov!.value <= b.gov!.value ? a : b,
+      );
+      detail = `cross-domain edge with weak governance at ${weakest.node.label}: WGI ${weakest.gov!.value.toFixed(2)} < ${R04_GOVERNANCE_FLOOR} — confidence threshold tightens ${R04_STATIC_THRESHOLD} → ${R04_LIVE_THRESHOLD} (${weakest.gov!.source})`;
+    }
+
+    if (edge.confidence < threshold) {
+      inconsistentEdgeIds.add(edge.id);
+      proofTraces.push({
+        edgeId: edge.id,
+        violatedAxioms: ["R-04"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail,
+      });
     }
   }
 

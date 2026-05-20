@@ -97,6 +97,32 @@ describe("formatLiveSignal", () => {
     expect(f.qualifier).toBe("4 prog");
   });
 
+  it("formats a governance signal with signed value and avg qualifier", () => {
+    const below = formatLiveSignal(
+      point({
+        kind: "governance",
+        value: -0.42,
+        capacity: 0,
+        unit: "WGI",
+        source: "World Bank · CHN/RL.EST (period 2023)",
+      }),
+    );
+    expect(below.primaryValue).toBe("-0.42 WGI");
+    expect(below.qualifier).toBe("below avg");
+
+    const above = formatLiveSignal(
+      point({
+        kind: "governance",
+        value: 0.75,
+        capacity: 0,
+        unit: "WGI",
+        source: "World Bank · USA/RL.EST (period 2023)",
+      }),
+    );
+    expect(above.primaryValue).toBe("+0.75 WGI");
+    expect(above.qualifier).toBe("above avg");
+  });
+
   it("falls back to a generic value-unit format for unknown kinds", () => {
     const f = formatLiveSignal(
       point({

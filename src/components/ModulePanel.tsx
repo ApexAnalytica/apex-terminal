@@ -2663,6 +2663,9 @@ type CriticalityEmptyState =
  */
 function shortenEventLabel(full: string): string {
   const lower = full.toLowerCase();
+  if (lower.includes("node-critical") || lower.includes("max-Ω") || lower.includes("max-omega"))
+    return "node-critical rate";
+  if (lower.includes("buffer") && lower.includes("critical")) return "buffer-critical rate";
   if (lower.includes("recession")) return "recession-onset rate";
   if (lower.includes("oas") || lower.includes("hy ") || lower.includes("credit"))
     return "credit-stress rate";

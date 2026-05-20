@@ -180,15 +180,22 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   // a regular F·E·G·S·M breakdown. Including it here makes the analyst
   // Pareto card show all four tabs by default.
   criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
-  // F → historical "NBER US recession in next 12 months" rate, built
-  // offline from real data already committed in
-  // public/datasets/claire/macro_timeseries.json (10-yr Treasury yield,
-  // Shiller, monthly 1980→2023) × NBER recession dates. Runs end-to-end
-  // with no network — see scripts/build-nber-relevance-reference.ts.
-  // The FRED HY OAS variant (build-fred-relevance-reference.ts) is the
-  // higher-resolution credit-stress alternative; it can layer in later
-  // once a FRED API key + network access are available.
-  relevanceReferenceId: "nber-recession-10y-yield",
+  // F → "node-critical (Ω ≥ 9.0) event within next 50 epochs" rate,
+  // built from the committed Manifold graph run through the cascade
+  // simulator. Digital-twin calibration — events are simulator
+  // outcomes (not real-world events). Most directly relevant to the
+  // in-platform analyst use case: "what does my F mean for the
+  // cascade's evolution on THIS graph?"
+  //
+  // Other references in the repo and usable here when we want to
+  // surface a different framing:
+  //   - "nber-recession-10y-yield" (real macro × NBER recessions,
+  //      committed in #355 — 10y yield substrate is structurally
+  //      different from the graph; useful as a cross-substrate
+  //      sanity check, not as the primary in-card lookup)
+  //   - "fred-hy-oas-stress" (FRED HY OAS, when a key + network are
+  //      available — see scripts/build-fred-relevance-reference.ts)
+  relevanceReferenceId: "graph-cascade-buffer-breach",
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────

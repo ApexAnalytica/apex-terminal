@@ -22,6 +22,12 @@ import {
   type RelevanceBreakdown,
 } from "@/lib/pareto-relevance";
 import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
+import {
+  loadRelevanceReference,
+  lookupRelevanceReference,
+  type ReferenceLookupResult,
+  type RelevanceReference,
+} from "@/lib/pareto-relevance-reference";
 import { fitLppls, lpplsSeries } from "@/lib/estimators/lppls-fit";
 import { fitBettiTemplate } from "@/lib/estimators/ph-fit";
 import { detectCommunities } from "@/lib/community-detection";
@@ -804,6 +810,27 @@ function ParetoPanel({
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
   const activeProfile = useMemo(() => resolveDomainProfile(selectedDomains), [selectedDomains]);
+  // Pre-built per-profile relevance reference (F → historical event-rate
+  // table). Loaded lazily once per profile id; null when the profile
+  // declares no reference or the JSON 404s. The UI guards on this and
+  // degrades silently when null.
+  const [relevanceReference, setRelevanceReference] =
+    useState<RelevanceReference | null>(null);
+  useEffect(() => {
+    const refId = activeProfile.relevanceReferenceId;
+    if (!refId) {
+      setRelevanceReference(null);
+      return;
+    }
+    let cancelled = false;
+    void loadRelevanceReference(refId).then((r) => {
+      if (!cancelled) setRelevanceReference(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProfile.relevanceReferenceId]);
+
   const engine = useMemo(() => getEngineProvider(), []);
   const presetShocks = useMemo(() => getPresetShocks(), []);
   const omegaState = useMemo(() => engine.scanTailRisk(shocks), [engine, shocks]);
@@ -1678,6 +1705,14 @@ function ParetoPanel({
               chartExpanded={paretoSectionExpanded}
               confidence={selected.confidence}
               relevance={selected.relevance}
+              referenceLookup={
+                relevanceReference && selected.relevance
+                  ? lookupRelevanceReference(
+                      relevanceReference,
+                      selected.relevance.F.score,
+                    )
+                  : null
+              }
               shortDesc={selected.shortDesc}
               methodology={selected.methodology}
               formula={selected.formula}
@@ -2627,6 +2662,7 @@ function CriticalityCard({
   chartExpanded,
   confidence,
   relevance,
+  referenceLookup,
   shortDesc,
   methodology,
   formula,
@@ -2645,6 +2681,13 @@ function CriticalityCard({
   chartExpanded?: boolean;
   confidence: number;
   relevance?: RelevanceBreakdown;
+  /**
+   * Per-selection F → historical event-rate lookup. Computed by the parent
+   * from the active profile's pre-built reference (e.g. FRED HY OAS). Null
+   * when no reference is configured for this profile or the JSON hasn't
+   * loaded yet — the card degrades silently in either case.
+   */
+  referenceLookup?: ReferenceLookupResult | null;
   shortDesc: string;
   methodology: string[];
   formula: string;
@@ -2757,6 +2800,30 @@ function CriticalityCard({
             opacity: 0.7,
           }} />
         </div>
+        {/* Calibrated interpretation of F against a real historical
+            event-rate table. Renders only when the active profile has a
+            reference loaded AND the bin containing this F has ≥1 sample.
+            "F=0.71 → 41% historical stress rate in 152 matched windows" */}
+        {referenceLookup &&
+          Number.isFinite(referenceLookup.eventRate) &&
+          referenceLookup.n > 0 && (
+            <div
+              className="text-[8px] font-mono text-text-muted/80 leading-relaxed"
+              title={`Calibrated against ${referenceLookup.referenceId}: ${referenceLookup.eventLabel}. Reference base rate ${(referenceLookup.baseRate * 100).toFixed(1)}%.`}
+            >
+              <span className="text-foreground/70">
+                F={(relevance?.F.score ?? 0).toFixed(2)}
+              </span>
+              <span className="opacity-70">{" → "}</span>
+              <span style={{ color }}>
+                {(referenceLookup.eventRate * 100).toFixed(0)}%
+              </span>
+              <span className="opacity-70">
+                {" historical event rate"}
+                {referenceLookup.n > 0 && ` (n=${referenceLookup.n})`}
+              </span>
+            </div>
+          )}
         <div className="text-[9px] font-mono text-text-muted leading-relaxed">
           {shortDesc}
         </div>

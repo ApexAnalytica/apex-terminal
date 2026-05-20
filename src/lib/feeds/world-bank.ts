@@ -79,17 +79,15 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 80,
     mockValue: 60.5,
   },
-  // Global aggregate
-  {
-    country: "WLD",
-    indicator: "FP.CPI.TOTL.ZG",
-    label: "Global CPI Inflation YoY",
-    labelPatterns: ["global cpi"],
-    scale: 1,
-    unit: "%",
-    capacity: 6,
-    mockValue: 4.5,
-  },
+  // Global CPI YoY intentionally absent from WB. We probed every plausible
+  // regional aggregate (WLD, LMY, HIC, EMU, OED) and FP.CPI.TOTL.ZG is
+  // null at every aggregate level — WB only computes CPI inflation for
+  // individual countries. The "Macro Impact: Inflation & Policy" graph
+  // domain is FRED-owned (CPIAUCSL etc.); WB doesn't have a useful lane
+  // here. Previous entry (WLD/FP.CPI.TOTL.ZG) wired to label pattern
+  // "global cpi" which matched ZERO graph nodes, so removing it has no
+  // downstream effect — just eliminates a permanent MISS in the
+  // check-feeds verification.
   // Phase 8 — MENA Import Dependency real data. World Bank aggregates the
   // Middle East & North Africa region as country code "MEA". The indicator
   // NE.IMP.GNFS.ZS (Imports of goods and services, % of GDP) is the
@@ -132,15 +130,24 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 700,
     mockValue: 605,
   },
+  // Originally wired to PAK/GC.DOD.TOTL.GD.ZS (central gov debt % GDP)
+  // but that WB series has been null for Pakistan since 2000 — likely a
+  // reporting gap. Swapped to DT.DOD.DECT.GN.ZS (external debt stocks %
+  // of GNI) which has 2024 data and is arguably the BETTER contagion
+  // signal for Pakistan anyway: FX-denominated external debt + IMF
+  // program dependence is what actually drives PAK distress episodes.
+  // Capacity recalibrated to 50 (IMF DSA "high external debt"
+  // threshold) since external-debt % GNI regimes run lower than
+  // central-gov-debt % GDP regimes.
   {
     country: "PAK",
-    indicator: "GC.DOD.TOTL.GD.ZS",
-    label: "Pakistan Central Government Debt (% of GDP)",
+    indicator: "DT.DOD.DECT.GN.ZS",
+    label: "Pakistan External Debt Stocks (% of GNI)",
     labelPatterns: ["debt-to-gdp ratio", "debt to gdp"],
     scale: 1,
     unit: "%",
-    capacity: 80,
-    mockValue: 76,
+    capacity: 50,
+    mockValue: 36,
   },
   {
     country: "TUR",

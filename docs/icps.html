@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Analytica — ICP Playbook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="./brand/apex-brand.css" />
+  <style>
+    @page { margin: 0.7in 0.85in 0.85in 0.85in; }
+    main p { font-size: 10pt; line-height: 1.5; margin: 0 0 8pt 0; color: var(--apex-ink); }
+    main h2 { font-family: var(--apex-font-display); font-size: 13pt; letter-spacing: 0.04em; margin: 22pt 0 8pt 0; padding-bottom: 4pt; border-bottom: 1.2pt solid var(--apex-cyan); color: var(--apex-ink); }
+    main h3 { font-family: var(--apex-font-display); font-size: 11pt; letter-spacing: 0.03em; margin: 16pt 0 6pt 0; color: var(--apex-ink); }
+    main h4 { font-family: var(--apex-font-mono); font-size: 8.5pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--apex-cyan); margin: 12pt 0 6pt 0; }
+    main ul, main ol { margin: 0 0 10pt 0; padding-left: 16pt; }
+    main li { font-size: 10pt; line-height: 1.5; margin-bottom: 3pt; color: var(--apex-ink); }
+    main strong { color: var(--apex-ink); font-weight: 600; }
+    main em { font-style: italic; color: var(--apex-ink); }
+    main table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt 0; font-size: 9.5pt; }
+    main table th { text-align: left; padding: 4pt 6pt; border-bottom: 1pt solid var(--apex-cyan); font-family: var(--apex-font-mono); font-size: 7.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--apex-cyan); }
+    main table td { padding: 4pt 6pt; border-bottom: 0.4pt solid var(--apex-rule); vertical-align: top; line-height: 1.4; }
+    .pull {
+      background: var(--apex-paper-tint);
+      border-left: 2pt solid var(--apex-cyan);
+      padding: 8pt 12pt;
+      margin: 8pt 0 12pt 0;
+      font-size: 10pt;
+      line-height: 1.5;
+      font-style: italic;
+      color: var(--apex-ink-soft);
+    }
+    .tier-banner {
+      font-family: var(--apex-font-mono);
+      font-size: 8pt;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--apex-cyan);
+      margin: 24pt 0 4pt 0;
+      padding-bottom: 4pt;
+      border-bottom: 0.6pt solid var(--apex-rule);
+    }
+    .tier-banner.tier-1 { color: var(--apex-cyan); }
+    .tier-banner.tier-2 { color: var(--apex-ink-soft); }
+    .tier-banner.tier-3 { color: var(--apex-ink-muted); }
+    .first-h2 { margin-top: 6pt; }
+    .apex-masthead { padding-bottom: 10pt; margin-bottom: 14pt; }
+    .apex-title { font-size: 18pt; margin-bottom: 3pt; }
+    .apex-subtitle { font-size: 10pt; margin-bottom: 10pt; }
+    .toc-block {
+      background: var(--apex-paper-tint);
+      padding: 10pt 14pt;
+      margin: 4pt 0 12pt 0;
+      font-size: 9.5pt;
+      line-height: 1.6;
+    }
+    .toc-block .toc-title {
+      font-family: var(--apex-font-mono);
+      font-size: 7.5pt;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--apex-cyan);
+      margin: 0 0 4pt 0;
+    }
+    code { font-family: var(--apex-font-mono); font-size: 9.5pt; }
+  </style>
+</head>
+<body>
+
+  <header class="apex-masthead">
+    <div class="apex-mark">
+      <img src="./brand/apex-logo.png" alt="Apex Analytica" />
+      <div class="apex-wordmark">
+        APEX ANALYTICA
+        <span class="product">MANIFOLD</span>
+      </div>
+    </div>
+    <div class="apex-meta">
+      <div class="conf-tag">CONFIDENTIAL</div>
+      <div>ICP Playbook &middot; AA-ICP-01</div>
+      <div>2026-05-20</div>
+    </div>
+  </header>
+
+  <h1 class="apex-title">ICP Playbook</h1>
+  <p class="apex-subtitle">Who buys Manifold, where to find them, and how to qualify a real lead.</p>
+
+  <main>
+
+    <p><strong>Audience:</strong> Referral partners, BD partners, internal team.</p>
+    <p><strong>Purpose:</strong> Define who buys Manifold, where to find them, and how to qualify a real lead from a polite-but-empty one.</p>
+
+    <div class="toc-block">
+      <p class="toc-title">Contents</p>
+      <strong>Tier 1 (priority segments):</strong> Insurance &amp; Reinsurance &middot; Bank Counterparty Risk &middot; Macro Hedge Funds<br/>
+      <strong>Tier 2 (secondary):</strong> Energy &middot; Geopolitical &middot; Manufacturing &middot; Infrastructure &middot; Economic<br/>
+      <strong>Tier 3 (not now):</strong> Life Sciences &middot; Government / Defense &middot; Retail<br/>
+      <strong>General:</strong> Qualification heuristics &middot; Debrief template
+    </div>
+
+    <h2 class="first-h2">How to use this document</h2>
+
+    <p>The platform is configured for eight domains. For the first wave of commercial outreach we are prioritising three. A "segment" here means a market shape; an "ICP" (ideal customer profile) means a specific buyer type within that segment with budget, decision authority, and use case.</p>
+
+    <p>The structure below is segment &rarr; ICPs &rarr; qualifying questions &rarr; named-account shortlist &rarr; intro framing.</p>
+
+    <p>If you are about to make an introduction, jump to the named-account shortlist for the relevant segment. If the prospect is on it or close to it, go. If not, run through the qualifying questions first &mdash; five minutes of qualification saves a wasted call.</p>
+
+    <!-- ═══════════ TIER 1 ═══════════ -->
+    <div class="tier-banner tier-1">Tier 1 &middot; Priority Segments</div>
+
+    <p>These three segments get first-wave outreach effort. Strongest team credibility, most defined buyer profiles, fastest decision cycles for an analytical platform at the price points we are selling.</p>
+
+    <!-- ── Segment 1: Insurance ── -->
+    <h2>Segment 1 &middot; Insurance and Reinsurance</h2>
+
+    <p><strong>Why this is priority.</strong> Junaid is ex-reinsurance. Advisors Dr. Pita (JHU, natural-disaster risk, ex-World Bank) and Dr. Igusa (JHU, systems engineering, NIH/CDC funded) are credentialed in this domain. The AON deck already exists as a worked-example pitch artifact. The macro tailwind is climate non-stationarity invalidating historical CAT models, which is exactly the gap Manifold fills.</p>
+
+    <h3>ICP 1.1 &middot; Global insurance broker / risk advisory</h3>
+
+    <p>The "big three" plus second-tier brokerages.</p>
+    <ul>
+      <li><strong>Tier 1 firms:</strong> AON, Marsh McLennan, Willis Towers Watson (WTW).</li>
+      <li><strong>Tier 2 firms:</strong> Lockton, Gallagher, Howden, McGill and Partners, Brown and Brown.</li>
+    </ul>
+
+    <h4>Buyer titles to target</h4>
+    <ul>
+      <li>Head of CAT Modelling / Head of Catastrophe Risk Practice</li>
+      <li>Head of Capital Advisory / Capital Markets</li>
+      <li>Head of Climate Risk Practice (post-TCFD/IFRS-17 hires at every major)</li>
+      <li>Head of ILS / Insurance-Linked Securities / Capital Markets</li>
+      <li>Chief Innovation Officer / Head of Strategy and Technology</li>
+    </ul>
+
+    <h4>Use cases that resonate</h4>
+    <ul>
+      <li>CAT-model augmentation under climate non-stationarity</li>
+      <li>Structural diagnostics for clients before placing complex programmes</li>
+      <li>Defensible disclosure narrative for clients facing TCFD / NAIC / Solvency II</li>
+      <li>Parametric trigger structuring with audit-trail output</li>
+    </ul>
+
+    <h3>ICP 1.2 &middot; Direct reinsurer</h3>
+
+    <ul>
+      <li><strong>Top-tier:</strong> Munich Re, Swiss Re, Hannover Re, SCOR, RGA, Lloyd's of London (as collective), Berkshire Re.</li>
+      <li><strong>Mid-tier:</strong> PartnerRe, Everest Re, Mapfre Re, Korean Re, China Re, R+V Re.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Chief Risk Officer (CRO)</li>
+      <li>Chief Actuary / Head of Pricing</li>
+      <li>Head of Catastrophe Risk / CAT Modelling</li>
+      <li>Head of Cyber Risk / Emerging Risk / Pandemic Risk</li>
+      <li>Head of ILS Capital / Retrocession</li>
+    </ul>
+
+    <h4>Use cases that resonate</h4>
+    <ul>
+      <li>Treaty cascade analysis when a primary insurer or partner fails</li>
+      <li>Counterparty fragility across retrocession tower</li>
+      <li>Cross-peril correlation review under stress</li>
+    </ul>
+
+    <h3>ICP 1.3 &middot; ILS fund or specialty reinsurance manager</h3>
+
+    <ul>
+      <li>Nephila Capital, Aeolus Capital, Twelve Capital, LGT ILS Partners, Stone Ridge Asset Management, Schroders Capital ILS, Credit Suisse Insurance Linked Strategies.</li>
+      <li>Lloyd's syndicates with active ILS programmes: Beazley, Hiscox, Lancashire, Brit, Talbot.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Portfolio Manager (PM)</li>
+      <li>Head of Research</li>
+      <li>CIO</li>
+      <li>Head of Cat / Active Underwriter (Lloyd's-side)</li>
+    </ul>
+
+    <h4>Use cases that resonate</h4>
+    <ul>
+      <li>Basis-risk quantification on parametric covers</li>
+      <li>Trigger-structure formal verification</li>
+      <li>Portfolio fragility under correlated peril scenarios</li>
+    </ul>
+
+    <h3>Qualifying questions for Insurance / Reinsurance ICPs</h3>
+
+    <p>Use these in the first conversation. A "yes" on two or more = real lead.</p>
+
+    <ol>
+      <li><em>"Has your team been asked to defend CAT-model assumptions in front of regulators or rating agencies in the last 12 months?"</em></li>
+      <li><em>"Are you currently in any review or refresh cycle on your CAT modelling vendor (AIR / RMS / KCC / proprietary)?"</em></li>
+      <li><em>"Has your firm been hit by, or had a near-miss on, a peril correlation that your model didn't anticipate? Wildfire-LA, Hurricane Helene's inland flooding, cyber aggregation, etc."</em></li>
+      <li><em>"Are you working on ILS / parametric / cat-bond product structuring where basis-risk quantification matters?"</em></li>
+      <li><em>"Does your team have a Director or MD with discretionary budget for analytics tools, or does every analytics purchase route through procurement?"</em></li>
+    </ol>
+
+    <h3>Named-account shortlist for first 90 days</h3>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Account</th><th>Status</th><th>Lead-in</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td><strong>AON</strong></td><td>Warm via Shane / Junaid</td><td>Deck already sent. Awaiting response.</td></tr>
+        <tr><td>2</td><td><strong>Marsh McLennan</strong></td><td>Cold</td><td>Mirror AON pitch. Climate Risk Practice or Capital Advisory entry.</td></tr>
+        <tr><td>3</td><td><strong>Munich Re</strong></td><td>Cold</td><td>Direct reinsurer angle. CRO or Head of Cat.</td></tr>
+        <tr><td>4</td><td><strong>Swiss Re</strong></td><td>Cold</td><td>Direct reinsurer angle. Open to research-led pitches historically.</td></tr>
+        <tr><td>5</td><td><strong>WTW</strong></td><td>Cold</td><td>Capital Markets / ILS practice.</td></tr>
+        <tr><td>6</td><td><strong>Hannover Re</strong></td><td>Cold</td><td>Mid-sized, often faster than top-three.</td></tr>
+        <tr><td>7</td><td><strong>Nephila</strong></td><td>Cold</td><td>ILS fund. Research-led conversation.</td></tr>
+        <tr><td>8</td><td><strong>Beazley</strong></td><td>Cold</td><td>Lloyd's syndicate. Active Underwriter or Head of Cat.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Intro framing for Insurance / Reinsurance</h3>
+
+    <p>Lead with <strong>structural causality under climate non-stationarity</strong> as the value proposition. Do <em>not</em> lead with the engines or <span class="apex-omega">&Omega;</span>F framework &mdash; those land on the second call.</p>
+
+    <div class="pull">
+      "Junaid spent years on the reinsurance risk side and has been building a causal-analytics platform that addresses a specific gap their team has probably been wrestling with: when historical CAT-model fits break under regime change, what do you replace them with? The platform layers onto existing CAT tools rather than replacing them, and the team includes JHU systems-engineering advisors who've published on cascading failure. Worth a 30-minute look."
+    </div>
+
+    <!-- ── Segment 2: Bank Counterparty Risk ── -->
+    <h2>Segment 2 &middot; Bank Counterparty Risk</h2>
+
+    <p><strong>Why this is priority.</strong> Three team members are ex-HSBC (Junaid, Georgios, Jeremy). Brynna is ex-Goldman. Direct alumni access into both. The product also slots into the FRTB / Basel 3.1 regulatory cycle that has every G-SIB rebuilding counterparty methodology between now and end-of-decade. Budget is real and timeline pressure is real.</p>
+
+    <h3>ICP 2.1 &middot; G-SIB counterparty risk team</h3>
+
+    <ul>
+      <li><strong>US:</strong> JPMorgan, Goldman Sachs, Morgan Stanley, Citigroup, Bank of America, Wells Fargo.</li>
+      <li><strong>EU:</strong> Deutsche Bank, BNP Paribas, Barclays, Santander, ING, UBS, Credit Agricole, BBVA, Soci&eacute;t&eacute; G&eacute;n&eacute;rale.</li>
+      <li><strong>APAC:</strong> HSBC, Standard Chartered, MUFG, Mizuho, SMBC, DBS, OCBC, Nomura.</li>
+    </ul>
+
+    <h4>Buyer titles to target</h4>
+    <ul>
+      <li>Head of Counterparty Credit Risk</li>
+      <li>Head of FRTB Implementation / CVA Capital</li>
+      <li>Head of Wholesale Credit Risk</li>
+      <li>Head of Risk Modelling / Risk Methodology</li>
+      <li>Head of Treasury Risk</li>
+    </ul>
+
+    <h4>Use cases that resonate</h4>
+    <ul>
+      <li>Counterparty cascade analysis through interbank / repo / derivatives networks</li>
+      <li>Cross-asset stress under regime change (the bit existing stress tests don't model)</li>
+      <li>FRTB-compliant structural risk methodology</li>
+      <li>Capital efficiency under interdependent counterparty exposure</li>
+    </ul>
+
+    <h3>ICP 2.2 &middot; Regional / mid-cap bank risk team</h3>
+
+    <p>Lower revenue per deal but faster procurement than G-SIBs.</p>
+
+    <ul>
+      <li><strong>US regional:</strong> PNC, Truist, US Bancorp, Citizens, Fifth Third, KeyCorp, M&amp;T, Huntington, Regions, Comerica.</li>
+      <li><strong>Custody / processing banks:</strong> BNY Mellon, State Street, Northern Trust.</li>
+      <li><strong>Canadian:</strong> RBC, TD, Scotiabank, BMO, CIBC, National Bank.</li>
+    </ul>
+
+    <p><strong>Buyer titles:</strong> same as G-SIBs but the title hierarchy is flatter, so a Director-level often has procurement signoff a G-SIB Director would not.</p>
+
+    <h3>ICP 2.3 &middot; Central bank financial-stability division</h3>
+
+    <ul>
+      <li>Federal Reserve (FSAR group, OFR), Bank of England (FPC), European Central Bank (ESRB), Bank for International Settlements, Financial Stability Board, Hong Kong Monetary Authority, Monetary Authority of Singapore, Reserve Bank of Australia.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Head of Financial Stability Research</li>
+      <li>Senior Economist (Financial Stability)</li>
+      <li>Stress Test Lead</li>
+    </ul>
+
+    <p><strong>Reality check.</strong> Central banks are slow buyers (12-24 months) but the work-product is high-prestige, often jointly published, and credentialing carries into commercial deals. Treat as long-cycle plays, not first-quarter wins. Skip unless there's a warm contact.</p>
+
+    <h3>Qualifying questions for Bank Counterparty Risk ICPs</h3>
+
+    <ol>
+      <li><em>"Where are you in FRTB implementation? Pre-go-live, post-go-live, or in the middle of methodology refresh?"</em></li>
+      <li><em>"Has your counterparty team been asked to address any specific gaps surfaced in the 2023 banking turbulence &mdash; SVB, Credit Suisse, regional-bank correlation?"</em></li>
+      <li><em>"How are cross-counterparty correlations currently modelled? Statistical fit on history, or something more structural?"</em></li>
+      <li><em>"Is your existing counterparty risk infrastructure internally-built or vendor-bought? Are you in evaluation cycle on alternatives?"</em></li>
+      <li><em>"Who would champion bringing a new analytical tool into your team &mdash; you, your manager, or does it route through model-risk-management?"</em></li>
+    </ol>
+
+    <h3>Named-account shortlist for first 90 days</h3>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Account</th><th>Status</th><th>Lead-in</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td><strong>HSBC</strong></td><td>Warm via Junaid / Georgios / Jeremy</td><td>Alumni intro to Counterparty or Treasury Risk.</td></tr>
+        <tr><td>2</td><td><strong>Goldman Sachs</strong></td><td>Warm via Brynna</td><td>Alumni intro to Risk or Capital Reporting.</td></tr>
+        <tr><td>3</td><td><strong>JPMorgan</strong></td><td>Cold</td><td>Counterparty Credit Risk team.</td></tr>
+        <tr><td>4</td><td><strong>Citi</strong></td><td>Cold</td><td>Counterparty / Wholesale Credit Risk.</td></tr>
+        <tr><td>5</td><td><strong>Morgan Stanley</strong></td><td>Cold</td><td>Counterparty Risk.</td></tr>
+        <tr><td>6</td><td><strong>Barclays</strong></td><td>Cold</td><td>EU FRTB-implementation pressure.</td></tr>
+        <tr><td>7</td><td><strong>Standard Chartered</strong></td><td>Cold (HSBC-adjacent talent)</td><td>Counterparty in Asia / EM exposure.</td></tr>
+        <tr><td>8</td><td><strong>BNY Mellon</strong></td><td>Cold</td><td>Custody-bank angle, faster procurement.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Intro framing for Bank Counterparty Risk</h3>
+
+    <p>Lead with <strong>FRTB / structural counterparty methodology</strong> as the value proposition.</p>
+
+    <div class="pull">
+      "Junaid's team at Apex (ex-HSBC AI, ex-Goldman ops, JHU systems engineering) has built a causal-graph platform for counterparty cascade and cross-asset stress. The pitch is structurally different from existing risk tools: rather than fitting historical correlations and extrapolating, it infers the causal structure underneath your exposure data and quantifies how shocks propagate when correlations break down. Probably worth 30 minutes for any team in FRTB cycle or post-2023-turbulence methodology refresh."
+    </div>
+
+    <!-- ── Segment 3: Macro Hedge Funds ── -->
+    <h2>Segment 3 &middot; Macro Hedge Funds</h2>
+
+    <p><strong>Why this is priority.</strong> Fastest decision cycle of the three (1-3 months from warm intro to first paid pilot if it lands). Partner-controlled budgets mean no procurement gauntlet. Macro PMs care about regime detection, which the platform's BOCPD estimator is built for. Smaller individual deal sizes than insurance / reinsurance, but the velocity compensates.</p>
+
+    <h3>ICP 3.1 &middot; Discretionary global-macro fund</h3>
+
+    <ul>
+      <li>Brevan Howard, Caxton Associates, Moore Capital, Tudor Investment, Bridgewater (very slow buyer, prestige play), Element Capital, Rokos Capital, Discovery Capital, Soros Fund Management.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Portfolio Manager (PM) &mdash; the most common buyer at a discretionary fund</li>
+      <li>Head of Research</li>
+      <li>CIO (at smaller / mid-size funds)</li>
+    </ul>
+
+    <h3>ICP 3.2 &middot; Multi-strategy fund's macro book</h3>
+
+    <ul>
+      <li>Citadel (macro and fixed-income arbitrage), Millennium (multi-PM with macro books), Schonfeld, Verition, ExodusPoint, BlueCrest Capital, Balyasny Asset Management.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Macro PM / Macro Lead</li>
+      <li>Head of Macro Research</li>
+      <li>Risk PM (sometimes the buyer in pod structures)</li>
+    </ul>
+
+    <h3>ICP 3.3 &middot; Quant / systematic macro</h3>
+
+    <ul>
+      <li>Two Sigma, DE Shaw (Macroeconomic Modeling group), AQR, Man AHL, Winton, Aspect Capital.</li>
+    </ul>
+
+    <h4>Buyer titles</h4>
+    <ul>
+      <li>Senior Researcher</li>
+      <li>Portfolio Manager</li>
+      <li>Head of Macroeconomic Research</li>
+    </ul>
+
+    <p><strong>Reality check.</strong> Quant funds are slower to adopt third-party analytics because they tend to build internally. Highest barrier of the three sub-ICPs. Pursue only if you have a personal contact at the research-team level.</p>
+
+    <h3>Qualifying questions for Macro Hedge Funds</h3>
+
+    <ol>
+      <li><em>"Are you currently positioned around any specific macro regime hypothesis &mdash; inflation persistence, banking-system fragility, geopolitical re-coupling &mdash; where you'd benefit from causal-structure analytics?"</em></li>
+      <li><em>"In the last 3 years, can you name a specific regime shift your existing models missed or were late on?"</em></li>
+      <li><em>"Is the buyer here the PM themselves, the research lead, or a research-tools budget owned at the firm level?"</em></li>
+      <li><em>"Are you open to integrating non-standard analytical inputs alongside your existing quant / discretionary process, or is the stack rigidly defined?"</em></li>
+      <li><em>"What's the typical cycle from 'we want to evaluate a tool' to 'we sign the contract' at your shop?"</em></li>
+    </ol>
+
+    <h3>Named-account shortlist for first 90 days</h3>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Account</th><th>Status</th><th>Lead-in</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Brevan Howard</strong></td><td>Cold</td><td>Discretionary macro PM intro.</td></tr>
+        <tr><td>2</td><td><strong>Caxton</strong></td><td>Cold</td><td>Same.</td></tr>
+        <tr><td>3</td><td><strong>Moore Capital</strong></td><td>Cold</td><td>Same.</td></tr>
+        <tr><td>4</td><td><strong>Citadel</strong></td><td>Cold (multi-strategy)</td><td>Macro PM at a specific pod, not firm-wide.</td></tr>
+        <tr><td>5</td><td><strong>Marshall Wace</strong></td><td>Cold</td><td>TOPS systematic platform plus discretionary macro.</td></tr>
+        <tr><td>6</td><td><strong>Element Capital</strong></td><td>Cold</td><td>Smaller, faster decisions.</td></tr>
+        <tr><td>7</td><td><strong>Rokos Capital</strong></td><td>Cold</td><td>Brevan-alum, similar profile.</td></tr>
+        <tr><td>8</td><td><strong>Pareto Technologies</strong></td><td>Internal</td><td>Junaid's other firm. House-account, not a Qualifying Deal for commission purposes.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Intro framing for Macro Hedge Funds</h3>
+
+    <p>Lead with <strong>regime detection and structural causality</strong> as the value proposition.</p>
+
+    <div class="pull">
+      "Junaid runs a fund and an analytics platform. The platform &mdash; Manifold &mdash; is a causal-graph regime-detection tool the macro side of his book has been using for in-house signal generation. He's started letting outside PMs trial it. If you've been wrestling with regime-shift miss-timing or want to layer structural causality onto your discretionary process, it's worth a look."
+    </div>
+
+    <p>This intro is more candid about Junaid's dual role at Pareto and Apex; for macro PMs, the practitioner-built-this signal is more compelling than the institutional pitch.</p>
+
+    <!-- ═══════════ TIER 2 ═══════════ -->
+    <div class="tier-banner tier-2">Tier 2 &middot; Secondary Segments</div>
+
+    <p>The platform is also configured for these five domains. Buyers in each are real, but we are not pushing active prospecting effort here in the first 90 days. If a warm contact emerges, take the meeting; do not cold-prospect.</p>
+
+    <h3>Energy</h3>
+    <p><strong>Buyers.</strong> Energy trading desks (commodities trading at majors: BP, Shell, TotalEnergies, Equinor, Vitol, Trafigura), energy-major risk/scenarios teams, power-generation portfolio managers, government energy security offices.</p>
+    <p><strong>Use case.</strong> Cross-asset stress (crude / gas / power / carbon), supply-chain disruption mapping, regulatory regime risk.</p>
+
+    <h3>Geopolitical</h3>
+    <p><strong>Buyers.</strong> Multinational sanctions / coercion-vulnerability teams (defense contractors, tech firms, financial institutions), country-risk teams at large investment firms, sovereign credit ratings teams at S&amp;P/Moody's/Fitch, government foreign-policy analysts.</p>
+    <p><strong>Use case.</strong> Sanctions cascade, supply-chain dependency, cross-border risk propagation.</p>
+
+    <h3>Manufacturing</h3>
+    <p><strong>Buyers.</strong> Supply-chain risk teams at large industrials (GE, Boeing, Siemens, automotive OEMs), procurement risk leaders, large 3PLs.</p>
+    <p><strong>Use case.</strong> Supplier dependency mapping, cascade analysis for parts shortages and component failures.</p>
+
+    <h3>Infrastructure</h3>
+    <p><strong>Buyers.</strong> ISO/RTO operational planners, government critical-infrastructure offices, large engineering-procurement-construction (EPC) contractors.</p>
+    <p><strong>Use case.</strong> Grid resilience, cross-utility cascade, climate-driven infrastructure exposure. Government cycles are slow.</p>
+
+    <h3>Economic / Macro Policy</h3>
+    <p><strong>Buyers.</strong> Treasury macro offices, central-bank research divisions, NGO and think-tank macro researchers, sovereign wealth funds with macro mandate.</p>
+    <p><strong>Use case.</strong> Macroeconomic regime modelling, policy intervention counterfactuals.</p>
+
+    <!-- ═══════════ TIER 3 ═══════════ -->
+    <div class="tier-banner tier-3">Tier 3 &middot; Not Now</div>
+
+    <p>These are real future markets but require infrastructure / configuration / proof points we don't have yet. Don't prospect.</p>
+
+    <ul>
+      <li><strong>Life sciences / biotech / pharma.</strong> T1D track is research-partnership, not paid. Wait until the first commercial pharma engagement lands.</li>
+      <li><strong>Government / defense / intelligence community.</strong> Procurement cycles are 18-24 months minimum; we don't have the security clearances or FedRAMP-equivalent infrastructure. Refer to SBIR funding track instead of trying to sell.</li>
+      <li><strong>Retail / consumer / ESG fund managers.</strong> Too small per-ticket to justify the configuration effort in early stage.</li>
+    </ul>
+
+    <!-- ═══════════ GENERAL ═══════════ -->
+    <h2>General qualification rules of thumb</h2>
+
+    <p>Across all ICPs, these signals indicate a real lead vs. polite-but-not-buying:</p>
+
+    <h4>Strong signals (lead is real)</h4>
+    <ul>
+      <li>They ask about pricing in the first or second call.</li>
+      <li>They ask about data ingestion mechanics (their data, our schema).</li>
+      <li>They request a second meeting with a specific colleague they want involved.</li>
+      <li>They reference a specific use case at their firm where they'd want this configured.</li>
+      <li>They volunteer a timeline (<em>"we're reviewing tools in Q3"</em>).</li>
+    </ul>
+
+    <h4>Weak signals (lead is not real, courteous-engagement only)</h4>
+    <ul>
+      <li>They ask only about the methodology and not the operational fit.</li>
+      <li>They want to "stay in touch" without a next concrete step.</li>
+      <li>They are personally interested but admit no budget authority.</li>
+      <li>They redirect to a colleague who never engages.</li>
+      <li>They want to talk about academic collaboration / research papers (this is real for research partnerships, not for paid sales).</li>
+    </ul>
+
+    <p>If the conversation has only weak signals after two meetings, archive the contact and move on. Spend your time on prospects with strong signals.</p>
+
+    <h2>What to tell us back</h2>
+
+    <p>When you take a call with any prospect, send Junaid and Brynna a 5-line debrief within 24 hours:</p>
+
+    <ol>
+      <li>Who you spoke with (name, title, firm).</li>
+      <li>What use case resonated, if any.</li>
+      <li>Strong signals or weak signals.</li>
+      <li>What they asked for next (or, if nothing, what you offered as a next step).</li>
+      <li>Your gut read: is this real, slow-burn, or polite-but-no.</li>
+    </ol>
+
+    <p>The pipeline updates from your debriefs. The ICP playbook evolves from what you learn. Both of those are how the playbook gets sharper over time.</p>
+
+    <p style="margin-top: 24pt; font-size: 9pt; color: var(--apex-ink-muted); font-style: italic;">End of ICP playbook. Updates land here as the pipeline produces real feedback. Send corrections or additions to junaid@apexanalytica.co.</p>
+
+  </main>
+
+  <footer class="apex-footer">
+    <span>APEX ANALYTICA &middot; CONFIDENTIAL</span>
+    <span class="apex-footer-mark"><span class="apex-omega">&Omega;</span>-CRITICAL AI SYSTEMS&trade;</span>
+  </footer>
+
+</body>
+</html>

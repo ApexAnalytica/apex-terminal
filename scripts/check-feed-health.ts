@@ -7,8 +7,16 @@
  *   npx tsx scripts/check-feed-health.ts                # against prod
  *   BASE=http://localhost:3000 npx tsx scripts/check-feed-health.ts
  *
- * Reads no secrets — the keys live in the server's env. Useful right
- * after rotating FRED_API_KEY on Vercel to confirm the next deploy
+ * Prod's /api/feeds/* routes are behind Supabase auth, so against prod
+ * you need to pass a session cookie:
+ *
+ *   AUTH_COOKIE='sb-...=...; sb-...-auth-token=...' npm run check:feeds
+ *
+ * Grab the cookie from a logged-in browser session (DevTools → Application →
+ * Cookies → manifold.apexanalytica.co → copy the sb-* entries).
+ *
+ * Reads no secrets — the FRED/WB keys live in the server's env. Useful
+ * right after rotating FRED_API_KEY on Vercel to confirm the next deploy
  * flipped every series from mock → live.
  *
  * Exits 0 if at least one series is live and none are unexpectedly
@@ -18,6 +26,7 @@ import { FRED_SERIES } from "../src/lib/feeds/fred";
 import { WB_SERIES } from "../src/lib/feeds/world-bank";
 
 const BASE = process.env.BASE ?? "https://manifold.apexanalytica.co";
+const AUTH_COOKIE = process.env.AUTH_COOKIE;
 
 type Verdict = "LIVE" | "MOCK" | "MISS";
 interface Row {
@@ -38,7 +47,18 @@ function paint(v: Verdict): string {
 
 async function fetchJson(path: string): Promise<unknown> {
   const url = `${BASE}${path}`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const r = await fetch(url, {
+    headers: AUTH_COOKIE ? { cookie: AUTH_COOKIE } : {},
+    redirect: "manual",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (r.status === 307 || r.status === 302) {
+    throw new Error(
+      `${url} → HTTP ${r.status} → ${r.headers.get("location") ?? "?"}. ` +
+        `The feed route is auth-gated; pass AUTH_COOKIE='sb-...-auth-token=...' ` +
+        `(from a logged-in browser session) and retry.`,
+    );
+  }
   if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
   return r.json();
 }

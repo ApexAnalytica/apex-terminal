@@ -180,4 +180,33 @@ describe("worldBankProvider.matchPayload", () => {
     expect(batch.updates).toHaveLength(0);
     expect(batch.event).toBeUndefined();
   });
+
+  it("fans one observation out to every label-pattern match", () => {
+    // Regression: before the matcher fix, `nodes.find(...)` returned the
+    // first label-pattern match and silently dropped subsequent ones.
+    // The 4 fertilizer-market nodes (qf_/mn_ India + Brazil) need
+    // one (country, indicator) observation to drive multiple downstream
+    // nodes — this asserts the fan-out works.
+    const nodes = [
+      makeNode({ id: "qf_india_fertilizer_market", label: "India fertilizer import market" }),
+      makeNode({ id: "mn_india_fertilizer_market", label: "India fertilizer market" }),
+      makeNode({ id: "qf_brazil_fertilizer_market", label: "Brazil fertilizer import market" }),
+      makeNode({ id: "mn_brazil_fertilizer_market", label: "Brazil fertilizer market" }),
+      makeNode({ id: "qf_australia_fertilizer_market", label: "Australia fertilizer customer market" }),
+      makeNode({ id: "qf_usa_fertilizer_market", label: "United States fertilizer customer market" }),
+    ];
+    const feed = mockWorldBankFeed();
+    const batch = worldBankProvider.matchPayload(feed, nodes);
+    const matchedIds = batch.updates.map((u) => u.nodeId).sort();
+
+    // The single IND/AG.CON.FERT.ZS observation should hit BOTH India nodes.
+    expect(matchedIds).toContain("qf_india_fertilizer_market");
+    expect(matchedIds).toContain("mn_india_fertilizer_market");
+    // Same for the single BRA/AG.CON.FERT.ZS observation.
+    expect(matchedIds).toContain("qf_brazil_fertilizer_market");
+    expect(matchedIds).toContain("mn_brazil_fertilizer_market");
+    // Australia / USA labels (with "customer market") must NOT collide.
+    expect(matchedIds).not.toContain("qf_australia_fertilizer_market");
+    expect(matchedIds).not.toContain("qf_usa_fertilizer_market");
+  });
 });

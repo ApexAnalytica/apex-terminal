@@ -39,7 +39,18 @@ export async function updateSession(request: NextRequest) {
   // API-key validator from PR #337 actually gets to run — the
   // session middleware was 307-redirecting valid API-key requests to
   // /login before the validator could see them.
-  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access", "/api/discovery"];
+  //
+  // `/api/feeds` is here because every handler under it just proxies
+  // a public data source (FRED, EIA, World Bank, ClinicalTrials.gov,
+  // OFAC, OpenFDA, plus the derivation stub) — no user context, no
+  // per-tier quota, no PII. Routing them through the session check
+  // added a `supabase.auth.getUser()` round-trip on every poll, which
+  // cold-starts to ~18s on the derivations endpoint and starves
+  // Chrome's per-origin connection pool — surfacing as
+  // ERR_CONNECTION_TIMED_OUT spam in the browser console during the
+  // Hormuz demo. Making feeds public eliminates that hop while leaving
+  // session auth on every other API path untouched.
+  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access", "/api/discovery", "/api/feeds"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||

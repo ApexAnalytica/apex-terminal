@@ -109,6 +109,23 @@ const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal>
       qualifier: p.value < 0 ? "below avg" : "above avg",
     };
   },
+  /** NOAA NHC active tropical-cyclone observation. `value` is max
+   *  sustained wind in knots for the strongest storm in the basin;
+   *  `capacity` is the hurricane threshold (64 kt). Qualifier classifies
+   *  the strongest storm so the card reads "80 kt · hurricane" instead
+   *  of "80 kt · 125%". */
+  storm: (p) => {
+    let qualifier: string;
+    if (p.value >= 96) qualifier = "major hurricane";
+    else if (p.value >= 64) qualifier = "hurricane";
+    else if (p.value >= 34) qualifier = "tropical storm";
+    else qualifier = "depression";
+    return {
+      shortLabel: shortLabelFromSource(p.source),
+      primaryValue: `${Math.round(p.value)} ${p.unit}`,
+      qualifier,
+    };
+  },
 };
 
 /**

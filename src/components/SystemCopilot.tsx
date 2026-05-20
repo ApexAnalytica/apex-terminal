@@ -390,6 +390,23 @@ export default function SystemCopilot() {
         closeVoiceLoop("empty-content");
         return;
       }
+      // ─── Suppress mic during TTS ──────────────────────────────
+      // Stop the active recognition before TTS starts. Otherwise
+      // the mic picks up the AI's own voice from the speakers,
+      // transcribes it, and submits it back — feedback loop. The
+      // generation bump invalidates any in-flight handlers from
+      // the old recognition so its onend can't restart while
+      // we're speaking. closeVoiceLoop will spin up a fresh
+      // recognition once TTS finishes.
+      recognitionGenerationRef.current += 1;
+      restartScheduledRef.current = false;
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore — recognition may already be finished
+      }
+      voiceLog("suppressed mic for TTS", { gen: recognitionGenerationRef.current });
+
       setVoiceStage("speaking");
       speakText(lastAssistant.content, () => closeVoiceLoop("onend"));
 

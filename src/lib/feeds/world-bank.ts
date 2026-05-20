@@ -29,6 +29,11 @@ export interface WbSeriesConfig {
   capacity: number;
   /** Plausible mock value (already scaled, in display units) */
   mockValue: number;
+  /** Optional kind override for the emitted LiveDataPoint. Defaults to
+   *  "indicator" when absent. WGI governance series use "governance" so
+   *  axioms can distinguish jurisdictional-governance scores from generic
+   *  macro indicators via `getLiveSignal(node, "governance")`. */
+  kind?: string;
 }
 
 export const WB_SERIES: WbSeriesConfig[] = [
@@ -166,6 +171,37 @@ export const WB_SERIES: WbSeriesConfig[] = [
     unit: "ARS/$",
     capacity: 1500,
     mockValue: 1100,
+  },
+  // WGI — World Governance Indicators. Annual cadence. Scale runs from
+  // ~-2.5 (worst) to +2.5 (best) where 0 ≈ global average. We surface
+  // Rule of Law (RL.EST) — the dimension most directly relevant to R-04
+  // (Cross-Domain Dependency), which now applies a stricter confidence
+  // cutoff when an edge's endpoint sits in a weak-governance jurisdiction.
+  //
+  // `capacity: 0` makes the qualifier display read as "ratio vs world
+  // average". `kind: "governance"` keeps the signal addressable separately
+  // from the generic WB macro indicators that share the same provider.
+  {
+    country: "CHN",
+    indicator: "RL.EST",
+    label: "China Rule of Law (WGI)",
+    labelPatterns: ["china real gdp"],
+    scale: 1,
+    unit: "WGI",
+    capacity: 0,
+    mockValue: -0.4,
+    kind: "governance",
+  },
+  {
+    country: "BRA",
+    indicator: "RL.EST",
+    label: "Brazil Rule of Law (WGI)",
+    labelPatterns: ["brazil real gdp"],
+    scale: 1,
+    unit: "WGI",
+    capacity: 0,
+    mockValue: -0.2,
+    kind: "governance",
   },
 ];
 

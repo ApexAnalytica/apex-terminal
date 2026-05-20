@@ -10,13 +10,17 @@ import {
 } from "@/lib/feeds/world-bank";
 import type { FeedDispatchBatch, FeedProvider } from "./types";
 
+function findSeriesConfig(obs: WbObservation) {
+  return WB_SERIES.find(
+    (s) => s.country === obs.country && s.indicator === obs.indicator,
+  );
+}
+
 function matchSeriesToNode(
   obs: WbObservation,
   nodes: ReadonlyArray<CausalNode>,
 ): CausalNode | undefined {
-  const config = WB_SERIES.find(
-    (s) => s.country === obs.country && s.indicator === obs.indicator,
-  );
+  const config = findSeriesConfig(obs);
   if (!config) return undefined;
   for (const pattern of config.labelPatterns) {
     const needle = pattern.toLowerCase();
@@ -34,13 +38,16 @@ export const worldBankProvider: FeedProvider<WorldBankFeed> = {
   matchPayload(payload, nodes): FeedDispatchBatch {
     const updates: Array<{ nodeId: string; point: LiveDataPoint }> = [];
     const affectedNodeIds: string[] = [];
+    const kindSet = new Set<string>();
     let liveCount = 0;
 
     for (const obs of payload.observations) {
       const node = matchSeriesToNode(obs, nodes);
       if (!node) continue;
+      const config = findSeriesConfig(obs);
+      const kind = config?.kind ?? "indicator";
       const point: LiveDataPoint = {
-        kind: "indicator",
+        kind,
         value: obs.value,
         capacity: obs.capacity,
         unit: obs.unit,
@@ -50,12 +57,13 @@ export const worldBankProvider: FeedProvider<WorldBankFeed> = {
       };
       updates.push({ nodeId: node.id, point });
       affectedNodeIds.push(node.id);
+      kindSet.add(kind);
       if (!obs.source.toLowerCase().includes("(mock")) liveCount += 1;
     }
 
     return {
       providerId: this.id,
-      signalKinds: ["indicator"],
+      signalKinds: kindSet.size > 0 ? [...kindSet].sort() : ["indicator"],
       updates,
       event:
         updates.length > 0

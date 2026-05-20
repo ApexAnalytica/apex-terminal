@@ -97,6 +97,18 @@ const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal>
       qualifier: ratio > 0 && ratio < 2 ? `${(ratio * 100).toFixed(0)}%` : undefined,
     };
   },
+  /** WGI governance score (Rule of Law, etc.). Scale runs ~-2.5..+2.5;
+   *  capacity=0 represents the world average. Qualifier reports the sign
+   *  relative to the world average so the card reads "−0.40 WGI · below avg"
+   *  rather than a meaningless percentage. */
+  governance: (p) => {
+    const signed = p.value >= 0 ? `+${p.value.toFixed(2)}` : p.value.toFixed(2);
+    return {
+      shortLabel: shortLabelFromSource(p.source),
+      primaryValue: `${signed} ${p.unit}`,
+      qualifier: p.value < 0 ? "below avg" : "above avg",
+    };
+  },
 };
 
 /**

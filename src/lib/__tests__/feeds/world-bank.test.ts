@@ -103,6 +103,38 @@ describe("mockWorldBankFeed", () => {
     expect(mena!.labelPatterns).toContain("mena import dependency");
     expect(mena!.unit).toBe("%");
   });
+
+  it("includes the WGI Rule of Law series for China and Brazil (kind=governance)", () => {
+    const cnRol = WB_SERIES.find(
+      (s) => s.country === "CHN" && s.indicator === "RL.EST",
+    );
+    const brRol = WB_SERIES.find(
+      (s) => s.country === "BRA" && s.indicator === "RL.EST",
+    );
+    expect(cnRol).toBeDefined();
+    expect(brRol).toBeDefined();
+    expect(cnRol!.kind).toBe("governance");
+    expect(brRol!.kind).toBe("governance");
+    expect(cnRol!.unit).toBe("WGI");
+  });
+});
+
+describe("parseWbSeriesResponse — WGI Rule of Law series", () => {
+  const config = WB_SERIES.find(
+    (s) => s.country === "CHN" && s.indicator === "RL.EST",
+  )!;
+
+  it("parses a WGI estimate (scale = 1, signed value preserved)", () => {
+    const raw = [
+      { page: 1, pages: 1 },
+      [{ date: "2023", value: -0.42 }],
+    ];
+    const obs = parseWbSeriesResponse(raw, config);
+    expect(obs).not.toBeNull();
+    expect(obs!.value).toBeCloseTo(-0.42, 2);
+    expect(obs!.unit).toBe("WGI");
+    expect(obs!.source).toContain("CHN/RL.EST");
+  });
 });
 
 describe("worldBankProvider.matchPayload", () => {
@@ -116,11 +148,30 @@ describe("worldBankProvider.matchPayload", () => {
     const batch = worldBankProvider.matchPayload(feed, nodes);
 
     expect(batch.providerId).toBe("world-bank");
-    expect(batch.signalKinds).toEqual(["indicator"]);
+    // signalKinds now includes "governance" alongside "indicator" because
+    // the WGI series (Rule of Law) are emitted with kind="governance".
+    expect(batch.signalKinds).toContain("indicator");
+    expect(batch.signalKinds).toContain("governance");
     const matchedIds = batch.updates.map((u) => u.nodeId).sort();
     expect(matchedIds).toContain("c_gdp");
     expect(matchedIds).toContain("b_gdp");
     expect(matchedIds).not.toContain("neutral");
+  });
+
+  it("emits a governance LiveDataPoint for the WGI Rule of Law series", () => {
+    const nodes = [
+      makeNode({ id: "c_gdp", label: "China Real GDP" }),
+      makeNode({ id: "b_gdp", label: "Brazil Real GDP" }),
+    ];
+    const feed = mockWorldBankFeed();
+    const batch = worldBankProvider.matchPayload(feed, nodes);
+    const govUpdates = batch.updates.filter((u) => u.point.kind === "governance");
+    expect(govUpdates.length).toBe(2);
+    const chinaGov = govUpdates.find((u) => u.nodeId === "c_gdp");
+    expect(chinaGov).toBeDefined();
+    expect(chinaGov!.point.unit).toBe("WGI");
+    // WGI Rule of Law is a -2.5..+2.5 scale; below 0 = below world average.
+    expect(typeof chinaGov!.point.value).toBe("number");
   });
 
   it("emits no event when no nodes match", () => {

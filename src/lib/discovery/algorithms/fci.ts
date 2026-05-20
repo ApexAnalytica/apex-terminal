@@ -32,11 +32,13 @@
 //      R3 is the discriminating "kite" — for the pattern A *→ B ←* C
 //      with a fourth node D adjacent to A, B, C with appropriate
 //      circles, orient D *→ B.
-//      R4 is the discriminating-path rule — for W *→ V ←* B - C with
-//      V → C and W not adjacent to C, orient B-C as B → C if B is in
-//      sepset(W, C), else as bidirected (latent confounder candidate).
-//      Implemented for the length-3 (4-node) path only; longer
-//      discriminating paths are deferred.
+//      R4 is the discriminating-path rule — for paths ⟨W, V_1, …, V_{n-2},
+//      B, C⟩ where W is not adjacent to C and every V_i is a collider on
+//      the path AND a parent of C, orient B-C as B → C if B ∈ sepset(W, C),
+//      else as bidirected (latent confounder candidate). The search now
+//      handles paths of arbitrary length up to `maxDiscriminatingPathLength`
+//      intermediates (default 5); previous v0.4 implementation only
+//      handled the length-3 / 4-node MV case.
 //
 //   4. PAG output. Each surviving edge carries `endpointMarks` with
 //      `circle` (uncertain), `arrow` (arrowhead), or `tail` (ancestor).
@@ -44,11 +46,6 @@
 //      sets marks via the v-structure rule and Zhang's R1 / R2.
 //
 // What this DOES NOT do (vs. the full Spirtes implementation):
-//
-//   - R4 is implemented only for length-3 discriminating paths (the
-//     4-node case W → V ← B - C with V → C). Longer chains of
-//     colliders that are all parents of C are deferred — they require
-//     a path-search instead of fixed-arity neighborhood iteration.
 //
 //   - No nonparametric CI tests. Linear-Gaussian partial correlation
 //     only (same baseline as PCMCI in this codebase). For step changes
@@ -77,6 +74,11 @@ export interface FciParams {
   alpha: number;
   /** Cap on the conditioning-set size during the skeleton phase. */
   maxCondsDim: number;
+  /** Cap on the number of intermediates V_1..V_{n-2} in R4's
+   *  discriminating-path search (n-1 = path edge count). Default 5.
+   *  Lowering trades completeness on long latent-confounder chains for
+   *  speed; raising rarely pays off on graphs with d ≤ 30. */
+  maxDiscriminatingPathLength: number;
   /** Grid cadence in seconds for cohort-data resampling. */
   gridSeconds: number;
   /** Minimum grid points per subject — drop subjects shorter than this. */
@@ -88,6 +90,7 @@ export interface FciParams {
 const DEFAULT_PARAMS: FciParams = {
   alpha: 0.05,
   maxCondsDim: 3,
+  maxDiscriminatingPathLength: 5,
   gridSeconds: 300,
   minGridPoints: 30,
   minN: 30,
@@ -483,76 +486,134 @@ export function applyR3(
 }
 
 /**
- * Zhang's R4 — discriminating-path rule (length-3 / 4-node MV variant).
+ * Search for a discriminating path ending at the focus edge B − C.
  *
- * For the path W *→ V ←* B − C with V → C (V is a parent of C and a
- * collider on the path) and W not adjacent to C:
- *   - if B is in sepset(W, C), orient B-C as B → C (B is on the path
- *     between W and C without being a collider; W is separable from C
- *     by conditioning on B)
- *   - else, orient B-C as bidirected (arrows at both B and C — latent
- *     confounder candidate; B is a collider on the W-C path)
+ * Per Zhang (2008) the path π = ⟨V_0, V_1, …, V_{n-2}, V_{n-1}, V_n⟩
+ * with V_{n-1} = B and V_n = C is a *discriminating path for V_{n-1}* iff
+ *   1. n ≥ 3  (at least 3 edges, i.e. ≥ 1 intermediate node V_i, i ∈ [1, n-2])
+ *   2. V_0 is NOT adjacent to V_n,
+ *   3. every V_i (0 < i < n-1) is a collider on π AND is a parent of V_n
+ *      (i.e. V_i → V_n with tail at V_i, arrow at V_n).
  *
- * This implements only the length-3 (4-node) discriminating path —
- * the simplest case of R4. Longer paths (where V is itself reached via
- * a chain of colliders that are all parents of C) are deferred. Returns
- * true iff any mark changed.
+ * This BFS walks *backward* from B, hopping through nodes that are
+ * parents of C and have the right collider marks, until either it
+ * reaches a node W that is NOT adjacent to C (success — W = V_0) or the
+ * search exhausts up to `maxLength` intermediates (failure).
+ *
+ * Returns the V_0 = W node, or null if no discriminating path exists.
+ * The length-3 case (the only one the previous implementation handled)
+ * falls out as a single-intermediate path V_1 = V; longer paths add
+ * additional V_i intermediates that must all be colliders AND parents
+ * of C. Exported for direct testing.
+ */
+export function findDiscriminatingPath(
+  b: number,
+  c: number,
+  edges: Map<string, OrientedEdge>,
+  adj: Set<number>[],
+  maxLength: number,
+): number | null {
+  // BFS state: (current node, set of nodes already on path, depth).
+  // depth = number of intermediates already accumulated between B and `current`.
+  // (depth=0 means current=B; depth=1 means current=V_1; etc.)
+  type State = { current: number; visited: Set<number>; depth: number };
+  const queue: State[] = [
+    { current: b, visited: new Set<number>([b, c]), depth: 0 },
+  ];
+
+  while (queue.length > 0) {
+    const { current, visited, depth } = queue.shift()!;
+    if (depth >= maxLength) continue;
+
+    for (const next of adj[current]) {
+      if (visited.has(next)) continue;
+      const eCurNext = edges.get(pairKey(current, next));
+      if (!eCurNext) continue;
+
+      // If `current` is an intermediate (depth ≥ 1), it must be a
+      // collider on the path — half of which is the arrow at `current`
+      // on the current-next edge.
+      if (depth >= 1 && markAt(eCurNext, current) !== "arrow") continue;
+
+      if (!adj[next].has(c)) {
+        // next is not adjacent to C → terminate with next = V_0 = W.
+        // Need at least one intermediate (depth ≥ 1), i.e. a path of
+        // length ≥ 3 edges. The path W-B-C has only 2 edges.
+        if (depth >= 1) return next;
+        continue;
+      }
+
+      // next is adjacent to C. To be a valid intermediate V_i it must
+      // be a parent of C (V_i → C: tail at V_i, arrow at C on V_i-C edge)
+      // AND be a collider in the V_i-`current` direction (arrow at V_i
+      // on current-V_i edge — the other collider half is set when V_i
+      // becomes current and we extend further).
+      const eNextC = edges.get(pairKey(next, c));
+      if (!eNextC) continue;
+      if (markAt(eNextC, next) !== "tail") continue;
+      if (markAt(eNextC, c) !== "arrow") continue;
+      if (markAt(eCurNext, next) !== "arrow") continue;
+
+      const newVisited = new Set(visited);
+      newVisited.add(next);
+      queue.push({ current: next, visited: newVisited, depth: depth + 1 });
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Zhang's R4 — discriminating-path rule (full version).
+ *
+ * For every B − C edge where the B-side or C-side mark is still circle,
+ * search for a discriminating path ⟨W, V_1, …, V_{n-2}, B, C⟩ for B (any
+ * length n ≥ 3, up to `maxLength` intermediates) where every V_i is a
+ * collider and a parent of C, and W is not adjacent to C. If such a path
+ * exists:
+ *   - B in sepset(W, C) → orient B − C as B → C
+ *   - else                  → orient B − C as bidirected (B ↔ C, latent
+ *                             confounder candidate)
+ *
+ * Returns true iff any mark changed.
  */
 export function applyR4(
   edges: Map<string, OrientedEdge>,
   adj: Set<number>[],
   sepset: Map<string, number[]>,
+  maxLength = 5,
 ): boolean {
   let changed = false;
   const n = adj.length;
   for (let b = 0; b < n; b++) {
     for (const c of adj[b]) {
-      // Look for V where V → C (tail at V, arrow at C on V-C edge)
-      // and V *→ B's mark at V is arrow (so V is a collider on the
-      // path W-V-B from B's side).
-      for (const v of adj[c]) {
-        if (v === b) continue;
-        if (!adj[v].has(b)) continue;
-        const evc = edges.get(pairKey(v, c));
-        if (!evc) continue;
-        if (markAt(evc, v) !== "tail") continue; // need V → C tail at V
-        if (markAt(evc, c) !== "arrow") continue; // arrow at C
-        const evb = edges.get(pairKey(v, b));
-        if (!evb) continue;
-        if (markAt(evb, v) !== "arrow") continue; // B *→ V (collider at V on W-V-B path)
-        // Look for W *→ V with W not adjacent to C and W ≠ B, C.
-        for (const w of adj[v]) {
-          if (w === b || w === c) continue;
-          if (adj[w].has(c)) continue; // need W not adjacent to C
-          const ewv = edges.get(pairKey(w, v));
-          if (!ewv) continue;
-          if (markAt(ewv, v) !== "arrow") continue; // W *→ V
-          // Discriminating path found: W *→ V ←* B with V → C, B-C adjacent.
-          const ebc = edges.get(pairKey(b, c));
-          if (!ebc) continue;
-          const sep = sepset.get(pairKey(w, c));
-          const bInSep = !!sep && sep.includes(b);
-          if (bInSep) {
-            // Orient B-C as B → C.
-            if (markAt(ebc, b) === "circle") {
-              setMarkAt(ebc, b, "tail");
-              changed = true;
-            }
-            if (markAt(ebc, c) === "circle") {
-              setMarkAt(ebc, c, "arrow");
-              changed = true;
-            }
-          } else {
-            // Orient B-C as bidirected (latent confounder candidate).
-            if (markAt(ebc, b) !== "arrow") {
-              setMarkAt(ebc, b, "arrow");
-              changed = true;
-            }
-            if (markAt(ebc, c) !== "arrow") {
-              setMarkAt(ebc, c, "arrow");
-              changed = true;
-            }
-          }
+      const ebc = edges.get(pairKey(b, c));
+      if (!ebc) continue;
+      // Already fully oriented (no circles) → R4 has nothing to do.
+      if (markAt(ebc, b) !== "circle" && markAt(ebc, c) !== "circle") continue;
+
+      const w = findDiscriminatingPath(b, c, edges, adj, maxLength);
+      if (w === null) continue;
+
+      const sep = sepset.get(pairKey(w, c));
+      const bInSep = !!sep && sep.includes(b);
+      if (bInSep) {
+        if (markAt(ebc, b) === "circle") {
+          setMarkAt(ebc, b, "tail");
+          changed = true;
+        }
+        if (markAt(ebc, c) === "circle") {
+          setMarkAt(ebc, c, "arrow");
+          changed = true;
+        }
+      } else {
+        if (markAt(ebc, b) !== "arrow") {
+          setMarkAt(ebc, b, "arrow");
+          changed = true;
+        }
+        if (markAt(ebc, c) !== "arrow") {
+          setMarkAt(ebc, c, "arrow");
+          changed = true;
         }
       }
     }
@@ -566,7 +627,10 @@ export function applyR4(
  * rule helpers so tests can verify each rule in isolation against a
  * constructed `OrientedEdge` map.
  */
-export function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
+export function runOrientation(
+  skeleton: SkeletonResult,
+  maxDiscriminatingPathLength = 5,
+): OrientedEdge[] {
   const edges = buildInitialEdges(skeleton);
   const n = skeleton.adj.length;
   applyVStructures(edges, skeleton);
@@ -579,7 +643,9 @@ export function runOrientation(skeleton: SkeletonResult): OrientedEdge[] {
     if (applyR1(edges, skeleton.adj)) changed = true;
     if (applyR2(edges, skeleton.adj)) changed = true;
     if (applyR3(edges, skeleton.adj)) changed = true;
-    if (applyR4(edges, skeleton.adj, skeleton.sepset)) changed = true;
+    if (applyR4(edges, skeleton.adj, skeleton.sepset, maxDiscriminatingPathLength)) {
+      changed = true;
+    }
   }
   return [...edges.values()];
 }
@@ -605,9 +671,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.4.0",
+  version: "0.5.0",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules (R4 length-3 / 4-node MV). Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -623,7 +689,10 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
     const { data, variableIds } = matrix;
 
     const skeleton = runSkeleton(data, params);
-    const orientedEdges = runOrientation(skeleton);
+    const orientedEdges = runOrientation(
+      skeleton,
+      params.maxDiscriminatingPathLength,
+    );
 
     const edges: DiscoveredEdge[] = [];
     for (const oe of orientedEdges) {
@@ -639,7 +708,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.4)`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.5)`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

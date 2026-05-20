@@ -180,12 +180,15 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   // a regular F·E·G·S·M breakdown. Including it here makes the analyst
   // Pareto card show all four tabs by default.
   criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
-  // F → historical credit-stress event rate, from FRED HY OAS history.
-  // The JSON is generated offline by
-  // `scripts/build-fred-relevance-reference.ts` and committed to
-  // `public/relevance-references/fred-hy-oas-stress.json`. The lookup is
-  // optional and degrades silently when the JSON is absent.
-  relevanceReferenceId: "fred-hy-oas-stress",
+  // F → historical "NBER US recession in next 12 months" rate, built
+  // offline from real data already committed in
+  // public/datasets/claire/macro_timeseries.json (10-yr Treasury yield,
+  // Shiller, monthly 1980→2023) × NBER recession dates. Runs end-to-end
+  // with no network — see scripts/build-nber-relevance-reference.ts.
+  // The FRED HY OAS variant (build-fred-relevance-reference.ts) is the
+  // higher-resolution credit-stress alternative; it can layer in later
+  // once a FRED API key + network access are available.
+  relevanceReferenceId: "nber-recession-10y-yield",
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────

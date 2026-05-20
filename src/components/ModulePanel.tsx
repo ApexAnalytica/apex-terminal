@@ -2649,6 +2649,28 @@ type CriticalityEmptyState =
   | { kind: "awaiting-data"; inputs: string }
   | { kind: "pending-port"; reference: string };
 
+/**
+ * Compact a reference's full event label into a short inline phrase
+ * for the card's per-selection lookup line. The full sentence stays in
+ * the tooltip; this is just the version that fits under the headline.
+ *
+ *   "NBER US recession start in next 12 months" → "recession-onset rate"
+ *   "OAS spike above rolling-156-week 95th percentile within next 24 weeks"
+ *     → "credit-stress rate"
+ *
+ * Falls back to "event rate" for unknown shapes — never shows raw
+ * builder-spec text on the card.
+ */
+function shortenEventLabel(full: string): string {
+  const lower = full.toLowerCase();
+  if (lower.includes("recession")) return "recession-onset rate";
+  if (lower.includes("oas") || lower.includes("hy ") || lower.includes("credit"))
+    return "credit-stress rate";
+  if (lower.includes("hypo")) return "hypo-event rate";
+  if (lower.includes("vix") || lower.includes("drawdown")) return "drawdown rate";
+  return "event rate";
+}
+
 function CriticalityCard({
   abbrev,
   fullName,
@@ -2803,13 +2825,13 @@ function CriticalityCard({
         {/* Calibrated interpretation of F against a real historical
             event-rate table. Renders only when the active profile has a
             reference loaded AND the bin containing this F has ≥1 sample.
-            "F=0.71 → 41% historical stress rate in 152 matched windows" */}
+            Reads, e.g., "F=0.55 → 5% recession-onset rate (n=155, base 10%)" */}
         {referenceLookup &&
           Number.isFinite(referenceLookup.eventRate) &&
           referenceLookup.n > 0 && (
             <div
               className="text-[8px] font-mono text-text-muted/80 leading-relaxed"
-              title={`Calibrated against ${referenceLookup.referenceId}: ${referenceLookup.eventLabel}. Reference base rate ${(referenceLookup.baseRate * 100).toFixed(1)}%.`}
+              title={`Calibrated against ${referenceLookup.referenceId}: ${referenceLookup.eventLabel}. Reference base rate ${(referenceLookup.baseRate * 100).toFixed(1)}% across ${referenceLookup.n} windows in this bin.`}
             >
               <span className="text-foreground/70">
                 F={(relevance?.F.score ?? 0).toFixed(2)}
@@ -2819,8 +2841,10 @@ function CriticalityCard({
                 {(referenceLookup.eventRate * 100).toFixed(0)}%
               </span>
               <span className="opacity-70">
-                {" historical event rate"}
-                {referenceLookup.n > 0 && ` (n=${referenceLookup.n})`}
+                {" " + shortenEventLabel(referenceLookup.eventLabel)}
+                {` (n=${referenceLookup.n}, base ${(
+                  referenceLookup.baseRate * 100
+                ).toFixed(0)}%)`}
               </span>
             </div>
           )}

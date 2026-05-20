@@ -55,6 +55,25 @@ function getRoleLabel(role: CopilotMessage["role"]): string {
   }
 }
 
+// ─── Voice-mode diagnostic logger ──────────────────────────────
+// Voice mode has lots of moving parts (Web Speech API quirks,
+// Chrome's flaky speechSynthesis.onend, recognition cooldown
+// timing, etc). When something breaks in production it's nearly
+// impossible to diagnose without a trace of state transitions.
+//
+// Opt-in via `localStorage.APEX_VOICE_DEBUG = '1'`. No-op when
+// disabled so we don't ship perma-console-noise. Caller can paste
+// the resulting trace into a bug report.
+function voiceLog(event: string, detail?: Record<string, unknown>): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage?.getItem("APEX_VOICE_DEBUG") !== "1") return;
+    console.log(`[voice] ${event}`, detail ?? "");
+  } catch {
+    // localStorage may throw in sandboxed contexts — swallow.
+  }
+}
+
 export default function SystemCopilot() {
   // Fine-grained selectors — subscribe only to fields this component actually
   // uses, so unrelated store mutations (graph topology, timeline scrub, etc.)
@@ -167,6 +186,12 @@ export default function SystemCopilot() {
   const voiceStageRef = useRef<VoiceStage>("idle");
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { voiceStageRef.current = voiceStage; }, [voiceStage]);
+  // Timestamp of the last voiceStage transition — drives the
+  // stuck-state watchdog that force-closes the loop if a stage
+  // hangs too long (Chrome onend bug, recognition silently dying,
+  // etc).
+  const voiceStageEnteredAtRef = useRef<number>(Date.now());
+  useEffect(() => { voiceStageEnteredAtRef.current = Date.now(); }, [voiceStage]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
@@ -318,12 +343,17 @@ export default function SystemCopilot() {
     // Idempotent: the fallback timeout below and utterance.onend
     // can both fire (browser-dependent). First one wins.
     let closed = false;
-    const closeVoiceLoop = () => {
-      if (closed) return;
+    const closeVoiceLoop = (reason: string) => {
+      if (closed) {
+        voiceLog("closeVoiceLoop skipped (already closed)", { reason });
+        return;
+      }
       closed = true;
+      voiceLog("closeVoiceLoop", { reason, voiceModeRef: voiceModeRef.current });
       if (voiceModeRef.current) {
         setVoiceStage("listening");
         setTimeout(() => {
+          voiceLog("closeVoiceLoop scheduled startListening", { voiceModeRef: voiceModeRef.current });
           if (voiceModeRef.current) startListeningRef.current?.();
         }, 50);
       } else {
@@ -332,14 +362,18 @@ export default function SystemCopilot() {
     };
 
     if (voiceMode) {
+      voiceLog("auto-speak effect — voice mode on", {
+        assistantId: lastAssistant.id,
+        contentLen: lastAssistant.content?.length ?? 0,
+      });
       if (!lastAssistant.content) {
         // Nothing to speak — bypass TTS and restart listening so
         // the loop doesn't deadlock on actions-only turns.
-        closeVoiceLoop();
+        closeVoiceLoop("empty-content");
         return;
       }
       setVoiceStage("speaking");
-      speakText(lastAssistant.content, closeVoiceLoop);
+      speakText(lastAssistant.content, () => closeVoiceLoop("onend"));
 
       // ─── Chrome onend fallback ────────────────────────────
       // speechSynthesis.onend is well-known to be flaky in
@@ -354,7 +388,8 @@ export default function SystemCopilot() {
       // first it just no-ops.
       const wordCount = lastAssistant.content.split(/\s+/).filter(Boolean).length;
       const estimatedMs = Math.max(3000, (wordCount / 140) * 60_000 * 1.15 + 2500);
-      setTimeout(closeVoiceLoop, estimatedMs);
+      voiceLog("scheduled onend fallback", { wordCount, estimatedMs });
+      setTimeout(() => closeVoiceLoop("fallback-timeout"), estimatedMs);
     } else if (lastAssistant.content) {
       speakText(lastAssistant.content);
     }
@@ -727,6 +762,7 @@ export default function SystemCopilot() {
     let submitted = false;
 
     recognition.onstart = () => {
+      voiceLog("recognition.onstart", { voiceModeRef: voiceModeRef.current });
       // Clear any stale error from a prior retry — we're listening now.
       setVoiceError(null);
       if (voiceModeRef.current) setVoiceStage("listening");
@@ -740,6 +776,7 @@ export default function SystemCopilot() {
       setInput(transcript);
 
       if (event.results[event.results.length - 1].isFinal) {
+        voiceLog("recognition.onresult final", { transcriptLen: transcript.length });
         setInput(transcript);
         submitted = true;
         setTimeout(() => {
@@ -776,6 +813,11 @@ export default function SystemCopilot() {
       // carries an `error` string with the Web Speech API codes
       // ("not-allowed", "audio-capture", "network", etc).
       const code = (event as Event & { error?: string }).error ?? "unknown";
+      voiceLog("recognition.onerror", {
+        code,
+        voiceModeRef: voiceModeRef.current,
+        voiceStageRef: voiceStageRef.current,
+      });
       const permanent =
         code === "not-allowed" ||
         code === "service-not-allowed" ||
@@ -811,6 +853,10 @@ export default function SystemCopilot() {
       // onresult/handleStreamingQuery).
       if (voiceModeRef.current && voiceStageRef.current !== "processing") {
         setTimeout(() => {
+          voiceLog("onerror restart scheduled", {
+            voiceModeRef: voiceModeRef.current,
+            voiceStageRef: voiceStageRef.current,
+          });
           if (voiceModeRef.current && voiceStageRef.current !== "processing") {
             startListeningRef.current?.();
           }
@@ -818,6 +864,11 @@ export default function SystemCopilot() {
       }
     };
     recognition.onend = () => {
+      voiceLog("recognition.onend", {
+        submitted,
+        voiceModeRef: voiceModeRef.current,
+        voiceStageRef: voiceStageRef.current,
+      });
       // If we never got a final result AND voice mode is on, restart.
       // (Long silences trigger onend without onresult.)
       if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
@@ -831,18 +882,26 @@ export default function SystemCopilot() {
 
     recognitionRef.current = recognition;
     // Guard against InvalidStateError when start() is called too
-    // soon after stop(). Browsers vary on the cooldown — if we
-    // catch it, schedule a retry after a longer delay.
+    // soon after stop(). Browsers vary on the cooldown.
+    //
+    // Hardening note: we used to retry only on "already" errors.
+    // That left voice mode dead on ANY other start() failure (e.g.
+    // a stale recognition state, a transient browser quirk). Now
+    // we retry on any error while voice mode is still on, surface
+    // a non-fatal voiceError after a few failed attempts.
     try {
       recognition.start();
+      voiceLog("recognition.start() called");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Most common: "Failed to execute 'start' on 'SpeechRecognition':
-      // recognition has already started." Wait a beat and retry.
-      if (voiceModeRef.current && msg.toLowerCase().includes("already")) {
+      voiceLog("recognition.start() threw", { msg });
+      if (voiceModeRef.current) {
+        // "already started" needs slightly longer cooldown than
+        // generic transient errors; everyone else gets a quick retry.
+        const delay = msg.toLowerCase().includes("already") ? 300 : 150;
         setTimeout(() => {
           if (voiceModeRef.current) startListeningRef.current?.();
-        }, 300);
+        }, delay);
       } else {
         setVoiceError(`Couldn't start microphone: ${msg}`);
       }
@@ -858,6 +917,7 @@ export default function SystemCopilot() {
   // exiting, cancel any speech and stop the recognition loop.
   const toggleVoiceMode = useCallback(() => {
     const next = !voiceMode;
+    voiceLog("toggleVoiceMode", { from: voiceMode, to: next });
     setVoiceMode(next);
     if (next) {
       // Cancel any in-flight TTS before starting (clean state).
@@ -872,6 +932,33 @@ export default function SystemCopilot() {
       /* listening state now reflected via voiceStage */
       setVoiceStage("idle");
     }
+  }, [voiceMode]);
+
+  // ─── Stuck-state watchdog ───────────────────────────────
+  // If voiceStage hangs on "speaking" or "processing" for more
+  // than STUCK_MS, force-close the loop and restart listening.
+  // Belt-and-suspenders fallback for browser quirks the existing
+  // handlers don't catch (e.g. utterance.onend silently dropped,
+  // recognition object dying without firing onend, etc).
+  useEffect(() => {
+    if (!voiceMode) return;
+    const STUCK_MS = 30_000;
+    const tick = setInterval(() => {
+      const stage = voiceStageRef.current;
+      if (stage !== "speaking" && stage !== "processing") return;
+      const stuckFor = Date.now() - voiceStageEnteredAtRef.current;
+      if (stuckFor < STUCK_MS) return;
+      voiceLog("watchdog: stage stuck — force-restarting listening", {
+        stage,
+        stuckMs: stuckFor,
+      });
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setVoiceStage("listening");
+      setTimeout(() => {
+        if (voiceModeRef.current) startListeningRef.current?.();
+      }, 50);
+    }, 5_000);
+    return () => clearInterval(tick);
   }, [voiceMode]);
 
   const handleAction = (action: CopilotAction) => {

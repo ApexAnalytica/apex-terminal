@@ -110,10 +110,9 @@ The application will revert to graceful-degrade mode automatically; no applicati
 
 ## 6. What this section does NOT cover
 
-- **No per-customer scoping on persisted runs.** The `discovery_runs` schema as deployed has no `customer_id` column. PR 3 in this sequence adds it.
 - **No retention policy.** The table will grow without bound. Set up a Supabase cron / scheduled function or add a TTL column if expected volume is high. v0 expectation: a few hundred runs per month; reassess if real customers push it past 10k rows.
 
-For the **API key auth layer** that gates the Discovery endpoints, see Section 8 below.
+For the **API key auth layer** that gates the Discovery endpoints, see Section 8. For **per-customer scoping** on persisted runs (so customer A can't see customer B's runs), see Section 9.
 
 ---
 
@@ -207,6 +206,64 @@ curl -H "X-Apex-Api-Key: apx_live_<your-key>" \
 ### 8.5 What this does NOT do
 
 - **No rate limiting.** A key can fire as many requests as it wants. Add Vercel KV or a Supabase function for rate limiting before opening the API to untrusted callers.
-- **No per-customer scoping on persisted runs yet.** Authenticated customers can read each other's runs via `GET /api/discovery/runs/[id]` because the `discovery_runs` table doesn't yet have a `customer_id` column. PR 3 in this sequence adds the column + filters list/get queries by the authenticated customer's id + adds RLS policies.
 - **No key expiry.** Keys are valid until manually revoked. Add an `expires_at` column and validator filter when that becomes a requirement.
-- **No admin UI for key issuance.** The flow above is operator-only via Supabase SQL Editor. Build `/admin/keys` if self-service issuance becomes a real need.
+- **No admin UI for key issuance.** The flow above is operator-only via Supabase SQL Editor (or the `scripts/issue-api-key.ts` helper). Build `/admin/keys` if self-service issuance becomes a real need.
+
+For **per-customer scoping** on persisted runs (so customer A can't see customer B's runs even with a valid key), see Section 9.
+
+---
+
+## 9. Per-customer scoping on persisted runs (PR 3 in the deploy sequence)
+
+After API-key auth is live (§8), every authenticated request carries a validated `customer_id` from the `api_keys` row that matched. This section closes the last gap: making `listRuns` / `getRun` actually filter on that `customer_id`, so customer A can't read customer B's persisted runs even with a valid key.
+
+### 9.1 Schema migration
+
+1. Open Supabase SQL Editor → New query.
+2. Paste the contents of `supabase-discovery-customer-scoping.sql` (repo root).
+3. Click **Run**. Idempotent — re-running is safe.
+
+What it does:
+- Adds `customer_id text NOT NULL` to `public.discovery_runs`.
+- Creates `discovery_runs_customer_id_idx` on `(customer_id, created_at desc)` — the index that `listRuns` reads on every request after this migration.
+
+**Pre-condition**: `discovery_runs` should be empty (or near-empty) when this runs, because `NOT NULL` with no `DEFAULT` will fail on existing rows. The §4 health-endpoint check earlier in this doc reports `rowCount` — if it's still 0 (or all rows are yours and disposable), proceed. If a real customer has accumulated rows by the time you run this, either backfill the column first with a sentinel value (e.g. `update public.discovery_runs set customer_id = '<legacy-customer>' where customer_id is null;`) or modify the migration to use `alter table … add column customer_id text default '<legacy-customer>' not null` before dropping the default.
+
+### 9.2 Verify
+
+```bash
+# As customer A, persist a run via POST /api/discovery/run.
+curl -X POST -H "X-Apex-Api-Key: <customer-A-key>" \
+  -H "Content-Type: application/json" \
+  -d '<discovery payload>' \
+  https://manifold.apexanalytica.co/api/discovery/run
+# Response includes the run id; save it as RUN_ID.
+
+# Customer A's listRuns includes the new run.
+curl -H "X-Apex-Api-Key: <customer-A-key>" \
+  https://manifold.apexanalytica.co/api/discovery/runs
+# → { "runs": [{"id": "<RUN_ID>", ...}], "count": 1 }
+
+# Customer A's getRun returns it.
+curl -H "X-Apex-Api-Key: <customer-A-key>" \
+  https://manifold.apexanalytica.co/api/discovery/runs/$RUN_ID
+# → { "id": "<RUN_ID>", ... }
+
+# Customer B (different key) trying to read A's run gets 404.
+curl -i -H "X-Apex-Api-Key: <customer-B-key>" \
+  https://manifold.apexanalytica.co/api/discovery/runs/$RUN_ID
+# → HTTP/2 404, body {"error":"run not found","id":"<RUN_ID>"}
+
+# Customer B's listRuns is empty (or shows only B's runs).
+curl -H "X-Apex-Api-Key: <customer-B-key>" \
+  https://manifold.apexanalytica.co/api/discovery/runs
+# → { "runs": [], "count": 0 }
+```
+
+The 404 on cross-customer reads is intentional: returning 403 would leak the fact that the id exists in someone else's tenant. 404 looks identical to a miss.
+
+### 9.3 What this does NOT do
+
+- **Doesn't migrate existing unscoped rows.** If `discovery_runs` had data before this migration, see the pre-condition note in §9.1.
+- **Doesn't add per-customer rate limiting or quotas.** Volume is currently unbounded per key.
+- **Doesn't use RLS for cross-customer enforcement.** Application-layer filtering (the `.eq('customer_id', ...)` calls in `persistence.ts`) is the primary gate; RLS would only matter if anon-key clients ever talked to this table, which they don't. See the comment block in `supabase-discovery-customer-scoping.sql` for the trade-off explanation.

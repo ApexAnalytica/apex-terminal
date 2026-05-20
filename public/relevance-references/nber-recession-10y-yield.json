@@ -1,0 +1,89 @@
+{
+  "referenceId": "nber-recession-10y-yield",
+  "substrateId": "long_rate_10y",
+  "eventLabel": "NBER US recession start in next 12 months",
+  "windowSize": 60,
+  "lookahead": 12,
+  "totalWindows": 465,
+  "totalEvents": 48,
+  "baseRate": 0.1032258064516129,
+  "bins": [
+    {
+      "binLow": 0,
+      "binHigh": 0.1,
+      "count": 0,
+      "eventCount": 0,
+      "eventRate": null
+    },
+    {
+      "binLow": 0.1,
+      "binHigh": 0.2,
+      "count": 1,
+      "eventCount": 0,
+      "eventRate": 0
+    },
+    {
+      "binLow": 0.2,
+      "binHigh": 0.3,
+      "count": 20,
+      "eventCount": 0,
+      "eventRate": 0
+    },
+    {
+      "binLow": 0.3,
+      "binHigh": 0.4,
+      "count": 85,
+      "eventCount": 14,
+      "eventRate": 0.16470588235294117
+    },
+    {
+      "binLow": 0.4,
+      "binHigh": 0.5,
+      "count": 116,
+      "eventCount": 11,
+      "eventRate": 0.09482758620689655
+    },
+    {
+      "binLow": 0.5,
+      "binHigh": 0.6,
+      "count": 155,
+      "eventCount": 8,
+      "eventRate": 0.05161290322580645
+    },
+    {
+      "binLow": 0.6,
+      "binHigh": 0.7,
+      "count": 88,
+      "eventCount": 15,
+      "eventRate": 0.17045454545454544
+    },
+    {
+      "binLow": 0.7,
+      "binHigh": 0.8,
+      "count": 0,
+      "eventCount": 0,
+      "eventRate": null
+    },
+    {
+      "binLow": 0.8,
+      "binHigh": 0.9,
+      "count": 0,
+      "eventCount": 0,
+      "eventRate": null
+    },
+    {
+      "binLow": 0.9,
+      "binHigh": 1,
+      "count": 0,
+      "eventCount": 0,
+      "eventRate": null
+    }
+  ],
+  "buildMeta": {
+    "builderVersion": "0.1.0",
+    "builtAt": "2026-05-20T20:01:09.308Z",
+    "source": "10-year Treasury yield (Shiller) × NBER recession dates (US Business Cycle Dating Committee)",
+    "cohortFrom": "1980-01-01",
+    "cohortTo": "2023-09-01"
+  }
+}

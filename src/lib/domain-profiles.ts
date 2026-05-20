@@ -61,6 +61,20 @@ export interface DomainProfile {
   pillarDetails: Record<PillarKey, PillarDetail>;
   compositeMethodology: string;
   criticalityEstimators: EstimatorId[];
+  /**
+   * Optional id of a pre-built relevance-reference JSON
+   * (`public/relevance-references/<id>.json`) that the Pareto card
+   * uses to interpret the live per-selection F score against real
+   * historical event outcomes for this domain.
+   *
+   * When set, the card adds a small line beneath the headline pill:
+   *   "F = 0.71 → 41% historical stress rate in 152 matched windows".
+   *
+   * When unset (or when the JSON 404s), the card renders without the
+   * lookup line — no false signal in profiles that haven't been
+   * calibrated yet.
+   */
+  relevanceReferenceId?: string;
 }
 
 // ─── Geopolitical / financial (current default) ─────────────────────
@@ -166,6 +180,22 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   // a regular F·E·G·S·M breakdown. Including it here makes the analyst
   // Pareto card show all four tabs by default.
   criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
+  // F → "node-critical (Ω ≥ 9.0) event within next 50 epochs" rate,
+  // built from the committed Manifold graph run through the cascade
+  // simulator. Digital-twin calibration — events are simulator
+  // outcomes (not real-world events). Most directly relevant to the
+  // in-platform analyst use case: "what does my F mean for the
+  // cascade's evolution on THIS graph?"
+  //
+  // Other references in the repo and usable here when we want to
+  // surface a different framing:
+  //   - "nber-recession-10y-yield" (real macro × NBER recessions,
+  //      committed in #355 — 10y yield substrate is structurally
+  //      different from the graph; useful as a cross-substrate
+  //      sanity check, not as the primary in-card lookup)
+  //   - "fred-hy-oas-stress" (FRED HY OAS, when a key + network are
+  //      available — see scripts/build-fred-relevance-reference.ts)
+  relevanceReferenceId: "graph-cascade-buffer-breach",
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────

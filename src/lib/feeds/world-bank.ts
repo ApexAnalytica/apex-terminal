@@ -203,6 +203,40 @@ export const WB_SERIES: WbSeriesConfig[] = [
     mockValue: -0.2,
     kind: "governance",
   },
+  // Phase 13 — promote the 4 fertilizer-market nodes (QAFCO + Ma'aden
+  // export destinations for India and Brazil) to live via WB
+  // AG.CON.FERT.ZS (Fertilizer consumption, kg per hectare of arable
+  // land). Annual cadence, free, no key. India ~165 kg/ha, Brazil ~390
+  // kg/ha in recent years — both far above the world average ~140,
+  // confirming high import-dependent demand.
+  //
+  // Each entry's label pattern intentionally fans out across TWO nodes:
+  // "india fertilizer" matches both `qf_india_fertilizer_market` ("India
+  // fertilizer import market") and `mn_india_fertilizer_market` ("India
+  // fertilizer market"), but NOT the QAFCO Australia/USA nodes (whose
+  // labels include "customer market" without the country-then-fertilizer
+  // ordering). The provider matcher now fan-outs one observation → all
+  // pattern matches; see `providers/world-bank.ts`.
+  {
+    country: "IND",
+    indicator: "AG.CON.FERT.ZS",
+    label: "India Fertilizer Consumption (kg/ha of arable land)",
+    labelPatterns: ["india fertilizer"],
+    scale: 1,
+    unit: "kg/ha",
+    capacity: 250, // elevated regime — India runs ~165, world avg ~140
+    mockValue: 175,
+  },
+  {
+    country: "BRA",
+    indicator: "AG.CON.FERT.ZS",
+    label: "Brazil Fertilizer Consumption (kg/ha of arable land)",
+    labelPatterns: ["brazil fertilizer"],
+    scale: 1,
+    unit: "kg/ha",
+    capacity: 500, // elevated regime — Brazil runs ~390 (one of the world's heaviest users)
+    mockValue: 388,
+  },
 ];
 
 export interface WbObservation {

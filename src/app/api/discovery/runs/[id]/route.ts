@@ -14,9 +14,11 @@ interface RouteContext {
 }
 
 export async function GET(req: Request, ctx: RouteContext) {
-  // API key gate first. Once PR 3 lands customer_id scoping, this
-  // will also filter the getRun lookup to the authenticated customer
-  // so callers can't fetch runs they don't own.
+  // API key gate first. getRun is scoped to auth.customerId, so a
+  // valid key from customer A can't fetch a run owned by customer B
+  // even by guessing the id — they get the same 404 as a missing
+  // row, which intentionally hides whether the id exists at all in
+  // someone else's tenant.
   const auth = await requireApiKey(req);
   if (!auth.ok) return auth.response;
 
@@ -36,7 +38,7 @@ export async function GET(req: Request, ctx: RouteContext) {
     );
   }
 
-  const run = await getRun(id);
+  const run = await getRun(id, auth.customerId);
   if (!run) {
     return NextResponse.json({ error: "run not found", id }, { status: 404 });
   }

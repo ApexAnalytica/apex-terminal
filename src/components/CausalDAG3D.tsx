@@ -308,8 +308,24 @@ function useWebGLRecovery() {
   return canvasKey;
 }
 
-// Monitors frame rendering inside the R3F canvas — if no frames render for 3s,
-// forces a scene invalidate to recover from frozen/black state
+// Safety-net invalidator. The Canvas runs in demand mode (frameloop="demand"),
+// so frames only paint when something explicitly calls invalidate(). That's
+// usually what we want — but if a state mutation slips past every invalidator
+// (StoreInvalidator, ReplayInvalidator, hover handler, etc.) the canvas could
+// freeze. This interval kicks invalidate() if no frame has rendered for 3s as
+// a backstop.
+//
+// Previously this also logged a `[DAG3D] No frames for 3s — forcing invalidate`
+// warning on every fire. That warning was noisy in normal operation: during the
+// chunked async cascade simulation (`simulateCascadeAsync`) the canvas
+// legitimately has nothing to paint for the duration of the run — `shockIntensity`
+// is sourced from epoch frames that only land *after* simulation completes, and
+// no other watched store slice changes in that window. Demo step transitions
+// that injected shocks therefore tripped the warning twice per Hormuz playthrough
+// without anything actually being wrong. Dropping the warn keeps the backstop
+// invalidate (which is harmless) and removes the false-alarm noise; if the canvas
+// genuinely freezes the lack of frames will still surface in user feedback rather
+// than as a benign console line buried among 2000 logs.
 function FrameMonitor() {
   const { invalidate, gl } = useThree();
   // Initialize to 0 and set on mount — calling performance.now() during
@@ -330,8 +346,9 @@ function FrameMonitor() {
     const check = setInterval(() => {
       const elapsed = performance.now() - lastFrameTime.current;
       if (elapsed > 3000) {
-        console.warn("[DAG3D] No frames for 3s — forcing invalidate");
-        // Check if context is still alive
+        // Check if context is still alive before re-arming. Lost-context
+        // recovery is handled by the dedicated webglcontextlost listener;
+        // an invalidate() against a dead context would throw.
         const ctx = gl.getContext();
         if (ctx && !ctx.isContextLost()) {
           invalidate();

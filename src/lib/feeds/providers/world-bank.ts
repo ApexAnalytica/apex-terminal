@@ -16,18 +16,37 @@ function findSeriesConfig(obs: WbObservation) {
   );
 }
 
-function matchSeriesToNode(
+/**
+ * Resolve every node whose label matches the WB series' label patterns.
+ *
+ * Returns 0..N nodes — fan-out is required because a single (country,
+ * indicator) tuple can legitimately drive multiple graph nodes. Concrete
+ * case: WB `IND / AG.CON.FERT.ZS` (India fertilizer consumption) is the
+ * canonical free signal for *both* `qf_india_fertilizer_market` (QAFCO
+ * export market) and `mn_india_fertilizer_market` (Ma'aden export market)
+ * — same upstream signal, two downstream nodes. Same story for Brazil.
+ *
+ * Previously this returned a single node via `nodes.find(...)`, silently
+ * dropping every subsequent match. The bug was masked while every wired
+ * series only had one downstream node, and surfaced when the fertilizer
+ * batch came along.
+ */
+function matchSeriesToNodes(
   obs: WbObservation,
   nodes: ReadonlyArray<CausalNode>,
-): CausalNode | undefined {
+): CausalNode[] {
   const config = findSeriesConfig(obs);
-  if (!config) return undefined;
+  if (!config) return [];
+  const matched = new Set<CausalNode>();
   for (const pattern of config.labelPatterns) {
     const needle = pattern.toLowerCase();
-    const match = nodes.find((n) => n.label.toLowerCase().includes(needle));
-    if (match) return match;
+    for (const node of nodes) {
+      if (node.label.toLowerCase().includes(needle)) {
+        matched.add(node);
+      }
+    }
   }
-  return undefined;
+  return [...matched];
 }
 
 export const worldBankProvider: FeedProvider<WorldBankFeed> = {
@@ -42,8 +61,8 @@ export const worldBankProvider: FeedProvider<WorldBankFeed> = {
     let liveCount = 0;
 
     for (const obs of payload.observations) {
-      const node = matchSeriesToNode(obs, nodes);
-      if (!node) continue;
+      const matchedNodes = matchSeriesToNodes(obs, nodes);
+      if (matchedNodes.length === 0) continue;
       const config = findSeriesConfig(obs);
       const kind = config?.kind ?? "indicator";
       const point: LiveDataPoint = {
@@ -55,10 +74,13 @@ export const worldBankProvider: FeedProvider<WorldBankFeed> = {
         source: obs.source,
         history: obs.history,
       };
-      updates.push({ nodeId: node.id, point });
-      affectedNodeIds.push(node.id);
-      kindSet.add(kind);
-      if (!obs.source.toLowerCase().includes("(mock")) liveCount += 1;
+      const isLive = !obs.source.toLowerCase().includes("(mock");
+      for (const node of matchedNodes) {
+        updates.push({ nodeId: node.id, point });
+        affectedNodeIds.push(node.id);
+        kindSet.add(kind);
+        if (isLive) liveCount += 1;
+      }
     }
 
     return {

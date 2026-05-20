@@ -16,9 +16,10 @@ import {
 import { requireApiKey } from "@/lib/discovery/api-key-auth";
 
 export async function GET(req: NextRequest) {
-  // API key gate first — anonymous callers shouldn't see the run list
-  // (and once PR 3 lands customer_id scoping, this is what gives the
-  // listRuns query its filter context).
+  // API key gate first — anonymous callers shouldn't see the run
+  // list, and auth.customerId is what scopes listRuns to the caller's
+  // own rows. Without this filter every valid key would see every
+  // customer's runs (see PR #346 + the customer-scoping migration).
   const auth = await requireApiKey(req);
   if (!auth.ok) return auth.response;
 
@@ -49,6 +50,11 @@ export async function GET(req: NextRequest) {
     limit = Math.floor(n);
   }
 
-  const runs = await listRuns({ cohortId, algorithmId, limit });
+  const runs = await listRuns({
+    customerId: auth.customerId,
+    cohortId,
+    algorithmId,
+    limit,
+  });
   return NextResponse.json({ runs, count: runs.length }, { status: 200 });
 }

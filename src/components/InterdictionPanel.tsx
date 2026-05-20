@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import {
-  solveInterdiction,
+  solveInterdictionAsync,
   InterdictionResult,
 } from "@/lib/interdiction-engine";
 
@@ -19,17 +19,64 @@ export default function InterdictionPanel() {
   const [mode, setMode] = useState<InterdictionMode>("edge");
   const [result, setResult] = useState<InterdictionResult | null>(null);
   const [computing, setComputing] = useState(false);
+  // Progress in [0, 1] — drives the percentage shown on the SOLVE
+  // button while the async solver yields between candidate evaluations.
+  // Null when no run is in flight.
+  const [progress, setProgress] = useState<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const canRun = shocks.length > 0;
 
-  const runInterdiction = useCallback(() => {
+  // Cancel any in-flight solve on unmount so a long Hormuz run doesn't
+  // keep emitting progress callbacks after the user has navigated away.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const runInterdiction = useCallback(async () => {
+    // Cancel any previous run before starting a new one — clicking
+    // SOLVE twice in quick succession should switch to the new params,
+    // not stack two solvers fighting over `setResult`.
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     setComputing(true);
-    // Defer to next frame so UI updates with "computing" state
-    requestAnimationFrame(() => {
-      const r = solveInterdiction(graphData, shocks, severedEdges, budget, mode);
-      setResult(r);
-      setComputing(false);
-    });
+    setProgress(0);
+    try {
+      const r = await solveInterdictionAsync(
+        graphData,
+        shocks,
+        severedEdges,
+        budget,
+        mode,
+        {
+          signal: ctrl.signal,
+          onProgress: (done, total) => {
+            if (ctrl.signal.aborted) return;
+            setProgress(total > 0 ? Math.min(1, done / total) : null);
+          },
+        },
+      );
+      if (!ctrl.signal.aborted) {
+        setResult(r);
+      }
+    } catch (e) {
+      // Abort is the expected "user clicked SOLVE again" path; any
+      // other error means the solver itself blew up — keep the prior
+      // result on screen and surface to the console rather than
+      // wedging the UI on a partial state.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        console.error("[InterdictionPanel] solver failed:", e);
+      }
+    } finally {
+      if (!ctrl.signal.aborted) {
+        setComputing(false);
+        setProgress(null);
+      }
+    }
   }, [graphData, shocks, severedEdges, budget, mode]);
 
   const applyIntervention = useCallback(
@@ -96,7 +143,11 @@ export default function InterdictionPanel() {
           background: computing ? "rgba(255, 171, 0, 0.15)" : "rgba(255, 171, 0, 0.05)",
         }}
       >
-        {computing ? "COMPUTING MINIMAX..." : "SOLVE CASCADE DEFENSE"}
+        {computing
+          ? progress !== null
+            ? `COMPUTING MINIMAX… ${Math.round(progress * 100)}%`
+            : "COMPUTING MINIMAX…"
+          : "SOLVE CASCADE DEFENSE"}
       </button>
 
       {!canRun && (

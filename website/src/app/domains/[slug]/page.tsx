@@ -384,7 +384,7 @@ function SampleReadout({ domain }: { domain: DomainContent }) {
                 <div className="flex-1 h-2 bg-surface border border-border rounded-full overflow-hidden">
                   <div
                     className={`h-full ${c.bg}`}
-                    style={{ width: `${(row.value as number) * 10}%`, opacity: 0.85 }}
+                    style={{ width: `${((row.value as number) || 0) * 10}%`, opacity: 0.85 }}
                   />
                 </div>
                 <span className="font-mono text-[12px] text-foreground/90 w-8 text-right">

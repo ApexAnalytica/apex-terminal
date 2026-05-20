@@ -225,6 +225,17 @@ export default function SystemCopilot() {
   const recognitionGenerationRef = useRef(0);
   const lastStartAtRef = useRef(0);
   const restartScheduledRef = useRef(false);
+  // Tracks whether the active (current-generation) recognition is
+  // alive. Used by closeVoiceLoop after barge-in: if the mic is
+  // already listening (because we kept it alive during TTS), we
+  // don't spin up another recognition that would clobber it.
+  const recognitionAliveRef = useRef(false);
+  // Last AI-spoken content — used for the barge-in feedback
+  // heuristic. If the mic picks up something that's entirely
+  // contained in the recent AI utterance, treat it as TTS echo
+  // and ignore. Imperfect but cheap, and the alternative (no
+  // barge-in) is worse for the user.
+  const lastSpokenContentRef = useRef<string>("");
   // Conversation identity for trace logging. Stable across the
   // session; resets when the chat is cleared. turn_index is a
   // monotonically increasing counter so we can replay traces in
@@ -367,12 +378,27 @@ export default function SystemCopilot() {
         return;
       }
       closed = true;
-      voiceLog("closeVoiceLoop", { reason, voiceModeRef: voiceModeRef.current });
+      voiceLog("closeVoiceLoop", {
+        reason,
+        voiceModeRef: voiceModeRef.current,
+        recognitionAlive: recognitionAliveRef.current,
+      });
       if (voiceModeRef.current) {
         setVoiceStage("listening");
+        // If the mic is still alive (barge-in mic stayed up
+        // through TTS), don't spin up another recognition — that
+        // would clobber the live one. The state transition above
+        // is enough; onresult / onend on the existing recognition
+        // will continue handling things.
+        if (recognitionAliveRef.current) {
+          voiceLog("closeVoiceLoop: mic already alive, skipping start");
+          return;
+        }
         setTimeout(() => {
           voiceLog("closeVoiceLoop scheduled startListening", { voiceModeRef: voiceModeRef.current });
-          if (voiceModeRef.current) startListeningRef.current?.();
+          if (voiceModeRef.current && !recognitionAliveRef.current) {
+            startListeningRef.current?.();
+          }
         }, 50);
       } else {
         setVoiceStage("idle");
@@ -390,25 +416,34 @@ export default function SystemCopilot() {
         closeVoiceLoop("empty-content");
         return;
       }
-      // ─── Suppress mic during TTS ──────────────────────────────
-      // Stop the active recognition before TTS starts. Otherwise
-      // the mic picks up the AI's own voice from the speakers,
-      // transcribes it, and submits it back — feedback loop. The
-      // generation bump invalidates any in-flight handlers from
-      // the old recognition so its onend can't restart while
-      // we're speaking. closeVoiceLoop will spin up a fresh
-      // recognition once TTS finishes.
-      recognitionGenerationRef.current += 1;
-      restartScheduledRef.current = false;
-      try {
-        recognitionRef.current?.stop();
-      } catch {
-        // ignore — recognition may already be finished
-      }
-      voiceLog("suppressed mic for TTS", { gen: recognitionGenerationRef.current });
-
+      // ─── Barge-in setup ───────────────────────────────────────
+      // Track what the AI is about to say so the recognition's
+      // onresult can suppress feedback (mic hearing the AI's own
+      // voice from speakers). Then ensure a recognition is alive
+      // during TTS so a real user voice can cut it off. We
+      // explicitly do NOT stop the existing recognition here —
+      // it should stay listening across the speaking stage.
+      lastSpokenContentRef.current = lastAssistant.content;
       setVoiceStage("speaking");
       speakText(lastAssistant.content, () => closeVoiceLoop("onend"));
+
+      // If no recognition is currently alive (e.g. it died at the
+      // tail of the previous user utterance and we're entering
+      // "speaking" before a restart could schedule), kick one off
+      // after a short delay. The delay lets Chrome's audio pipeline
+      // engage echo cancellation against the TTS we just started.
+      if (!recognitionAliveRef.current) {
+        setTimeout(() => {
+          if (
+            voiceModeRef.current &&
+            voiceStageRef.current === "speaking" &&
+            !recognitionAliveRef.current
+          ) {
+            voiceLog("starting barge-in mic during TTS");
+            startListeningRef.current?.();
+          }
+        }, 250);
+      }
 
       // ─── Chrome onend fallback ────────────────────────────
       // speechSynthesis.onend is well-known to be flaky in
@@ -830,14 +865,24 @@ export default function SystemCopilot() {
     recognition.onstart = () => {
       if (isStale()) return;
       voiceLog("recognition.onstart", { voiceModeRef: voiceModeRef.current, gen: myGen });
+      recognitionAliveRef.current = true;
       // Clear any stale error from a prior retry — we're listening now.
       setVoiceError(null);
-      if (voiceModeRef.current) setVoiceStage("listening");
+      // Don't downgrade stage when starting mid-TTS (barge-in mic).
+      // Only assert "listening" if we're not already in "speaking".
+      if (voiceModeRef.current && voiceStageRef.current !== "speaking") {
+        setVoiceStage("listening");
+      }
     };
 
     // Helper to schedule a single restart, debounced via the
     // ref so concurrent triggers (onerror + onend + close) all
     // collapse to one outstanding restart.
+    //
+    // Important: restart is allowed in BOTH listening and speaking
+    // stages. Listening = normal. Speaking = barge-in mic should
+    // stay alive so the user can interrupt the AI. Only "processing"
+    // (LLM thinking) and "idle" (voice mode off) suppress restart.
     const scheduleRestart = (delayMs: number, reason: string) => {
       if (restartScheduledRef.current) {
         voiceLog("restart already scheduled — skipping", { reason });
@@ -847,10 +892,10 @@ export default function SystemCopilot() {
       setTimeout(() => {
         restartScheduledRef.current = false;
         voiceLog("scheduled restart firing", { reason });
+        const stage = voiceStageRef.current;
         if (
           voiceModeRef.current &&
-          voiceStageRef.current !== "processing" &&
-          voiceStageRef.current !== "speaking"
+          (stage === "listening" || stage === "speaking")
         ) {
           startListeningRef.current?.();
         }
@@ -864,6 +909,36 @@ export default function SystemCopilot() {
         transcript += event.results[i][0].transcript;
       }
       setInput(transcript);
+
+      // ─── Barge-in detection ────────────────────────────────
+      // While TTS is speaking and we hear meaningful voice
+      // activity, cut TTS so the user can speak. A crude feedback
+      // heuristic protects against the mic picking up the AI's
+      // own voice: if everything we transcribed is a substring of
+      // the AI's recent utterance, treat it as echo and ignore.
+      if (voiceStageRef.current === "speaking") {
+        const heard = transcript.trim().toLowerCase();
+        if (heard.length >= 4) {
+          const aiSaid = lastSpokenContentRef.current.toLowerCase();
+          if (aiSaid.includes(heard)) {
+            voiceLog("ignoring possible TTS feedback", {
+              heard: heard.slice(0, 60),
+            });
+          } else {
+            voiceLog("barge-in detected — cancelling TTS", {
+              heard: heard.slice(0, 60),
+            });
+            if (typeof window !== "undefined") {
+              window.speechSynthesis?.cancel();
+            }
+            // closeVoiceLoop will fire from the utterance.onend
+            // (or its idempotent fallback) and transition to
+            // listening. We don't force-flip stage here; the user
+            // is still mid-utterance, and onresult.final below
+            // will handle the submit when their speech ends.
+          }
+        }
+      }
 
       if (event.results[event.results.length - 1].isFinal) {
         voiceLog("recognition.onresult final", { transcriptLen: transcript.length });
@@ -953,16 +1028,23 @@ export default function SystemCopilot() {
         voiceLog("recognition.onend (stale, ignored)", { gen: myGen });
         return;
       }
+      recognitionAliveRef.current = false;
       voiceLog("recognition.onend", {
         submitted,
         voiceModeRef: voiceModeRef.current,
         voiceStageRef: voiceStageRef.current,
         gen: myGen,
       });
-      // If we never got a final result AND voice mode is on, restart.
-      // (Long silences trigger onend without onresult.)
-      if (voiceModeRef.current && !submitted && voiceStageRef.current === "listening") {
-        scheduleRestart(200, "onend-no-result");
+      // Keep mic alive across BOTH listening and speaking. During
+      // speaking, the alive mic enables barge-in. Don't restart if
+      // we're processing (LLM running) or idle.
+      const stage = voiceStageRef.current;
+      const shouldRestart =
+        voiceModeRef.current &&
+        !submitted &&
+        (stage === "listening" || stage === "speaking");
+      if (shouldRestart) {
+        scheduleRestart(200, `onend-no-result(${stage})`);
       }
     };
 
@@ -1011,6 +1093,7 @@ export default function SystemCopilot() {
       //  4. Cancel any TTS in progress.
       recognitionGenerationRef.current += 1;
       restartScheduledRef.current = false;
+      recognitionAliveRef.current = false;
       try {
         recognitionRef.current?.stop();
       } catch {

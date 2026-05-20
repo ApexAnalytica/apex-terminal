@@ -18,7 +18,7 @@ import {
 } from "@/lib/build-domain-graph";
 import type { NodeCategory } from "@/lib/types";
 import TTSControls from "@/components/TTSControls";
-import DomainIcon from "@/components/DomainIcon";
+import DomainIcon, { type DomainIconName } from "@/components/DomainIcon";
 import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
 import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
 
@@ -28,16 +28,25 @@ import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
 export { DOMAIN_CARDS } from "@/lib/domains";
 export { buildGraphFromDomains } from "@/lib/build-domain-graph";
 
-const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
-  { id: "economic", label: "ECONOMIC", icon: "📊" },
-  { id: "finance", label: "FINANCE", icon: "💰" },
-  { id: "energy", label: "ENERGY", icon: "⚡" },
-  { id: "infrastructure", label: "INFRASTRUCTURE", icon: "🏗" },
-  { id: "manufacturing", label: "MANUFACTURING", icon: "🏭" },
-  { id: "agriculture", label: "AGRICULTURE", icon: "🌾" },
-  { id: "geopolitical", label: "GEOPOLITICAL", icon: "🌐" },
-  { id: "communications", label: "COMMUNICATIONS", icon: "📡" },
-  { id: "science", label: "SCIENCE", icon: "🔬" },
+// Category icons swapped from OS-rendered emojis to the same hand-drawn
+// monochrome line-art SVG system as the domain cards (PR #344). The
+// DATA LAYERS accordion sits one click into the Domain Workspace modal;
+// before this, expanding it surfaced the same 📊 💰 ⚡ 🏗 🏭 🌾 🌐 📡 🔬
+// glyphs we just spent PR #344 retiring from the landing-page cards.
+// Most categories reuse icons already defined for domains (chart-bar /
+// bank / bolt / factory / globe) — `wheat` / `antenna` / `flask` /
+// `tower` are new, added to `DomainIcon` so the same component renders
+// both surfaces.
+const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: DomainIconName }[] = [
+  { id: "economic", label: "ECONOMIC", icon: "chart-bar" },
+  { id: "finance", label: "FINANCE", icon: "bank" },
+  { id: "energy", label: "ENERGY", icon: "bolt" },
+  { id: "infrastructure", label: "INFRASTRUCTURE", icon: "tower" },
+  { id: "manufacturing", label: "MANUFACTURING", icon: "factory" },
+  { id: "agriculture", label: "AGRICULTURE", icon: "wheat" },
+  { id: "geopolitical", label: "GEOPOLITICAL", icon: "globe" },
+  { id: "communications", label: "COMMUNICATIONS", icon: "antenna" },
+  { id: "science", label: "SCIENCE", icon: "flask" },
 ];
 
 const DISCOVERY_SOURCES = [
@@ -418,7 +427,7 @@ export default function DomainSelector() {
                               <button
                                 key={cat.id}
                                 onClick={() => toggleCategory(cat.id)}
-                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
+                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all inline-flex items-center gap-1.5"
                                 style={{
                                   borderColor: localCategories.has(cat.id) ? "var(--accent-cyan)" : "var(--border)",
                                   backgroundColor: localCategories.has(cat.id) ? "rgba(0,229,255,0.08)" : "transparent",
@@ -426,7 +435,8 @@ export default function DomainSelector() {
                                   opacity: active ? 1 : 0.4,
                                 }}
                               >
-                                {cat.icon} {cat.label}
+                                <DomainIcon name={cat.icon} size={11} />
+                                {cat.label}
                               </button>
                             );
                           })}

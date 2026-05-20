@@ -25,16 +25,20 @@ export type DomainIconName =
   | "bolt"        // energy
   | "factory"     // manufacturing / fertilizer
   | "chain"       // supply chain
-  | "bank"        // financial contagion
-  | "globe"       // sovereign risk
+  | "bank"        // financial contagion / finance category
+  | "globe"       // sovereign risk / geopolitical category
   | "cable"       // undersea infrastructure
   | "shield"      // defense / ISR
-  | "chart-bar"   // labor / growth / housing
+  | "chart-bar"   // labor / growth / housing / economic category
   | "trending"    // inflation / policy
   | "dna"         // β-cell biology
   | "syringe"     // VX-880 stem-cell transplant
   | "brain"       // AI safety
-  | "atom";       // frontier science
+  | "atom"        // frontier science
+  | "wheat"       // agriculture category
+  | "antenna"     // communications category
+  | "flask"       // science category (broader than `atom` which is frontier-physics-specific)
+  | "tower";      // infrastructure category (transmission-tower silhouette; distinct from `cable` which is undersea-specific)
 
 interface DomainIconProps {
   name: DomainIconName;
@@ -214,6 +218,58 @@ export default function DomainIcon({
           <ellipse cx="12" cy="12" rx="9" ry="3.5" />
           <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)" />
           <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(120 12 12)" />
+        </svg>
+      );
+
+    case "wheat":
+      // Central stalk + three pairs of angled grain heads. Agriculture.
+      return (
+        <svg {...commonProps}>
+          {title && <title>{title}</title>}
+          <path d="M12 22 V4" />
+          <path d="M12 18 L8 16 M12 18 L16 16" />
+          <path d="M12 13 L8 11 M12 13 L16 11" />
+          <path d="M12 8 L8 6 M12 8 L16 6" />
+          <path d="M12 4 L10 5.5 M12 4 L14 5.5" />
+        </svg>
+      );
+
+    case "antenna":
+      // Vertical mast with three concentric broadcast arcs. Communications.
+      return (
+        <svg {...commonProps}>
+          {title && <title>{title}</title>}
+          <path d="M12 21 V11" />
+          <path d="M9 22 H15" />
+          <circle cx="12" cy="9" r="1.2" fill={color ?? "currentColor"} stroke="none" />
+          <path d="M9.5 7 A 3 3 0 0 1 14.5 7" />
+          <path d="M7 5 A 6 6 0 0 1 17 5" />
+          <path d="M4.5 3 A 9 9 0 0 1 19.5 3" />
+        </svg>
+      );
+
+    case "flask":
+      // Erlenmeyer flask — narrow neck + flared body + fluid line. Science.
+      return (
+        <svg {...commonProps}>
+          {title && <title>{title}</title>}
+          <path d="M9 3 H15" />
+          <path d="M10 3 V10 L5 20 H19 L14 10 V3" />
+          <path d="M7.5 15 H16.5" />
+        </svg>
+      );
+
+    case "tower":
+      // Transmission-tower silhouette — flared base, narrow top, two cross-braces.
+      // Infrastructure category. Distinct from `cable` which is specifically the
+      // undersea-cable iconography used by the infrastructure-resilience domain.
+      return (
+        <svg {...commonProps}>
+          {title && <title>{title}</title>}
+          <path d="M5 22 L10 3 L14 3 L19 22" />
+          <path d="M7.2 14 H16.8" />
+          <path d="M8.7 8 H15.3" />
+          <path d="M5 22 H19" />
         </svg>
       );
   }

@@ -119,7 +119,9 @@ export async function POST(req: NextRequest) {
   // `persistRun` returns {persisted:false} without throwing and we
   // surface that to the caller via a header so they can retry later
   // if they care about audit trail.
-  const persistResult = await persistRun(run);
+  const persistResult = await persistRun(run, {
+    customerId: auth.customerId,
+  });
 
   return NextResponse.json(run, {
     status: 200,

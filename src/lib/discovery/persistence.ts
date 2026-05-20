@@ -92,6 +92,7 @@ export function resetServiceClientForTesting(): void {
 
 interface DiscoveryRunRow {
   id: string;
+  customer_id: string;
   cohort_id: string;
   cohort_source_hash: string | null;
   algorithm_id: string;
@@ -104,9 +105,10 @@ interface DiscoveryRunRow {
   result: DiscoveryResult;
 }
 
-function runToRow(run: DiscoveryRun): DiscoveryRunRow {
+function runToRow(run: DiscoveryRun, customerId: string): DiscoveryRunRow {
   return {
     id: run.id,
+    customer_id: customerId,
     cohort_id: run.cohortId,
     cohort_source_hash: run.cohortSourceHash ?? null,
     algorithm_id: run.algorithm.id,
@@ -144,6 +146,17 @@ export interface PersistResult {
   reason?: string;
 }
 
+export interface PersistRunOptions {
+  /**
+   * Customer id this run belongs to. Required — every persisted run
+   * is scoped to a customer so listRuns / getRun can filter on it.
+   * The route handlers source this from the validated API-key auth
+   * context, so it's always present when persistRun is reached on
+   * a successful request. Tests must supply it explicitly.
+   */
+  customerId: string;
+}
+
 /**
  * Persist a DiscoveryRun. Gracefully degrades:
  *   - If service client unavailable (stub env / no Supabase) → returns
@@ -153,13 +166,16 @@ export interface PersistResult {
  *
  * Never throws.
  */
-export async function persistRun(run: DiscoveryRun): Promise<PersistResult> {
+export async function persistRun(
+  run: DiscoveryRun,
+  options: PersistRunOptions,
+): Promise<PersistResult> {
   const service = getService();
   if (!service) {
     return { persisted: false, reason: "service-unavailable" };
   }
   try {
-    const row = runToRow(run);
+    const row = runToRow(run, options.customerId);
     const { error } = await service.from("discovery_runs").insert(row);
     if (error) {
       return { persisted: false, reason: error.message };
@@ -173,8 +189,16 @@ export async function persistRun(run: DiscoveryRun): Promise<PersistResult> {
   }
 }
 
-/** Read a run by id. Returns null on miss or service unavailability. */
-export async function getRun(id: string): Promise<DiscoveryRun | null> {
+/**
+ * Read a run by id. Returns null on miss, service unavailability, OR
+ * when the run exists but belongs to a different customer — cross-
+ * customer reads are treated identically to a missing row so callers
+ * can't tell whether `id` exists in someone else's tenant.
+ */
+export async function getRun(
+  id: string,
+  customerId: string,
+): Promise<DiscoveryRun | null> {
   const service = getService();
   if (!service) return null;
   try {
@@ -182,6 +206,7 @@ export async function getRun(id: string): Promise<DiscoveryRun | null> {
       .from("discovery_runs")
       .select("*")
       .eq("id", id)
+      .eq("customer_id", customerId)
       .maybeSingle();
     if (error || !data) return null;
     return rowToRun(data as DiscoveryRunRow);
@@ -191,6 +216,12 @@ export async function getRun(id: string): Promise<DiscoveryRun | null> {
 }
 
 export interface ListRunsOptions {
+  /**
+   * Customer id whose runs to return. Required — the persistence
+   * layer never returns cross-customer rows; if a caller doesn't
+   * know the customer, they have no business calling listRuns.
+   */
+  customerId: string;
   cohortId?: string;
   algorithmId?: string;
   /** Max rows to return. Default 50, hard cap 200. */
@@ -198,20 +229,26 @@ export interface ListRunsOptions {
 }
 
 /**
- * List runs, newest first. Filtering is index-supported via
- * (cohort_id, created_at desc) and (algorithm_id, created_at desc).
- * Returns [] on service unavailability.
+ * List runs for a single customer, newest first. Filtering is
+ * index-supported via (customer_id, created_at desc). Cohort /
+ * algorithm filters narrow within the customer's rows. Returns []
+ * on service unavailability.
  */
 export async function listRuns(
-  options: ListRunsOptions = {},
+  options: ListRunsOptions,
 ): Promise<DiscoveryRun[]> {
   const service = getService();
   if (!service) return [];
   const limit = Math.min(options.limit ?? 50, 200);
   try {
     // Chain order: eq filters first (so they apply before order/limit
-    // and so the test fake's terminal `.limit()` sees them).
-    let query = service.from("discovery_runs").select("*");
+    // and so the test fake's terminal `.limit()` sees them). The
+    // customer_id filter goes first because it's the most selective
+    // and matches the (customer_id, created_at desc) index.
+    let query = service
+      .from("discovery_runs")
+      .select("*")
+      .eq("customer_id", options.customerId);
     if (options.cohortId) query = query.eq("cohort_id", options.cohortId);
     if (options.algorithmId) query = query.eq("algorithm_id", options.algorithmId);
     const { data, error } = await query

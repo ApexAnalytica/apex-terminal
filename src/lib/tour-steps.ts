@@ -185,25 +185,35 @@ const FIRST_RUN_STEPS: TourStep[] = [
   },
   {
     id: "time-dial-and-cascade",
+    // Targets the TimeDial scrubber row at the bottom of the page, not
+    // the comparison/risk-flow strip above it. Earlier this targeted
+    // `[data-tour="risk-flow"]` (the ΩF comparison panel), which meant
+    // the spotlight + arrow + tooltip landed on the wrong band of the
+    // UI — the user was told "drag the time dial" while the highlight
+    // pulsed on the comparison cards above. With the ΩF comparison
+    // panel expanded to a tall curve view, the cards strip pushed the
+    // tooltip into mid-screen and the actual dial sat squeezed at the
+    // very bottom, often partially hidden. Pointing at the dial puts
+    // the spotlight + tooltip directly above it.
     phase: "first-run",
-    targetSelector: '[data-tour="risk-flow"]',
+    targetSelector: '[data-tour="time-dial"]',
     tooltipPosition: "top",
     copy: {
       analyst: {
         title: "TIME DIAL — CASCADE REPLAY",
         description:
-          "The timeline scrubber controls cascade replay. After a shock or intervention, drag the dial to scrub epochs and watch nodes activate, edges propagate, and the Ω-buffer deplete. The horizontal cards above show per-node vulnerability, color-coded by severity. Drag the dial back a few epochs now to feel the replay.",
+          "The timeline scrubber at the bottom controls cascade replay. After a shock or intervention, drag the dial to scrub epochs and watch nodes activate, edges propagate, and the Ω-buffer deplete on the canvas. The horizontal cards just above the dial show per-node vulnerability, color-coded by severity. Drag the dial back a few epochs now to feel the replay.",
       },
       scientist: {
         title: "TIME DIAL — TRAJECTORY REPLAY",
         description:
-          "The timeline scrubber controls mechanism-trajectory replay. After an intervention or natural-history step, drag the dial to scrub time and watch C-peptide, antigen exposure, and downstream phenotypes evolve epoch-by-epoch. The horizontal cards above show per-mechanism risk in real time. Drag the dial back a few epochs now to feel the replay.",
+          "The timeline scrubber at the bottom controls mechanism-trajectory replay. After an intervention or natural-history step, drag the dial to scrub time and watch C-peptide, antigen exposure, and downstream phenotypes evolve epoch-by-epoch. The horizontal cards just above the dial show per-mechanism risk in real time. Drag the dial back a few epochs now to feel the replay.",
       },
     },
     awaitInteraction: {
       hint: "Drag the time dial back a few epochs to continue.",
       predicate: (s) => s.currentEpoch > 0,
-      pulseSelector: '[data-tour="risk-flow"]',
+      pulseSelector: '[data-tour="time-dial"]',
     },
   },
   {

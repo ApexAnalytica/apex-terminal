@@ -8,7 +8,10 @@ import { defineTool } from "./tool-registry";
 import { getPresetShocks } from "../omega-engine";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { buildGraphFromDomains } from "@/lib/build-domain-graph";
-import { solveInterdiction, type InterdictionCandidate } from "../interdiction-engine";
+import {
+  solveInterdictionAsync,
+  type InterdictionCandidate,
+} from "../interdiction-engine";
 import type { ApexState } from "@/stores/useApexStore";
 import type { CausalNode, CausalGraph } from "../types";
 
@@ -301,9 +304,14 @@ defineTool({
     budget: { type: "number", min: 1, max: 10, default: 3, description: "Max number of cuts" },
     mode: { type: "enum", values: ["edge", "node", "both"] as const, default: "edge" },
   },
-  handler: ({ budget, mode }, ctx) => {
+  // Async handler so the registry's `await tool.handler(...)` lets the
+  // chunked minimax solver yield to the event loop between candidates.
+  // Without this the copilot's "solve interdiction" tool would re-freeze
+  // the UI for the full 5–15s sync solve, even after PR #356 made the
+  // React-component CASCADE DEFENSE non-blocking.
+  handler: async ({ budget, mode }, ctx) => {
     const store = ctx.getStore();
-    const result = solveInterdiction(
+    const result = await solveInterdictionAsync(
       store.graphData,
       store.shocks,
       store.severedEdges,

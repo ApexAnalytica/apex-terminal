@@ -88,9 +88,9 @@ function makeMockContext(graph: CausalGraph, tarskiReport: TarskiValidationRepor
 // ─── explain_node ───────────────────────────────────────────────
 
 describe("explain_node", () => {
-  it("returns a compact Ω-fragility breakdown for a known node", () => {
+  it("returns a compact Ω-fragility breakdown for a known node", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag({ name: "explain_node", payload: "GRID_USA", raw: "" }, ctx);
+    const result = await executeTag({ name: "explain_node", payload: "GRID_USA", raw: "" }, ctx);
     expect(result).toContain("USA Power Grid");
     expect(result).toContain("Energy");
     expect(result).toContain("Ω composite 8.5/10");
@@ -99,16 +99,16 @@ describe("explain_node", () => {
     expect(result).toContain("Downstream");
   });
 
-  it("resolves nodes by shortLabel as well as id", () => {
+  it("resolves nodes by shortLabel as well as id", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag({ name: "explain_node", payload: "TSMC", raw: "" }, ctx);
+    const result = await executeTag({ name: "explain_node", payload: "TSMC", raw: "" }, ctx);
     expect(result).toContain("TSMC Fab");
     expect(result).toContain("OMEGA-CRITICAL");
   });
 
-  it("returns 'Node not found' for unknown refs", () => {
+  it("returns 'Node not found' for unknown refs", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag({ name: "explain_node", payload: "NONEXISTENT", raw: "" }, ctx);
+    const result = await executeTag({ name: "explain_node", payload: "NONEXISTENT", raw: "" }, ctx);
     expect(result).toMatch(/Node not found/);
   });
 });
@@ -116,9 +116,9 @@ describe("explain_node", () => {
 // ─── compare_nodes ──────────────────────────────────────────────
 
 describe("compare_nodes", () => {
-  it("returns side-by-side analysis + delta on Ω composite", () => {
+  it("returns side-by-side analysis + delta on Ω composite", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag(
+    const result = await executeTag(
       { name: "compare_nodes", payload: "ids=GRID_USA|FAB_TW", raw: "" },
       ctx,
     );
@@ -129,18 +129,18 @@ describe("compare_nodes", () => {
     expect(result).toContain("TSMC is 1.0 Ω points more fragile than USA");
   });
 
-  it("rejects a single id with a clear error", () => {
+  it("rejects a single id with a clear error", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag(
+    const result = await executeTag(
       { name: "compare_nodes", payload: "ids=GRID_USA", raw: "" },
       ctx,
     );
     expect(result).toMatch(/needs at least two ids/);
   });
 
-  it("reports missing ids before doing any work", () => {
+  it("reports missing ids before doing any work", async () => {
     const { ctx } = makeMockContext(buildGraph());
-    const result = executeTag(
+    const result = await executeTag(
       { name: "compare_nodes", payload: "ids=GRID_USA|GHOST_NODE", raw: "" },
       ctx,
     );
@@ -151,7 +151,7 @@ describe("compare_nodes", () => {
 // ─── run_tarski ─────────────────────────────────────────────────
 
 describe("run_tarski", () => {
-  it("invokes the store's runTarskiWithAxioms and summarizes the report", () => {
+  it("invokes the store's runTarskiWithAxioms and summarizes the report", async () => {
     const fakeReport: TarskiValidationReport = {
       inconsistentEdgeIds: new Set(["e_1", "e_2"]),
       restrictedNodeIds: new Set(["n_1"]),
@@ -167,16 +167,16 @@ describe("run_tarski", () => {
       totalViolations: 3,
     };
     const { ctx, spy } = makeMockContext(buildGraph(), fakeReport);
-    const result = executeTag({ name: "run_tarski", payload: "", raw: "" }, ctx);
+    const result = await executeTag({ name: "run_tarski", payload: "", raw: "" }, ctx);
     expect(spy.runTarskiCalls).toBe(1);
     expect(result).toContain("2 inconsistent edge(s)");
     expect(result).toContain("1 restricted node(s)");
     expect(result).toContain("1 proof trace(s)");
   });
 
-  it("handles the no-report case without throwing", () => {
+  it("handles the no-report case without throwing", async () => {
     const { ctx, spy } = makeMockContext(buildGraph(), null);
-    const result = executeTag({ name: "run_tarski", payload: "", raw: "" }, ctx);
+    const result = await executeTag({ name: "run_tarski", payload: "", raw: "" }, ctx);
     expect(spy.runTarskiCalls).toBe(1);
     expect(result).toMatch(/produced no report/);
   });
@@ -185,9 +185,9 @@ describe("run_tarski", () => {
 // ─── set_node_size_metric ───────────────────────────────────────
 
 describe("set_node_size_metric", () => {
-  it("sets the metric on the store", () => {
+  it("sets the metric on the store", async () => {
     const { ctx, spy } = makeMockContext(buildGraph());
-    const result = executeTag(
+    const result = await executeTag(
       { name: "set_node_size_metric", payload: "betweenness", raw: "" },
       ctx,
     );
@@ -195,9 +195,9 @@ describe("set_node_size_metric", () => {
     expect(result).toMatch(/betweenness/);
   });
 
-  it("rejects values not in the enum", () => {
+  it("rejects values not in the enum", async () => {
     const { ctx, spy } = makeMockContext(buildGraph());
-    const result = executeTag(
+    const result = await executeTag(
       { name: "set_node_size_metric", payload: "purple", raw: "" },
       ctx,
     );
@@ -209,9 +209,9 @@ describe("set_node_size_metric", () => {
 // ─── reset_ablation ─────────────────────────────────────────────
 
 describe("reset_ablation", () => {
-  it("calls resetAblation on the store", () => {
+  it("calls resetAblation on the store", async () => {
     const { ctx, spy } = makeMockContext(buildGraph());
-    const result = executeTag({ name: "reset_ablation", payload: "", raw: "" }, ctx);
+    const result = await executeTag({ name: "reset_ablation", payload: "", raw: "" }, ctx);
     expect(spy.resetAblationCalls).toBe(1);
     expect(result).toMatch(/Reset all ablations/);
   });

@@ -167,15 +167,15 @@ describe("registry — defineTool / executeTag", () => {
     __resetRegistryForTests();
   });
 
-  it("returns 'Unknown action' for an unregistered name", () => {
-    const result = executeTag(
+  it("returns 'Unknown action' for an unregistered name", async () => {
+    const result = await executeTag(
       { name: "nope", payload: "", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
     expect(result).toMatch(/Unknown action: nope/);
   });
 
-  it("rejects invalid params with a clear error before invoking the handler", () => {
+  it("rejects invalid params with a clear error before invoking the handler", async () => {
     let called = false;
     defineTool({
       name: "select_node",
@@ -187,7 +187,7 @@ describe("registry — defineTool / executeTag", () => {
         return "ok";
       },
     });
-    const result = executeTag(
+    const result = await executeTag(
       { name: "select_node", payload: "", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
@@ -195,7 +195,7 @@ describe("registry — defineTool / executeTag", () => {
     expect(called).toBe(false);
   });
 
-  it("dispatches to the handler with typed params on a happy path", () => {
+  it("dispatches to the handler with typed params on a happy path", async () => {
     let received: { node?: string } | null = null;
     defineTool({
       name: "select_node",
@@ -207,7 +207,7 @@ describe("registry — defineTool / executeTag", () => {
         return "selected";
       },
     });
-    const result = executeTag(
+    const result = await executeTag(
       { name: "select_node", payload: "USA_GRID", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
@@ -215,7 +215,7 @@ describe("registry — defineTool / executeTag", () => {
     expect(received).toEqual({ node: "USA_GRID" });
   });
 
-  it("catches handler exceptions and returns a readable error", () => {
+  it("catches handler exceptions and returns a readable error", async () => {
     defineTool({
       name: "boom",
       description: "test",
@@ -224,11 +224,51 @@ describe("registry — defineTool / executeTag", () => {
         throw new Error("kaboom");
       },
     });
-    const result = executeTag(
+    const result = await executeTag(
       { name: "boom", payload: "", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
     expect(result).toMatch(/boom failed: kaboom/);
+  });
+
+  it("awaits an async handler and reports its resolved string", async () => {
+    // Tool handlers may now return `string | Promise<string>` so heavy
+    // tools (`solve_interdiction`) can call into the chunked async
+    // solver without blocking the chat thread. The executor must
+    // resolve the promise before building the trace; otherwise the
+    // result string would be `[object Promise]` and latency_ms would
+    // be measured before the work finishes.
+    defineTool({
+      name: "deferred_ok",
+      description: "test async happy-path",
+      params: {},
+      handler: async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return "resolved";
+      },
+    });
+    const result = await executeTag(
+      { name: "deferred_ok", payload: "", raw: "" },
+      { getStore: () => ({}) as ApexState },
+    );
+    expect(result).toBe("resolved");
+  });
+
+  it("catches a rejected promise from an async handler with the same readable error", async () => {
+    defineTool({
+      name: "deferred_boom",
+      description: "test async failure",
+      params: {},
+      handler: async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        throw new Error("async kaboom");
+      },
+    });
+    const result = await executeTag(
+      { name: "deferred_boom", payload: "", raw: "" },
+      { getStore: () => ({}) as ApexState },
+    );
+    expect(result).toMatch(/deferred_boom failed: async kaboom/);
   });
 });
 
@@ -243,7 +283,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    const result = executeTag(
+    const result = await executeTag(
       { name: "isolate_nodes", payload: "query=energy", raw: "" },
       ctx,
     );
@@ -257,7 +297,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    const result = executeTag(
+    const result = await executeTag(
       { name: "isolate_nodes", payload: "ids=GRID_USA|FAB_TW", raw: "" },
       ctx,
     );
@@ -271,7 +311,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    const result = executeTag(
+    const result = await executeTag(
       { name: "isolate_nodes", payload: "query=nonexistent_topic", raw: "" },
       ctx,
     );
@@ -285,7 +325,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    const result = executeTag({ name: "isolate_nodes", payload: "", raw: "" }, ctx);
+    const result = await executeTag({ name: "isolate_nodes", payload: "", raw: "" }, ctx);
     expect(result).toMatch(/provide either query=/);
     expect(spy.setIsolateSelection.calls).toEqual([]);
   });
@@ -295,7 +335,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    executeTag({ name: "reset_isolation", payload: "", raw: "" }, ctx);
+    await executeTag({ name: "reset_isolation", payload: "", raw: "" }, ctx);
     expect(spy.setIsolateSelection.calls).toEqual([false]);
     expect(spy.setSelectedNodes.calls).toEqual([[]]);
   });
@@ -305,7 +345,7 @@ describe("built-in tools — wired via the registry", () => {
     const graph = buildSampleGraph();
     const { ctx, spy } = makeMockContext(graph);
 
-    const result = executeTag({ name: "select_node", payload: "GRID_USA", raw: "" }, ctx);
+    const result = await executeTag({ name: "select_node", payload: "GRID_USA", raw: "" }, ctx);
     expect(result).toMatch(/Selected node/);
     expect(spy.setSelectedNode.calls).toEqual(["GRID_USA"]);
   });
@@ -316,7 +356,7 @@ describe("built-in tools — wired via the registry", () => {
     const { ctx } = makeMockContext(graph);
 
     const text = "Focus on the energy stuff. <<<ACTION:isolate_nodes:query=energy>>>";
-    const { displayText, toolResults } = executeActions(text, ctx);
+    const { displayText, toolResults } = await executeActions(text, ctx);
     expect(displayText).toBe("Focus on the energy stuff.");
     expect(toolResults).toHaveLength(1);
     expect(toolResults[0]).toMatch(/Isolated 2 nodes/);

@@ -83,8 +83,16 @@ export interface Tool<P extends ParamShape = ParamShape> {
    * no `=`, it is routed into this param.
    */
   legacyParam?: keyof P & string;
-  /** Handler — receives validated params and a context object. */
-  handler: (params: InferParams<P>, ctx: ToolContext) => string;
+  /**
+   * Handler — receives validated params and a context object. Returns
+   * either a result string directly (sync, the common case) or a
+   * Promise resolving to one (for handlers that need to run async
+   * work — e.g. `solve_interdiction` awaits `solveInterdictionAsync`
+   * so the copilot path doesn't block the UI for the full minimax
+   * solve). The executor handles both; sync handlers don't need any
+   * changes.
+   */
+  handler: (params: InferParams<P>, ctx: ToolContext) => string | Promise<string>;
 }
 
 // ─── Registry ───────────────────────────────────────────────────
@@ -284,34 +292,43 @@ export interface TracedExecutionResult extends ExecutionResult {
  * LLM response, validate each, run handlers, and return the cleaned
  * display text plus the list of human-readable tool results.
  *
+ * Async because `Tool.handler` may return a Promise — `solve_interdiction`
+ * is the current real case (awaits `solveInterdictionAsync` so the copilot
+ * path stays non-blocking even on a Hormuz-sized solve). Sync handlers
+ * resolve immediately and pay no extra cost.
+ *
  * Back-compat shape — discards the structured trace data. Use
- * executeActionsWithTrace when you want the trace for logging.
+ * `executeActionsWithTrace` when you want the trace for logging.
  */
-export function executeActions(
+export async function executeActions(
   text: string,
   ctx: ToolContext = defaultContext,
-): ExecutionResult {
-  const { displayText, toolResults } = executeActionsWithTrace(text, ctx);
+): Promise<ExecutionResult> {
+  const { displayText, toolResults } = await executeActionsWithTrace(text, ctx);
   return { displayText, toolResults };
 }
 
 /**
- * Same as executeActions, but also returns structured per-call
- * trace data (params, result, error, latency_ms) for each tag.
- * SystemCopilot uses this to build a TurnTrace and POST it to
- * /api/copilot/trace.
+ * Same as `executeActions`, but also returns structured per-call trace
+ * data (params, result, error, latency_ms) for each tag. SystemCopilot
+ * uses this to build a TurnTrace and POST it to `/api/copilot/trace`.
+ *
+ * Tags execute sequentially (`await` in a `for` loop, not `Promise.all`)
+ * because handlers are allowed to mutate the same store — running two
+ * in parallel would risk last-write-wins on dependent state mutations.
+ * If a future tool needs concurrency it can opt in by itself.
  */
-export function executeActionsWithTrace(
+export async function executeActionsWithTrace(
   text: string,
   ctx: ToolContext = defaultContext,
-): TracedExecutionResult {
+): Promise<TracedExecutionResult> {
   const tags = parseActionTags(text);
   const displayText = stripActionTags(text);
   const toolResults: string[] = [];
   const toolCalls: ToolCallTrace[] = [];
 
   for (const tag of tags) {
-    const traced = executeTagWithTrace(tag, ctx);
+    const traced = await executeTagWithTrace(tag, ctx);
     toolResults.push(traced.result);
     toolCalls.push(traced);
   }
@@ -320,19 +337,23 @@ export function executeActionsWithTrace(
 }
 
 /** Execute a single parsed action tag. Exported for tests. */
-export function executeTag(tag: ParsedActionTag, ctx: ToolContext = defaultContext): string {
-  return executeTagWithTrace(tag, ctx).result;
+export async function executeTag(tag: ParsedActionTag, ctx: ToolContext = defaultContext): Promise<string> {
+  return (await executeTagWithTrace(tag, ctx)).result;
 }
 
 /**
  * Execute a single tag and return both the result string and the
- * structured trace. Used by executeActionsWithTrace; exported for
+ * structured trace. Used by `executeActionsWithTrace`; exported for
  * targeted unit tests that want to inspect timing/error semantics.
+ *
+ * Awaits the handler so async tools (currently `solve_interdiction`)
+ * resolve before we measure latency and build the trace. Sync handlers
+ * still resolve in microtask time — no behavioural change for them.
  */
-export function executeTagWithTrace(
+export async function executeTagWithTrace(
   tag: ParsedActionTag,
   ctx: ToolContext = defaultContext,
-): ToolCallTrace {
+): Promise<ToolCallTrace> {
   const start = performanceNow();
   const tool = REGISTRY.get(tag.name);
   if (!tool) {
@@ -358,7 +379,7 @@ export function executeTagWithTrace(
   }
 
   try {
-    const result = tool.handler(validated.params, ctx);
+    const result = await tool.handler(validated.params, ctx);
     return {
       name: tag.name,
       params: validated.params as Record<string, unknown>,

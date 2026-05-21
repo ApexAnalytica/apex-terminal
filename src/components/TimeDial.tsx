@@ -474,7 +474,10 @@ export default function TimeDial() {
   if (!temporalData) return null;
 
   return (
-    <div className="relative flex items-center gap-3 px-4 py-2 border-t border-border bg-surface-elevated/90 backdrop-blur-sm select-none">
+    <div
+      data-tour="time-dial"
+      className="relative flex items-center gap-3 px-4 py-2 border-t border-border bg-surface-elevated/90 backdrop-blur-sm select-none"
+    >
       {/* Label — switches between Time Dial and CASCADE MODE */}
       <div className="flex flex-col items-center gap-0.5 min-w-[72px]">
         <AnimatePresence mode="wait">

@@ -14,6 +14,7 @@ import {
 } from "../interdiction-engine";
 import type { ApexState } from "@/stores/useApexStore";
 import type { CausalNode, CausalGraph } from "../types";
+import { AXIOM_LIBRARY } from "../tarski-data";
 
 // ─── Selection ──────────────────────────────────────────────────
 
@@ -625,5 +626,112 @@ defineTool({
   handler: (_params, ctx) => {
     ctx.getStore().resetAblation();
     return "Reset all ablations";
+  },
+});
+
+// ─── Bulk-remove restricted nodes ────────────────────────────────
+//
+// Closes a tool-surface gap: "remove all the redlined nodes that
+// violated Tarski axioms" had no single-tool answer. The LLM
+// would describe the action without emitting it, leaving the user
+// staring at unchanged restricted nodes. This tool turns that
+// intent into one action: ablate every node currently in
+// `tarskiReport.restrictedNodeIds`, optionally narrowed to those
+// flagged by a specific axiom.
+
+defineTool({
+  name: "remove_restricted_nodes",
+  description:
+    "Ablate every Tarski-flagged restricted node (the redlined ones). Removes them from downstream analysis — symmetric with reset_ablation. Optional axiom param narrows the removal to nodes flagged by a specific axiom (by id or name substring, case-insensitive).",
+  guidance:
+    "Use whenever the user says any of: 'remove restricted/redlined/flagged nodes', 'clean up the graph based on Tarski', 'drop the axiom violations', 'show only the verified subgraph by removing the bad nodes', or names a specific axiom to filter on (e.g. 'remove nodes that failed the temporal-priority axiom'). This actually mutates the graph (via ablation); set_truth_filter:verified only hides them visually — pick this tool when the user wants real removal.",
+  params: {
+    axiom: {
+      type: "string",
+      description: "Optional. Axiom id (e.g. A-01) OR a substring of the axiom name. Case-insensitive. Omit to remove ALL restricted nodes.",
+    },
+  },
+  handler: ({ axiom }, ctx) => {
+    const store = ctx.getStore();
+    const report = store.tarskiReport;
+    if (!report) {
+      return "No Tarski report available. Run Tarski validation first, then retry.";
+    }
+    if (report.restrictedNodeIds.size === 0) {
+      return "No restricted nodes to remove — graph is already Tarski-clean.";
+    }
+
+    // Resolve the optional axiom filter into a Set<string> of
+    // matching axiom ids. The user can pass either the id directly
+    // ("A-01") or a substring of the axiom name ("temporal
+    // priority", "multi-int fusion", etc).
+    let axiomIds: Set<string> | null = null;
+    if (axiom && axiom.trim() !== "") {
+      const q = axiom.trim().toLowerCase();
+      const matches = AXIOM_LIBRARY.filter(
+        (a) =>
+          a.id.toLowerCase() === q ||
+          a.id.toLowerCase().includes(q) ||
+          a.name.toLowerCase().includes(q),
+      );
+      if (matches.length === 0) {
+        return `No Tarski axiom matched "${axiom}". Examples: A-01 (Temporal Priority), A-04 (Hormuz Chokepoint), R-01 (Jurisdictional Concentration).`;
+      }
+      axiomIds = new Set(matches.map((a) => a.id));
+    }
+
+    // Resolve the candidate node set. With no filter: every
+    // restricted node. With a filter: only nodes whose proof
+    // traces include at least one matching axiom id. Proof
+    // traces are per-edge, so we promote edge → both endpoints
+    // to get the node set.
+    let candidateIds: Set<string>;
+    if (axiomIds === null) {
+      candidateIds = new Set(report.restrictedNodeIds);
+    } else {
+      candidateIds = new Set<string>();
+      for (const trace of report.proofTraces) {
+        if (!trace.violatedAxioms.some((id) => axiomIds!.has(id))) continue;
+        const edge = store.graphData.edges.find((e) => e.id === trace.edgeId);
+        if (!edge) continue;
+        // Only ablate endpoints that are themselves flagged as
+        // restricted — staying within the Tarski-flagged set.
+        if (report.restrictedNodeIds.has(edge.source)) candidateIds.add(edge.source);
+        if (report.restrictedNodeIds.has(edge.target)) candidateIds.add(edge.target);
+      }
+      if (candidateIds.size === 0) {
+        return `No restricted nodes match axiom "${axiom}".`;
+      }
+    }
+
+    // Skip nodes that are already ablated (toggle would un-ablate
+    // them — wrong direction). Then toggle each remaining one.
+    const alreadyAblated = new Set(store.ablatedNodeIds);
+    const toAblate = [...candidateIds].filter((id) => !alreadyAblated.has(id));
+
+    if (toAblate.length === 0) {
+      return `All ${candidateIds.size} matching restricted node(s) are already ablated.`;
+    }
+
+    // Turn ablation mode on so the rendering layer hides the
+    // ablated subgraph. Then ablate one node at a time — the
+    // store handler auto-ablates each node's connected edges.
+    store.setAblationMode(true);
+    for (const id of toAblate) {
+      store.toggleAblatedNode(id);
+    }
+
+    // Build a human-readable summary referencing labels where
+    // possible. The LLM uses this to explain what it did.
+    const preview = toAblate
+      .slice(0, 5)
+      .map((id) => store.graphData.nodes.find((n) => n.id === id)?.shortLabel ?? id);
+    const more = toAblate.length > 5 ? ` (+${toAblate.length - 5} more)` : "";
+    const scope = axiom ? ` matching axiom "${axiom}"` : "";
+    return (
+      `Removed ${toAblate.length} restricted node${toAblate.length === 1 ? "" : "s"}${scope}: ` +
+      `${preview.join(", ")}${more}. ` +
+      `Use reset_ablation to restore them.`
+    );
   },
 });

@@ -125,7 +125,7 @@ async function runCase(testCase: TestCase, opts: RunEvalOptions): Promise<EvalRe
     shocks: [] as ApexState["shocks"],
     severedEdges: [] as string[],
   } as unknown as ApexState;
-  const { displayText, toolCalls } = executeActionsWithTrace(rawAssistantMessage, {
+  const { displayText, toolCalls } = await executeActionsWithTrace(rawAssistantMessage, {
     getStore: () => stubStore,
   });
 

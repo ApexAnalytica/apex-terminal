@@ -14,7 +14,7 @@ import type { ApexState } from "@/stores/useApexStore";
 describe("executeTagWithTrace — structured trace shape", () => {
   beforeEach(() => __resetRegistryForTests());
 
-  it("returns name + validated params + result + null error + latency on success", () => {
+  it("returns name + validated params + result + null error + latency on success", async () => {
     defineTool({
       name: "select_node",
       description: "test",
@@ -23,7 +23,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
       handler: () => "Selected node: USA_GRID",
     });
 
-    const trace = executeTagWithTrace(
+    const trace = await executeTagWithTrace(
       { name: "select_node", payload: "USA_GRID", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
@@ -36,7 +36,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
     expect(trace.latency_ms).toBeGreaterThanOrEqual(0);
   });
 
-  it("populates error when validation fails", () => {
+  it("populates error when validation fails", async () => {
     defineTool({
       name: "needs_arg",
       description: "test",
@@ -44,7 +44,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
       handler: () => "ok",
     });
 
-    const trace = executeTagWithTrace(
+    const trace = await executeTagWithTrace(
       { name: "needs_arg", payload: "", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
@@ -53,7 +53,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
     expect(trace.result).toMatch(/Missing required/);
   });
 
-  it("populates error when handler throws", () => {
+  it("populates error when handler throws", async () => {
     defineTool({
       name: "boom",
       description: "test",
@@ -63,7 +63,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
       },
     });
 
-    const trace = executeTagWithTrace(
+    const trace = await executeTagWithTrace(
       { name: "boom", payload: "", raw: "" },
       { getStore: () => ({}) as ApexState },
     );
@@ -72,7 +72,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
     expect(trace.result).toMatch(/boom failed: kaboom/);
   });
 
-  it("emits a trace per parsed tag from executeActionsWithTrace", () => {
+  it("emits a trace per parsed tag from executeActionsWithTrace", async () => {
     defineTool({
       name: "a",
       description: "",
@@ -88,7 +88,7 @@ describe("executeTagWithTrace — structured trace shape", () => {
     });
 
     const text = "Hello <<<ACTION:a>>> middle <<<ACTION:b:hi>>> end";
-    const result = executeActionsWithTrace(text, { getStore: () => ({}) as ApexState });
+    const result = await executeActionsWithTrace(text, { getStore: () => ({}) as ApexState });
 
     expect(result.toolCalls).toHaveLength(2);
     expect(result.toolCalls[0]).toMatchObject<Partial<ToolCallTrace>>({

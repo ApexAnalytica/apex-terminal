@@ -673,8 +673,11 @@ export default function SystemCopilot() {
           setStreamingDisplayText(displayTextStreaming);
         }
 
-        // After streaming completes, execute any actions from the full response
-        const { displayText, actionResults, toolCalls } = processLlmActionsWithTrace(accumulated);
+        // After streaming completes, execute any actions from the full response.
+        // Awaited because the registry handlers may be async — `solve_interdiction`
+        // in particular runs the chunked minimax solver and yields between
+        // candidates so the chat UI stays responsive during the solve.
+        const { displayText, actionResults, toolCalls } = await processLlmActionsWithTrace(accumulated);
         // Flush final text to the store in one write
         useApexStore.setState((s) => ({
           copilotMessages: s.copilotMessages.map((m) =>

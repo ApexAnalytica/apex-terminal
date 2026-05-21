@@ -24,13 +24,13 @@ These three segments get first-wave outreach effort. Strongest team credibility,
 
 ## Segment 1 — Insurance and Reinsurance
 
-**Why this is priority.** Junaid is ex-reinsurance. Advisors Dr. Pita (JHU, natural-disaster risk, ex-World Bank) and Dr. Igusa (JHU, systems engineering, NIH/CDC funded) are credentialed in this domain. The AON deck already exists as a worked-example pitch artifact. The macro tailwind is climate non-stationarity invalidating historical CAT models, which is exactly the gap Manifold fills.
+**Why this is priority.** Junaid is ex-reinsurance. Advisors Dr. Pita (JHU, natural-disaster risk, ex-World Bank) and Dr. Igusa (JHU, systems engineering, NIH/CDC funded) are credentialed in this domain. The macro tailwind is climate non-stationarity invalidating historical CAT models, which is exactly the gap Manifold fills.
 
 ### ICP 1.1 — Global insurance broker / risk advisory
 
 The "big three" plus second-tier brokerages.
 
-- **Tier 1 firms:** AON, Marsh McLennan, Willis Towers Watson (WTW).
+- **Tier 1 firms:** Marsh McLennan, Willis Towers Watson (WTW).
 - **Tier 2 firms:** Lockton, Gallagher, Howden, McGill and Partners, Brown and Brown.
 
 **Buyer titles to target:**
@@ -89,18 +89,18 @@ Use these in the first conversation. A "yes" on two or more = real lead.
 4. *"Are you working on ILS / parametric / cat-bond product structuring where basis-risk quantification matters?"*
 5. *"Does your team have a Director or MD with discretionary budget for analytics tools, or does every analytics purchase route through procurement?"*
 
-### Named-account shortlist for first 90 days
+### Reference accounts in this segment
 
-| # | Account | Status | Lead-in |
-|---|---|---|---|
-| 1 | **AON** | Warm via Shane / Junaid | Deck already sent. Awaiting response. |
-| 2 | **Marsh McLennan** | Cold | Mirror AON pitch. Climate Risk Practice or Capital Advisory entry. |
-| 3 | **Munich Re** | Cold | Direct reinsurer angle. CRO or Head of Cat. |
-| 4 | **Swiss Re** | Cold | Direct reinsurer angle. Open to research-led pitches historically. |
-| 5 | **WTW** | Cold | Capital Markets / ILS practice. |
-| 6 | **Hannover Re** | Cold | Mid-sized, often faster than top-three. |
-| 7 | **Nephila** | Cold | ILS fund. Research-led conversation. |
-| 8 | **Beazley** | Cold | Lloyd's syndicate. Active Underwriter or Head of Cat. |
+| # | Account | Lead-in |
+|---|---|---|
+| 1 | **Marsh McLennan** | Broker. Climate Risk Practice or Capital Advisory entry. |
+| 2 | **Willis Towers Watson** | Broker. Capital Markets / ILS practice. |
+| 3 | **Munich Re** | Direct reinsurer. CRO or Head of Cat. |
+| 4 | **Swiss Re** | Direct reinsurer. Open to research-led pitches historically. |
+| 5 | **Hannover Re** | Direct reinsurer, mid-sized, often faster than top-three. |
+| 6 | **Nephila** | ILS fund. Research-led conversation. |
+| 7 | **Beazley** | Lloyd's syndicate. Active Underwriter or Head of Cat. |
+| 8 | **Hiscox** | Lloyd's syndicate. CAT / Specialty Underwriting entry. |
 
 ### Intro framing for Insurance / Reinsurance
 
@@ -112,7 +112,7 @@ When introducing a prospect at any of the above, lead with **structural causalit
 
 ## Segment 2 — Bank Counterparty Risk
 
-**Why this is priority.** Three team members are ex-HSBC (Junaid, Georgios, Jeremy). Brynna is ex-Goldman. Direct alumni access into both. The product also slots into the FRTB / Basel 3.1 regulatory cycle that has every G-SIB rebuilding counterparty methodology between now and end-of-decade. Budget is real and timeline pressure is real.
+**Why this is priority.** Three team members are ex-HSBC (Junaid, Georgios, Jeremy). Brynna is ex-Goldman. The team's pedigree carries credibility into these institutions. The product also slots into the FRTB / Basel 3.1 regulatory cycle that has every G-SIB rebuilding counterparty methodology between now and end-of-decade. Budget is real and timeline pressure is real.
 
 ### ICP 2.1 — G-SIB counterparty risk team
 
@@ -162,18 +162,18 @@ Lower revenue per deal but faster procurement than G-SIBs.
 4. *"Is your existing counterparty risk infrastructure internally-built or vendor-bought? Are you in evaluation cycle on alternatives?"*
 5. *"Who would champion bringing a new analytical tool into your team — you, your manager, or does it route through model-risk-management?"*
 
-### Named-account shortlist for first 90 days
+### Reference accounts in this segment
 
-| # | Account | Status | Lead-in |
-|---|---|---|---|
-| 1 | **HSBC** | Warm via Junaid / Georgios / Jeremy | Alumni intro to Counterparty or Treasury Risk. |
-| 2 | **Goldman Sachs** | Warm via Brynna | Alumni intro to Risk or Capital Reporting. |
-| 3 | **JPMorgan** | Cold | Counterparty Credit Risk team. |
-| 4 | **Citi** | Cold | Counterparty / Wholesale Credit Risk. |
-| 5 | **Morgan Stanley** | Cold | Counterparty Risk. |
-| 6 | **Barclays** | Cold | EU FRTB-implementation pressure. |
-| 7 | **Standard Chartered** | Cold (HSBC-adjacent talent) | Counterparty in Asia / EM exposure. |
-| 8 | **BNY Mellon** | Cold | Custody-bank angle, faster procurement. |
+| # | Account | Lead-in |
+|---|---|---|
+| 1 | **HSBC** | G-SIB. Counterparty or Treasury Risk team. |
+| 2 | **Goldman Sachs** | G-SIB. Risk or Capital Reporting team. |
+| 3 | **JPMorgan** | G-SIB. Counterparty Credit Risk team. |
+| 4 | **Citi** | G-SIB. Counterparty / Wholesale Credit Risk. |
+| 5 | **Morgan Stanley** | G-SIB. Counterparty Risk. |
+| 6 | **Barclays** | G-SIB (EU). FRTB-implementation pressure. |
+| 7 | **Standard Chartered** | G-SIB (APAC). Counterparty in Asia / EM exposure. |
+| 8 | **BNY Mellon** | Custody bank. Faster procurement than G-SIB peers. |
 
 ### Intro framing for Bank Counterparty Risk
 
@@ -224,18 +224,18 @@ Lead with **FRTB / structural counterparty methodology** as the value propositio
 4. *"Are you open to integrating non-standard analytical inputs alongside your existing quant / discretionary process, or is the stack rigidly defined?"*
 5. *"What's the typical cycle from 'we want to evaluate a tool' to 'we sign the contract' at your shop?"*
 
-### Named-account shortlist for first 90 days
+### Reference accounts in this segment
 
-| # | Account | Status | Lead-in |
-|---|---|---|---|
-| 1 | **Brevan Howard** | Cold | Discretionary macro PM intro. |
-| 2 | **Caxton** | Cold | Same. |
-| 3 | **Moore Capital** | Cold | Same. |
-| 4 | **Citadel** | Cold (multi-strategy) | Macro PM at a specific pod, not firm-wide. |
-| 5 | **Marshall Wace** | Cold | TOPS systematic platform plus discretionary macro. |
-| 6 | **Element Capital** | Cold | Smaller, faster decisions. |
-| 7 | **Rokos Capital** | Cold | Brevan-alum, similar profile. |
-| 8 | **Pareto Technologies** | Internal | Junaid's other firm. House-account-shaped opportunity, not a Qualifying Deal for commission purposes. |
+| # | Account | Lead-in |
+|---|---|---|
+| 1 | **Brevan Howard** | Discretionary macro PM intro. |
+| 2 | **Caxton** | Same. |
+| 3 | **Moore Capital** | Same. |
+| 4 | **Tudor Investment** | Discretionary macro. |
+| 5 | **Citadel** | Multi-strategy. Macro PM at a specific pod, not firm-wide. |
+| 6 | **Marshall Wace** | TOPS systematic platform plus discretionary macro. |
+| 7 | **Element Capital** | Smaller, faster decisions. |
+| 8 | **Rokos Capital** | Brevan-alum, similar profile. |
 
 ### Intro framing for Macro Hedge Funds
 

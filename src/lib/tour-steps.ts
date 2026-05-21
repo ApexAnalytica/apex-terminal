@@ -138,6 +138,14 @@ const FIRST_RUN_STEPS: TourStep[] = [
     awaitInteraction: {
       hint: "Click any pillar letter (I, R, J, C, T) on the radar to continue.",
       predicate: (s) => s.expandedPillar !== null,
+      // Pulse the radar pentagon specifically — not the whole
+      // module-panel which is the wider targetSelector for context.
+      // Without this, the cyan pulse ring drew around the full
+      // inspector (~5× the radar's size) and the user's eye had to
+      // search inside it for the actual clickable letters. The wider
+      // targetSelector stays for the surrounding spotlight + the
+      // tooltip anchor.
+      pulseSelector: '[data-tour="pillar-radar"]',
     },
   },
   {

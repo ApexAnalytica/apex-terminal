@@ -43,9 +43,11 @@ import SnapshotDiagnostics from "./SnapshotDiagnostics";
 // pull their JS on first paint:
 //   - MonteCarloForecast (714 LOC + simulation helpers)  → Pearl tab
 //   - VX880TrialPanel (910 LOC + cohort helpers)         → Pearl tab
-//   - InterdictionPanel (191 LOC)                        → Pareto tab
+//   - InterdictionPanel (191 LOC)                        → Pearl tab (moved
+//                                                          from Pareto)
 //   - TissueCohortView (504 LOC + d1namo cohort data)    → Spirtes tab
 //     but only when isT1DDomain is true, so worth deferring
+// ScenarioInput + AblationPanel are small (<5KB each) and load inline.
 // Each has a small loading hint that matches the panel padding so the
 // layout doesn't jump when the chunk lands.
 const PANEL_LOADER = (
@@ -69,9 +71,16 @@ const VX880TrialPanel = dynamic(
   () => import("./VX880TrialPanel"),
   { ssr: false, loading: () => PANEL_LOADER },
 );
+const ScenarioInput = dynamic(() => import("./ScenarioInput"), {
+  ssr: false,
+});
+const AblationPanel = dynamic(() => import("./AblationPanel"), {
+  ssr: false,
+});
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
+  const setActiveModule = useApexStore((s) => s.setActiveModule);
   const setInterventionMode = useApexStore((s) => s.setInterventionMode);
   // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
   // domain is loaded, so it doesn't pollute non-life-sciences flows.
@@ -149,11 +158,16 @@ export default function ModulePanel() {
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Run interdiction from the copilot to produce candidate cuts, then the Monte Carlo
-              forecast auto-simulates the counterfactual {"\u03A9"}-buffer trajectory under those cuts.
+              Intervention surface. Describe a scenario, run the solver to
+              find candidate cuts, or pick your own cuts manually. The Monte
+              Carlo forecast auto-simulates the counterfactual {"\u03A9"}-buffer
+              trajectory under whatever cuts are active.
             </div>
-            <VX880TrialPanel />
+            <ScenarioInput />
+            <InterdictionPanel />
             <CopilotInterdictionResults />
+            <AblationPanel />
+            <VX880TrialPanel />
             <MonteCarloForecast expanded={expandedChart === "pearl"} />
           </div>
         )}
@@ -161,12 +175,20 @@ export default function ModulePanel() {
         {activeModule === "pareto" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Inject exogenous disruption scenarios, assess systemic fragility,
-              then run interdiction to find optimal defensive interventions.
+              Criticality observation. Inject shocks and read the model
+              relevance cards to see which estimators trust the regime.
+              Defensive cuts and scenario interdiction live in{" "}
+              <button
+                type="button"
+                onClick={() => setActiveModule("pearl")}
+                className="underline decoration-dotted text-accent-amber hover:text-accent-amber/80"
+              >
+                PEARL {"\u2192"}
+              </button>
+              .
             </div>
             <SnapshotIndicator />
             <ParetoPanel expandedChart={expandedChart} setExpandedChart={setExpandedChart} />
-            <InterdictionPanel />
             <NewsInterpreterPanel />
           </div>
         )}

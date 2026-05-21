@@ -1196,6 +1196,33 @@ export default function SystemCopilot() {
     setMention((m) => ({ ...m, active: false }));
   };
 
+  // ─── Programmatic submit entry point ────────────────────────────
+  //
+  // PEARL's ScenarioInput dispatches `manifold:copilot-submit` with
+  // the user's prose. We treat that exactly like a chat-input submit
+  // (record the user message, kick off the streaming response) except
+  // we skip the input-field clearing because there's no input to
+  // clear. Used today by the ScenarioInput component; any future
+  // component that wants to inject a prompt can use the same event.
+  useEffect(() => {
+    const onSubmit = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string }>).detail;
+      const text = detail?.text?.trim();
+      if (!text || isLlmStreaming) return;
+      const userMsg: CopilotMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: text,
+        timestamp: Date.now(),
+      };
+      addCopilotMessage(userMsg);
+      if (isLlmActive) handleStreamingQuery(text);
+      else processQuery(text, graphData).forEach((msg) => addCopilotMessage(msg));
+    };
+    window.addEventListener("manifold:copilot-submit", onSubmit);
+    return () => window.removeEventListener("manifold:copilot-submit", onSubmit);
+  }, [isLlmStreaming, isLlmActive, addCopilotMessage, handleStreamingQuery, graphData]);
+
   // ─── Node-name autocomplete: matches + handlers ────────────────
   const MAX_MENTION_RESULTS = 8;
   const MIN_QUERY_LEN = 2;

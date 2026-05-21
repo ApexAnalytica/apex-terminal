@@ -844,12 +844,16 @@ export default function SystemCopilot() {
       }
     }
 
-    // If TTS is mid-utterance and the user is starting to talk,
-    // cut the assistant off — feels more natural than waiting for
-    // the AI to finish before you can interrupt.
-    if (typeof window !== "undefined" && window.speechSynthesis?.speaking) {
-      window.speechSynthesis.cancel();
-    }
+    // NOTE: previously cancelled TTS here on the assumption that
+    // `startListening` was only called via explicit user intent
+    // (toggle, click-to-talk). It now also gets called by the
+    // auto-speak effect to start the barge-in mic *while* TTS is
+    // playing — so cancelling here would kill TTS the moment the
+    // barge-in mic spins up. The actual "AI goes quiet when the
+    // user starts talking" semantics live in `recognition.onresult`
+    // below, gated on the non-feedback substring check. Explicit
+    // mic toggles still get a TTS cancel via toggleVoiceMode's
+    // own speechSynthesis.cancel() call.
 
     const recognition = new SpeechRecognition();
     recognition.continuous = false;

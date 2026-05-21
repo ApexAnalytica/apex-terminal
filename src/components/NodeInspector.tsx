@@ -433,8 +433,14 @@ export default function NodeInspector() {
 
             {/* \u03A9F Pentagon \u2014 radar plot of all five pillars with composite at the
                 center. Replaces the gauge-bar stack; the pillar legend below
-                keeps click-to-expand affordance for description / formula. */}
-            <div>
+                keeps click-to-expand affordance for description / formula.
+
+                `data-tour="pillar-radar"` so the onboarding tour's
+                node-inspector step can pulse this specific element (the
+                radar pentagon) when prompting the user to click a pillar
+                letter, rather than pulsing the full module-panel which is
+                ~5\u00D7 larger and visually unfocused. */}
+            <div data-tour="pillar-radar">
               <PillarRadar
                 axes={axes}
                 composite={node.omegaFragility.composite}

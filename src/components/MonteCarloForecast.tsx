@@ -496,8 +496,12 @@ export default function MonteCarloForecast({
       )}
 
       {!effectiveTarget && !trialPrior && (
-        <div className="p-2 rounded border border-border/60 bg-surface-elevated text-[8px] font-mono text-text-muted">
-          Waiting for interdiction cuts (run the solver from the copilot) or a manual do(X) target on the DAG.
+        <div className="p-2 rounded border border-border/60 bg-surface-elevated text-[8px] font-mono text-text-muted leading-relaxed">
+          Waiting for cuts. Three ways to get here:
+          {" "}<strong>scenario {"→"} interdiction</strong> at the top of PEARL,
+          {" "}<strong>ablation</strong> (your manual cuts), or a manual{" "}
+          <strong>do(X)</strong> target picked on the DAG. As soon as cuts
+          exist, this forecast auto-runs.
         </div>
       )}
 

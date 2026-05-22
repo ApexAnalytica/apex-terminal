@@ -60,7 +60,14 @@ function CausalDAGMapInner() {
     selectedNodes,
     setSelectedNodes,
     isolateSelection,
+    // Global ablation state. Click in ablation mode toggles ablation
+    // instead of selection; ablated nodes paint with low opacity so
+    // they read as "removed from the cascade" the way they do in 3D.
+    ablationMode,
+    ablatedNodeIds,
+    toggleAblatedNode,
   } = useApexStore();
+  const ablatedNodeSet = useMemo(() => new Set(ablatedNodeIds), [ablatedNodeIds]);
   // Use the same filtered graph as 2D and 3D views for consistent data
   const activeGraph = useFilteredGraph();
 
@@ -176,14 +183,15 @@ function CausalDAGMapInner() {
         node.datasetColor ??
         getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
-      // Two dim modes:
-      //  - isolate ON  → opacity 0.15 (existing behaviour)
-      //  - isolate OFF → opacity 0.35 (multi-select spotlight, matches 2D
-      //    where multiSelected.length > 0 alone dims non-selected nodes)
+      // Three dim modes (in priority order):
+      //  - ablated     → opacity 0.15 (mirror 3D / 2D — wins regardless)
+      //  - isolate ON  → opacity 0.15
+      //  - multi-select with isolate OFF → opacity 0.35
       const isMultiSelectActive = selectedSet.size > 0;
       const isOutOfScope = isMultiSelectActive && !selectedSet.has(node.id);
-      const isDimmed = isOutOfScope;
-      const dimOpacity = isolateSelection ? 0.15 : 0.35;
+      const isAblated = ablatedNodeSet.has(node.id);
+      const isDimmed = isAblated || isOutOfScope;
+      const dimOpacity = isAblated ? 0.15 : isolateSelection ? 0.15 : 0.35;
       const omega = node.omegaFragility.composite;
 
       return {
@@ -199,6 +207,7 @@ function CausalDAGMapInner() {
           color: domainColor,
           isSelected,
           isDimmed,
+          isAblated,
           // Size based on omega score
           radius: Math.max(4, omega * 1.2),
           opacity: isDimmed ? dimOpacity : 1,
@@ -208,7 +217,7 @@ function CausalDAGMapInner() {
       };
     });
     return { type: "FeatureCollection", features };
-  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection]);
+  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection, ablatedNodeSet]);
 
   // Build GeoJSON for edges — split into solid and dashed to match 3D conventions:
   //   directed  → cyan (#00e5ff) — solid
@@ -542,7 +551,11 @@ function CausalDAGMapInner() {
         const nodeId = feature.properties?.id;
         if (nodeId) {
           setSelectedEdge(null);
-          if (e.originalEvent.shiftKey) {
+          // Ablation mode preempts both single and shift-select. Same
+          // semantics as 3D / 2D — click toggles ablation, full stop.
+          if (ablationMode) {
+            toggleAblatedNode(nodeId);
+          } else if (e.originalEvent.shiftKey) {
             setSelectedNodes(
               selectedNodes.includes(nodeId)
                 ? selectedNodes.filter((id: string) => id !== nodeId)
@@ -568,7 +581,7 @@ function CausalDAGMapInner() {
         return;
       }
     },
-    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
+    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge, ablationMode, toggleAblatedNode],
   );
 
   const [hoveredFeature, setHoveredFeature] = useState(false);

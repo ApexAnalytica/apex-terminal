@@ -215,6 +215,14 @@ function CopilotInterdictionResults() {
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
   const setIsolateSelection = useApexStore((s) => s.setIsolateSelection);
+  // startAblationReplay reruns the cascade simulator against the
+  // current severed-edge + ablated-node set and flips replay into
+  // playing state. Wired into the new APPLY ALL & SIMULATE button so
+  // the scenario → cuts → impact loop runs as one motion instead of
+  // the analyst having to chase down a separate Start Replay control.
+  const startAblationReplay = useApexStore((s) => s.startAblationReplay);
+  const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
+  const severedEdges = useApexStore((s) => s.severedEdges);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
   // Affected node set. Memoised on the interdiction result + graph
@@ -238,6 +246,52 @@ function CopilotInterdictionResults() {
     return Array.from(ids);
   }, [lastResult, graphData.edges]);
 
+  // Apply every intervention in the result and immediately kick off
+  // cascade replay so the analyst sees propagation against the new
+  // cut set without a second click. Edge cuts flow through severEdge
+  // (idempotent — skipped if already severed); node cuts flow through
+  // toggleAblatedNode but we gate on the current ablated set so a
+  // double-tap of APPLY ALL & SIMULATE doesn't un-ablate something
+  // that was already cut. After the writes, startAblationReplay() runs
+  // simulateCascadeAsync against the merged state and flips replay on.
+  const applyAllAndSimulate = useCallback(() => {
+    if (!lastResult) return;
+    const ablatedSet = new Set(ablatedNodeIds);
+    const severedSet = new Set(severedEdges);
+    const newlyApplied: string[] = [];
+    for (const iv of lastResult.interventions) {
+      if (iv.target.type === "edge") {
+        if (!severedSet.has(iv.target.id)) {
+          severEdge(iv.target.id);
+          newlyApplied.push(iv.target.id);
+        }
+      } else if (iv.target.type === "node") {
+        if (!ablatedSet.has(iv.target.id)) {
+          toggleAblatedNode(iv.target.id);
+          newlyApplied.push(iv.target.id);
+        }
+      }
+    }
+    setAppliedIds((prev) => {
+      const next = new Set(prev);
+      for (const iv of lastResult.interventions) next.add(iv.target.id);
+      return next;
+    });
+    // Always kick off replay — even if every cut was already applied,
+    // re-running the cascade is what the analyst expects from a button
+    // labelled "& SIMULATE". The store wipes interventionEpochs first
+    // so the badges/pulses restart from epoch 0.
+    startAblationReplay();
+    return newlyApplied;
+  }, [
+    lastResult,
+    ablatedNodeIds,
+    severedEdges,
+    severEdge,
+    toggleAblatedNode,
+    startAblationReplay,
+  ]);
+
   if (!lastResult) return null;
 
   const hasInterventions = lastResult.interventions.length > 0;
@@ -256,6 +310,22 @@ function CopilotInterdictionResults() {
           {isFallback ? "STRUCTURAL VULNERABILITY CUTS" : "INTERDICTION RESULTS"}
         </span>
         <div className="flex items-center gap-2">
+          {/* APPLY ALL & SIMULATE — one-click closure of the scenario
+              → cuts → impact loop. Applies every recommended cut
+              (idempotent, so re-clicks don't un-ablate) and then
+              kicks off cascade replay so the analyst sees propagation
+              + the MC fan reacts without chasing a separate Start
+              Replay button. Hidden when there are no interventions
+              (e.g. the solver's empty-cuts edge case). */}
+          {hasInterventions && (
+            <button
+              onClick={applyAllAndSimulate}
+              className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border transition-colors border-accent-amber/60 text-accent-amber bg-accent-amber/10 hover:bg-accent-amber/20"
+              title="Apply every recommended cut and immediately run cascade replay against the new cut set. Sees propagation in real time; the MC forecast updates automatically."
+            >
+              APPLY ALL &amp; SIMULATE
+            </button>
+          )}
           {/* ISOLATE AFFECTED — mirrors the lasso panel's ISOLATE
               button, bootstrapped from the interdiction's affected node
               set instead of a marquee drag. When toggled on, the

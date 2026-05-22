@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { notearsAlgorithm } from "../algorithms/notears";
+import { notearsAlgorithm, quadraticInterpStep } from "../algorithms/notears";
 import {
   matExp,
   trace,
@@ -368,6 +368,41 @@ describe("notearsAlgorithm — output shape", () => {
 // tests assert the resulting per-iteration efficiency: L-BFGS reaches
 // acyclicity in far fewer inner iterations than the previous proximal
 // loop, which needed ~200 to hit the same tolerance.
+
+describe("quadraticInterpStep — projected-line-search step chooser", () => {
+  it("returns ~α/2 for a perfectly quadratic miss (verifies the closed form)", () => {
+    // Construct a known quadratic: φ(α) = 1 - α + α²
+    // ⟹ φ(0) = 1, φ'(0) = -1, φ(2) = 1 - 2 + 4 = 3
+    // Minimiser of fit: α* = -(-1)·4 / (2·(3 - 1 - (-1)·2)) = 4 / 8 = 0.5
+    // After safeguard [0.1·2, 0.5·2] = [0.2, 1.0], 0.5 lands inside.
+    const s = quadraticInterpStep(1, -1, 2, 3);
+    expect(s).toBeCloseTo(0.5, 4);
+  });
+
+  it("clamps to the [0.1·α, 0.5·α] safeguard band when the model overshoots", () => {
+    // A very flat curve at α leads to a huge α* — must clamp to 0.5·α.
+    const s = quadraticInterpStep(1, -0.01, 1, 0.999);
+    expect(s).toBeLessThanOrEqual(0.5);
+    expect(s).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("falls back to halving when the model is concave / degenerate", () => {
+    // φ(α) < φ(0) + φ'(0)·α (i.e. went below the linear approximation):
+    // denom ≤ 0, formula is invalid — return hi = 0.5·α.
+    const s = quadraticInterpStep(1, -1, 1, -10);
+    expect(s).toBe(0.5);
+  });
+
+  it("returns a positive step in (0, α) for typical Armijo-failure inputs", () => {
+    for (const alpha of [0.5, 1, 2]) {
+      for (const phi of [1.5, 5, 100]) {
+        const s = quadraticInterpStep(1, -1, alpha, phi);
+        expect(s).toBeGreaterThan(0);
+        expect(s).toBeLessThan(alpha);
+      }
+    }
+  });
+});
 
 describe("notearsAlgorithm — L-BFGS convergence", () => {
   it("achieves acyclicity (h(W) < 5e-3) with maxInnerIter=20", () => {

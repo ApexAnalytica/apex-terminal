@@ -366,8 +366,37 @@ function objectiveAndGrad(
   return { f, g, h };
 }
 
+/**
+ * Quadratic-interpolation backtracking step. Given the values at α=0
+ * (φ₀, φ'₀) and at the most-recent failed trial (α, φ(α)), returns
+ * the minimiser of the parabola interpolating those three constraints:
+ *
+ *   q(α) = φ₀ + φ'₀·α + ((φ(α) − φ₀ − φ'₀·α) / α²) · α²
+ *   q'(α*) = 0  ⟹  α* = −φ'₀·α² / (2·(φ(α) − φ₀ − φ'₀·α))
+ *
+ * Safeguarded into [0.1·α, 0.5·α] — if the quadratic is concave or
+ * the minimiser lands outside the safeguard band, fall back to plain
+ * halving. Exported for unit testing.
+ */
+export function quadraticInterpStep(
+  phi0: number,
+  dphi0: number,
+  alpha: number,
+  phiAlpha: number,
+): number {
+  const denom = 2 * (phiAlpha - phi0 - dphi0 * alpha);
+  const lo = 0.1 * alpha;
+  const hi = 0.5 * alpha;
+  if (!Number.isFinite(denom) || denom <= 1e-20) {
+    return hi; // concave or degenerate — fall back to halving
+  }
+  const alphaStar = (-dphi0 * alpha * alpha) / denom;
+  if (!Number.isFinite(alphaStar)) return hi;
+  return Math.max(lo, Math.min(hi, alphaStar));
+}
+
 /** L-BFGS-B inner loop on L_ρ(W; α) using the (W⁺, W⁻) split + projected
- *  backtracking line search. */
+ *  backtracking line search with quadratic-interpolation step choice. */
 function lbfgsInner(
   X: Mat,
   XtX: Mat,
@@ -410,8 +439,18 @@ function lbfgsInner(
       if (directionalDeriv >= 0) break; // truly stuck
     }
 
-    // Projected backtracking line search (Armijo sufficient-decrease).
+    // Projected backtracking line search with quadratic-interpolation
+    // step choice. On Armijo rejection, fit the parabola through
+    // (0, φ(0), φ'(0)) and (step, φ(step)) and pick its minimiser as
+    // the next trial, safeguarded into [0.1·step, 0.5·step]. This is
+    // the cheap variant of Moré–Thuente (1994) — same model order but
+    // without the bracketing / zoom phases. For projected line search
+    // it's the right trade-off: projection breaks the smoothness
+    // assumption the full Wolfe conditions need, so the extra
+    // bracketing machinery wouldn't pay off here.
     let step = 1.0;
+    const phi0 = f;
+    const dphi0 = directionalDeriv; // already = dot(g, searchDir)
     let accepted = false;
     let vNext = v;
     let fNext = f;
@@ -428,7 +467,7 @@ function lbfgsInner(
         accepted = true;
         break;
       }
-      step *= 0.5;
+      step = quadraticInterpStep(phi0, dphi0, step, res.f);
       if (step < 1e-12) break;
     }
     if (!accepted) break; // line search failed — gradient too noisy to make progress

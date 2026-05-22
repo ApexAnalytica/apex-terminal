@@ -958,6 +958,30 @@ In `ModulePanel.tsx`:
 
 ---
 
+### 2026-05-22 — Shipped: 2D layout sim moves off the main thread (Worker reuse)
+
+**PR:** TBD (about to open).
+
+**Trigger.** Continuation of the load-time arc. PR #404 moved the 3D layout + centrality off the main thread; 2D was still running both synchronously inside the same component. After PR #304 made `CausalDAG2D` lazy + conditional, that compute no longer hits launch — but the first user-initiated 2D-tab visit was still paying ~150-300ms of main-thread block on a 500-node CROSS-DOMAIN workspace.
+
+Estimator-lib audit (the other backlog candidate) turned out to be a no-op in production — the heavy libs (`lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`) are only reachable from `modules/ParetoPanel.tsx` after PR #406, so they already ship only in the Pareto chunk. The `csd-fit-hypo-calibrator.ts` consumer is reachable only from a test fixture, not the runtime bundle. Closed that ticket as already-done.
+
+**What shipped.**
+
+- **Worker generalised.** `src/lib/workers/layout3d-worker.ts` now dispatches on a `kind: "layout3d" | "layout2d"` discriminator. 3D path unchanged; 2D path runs `compute2DForceLayout(nodes, edges)` + `computeNetworkMetrics(nodes, edges)` and posts back `{ positions2d: Map<string, Position2D>, metrics }`. Both layouts share one worker instance.
+- **Client wrapper got a `requestLayout2D` sibling** to `requestLayout3D`. Same epoch-cancellation pattern, same SSR-fallback path (dynamic-imports the sync functions when `Worker` is unavailable).
+- **`CausalDAG2D` refactor.** The synchronous `compute2DForceLayout` + `computeNetworkMetrics` useMemos are gone. In their place: a `useEffect` keyed on the graph `sig` that posts to the worker, plus `cachedLayout` / `networkMetrics` state populated when the response lands. `latestRequestIdRef` drops stale responses on fast topology changes — same epoch pattern as `CausalDAG3D`. Previously-rendered orbs stay put while a new layout computes.
+
+**Files.**
+- `src/lib/workers/layout3d-worker.ts` — kind discriminator, 2D dispatch arm.
+- `src/lib/workers/layout3d-client.ts` — `requestLayout2D` export + shared worker bookkeeping.
+- `src/lib/workers/__tests__/layout3d-client.test.ts` — added one fallback-path test for `requestLayout2D`.
+- `src/components/CausalDAG2D.tsx` — imports trimmed, sync useMemos → async effect + state.
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

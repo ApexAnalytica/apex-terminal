@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requestLayout3D } from "../layout3d-client";
+import { requestLayout3D, requestLayout2D } from "../layout3d-client";
 import type { CausalGraph } from "@/lib/types";
 
 // vitest's jsdom env typically doesn't supply a working Web Worker —
@@ -77,5 +77,23 @@ describe("requestLayout3D — fallback path", () => {
     const a = requestLayout3D(g.nodes, g.edges);
     const b = requestLayout3D(g.nodes, g.edges);
     expect(b.id).toBeGreaterThan(a.id);
+  });
+});
+
+describe("requestLayout2D — fallback path", () => {
+  it("returns a positions2d Map + metrics for every node", async () => {
+    const g = tinyGraph();
+    const req = requestLayout2D(g.nodes, g.edges);
+    expect(typeof req.id).toBe("number");
+
+    const { positions2d, metrics } = await req;
+    expect(positions2d).toBeInstanceOf(Map);
+    for (const id of ["a", "b", "c", "d"]) {
+      const p = positions2d.get(id);
+      expect(p).toBeDefined();
+      expect(Number.isFinite(p!.x)).toBe(true);
+      expect(Number.isFinite(p!.y)).toBe(true);
+      expect(metrics[id]).toBeDefined();
+    }
   });
 });

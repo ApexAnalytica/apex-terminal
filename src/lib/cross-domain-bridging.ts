@@ -259,11 +259,35 @@ export function applyCrossDomainBridges(
 /** Stable id prefix that `bridgesToEdges` stamps on every auto-bridge. */
 export const AUTO_BRIDGE_ID_PREFIX = "auto-bridge";
 
-/** True iff this edge was minted by `bridgesToEdges` — used by the
- *  EdgeInspector (and any other consumer) to show that the link is
- *  heuristically proposed rather than curator-authored. */
-export function isAutoBridge(edge: { id: string }): boolean {
-  return edge.id.startsWith(AUTO_BRIDGE_ID_PREFIX);
+/** Bridge lifecycle status. `auto` = still heuristic, R-04 will flag.
+ *  `promoted` = lifted by the user via `promoteAutoBridge` — confidence
+ *  bumped to ≥ R-04's cutoff, audit trail kept in `physicalMechanism`.
+ *  `none` = curator-authored edge, never a bridge. */
+export type BridgeStatus = "auto" | "promoted" | "none";
+
+/** Inspect an edge's lifecycle status. Used by EdgeInspector to decide
+ *  which badge / promote button to show, and by tests verifying that
+ *  `promoteAutoBridge` flips the status from "auto" to "promoted". */
+export function bridgeStatus(edge: {
+  id: string;
+  physicalMechanism?: string | null;
+}): BridgeStatus {
+  if (!edge.id.startsWith(AUTO_BRIDGE_ID_PREFIX)) return "none";
+  if (edge.physicalMechanism?.startsWith("promoted bridge:")) return "promoted";
+  return "auto";
+}
+
+/** True iff this edge is still in the un-promoted "auto" state — i.e.
+ *  was minted by `bridgesToEdges` AND hasn't been promoted by the user.
+ *  Promoted bridges return false because the user has confirmed them;
+ *  the original heuristic origin lives on in `physicalMechanism` as an
+ *  audit trail but the inspector should no longer show the "UNVERIFIED"
+ *  badge. */
+export function isAutoBridge(edge: {
+  id: string;
+  physicalMechanism?: string | null;
+}): boolean {
+  return bridgeStatus(edge) === "auto";
 }
 
 /** Pull the heuristic score out of an auto-bridge's `physicalMechanism`

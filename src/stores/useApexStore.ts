@@ -25,7 +25,7 @@ import {
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
-import { applyCrossDomainBridges } from "@/lib/cross-domain-bridging";
+import { applyCrossDomainBridges, AUTO_BRIDGE_ID_PREFIX } from "@/lib/cross-domain-bridging";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
@@ -156,6 +156,17 @@ export interface ApexState {
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
   setSelectedEdgeId: (edgeId: string | null) => void;
+
+  /**
+   * Promote a heuristic auto-bridge (id prefix `auto-bridge`) to a
+   * confirmed cross-domain edge. Bumps `confidence` to 0.8 (above
+   * R-04's 0.7 cutoff) and changes the `physicalMechanism` prefix from
+   * "auto-bridge:" to "promoted bridge:" so `isAutoBridge` stops
+   * returning true. Idempotent — calling on an already-promoted edge
+   * or a non-auto edge is a no-op. Re-runs Tarski validation when
+   * `truthFilter === "verified"` so the previously-FLAGGED edge clears.
+   */
+  promoteAutoBridge: (edgeId: string) => void;
 
   // Multi-selection (lasso/area select)
   selectedNodes: string[];
@@ -544,6 +555,41 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Selected edge
   selectedEdgeId: null,
   setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
+  promoteAutoBridge: (edgeId) =>
+    set((s) => {
+      const idx = s.graphData.edges.findIndex((e) => e.id === edgeId);
+      if (idx === -1) return s;
+      const edge = s.graphData.edges[idx];
+      if (!edge.id.startsWith(AUTO_BRIDGE_ID_PREFIX)) return s;
+      // Skip already-promoted edges (physicalMechanism prefix has flipped).
+      if (!edge.physicalMechanism?.startsWith("auto-bridge:")) return s;
+
+      const promoted: CausalEdge = {
+        ...edge,
+        confidence: 0.8,
+        physicalMechanism: edge.physicalMechanism.replace(
+          /^auto-bridge:/,
+          "promoted bridge:",
+        ),
+      };
+      const newEdges = [...s.graphData.edges];
+      newEdges[idx] = promoted;
+      const newGraph: CausalGraph = { ...s.graphData, edges: newEdges };
+
+      if (s.truthFilter !== "verified") return { graphData: newGraph };
+
+      // VERIFIED mode: refresh the Tarski report so the previously-
+      // FLAGGED R-04 violation on this edge clears.
+      const cleanGraph = clearTarskiFlags(newGraph);
+      const profileId = resolveDomainProfile(s.selectedDomains).id;
+      const report = runTarskiValidation(
+        cleanGraph,
+        s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        profileId,
+      );
+      const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+      return { graphData: flaggedGraph, tarskiReport: report };
+    }),
 
   // Multi-selection
   selectedNodes: [],

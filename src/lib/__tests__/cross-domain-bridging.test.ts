@@ -6,6 +6,7 @@ import {
   bridgesToEdges,
   isAutoBridge,
   extractAutoBridgeScore,
+  bridgeStatus,
   AUTO_BRIDGE_ID_PREFIX,
 } from "@/lib/cross-domain-bridging";
 import { makeGraph, makeNode, makeEdge } from "./fixtures/graph-fixtures";
@@ -329,5 +330,36 @@ describe("isAutoBridge / extractAutoBridgeScore — EdgeInspector helpers", () =
     ]);
     expect(isAutoBridge(edges[0])).toBe(true);
     expect(extractAutoBridgeScore(edges[0].physicalMechanism)).toBeCloseTo(0.65);
+  });
+
+  it("bridgeStatus: auto / promoted / none lifecycle states", () => {
+    // none — curator-authored edge
+    expect(bridgeStatus({ id: "regular-edge" })).toBe("none");
+
+    // auto — minted by bridgesToEdges
+    const auto = bridgesToEdges([
+      {
+        sourceId: "A",
+        targetId: "B",
+        score: 0.5,
+        rationale: "same category",
+        componentA: 0,
+        componentB: 1,
+      },
+    ])[0];
+    expect(bridgeStatus(auto)).toBe("auto");
+
+    // promoted — id retained, physicalMechanism prefix flipped (what
+    // the promoteAutoBridge store action does)
+    const promoted = {
+      ...auto,
+      physicalMechanism: auto.physicalMechanism!.replace(
+        /^auto-bridge:/,
+        "promoted bridge:",
+      ),
+    };
+    expect(bridgeStatus(promoted)).toBe("promoted");
+    // …and isAutoBridge stops returning true once promoted
+    expect(isAutoBridge(promoted)).toBe(false);
   });
 });

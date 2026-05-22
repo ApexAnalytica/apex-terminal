@@ -287,14 +287,14 @@ export const SEED_CASES: TestCase[] = [
   {
     id: "isolate_by_explicit_ids",
     description:
-      "User names two nodes by id — should isolate to that pair.",
+      "User names two nodes by close-to-id phrasing — should isolate to that pair, mapping the user's text to the real graph ids (GRID_USA, FAB_TW).",
     user_message:
-      "show only USA_GRID and FAB_TW, hide everything else",
+      "show only USA Grid and TSMC Fab, hide everything else",
     graph_fixture: "geopolitical_main",
     accepted_tool_calls: [
       {
         name: "isolate_nodes",
-        params_match: { ids: { array_includes: "USA_GRID" } },
+        params_match: { ids: { array_includes: "GRID_USA" } },
       },
     ],
     tags: ["tool-selection", "filtering"],

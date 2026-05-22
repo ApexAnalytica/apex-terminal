@@ -2,7 +2,11 @@
 
 import { motion } from "framer-motion";
 import type { CausalEdge } from "@/lib/types";
-import { isAutoBridge, extractAutoBridgeScore } from "@/lib/cross-domain-bridging";
+import {
+  extractAutoBridgeScore,
+  bridgeStatus,
+} from "@/lib/cross-domain-bridging";
+import { useApexStore } from "@/stores/useApexStore";
 
 /**
  * Per-edge χ★ context — when present, the edge is in the χ★ set
@@ -38,6 +42,8 @@ export default function EdgeInspector({
   onClose: () => void;
   chiStarInfo?: ChiStarEdgeInfo | null;
 }) {
+  const promoteAutoBridge = useApexStore((s) => s.promoteAutoBridge);
+  const status = bridgeStatus(edge);
   const typeColor =
     edge.type === "temporal"
       ? "#ffab00"
@@ -148,22 +154,25 @@ export default function EdgeInspector({
         {/* AUTO-BRIDGE — rendered when this edge was minted by the
             cross-domain auto-bridging pass (id prefix "auto-bridge").
             The amber color matches the RELEVANT NOW callout for the
-            same edges in the right panel. */}
-        {isAutoBridge(edge) && (
+            same edges in the right panel. Promoted bridges flip to a
+            green-toned "PROMOTED BRIDGE · CONFIRMED" banner with the
+            audit trail (original heuristic score) still visible. */}
+        {status !== "none" && (
           <div className="pt-2 border-t border-border/50">
             <div className="flex items-center justify-between mb-1">
               <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                AUTO-BRIDGE
+                {status === "auto" ? "AUTO-BRIDGE" : "PROMOTED BRIDGE"}
               </div>
-              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider tabular-nums text-accent-amber">
-                HEURISTIC · UNVERIFIED
+              <div
+                className={`text-[8px] font-[family-name:var(--font-michroma)] tracking-wider tabular-nums ${status === "auto" ? "text-accent-amber" : "text-accent-green"}`}
+              >
+                {status === "auto" ? "HEURISTIC · UNVERIFIED" : "CONFIRMED"}
               </div>
             </div>
             <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
-              Heuristically proposed cross-domain link — added so SPIRTES&#39;s
-              centrality / community / cascade metrics see a connected graph.
-              Confidence 0.5 (below R-04&#39;s 0.7 cutoff by design) so this
-              edge surfaces as FLAGGED until verified or curator-promoted.
+              {status === "auto"
+                ? "Heuristically proposed cross-domain link — added so SPIRTES's centrality / community / cascade metrics see a connected graph. Confidence 0.5 (below R-04's 0.7 cutoff by design) so this edge surfaces as FLAGGED until verified or promoted."
+                : "Originally proposed by the auto-bridging pass, then promoted by the user — confidence lifted to 0.8 so R-04 no longer flags it. Heuristic score retained below as an audit trail."}
             </div>
             {(() => {
               const score = extractAutoBridgeScore(edge.physicalMechanism);
@@ -172,13 +181,23 @@ export default function EdgeInspector({
                 <div className="mt-1.5 flex gap-4 text-[10px] font-mono tabular-nums">
                   <div>
                     <span className="text-text-muted">SCORE </span>
-                    <span className="text-accent-amber">
+                    <span
+                      className={status === "auto" ? "text-accent-amber" : "text-accent-green"}
+                    >
                       {score.toFixed(2)}
                     </span>
                   </div>
                 </div>
               );
             })()}
+            {status === "auto" && (
+              <button
+                onClick={() => promoteAutoBridge(edge.id)}
+                className="mt-2 w-full px-2 py-1 rounded border border-accent-amber/40 bg-accent-amber/10 hover:bg-accent-amber/20 text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber transition-colors"
+              >
+                PROMOTE — lift confidence 0.5 → 0.8
+              </button>
+            )}
           </div>
         )}
 

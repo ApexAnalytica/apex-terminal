@@ -46,7 +46,7 @@ Owns the geopolitical, financial, macro, and defense graph data and the correspo
 
 ## 2026-05 Live-Data Coverage Push
 
-### What landed (10 PRs, all merged into main)
+### What landed (12 PRs, all merged into main)
 
 | PR | Commit | What |
 |---|---|---|
@@ -59,20 +59,28 @@ Owns the geopolitical, financial, macro, and defense graph data and the correspo
 | #350 | `de28f41` | Cleared the 2 WB `MISS` entries that were left over from the May audit. **PAK debt** swapped `GC.DOD.TOTL.GD.ZS` (null for Pakistan since 2000) → `DT.DOD.DECT.GN.ZS` (external debt % GNI, 35.6 % at 2024) — same downstream node, recalibrated capacity 80 → 50. **WLD CPI** entry deleted outright — WB doesn't aggregate CPI to any region (WLD/LMY/HIC/EMU/OED all null), and the `"global cpi"` label pattern matched zero graph nodes anyway. Net: 0 MISS lines remain in `check:feeds`. |
 | #353 | `1737a89` | **FIT toggle** in `TimeSeriesOverlay`. Adds an explicit `FIT: DIAL ⇄ DATA` button in the overlay header that flips between the dial-aligned 60-day x-axis (default, chart cursor lines up with TimeDial scrubber) and a data-span axis (curves' actual history extents). Solves the cadence-mismatch UX bug where annual WB series rendered as flat hold-forward lines because every published timestamp fell before `timelineRange.start`. Button only surfaces when ≥1 pinned curve has history extending >25 % of dial span before `xStart` — pure-daily pin sets stay clean. Header indicator `· ZOOMED 2005–2024` appears in DATA mode. |
 | #375 | `3cb14b5` | **FIT-mode auto-reset + OUT OF WINDOW chip.** PR #353 turned out to be a one-way trap: once a user landed in DATA mode (intentionally or accidentally), subsequent dial preset clicks (`1H / 1D / 1W / 1M`) silently had no effect on the chart because the chart was no longer reading `timelineRange`. User-reported repro: `1D → 1M → 1D` left the chart stuck as a flat line. Fixed with a `useEffect` that resets `xAxisMode` to `"dial"` whenever `timelineRange.start` changes — dial preset clicks change `.start`, the live tick only advances `.end`, so DATA mode survives live ticks but always loses to an explicit dial click. Also added a per-curve amber **OUT OF WINDOW** chip in the legend that surfaces when 0 history points fall inside `[xStart, xEnd]` — tells the user the flat line is a cadence-vs-window mismatch, not broken data. |
-| #387 | `<merged>` | **`1Y / 5Y / ALL` dial preset buttons.** Direct follow-up to #375's chip — the chip says "no data inside the window" but the only way out was the small `ZOOM OUT` button to the right of LIVE. This adds three long-cadence presets next to the existing four, with a slightly heavier border between the short-cadence group and the long-cadence group so the tier boundary reads visually. `TimeGranularity` type extended with `"year" \| "5year" \| "all"`. The long presets bypass the `fullRange.start` clamp (which had capped at the 60-day synthetic-data baseline) and widen `timelineFullRange` so a subsequent ZOOM OUT lands at the chosen extent. After this lands, the user's repro for fertilizer / debt-to-GDP nodes produces real curves at `5Y` or `ALL`. |
+| #387 | `4ce4bbc` | **`1Y / 5Y / ALL` dial preset buttons.** Direct follow-up to #375's chip — the chip says "no data inside the window" but the only way out was the small `ZOOM OUT` button to the right of LIVE. This adds three long-cadence presets next to the existing four, with a slightly heavier border between the short-cadence group and the long-cadence group so the tier boundary reads visually. `TimeGranularity` type extended with `"year" \| "5year" \| "all"`. The long presets bypass the `fullRange.start` clamp (which had capped at the 60-day synthetic-data baseline) and widen `timelineFullRange` so a subsequent ZOOM OUT lands at the chosen extent. After this lands, the user's repro for fertilizer / debt-to-GDP nodes produces real curves at `5Y` or `ALL`. |
+| #393 | `8e598d5` | **PPIFGS swap + STALE verdict in `check:feeds`.** Two related changes. (1) FRED `PPIFGS` ("PPI Final Demand Goods") was upstream-discontinued since 2015-12 but FRED still returned the 10-year-stale value, so `check:feeds` reported it as LIVE — the silent worst case. Compounded by a labelPatterns typo (`"ppi final demand energy"` while PPIFGS is the *Goods* sub-index). Replaced with three correctly-routed current series: `PPIFIS` (headline, 156.5 @ 2026-04), `PPIFDS` (Services, 156.1), `WPSFD4131` (Energy, 267.9). Net: 3 previously-unwired PPI graph nodes promoted to live; stale time-bomb removed. (2) New 4th verdict tier in `check:feeds`: any series with a real (non-mock) source whose `observedAt` exceeds the per-feed staleness threshold (FRED 365d, WB 5y) is flagged STALE. Bold-red age annotation in the legend; STALE > 0 is a hard CI exit code. The "what to do" note in the script points operators at the PR #350/#393 precedent for fixing each flagged series. |
+| #394 | `cd9010c` | **Remove deprecated WB WGI series + wire Core PPI YoY.** Probed all 6 WGI indicator codes (`RL.EST` / `GE.EST` / `CC.EST` / `PV.EST` / `RQ.EST` / `VA.EST`) against the WB v2 API; every one returns `"The indicator was not found. It may have been deleted or archived."` The entire WGI dataset has been retired from the v2 endpoint. Removed the `CHN/RL.EST` + `BRA/RL.EST` entries (previously showing as MISS, contributing zero to R-04's governance-tightening logic). R-04 gracefully degrades to its static threshold via the existing null-guards in `tarski-data.ts`. Bonus: wired `ip_core_ppi_yoy` to `PPICOR` with `units=pc1` (5.23 % @ 2026-04). The `kind: "governance"` discriminator on `WbSeriesConfig` is kept for future re-wiring if a non-WB governance source ever lands. |
 
-### Coverage state at end of session (2026-05-21)
+### Coverage state at end of session (2026-05-22, after #393 + #394 land)
 
-Verified against prod after the FRED redeploy:
+Projected against prod after deploy completes (`check:feeds` dry-run already
+shows this state from a local build):
 
 ```
-=== FRED ===       51 expected · LIVE 51 · MOCK 0  (poll 30 min, history depth 22–23 obs/series)
-=== World Bank === 13 returned · LIVE 13 · MOCK 0  (poll 1 h, history depth 17–19 obs/series)
-
-Catalog entries:                FRED 52 · WB 15  (PPIFGS upstream-discontinued; 2 WB tuples return all-null)
-Unique graph nodes wired:       FRED 53 · WB 15  (union 68, disjoint sets — 35.4 % of graph's 192 nodes)
-Unique graph nodes LIVE now:    49  (FRED 30 / WB 19 — counted via cross-ref of live observations × matcher patterns)
+=== FRED ===       55 expected · LIVE 55 · MOCK 0 · STALE 0 · MISS 0   (poll 30 min)
+=== World Bank === 13 expected · LIVE 13 · MOCK 0 · STALE 0 · MISS 0   (poll 1 h)
+Overall:           68 expected · 68 live · 0 mock · 0 stale · 0 miss
 ```
+
+Changes from the 2026-05-21 snapshot above:
+- FRED catalog: 52 → 55 entries. -1 (PPIFGS removed) + 4 (PPIFIS / PPIFDS /
+  WPSFD4131 / PPICOR added). 3 previously-unwired PPI graph nodes promoted.
+- WB catalog: 15 → 13 entries. -2 (CHN/RL.EST + BRA/RL.EST removed after
+  upstream-deprecation finding).
+- New STALE verdict in `check:feeds` catches the upstream-discontinued
+  class going forward; thresholds calibrated FRED 365d, WB 5y.
 
 Live-node coverage by domain (intersection of live signal + graph node, after today's three PRs):
 
@@ -100,19 +108,23 @@ Remaining bare nodes (no public source available): same intentional set as befor
 
 **✅ Resolved 2026-05-21 — `FRED_API_KEY` is live on prod.** Set via Vercel UI on the manifold project (Production + Preview, Sensitive), redeployed with build cache disabled, all 51 FRED series flipped MOCK → LIVE. Key also saved to `.env.local` in the repo root for local-dev `check:feeds` runs. Local fingerprint: 32 chars, starts `aebd…`, ends `…be68`.
 
-**Remaining open threads:**
+**Resolved threads (all closed during 2026-05-21 → 2026-05-22 session):**
 
-1. **`EIA_API_KEY` (unrelated to FRED, still unset).** Free at https://www.eia.gov/opendata/register.php. Unlocks the live Strait of Hormuz throughput feed driving the Tarski A-04 chokepoint axiom. Same procedure as the FRED key — register, add to Vercel, redeploy without cache.
+- ✅ **`FRED_API_KEY` live on prod** (set 2026-05-21). Local fingerprint: 32 chars, starts `aebd…`, ends `…be68`. Saved to `.env.local` (chmod 600, gitignored).
 
-2. **FRED `PPIFGS` is upstream-discontinued.** "PPI Final Demand Goods" has not published since 2015-12 — `check:feeds` shows it as LIVE only because the FRED API still returns the last-known value with a 2015 timestamp. Whichever node it's wired to is rendering a 10-year-old value as if current. Swap to a current PPI series (`WPSFD4111` family, or `PPIACO` for headline). Small fix PR.
+- ✅ **PPIFGS upstream-discontinued → swapped (#393).** Replaced with PPIFIS (headline) + PPIFDS (Services) + WPSFD4131 (Energy). Plus added STALE verdict to `check:feeds` so the next discontinuation can't silently ride on prod.
 
-3. **2 WB tuples return all-null from upstream.** WB endpoint returns 13 observations from 15 catalog entries. The 2 missing rows are upstream null-data (WB hasn't published recent years for those series), not a config bug — but the catalog should either be pruned or swapped to a current-data alternative the same way #350 did for PAK.
+- ✅ **WB null-tuple investigation → entries removed (#394).** Turned out to be a bigger finding: WB retired the entire WGI dataset from their v2 API. All 6 WGI codes return "deleted or archived." Cleanly removed; R-04 axiom gracefully degrades. Bonus: wired Core PPI YoY (PPICOR pc1) to `ip_core_ppi_yoy` while in the area.
 
-4. **✅ Resolved 2026-05-21 (later same day) — Annual cadence vs daily TimeDial.** The original FIT toggle (#353) was insufficient — user discovered the one-way trap when dial preset clicks silently ignored a chart stuck in DATA mode. PR #375 added auto-reset on `timelineRange.start` change + the OUT OF WINDOW chip. PR #387 added `1Y / 5Y / ALL` dial presets so users can widen the window directly instead of needing to discover the FIT button or ZOOM OUT. With #387 landed, the annual-cadence UX has three escape hatches that work together: (a) widen the dial via long preset, (b) FIT: DATA toggle (now safely auto-reverts on dial click), (c) ZOOM OUT. The OUT OF WINDOW chip on legend entries communicates which curves need a wider window.
+- ✅ **Annual cadence vs daily TimeDial UX** (3-PR iteration: #353 → #375 → #387). FIT toggle + auto-reset + OUT OF WINDOW chip + `1Y/5Y/ALL` dial presets land users at a discoverable solution.
+
+**Only remaining open thread:**
+
+1. **`EIA_API_KEY` (user-action-gated, still unset).** Free at https://www.eia.gov/opendata/register.php. Unlocks the live Strait of Hormuz throughput feed driving the Tarski A-04 chokepoint axiom. Same procedure as the FRED key flow on 2026-05-21 — register, paste the key, I add to Vercel + redeploy without cache + verify with `check:feeds`. ~5 minutes once the key is in hand.
 
 **Continuation prompt for the next Claude window (paste verbatim):**
 
-> I'm picking up the live-data thread for the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 coverage push is done (10 PRs merged through #387, FRED_API_KEY live on prod, 49 of 192 graph nodes flowing real data, 0 MOCK 0 MISS, annual-cadence UX iterated through three PRs to land at: long dial presets + FIT auto-reset + OUT OF WINDOW chip). Open threads on the doc: (1) `EIA_API_KEY` setup unlocks the Hormuz throughput feed for Tarski A-04; (2) `PPIFGS` is upstream-discontinued and needs a swap to a current PPI series; (3) 2 WB tuples return all-null from upstream and need pruning or swapping. Pick whichever I tell you, or — if I say "audit" — re-run `npm run check:feeds` and report any drift from the doc's coverage numbers.
+> I'm picking up the live-data thread for the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 push is essentially closed (12 PRs merged through #394, FRED_API_KEY live on prod, projected post-deploy state is 68/68 LIVE 0 mock 0 stale 0 miss). Only remaining thread is `EIA_API_KEY` setup — needs user to register at https://www.eia.gov/opendata/register.php and paste the key, then I add it to Vercel + redeploy + verify. If user has the key ready, drive the Chrome extension to add it via vercel.com → manifold project → env vars → Production+Preview → Sensitive → save → redeploy with "Use existing Build Cache" UNCHECKED, then poll `https://manifold.apexanalytica.co/api/feeds/eia/hormuz` until the source string stops saying `(mock — EIA_API_KEY unset)`. Same shape as the FRED rollout documented in the prior session log entry.
 
 ### Empirical playbook (the data ladder)
 
@@ -140,7 +152,10 @@ DXY → EM FX (PR #221) is the canonical worked example: tier-2 monthly fit for 
 - **Dial preset buttons are tiered (PR #387)** — `1H / 1D / 1W / 1M` for fast-moving signals (FRED daily, EIA 5-min), then a visual divider, then `1Y / 5Y / ALL` for annual-cadence signals (WB, WGI). The long presets bypass the `fullRange.start` clamp in the store action — they're allowed to widen the window beyond the synthetic 60-day default. Also widens `timelineFullRange` when picked so a subsequent ZOOM OUT lands at the chosen extent.
 - **Time-series overlay tooltip + legend chip now show raw value with unit** (e.g. "6.76 %") not the omega-normalized 0-10 number. `NodeTemporalState.rawValue` carries the unnormalized number; `formatRawValue()` picks decimal precision by magnitude regime.
 - **`scripts/check-feed-health.ts`** is the verification entry point. `npm run check:feeds` runs against prod by default; `BASE=http://localhost:3000 npm run check:feeds` for local dev. The script reads `FRED_API_KEY` from `.env.local` (added 2026-05-21).
-- **FRED `PPIFGS` is a known-stale time bomb** — FRED still returns the last-known value with a 2015-12 timestamp, so it passes `check:feeds` as LIVE despite being upstream-discontinued. The freshness audit in 2026-05-21's deep-dive caught it; needs a small fix PR to swap to a current PPI series.
+- **STALE verdict in `check:feeds` (PR #393)** — when an observation has a real (non-mock) source but its `observedAt` exceeds the per-feed staleness threshold (FRED 365d, WB 5y), it's flagged as a 4th tier `STALE` alongside LIVE/MOCK/MISS. STALE rows show age in bold red; LIVE rows get a faint age annotation. STALE > 0 is a hard CI exit code. Catches the class of upstream-discontinued series that the API keeps returning the last-known value for (PPIFGS-style failure). The WB threshold is 5y not 3y because WB has a normal 2-3y publication lag for annual series — fertilizer was a false positive at 3y. Calibrated by dry-run.
+- **WB WGI dataset is fully retired from v2 API (PR #394 finding)** — `RL.EST` / `GE.EST` / `CC.EST` / `PV.EST` / `RQ.EST` / `VA.EST` all return `"The indicator was not found. It may have been deleted or archived."` If a future session needs governance signals, look outside the WB v2 endpoint. The `kind: "governance"` discriminator on `WbSeriesConfig` and the formatter's "governance" branch in `feeds-display` are kept in code for that future wiring.
+- **PPIFGS / PPILFE upstream-discontinued at 2015-12** — same class of failure as the WGI deprecation but caught via different signal (observation age vs. error response). PPIFGS swapped in PR #393. PPILFE was never actively wired (only probed during the PR #393 investigation); not a real time-bomb, just documented in the fred.ts comment as a known-dead candidate.
+- **FRED `PPICOR` (units=pc1) is the current Core PPI YoY series since PR #394** — supersedes the long-discontinued PPILFE. 5.23 % at 2026-04. Wires `ip_core_ppi_yoy`.
 
 ### Lessons from the 3-iteration UX arc (#353 → #375 → #387)
 

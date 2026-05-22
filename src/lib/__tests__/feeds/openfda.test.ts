@@ -17,6 +17,41 @@ describe("buildOpenFdaUrl", () => {
     expect(url).toContain("receivedate");
     expect(url).toContain("limit=1");
   });
+
+  // Regression: a `+` in the Lucene search string form-encodes to `%2B`
+  // on the wire, which the upstream parser sees as a literal `+`
+  // character (not a space). Lucene then chokes on `+TO+` instead of
+  // ` TO ` and returns HTTP 500. We use spaces; `URLSearchParams` form-
+  // encodes them as `+` on the wire, which OpenFDA correctly decodes
+  // back to spaces. This test pins the contract so a well-meaning
+  // future edit ("let's use + to avoid spaces in URLs") doesn't break
+  // the upstream parse.
+  it("encodes Lucene operator separators as wire-`+` (form-space), not wire-`%2B`", () => {
+    const cfg = OPENFDA_QUERIES.find((q) => q.id === "tzield")!;
+    const url = buildOpenFdaUrl(cfg);
+    // The receivedate range MUST contain `+TO+` on the wire (URL-form
+    // for ` TO ` — server decodes back to spaces), NOT `%2BTO%2B`
+    // (which would decode to literal `+TO+`, breaking the Lucene parse).
+    // URLSearchParams also encodes `[` `]` and `:` so we match against
+    // the percent-encoded form of the surrounding bracket range.
+    expect(url).toMatch(/receivedate%3A%5B\d{8}\+TO\+\d{8}%5D/);
+    // And it MUST NOT contain `%2BTO%2B` anywhere — that would be the
+    // bug we're guarding against.
+    expect(url).not.toContain("%2BTO%2B");
+    // Same for AND between clauses.
+    expect(url).toContain("+AND+");
+    expect(url).not.toContain("%2BAND%2B");
+  });
+
+  it("TZIELD search uses OR not + between brand and generic name clauses", () => {
+    const cfg = OPENFDA_QUERIES.find((q) => q.id === "tzield")!;
+    // The Lucene operator MUST be `OR` (separated by spaces, encoded to
+    // wire-`+`). `+` between two clauses inside parens means BOTH must
+    // match in Lucene, which is the opposite of what we want for the
+    // brand-OR-generic-name fallback.
+    expect(cfg.search).toContain(" OR ");
+    expect(cfg.search).not.toMatch(/"[\w+]+\+patient/);
+  });
 });
 
 describe("parseOpenFdaResponse", () => {

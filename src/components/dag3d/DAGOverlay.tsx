@@ -217,37 +217,46 @@ function EncodingLegend({
           }
         />
         <LegendRow
-          label="χ★ STRICT BRIDGE (filled violet ◆)"
-          help="Filled violet diamond at the edge midpoint. Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it. Click the edge for BES + rank. Source: Ghauri 2025 D.Eng."
+          label="χ★ STRICT BRIDGE (solid violet outline)"
+          help="A thin solid violet outline traces the edge along its full length. Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it. Click the edge for BES + rank. Source: Ghauri 2025 D.Eng."
           swatch={
-            <div className="flex items-center justify-center">
-              <span
-                className="inline-block"
-                style={{
-                  width: 8,
-                  height: 8,
-                  backgroundColor: "#7B68EE",
-                  transform: "rotate(45deg)",
-                }}
-              />
+            <div className="flex items-center">
+              {/* Inner cyan line with violet outer ring — mirrors the
+                  canvas treatment so the swatch matches what the user
+                  sees on the graph. */}
+              <span className="relative h-1.5 w-7">
+                <span
+                  className="absolute inset-0 rounded-sm"
+                  style={{ backgroundColor: "#7B68EE", opacity: 0.75 }}
+                />
+                <span
+                  className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px"
+                  style={{ backgroundColor: "#00e5ff" }}
+                />
+              </span>
             </div>
           }
         />
         <LegendRow
-          label="χ★ TOP-BES (hollow violet ◇)"
-          help="Hollow violet diamond outline at the edge midpoint. High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."
+          label="χ★ TOP-BES (dashed violet outline)"
+          help="A thin dashed violet outline traces the edge. High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."
           swatch={
-            <div className="flex items-center justify-center">
-              <span
-                className="inline-block"
-                style={{
-                  width: 8,
-                  height: 8,
-                  border: "1.5px solid #7B68EE",
-                  backgroundColor: "transparent",
-                  transform: "rotate(45deg)",
-                }}
-              />
+            <div className="flex items-center">
+              <span className="relative h-1.5 w-7">
+                <span
+                  className="absolute inset-0 rounded-sm"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(to right, #7B68EE 60%, transparent 60%)",
+                    backgroundSize: "5px 100%",
+                    opacity: 0.75,
+                  }}
+                />
+                <span
+                  className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px"
+                  style={{ backgroundColor: "#00e5ff" }}
+                />
+              </span>
             </div>
           }
         />

@@ -204,6 +204,29 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
+      {/* χ★ edge outline — drawn BEFORE the main edge line so the
+          narrower cyan/amber line below renders ON TOP, leaving a
+          thin violet ring along the edge instead of obscuring it.
+          Solid for strict bridges, dashed for top-BES. Skipped on
+          severed / ablated edges (their own markers take priority).
+          Note: this replaces the earlier midpoint-pip approach —
+          a traced outline rides the full edge so the χ★ signal
+          is visible anywhere you look at it, including the Map's
+          ocean-spanning arcs where the midpoint pip lived nowhere
+          near the visible edge. */}
+      {chiStarTier && !isSevered && !isAblated && (
+        <Line
+          points={curvePoints}
+          color="#7B68EE"
+          lineWidth={Math.max(1, lineWidth) + 1.5}
+          transparent
+          opacity={0.7}
+          dashed={chiStarTier === "top-bes"}
+          dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
+          gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
+        />
+      )}
+
       {/* Edge line — using drei Line for reliable rendering:
           directed = solid cyan
           temporal = solid amber (+ animated particle)
@@ -264,40 +287,6 @@ function DAGEdge3DInner({
         </group>
       )}
 
-      {/* χ★ midpoint marker. Discrete violet octahedron at the curve
-          midpoint, so the load-bearing skeleton reads as a constellation
-          of pips rather than smudging the cyan/amber edge color the
-          user is using to track causality. Skipped on severed / ablated
-          (their own marker takes priority) and during cascade replay
-          flash. Two tiers so the strict-bridge vs top-BES distinction
-          is at-a-glance — solid for bridge, wireframe for top-BES. */}
-      {chiStarTier && !isSevered && !isAblated && (
-        <group position={[midpoint.x, midpoint.y, midpoint.z]}>
-          {chiStarTier === "bridge" ? (
-            <>
-              <mesh>
-                <octahedronGeometry args={[1.0, 0]} />
-                <meshBasicMaterial color="#7B68EE" transparent opacity={0.95} />
-              </mesh>
-              {/* Soft outer glow so the pip carries on dense graphs */}
-              <mesh>
-                <octahedronGeometry args={[1.7, 0]} />
-                <meshBasicMaterial color="#7B68EE" transparent opacity={0.2} />
-              </mesh>
-            </>
-          ) : (
-            <mesh>
-              <octahedronGeometry args={[1.1, 0]} />
-              <meshBasicMaterial
-                color="#7B68EE"
-                transparent
-                opacity={0.8}
-                wireframe
-              />
-            </mesh>
-          )}
-        </group>
-      )}
     </group>
   );
 }

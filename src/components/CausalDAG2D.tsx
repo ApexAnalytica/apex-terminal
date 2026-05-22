@@ -610,21 +610,32 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   // `adjacency` import — only nodes need it; edges go via source/target.
   void adjacency;
 
-  // χ★ midpoint marker geometry. Diamond = 45°-rotated square; SVG
-  // <polygon> takes the four vertex coordinates.
-  const CHI_HALF = 5;
-  const chiStarPolygon =
-    midX !== null && midY !== null
-      ? `${midX},${midY - CHI_HALF} ${midX + CHI_HALF},${midY} ${midX},${midY + CHI_HALF} ${midX - CHI_HALF},${midY}`
-      : null;
-  const showChiStarMarker =
+  // χ★ edge outline — renders BEFORE the BaseEdge so the cyan/amber
+  // main line draws on top, leaving a thin violet ring around it.
+  // Solid for strict bridges, dashed for top-BES. Replaces the
+  // earlier midpoint-diamond approach (filled vs hollow polygon at
+  // the line midpoint) — on long edges the midpoint was visually
+  // disconnected from the edge itself, and filled/hollow was too
+  // subtle to distinguish at a glance. Tracing the full line makes
+  // the χ★ signal visible anywhere you look at the edge.
+  const showChiStarOutline =
     d.chiStarTier !== null &&
     !isThisSelected &&
-    d.propagationSignal === 0 &&
-    chiStarPolygon !== null;
+    d.propagationSignal === 0;
 
   return (
     <>
+      {showChiStarOutline && (
+        <path
+          d={edgePath}
+          stroke="#7B68EE"
+          strokeWidth={strokeWidth + 2.5}
+          strokeDasharray={d.chiStarTier === "top-bes" ? "4 3" : undefined}
+          fill="none"
+          opacity={opacity * 0.7}
+          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
+        />
+      )}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -637,24 +648,6 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
           transition: "opacity 180ms ease-out",
         }}
       />
-      {/* χ★ midpoint marker — discrete violet diamond at the edge
-          midpoint instead of a halo, so the load-bearing skeleton
-          reads as a constellation of pips rather than smudging the
-          cyan / amber edge color. Two tiers: filled diamond for
-          strict bridges (cutting disconnects the graph), hollow
-          outline for top-BES (high shortest-path load without
-          disconnecting). Skipped on the selected edge + during
-          propagation flash so those signals stay unambiguous. */}
-      {showChiStarMarker && (
-        <polygon
-          points={chiStarPolygon!}
-          fill={d.chiStarTier === "bridge" ? "#7B68EE" : "none"}
-          stroke="#7B68EE"
-          strokeWidth={1.5}
-          opacity={opacity * 0.95}
-          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
-        />
-      )}
     </>
   );
 }

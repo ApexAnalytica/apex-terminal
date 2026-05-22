@@ -856,6 +856,33 @@ The always-mount pattern was in place to keep the 3D WebGL context alive across 
 
 ---
 
+### 2026-05-22 — Shipped: Map geo-placement — unbreak US clustering, fill 5 missing domains
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"a lot of the nodes, for example, in the US are just kinda cluttered in the same area, which makes me kinda skeptical about node placement … whatever the closest estimate is for what would be the physical location of that node, we should get … down to the city if we can."*
+
+**Diagnosis** (`src/lib/geo-coordinates.ts`):
+1. The US country centroid was `[-95.7, 37.1]` — the geographic centre of the country, in rural Kansas. Every "100% US" node hashed within ±2° of that single point → the visible Oklahoma blob.
+2. `NODE_COORDINATES` covered ~150 nodes, all Saudi/Qatar/Ma'aden + a sparse handful in financial centres. Five whole domains had zero entries: **Athena ISR / Defense, T1D β-cell biology, T1D VX-880, AI Safety / IDS, Macro Impact, Frontier Science**. Their nodes fell through to a single domain-centroid with ±3° jitter, or to the Middle East seed when the domain wasn't in the table either.
+3. The `globalConcentration` country regex only matched the explicit `"100% Country"` form, so strings like `"60% US / 40% global"` or `"Headquartered in Boston"` fell through entirely.
+
+**What shipped.**
+- **~100 new `NODE_COORDINATES` entries** for the five missing domains. Pinned to the institution / company / site that owns each concept: Athena ISR → US defense corridor (NVIDIA Santa Clara, Raytheon Waltham, NSA Fort Meade, Anduril Costa Mesa, Palantir Denver, Pentagon, Schriever AFB, SpaceX Hawthorne…); Macro Impact → BLS / BEA / Fed in DC + ISM Chicago + NY Fed; T1D β-cell → Joslin / Vertex / NIDDK / Dexcom / Stanford; T1D VX-880 → Vertex Seaport Boston (all 26 trial-endpoint nodes anchored at the sponsor HQ with hash jitter); AI Safety / IDS → UNB CIC Fredericton + UNSW Sydney + Aegean Greece (matched to dataset provenance); Frontier Science → ADMX, LIGO Hanford, Fermilab, ALMA Atacama, Super-Kamiokande.
+- **`US_HUBS` replaces the single Kansas centroid.** When a node resolves to "United States" via the country regex without a specific pin, it's now spread across 10 hub-cities (NYC / DC / Boston / Chicago / SF / Seattle / LA / Houston / Atlanta / Denver) by hash bucket, with ±0.6° jitter inside the bucket. Visually: distributed across US economic / policy / tech corridors instead of stacked on Oklahoma.
+- **`CITY_COORDINATES` city/institution scan.** Before falling through to the country regex, the resolver now scans `globalConcentration` for ~50 known city names (US metros + international hubs). Catches "Headquartered in Boston" / "based in Singapore" / etc.
+- **Smarter country regex.** Replaced the `100% (country)` form with a percent-prefix + general country mention sweep. Handles plural-percent strings, "Sourced from Japan and South Korea", "Headquartered in Saudi Arabia, exports global". Sorted by name length so "United States" wins over "States".
+- **`COUNTRY_COORDINATES` extended** with Canada, Mexico, UK, Germany, France, Italy, Spain, Netherlands, Switzerland, Japan, South Korea, Singapore, Indonesia, Greece, Russia, Nigeria + USA/US aliases. 16 → 32 countries.
+- **`DOMAIN_COORDINATES` extended** with the new families' domain centroids so the last-ditch fallback still lands the node somewhere sensible if no NODE_COORDINATES entry exists.
+
+**Files.**
+- `src/lib/geo-coordinates.ts` — rewritten resolver + expanded tables.
+- `src/lib/__tests__/geo-coordinates.test.ts` — new, 9 tests covering exact match, city scan, US-hub spread, country-regex variants (`100% China`, `60% Brazil / 40% global`, embedded mention), and domain-centroid fallback.
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest **1319/1319** pass.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

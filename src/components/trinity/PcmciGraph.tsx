@@ -168,7 +168,7 @@ export default function PcmciGraph() {
             onClick={() => setShowInfo(!showInfo)}
             className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
             style={{
-              color: showInfo ? "#ffab00" : "#5a5e72",
+              color: showInfo ? "#ffab00" : "var(--text-muted)",
               borderColor: showInfo ? "rgba(255,171,0,0.3)" : "rgba(90,94,114,0.3)",
               backgroundColor: showInfo ? "rgba(255,171,0,0.08)" : "transparent",
             }}
@@ -219,7 +219,7 @@ export default function PcmciGraph() {
             y={14}
             textAnchor="middle"
             fontSize={7}
-            fill="#5a5e72"
+            fill="var(--text-muted)"
             fontFamily="monospace"
           >
             {col.label}
@@ -234,7 +234,7 @@ export default function PcmciGraph() {
             y1={20}
             x2={col.x}
             y2={110}
-            stroke="#1a1c2e"
+            stroke="var(--border)"
             strokeWidth={1}
             strokeDasharray="3,3"
           />

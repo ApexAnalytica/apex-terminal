@@ -2,7 +2,12 @@
 
 :root {
   --background: #050508;
-  --foreground: #c8ccd0;
+  /* `--foreground` lifted from `#c8ccd0` (≈12:1 contrast) to `#e8eaee`
+   * (≈17:1) so primary copy reads as legible white, not a soft grey,
+   * against the very-dark terminal background. Kept just below pure
+   * white (#fff at 21:1 is harsh on a dark surface) so the bluish
+   * terminal tint is preserved. */
+  --foreground: #e8eaee;
   --accent-cyan: #00e5ff;
   --accent-red: #ff1744;
   --accent-amber: #ffab00;
@@ -13,9 +18,24 @@
   --accent-magenta: #e040fb;
   --surface: #0a0b10;
   --surface-elevated: #10111a;
-  --border: #1a1c2e;
-  --border-bright: #2a2d45;
-  --text-muted: #5a5e72;
+  /* Borders had the same compound-dimming problem as text (see PR #390).
+   * `--border` was `#1a1c2e` (≈1.4:1 contrast against background — basically
+   * invisible) and 44 sites further squashed it with opacity modifiers
+   * (`border-border/30`, `/40`, `/50`, `/60`). At /30 of the old value the
+   * line literally didn't render — panel boundaries blurred into the
+   * background. Lifted to `#2d3047` (≈2.7:1) so the dimmest variant still
+   * paints. `--border-bright` lifted in lockstep from `#2a2d45` to `#42466a`
+   * (≈4.2:1) so the structural divider hierarchy stays visible. */
+  --border: #2d3047;
+  --border-bright: #42466a;
+  /* `--text-muted` lifted from `#5a5e72` (≈3:1 contrast — fails WCAG
+   * AA for normal text) to `#9499ad` (≈7:1, passes AAA). 113 places
+   * across the codebase compound this with extra opacity (e.g.
+   * `text-text-muted/40`) and were effectively unreadable; lifting
+   * the base value cascades to every consumer. Visual hierarchy with
+   * `--foreground` is preserved — muted still reads clearly
+   * subordinate, just no longer ghostly. */
+  --text-muted: #9499ad;
 
   /* Category colors */
   --cat-manufacturing: #00e5ff;

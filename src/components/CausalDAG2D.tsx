@@ -33,13 +33,13 @@ import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
 import type { CausalEdge, EpochSnapshot } from "@/lib/types";
 import {
-  compute2DForceLayout,
   create2DLiveSimulation,
   graphSignature,
   type LiveSimulation,
   type Position2D,
 } from "@/lib/graph-layout-2d";
-import { computeNetworkMetrics, type NodeMetrics } from "@/lib/graph-layout";
+import { type NodeMetrics } from "@/lib/graph-layout";
+import { requestLayout2D } from "@/lib/workers/layout3d-client";
 import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
 import { AnimatePresence } from "framer-motion";
 
@@ -812,23 +812,37 @@ function CausalDAG2DInner() {
     () => graphSignature(graphData.nodes, graphData.edges),
     [graphData.nodes, graphData.edges],
   );
-  const networkMetrics = useMemo(
-    () => computeNetworkMetrics(graphData.nodes, graphData.edges),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pin to sig
-    [sig],
-  );
-  const [prevSig, setPrevSig] = useState<string>("");
+  // Layout + network-metrics both come from the layout Web Worker
+  // (`requestLayout2D`). Both used to be synchronous useMemos that
+  // ran d3-force-2d + Brandes' centrality on the main thread, which
+  // blocked the FIRST 2D-tab visit by ~150-300ms on a 500-node
+  // CROSS-DOMAIN workspace. They now run off-thread; previously-
+  // applied positions stay rendered while a new layout computes, so
+  // re-layouts on graph swap are smooth. First-visit cold-start is
+  // still ~that long but it doesn't block any interaction.
+  //
+  // The `latestRequestIdRef` epoch drops stale worker responses
+  // when sig flips multiple times in quick succession (e.g. fast
+  // domain toggling).
   const [cachedLayout, setCachedLayout] = useState<Map<string, Position2D>>(
     () => new Map(),
   );
+  const [networkMetrics, setNetworkMetrics] = useState<Record<string, NodeMetrics>>({});
   const [livePositions, setLivePositions] = useState<Map<string, Position2D> | null>(
     null,
   );
-  if (sig !== prevSig) {
-    setPrevSig(sig);
-    setCachedLayout(compute2DForceLayout(graphData.nodes, graphData.edges));
-    setLivePositions(null);
-  }
+  const latestRequestIdRef = useRef(-1);
+  useEffect(() => {
+    const req = requestLayout2D(graphData.nodes, graphData.edges);
+    latestRequestIdRef.current = req.id;
+    req.then((result) => {
+      if (latestRequestIdRef.current !== req.id) return; // stale
+      setCachedLayout(result.positions2d);
+      setLivePositions(null);
+      setNetworkMetrics(result.metrics);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pin to sig
+  }, [sig]);
   // Defensive selector. The simple `livePositions ?? cachedLayout` was
   // vulnerable to two edge cases that left every node rendered at
   // (0, 0) — a stack-of-169-nodes-at-origin which reads as "empty
@@ -1317,7 +1331,7 @@ function CausalDAG2DInner() {
           nodesDraggable={true}
           nodesConnectable={false}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
           <Controls showInteractive={false} position="bottom-right" />
           <FitViewOnVisible visibleKey={visibleKey} isEmpty={visibleNodes.length === 0} />
         </ReactFlow>

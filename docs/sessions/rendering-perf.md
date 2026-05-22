@@ -856,6 +856,132 @@ The always-mount pattern was in place to keep the 3D WebGL context alive across 
 
 ---
 
+### 2026-05-22 — Shipped: Map geo-placement — unbreak US clustering, fill 5 missing domains
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"a lot of the nodes, for example, in the US are just kinda cluttered in the same area, which makes me kinda skeptical about node placement … whatever the closest estimate is for what would be the physical location of that node, we should get … down to the city if we can."*
+
+**Diagnosis** (`src/lib/geo-coordinates.ts`):
+1. The US country centroid was `[-95.7, 37.1]` — the geographic centre of the country, in rural Kansas. Every "100% US" node hashed within ±2° of that single point → the visible Oklahoma blob.
+2. `NODE_COORDINATES` covered ~150 nodes, all Saudi/Qatar/Ma'aden + a sparse handful in financial centres. Five whole domains had zero entries: **Athena ISR / Defense, T1D β-cell biology, T1D VX-880, AI Safety / IDS, Macro Impact, Frontier Science**. Their nodes fell through to a single domain-centroid with ±3° jitter, or to the Middle East seed when the domain wasn't in the table either.
+3. The `globalConcentration` country regex only matched the explicit `"100% Country"` form, so strings like `"60% US / 40% global"` or `"Headquartered in Boston"` fell through entirely.
+
+**What shipped.**
+- **~100 new `NODE_COORDINATES` entries** for the five missing domains. Pinned to the institution / company / site that owns each concept: Athena ISR → US defense corridor (NVIDIA Santa Clara, Raytheon Waltham, NSA Fort Meade, Anduril Costa Mesa, Palantir Denver, Pentagon, Schriever AFB, SpaceX Hawthorne…); Macro Impact → BLS / BEA / Fed in DC + ISM Chicago + NY Fed; T1D β-cell → Joslin / Vertex / NIDDK / Dexcom / Stanford; T1D VX-880 → Vertex Seaport Boston (all 26 trial-endpoint nodes anchored at the sponsor HQ with hash jitter); AI Safety / IDS → UNB CIC Fredericton + UNSW Sydney + Aegean Greece (matched to dataset provenance); Frontier Science → ADMX, LIGO Hanford, Fermilab, ALMA Atacama, Super-Kamiokande.
+- **`US_HUBS` replaces the single Kansas centroid.** When a node resolves to "United States" via the country regex without a specific pin, it's now spread across 10 hub-cities (NYC / DC / Boston / Chicago / SF / Seattle / LA / Houston / Atlanta / Denver) by hash bucket, with ±0.6° jitter inside the bucket. Visually: distributed across US economic / policy / tech corridors instead of stacked on Oklahoma.
+- **`CITY_COORDINATES` city/institution scan.** Before falling through to the country regex, the resolver now scans `globalConcentration` for ~50 known city names (US metros + international hubs). Catches "Headquartered in Boston" / "based in Singapore" / etc.
+- **Smarter country regex.** Replaced the `100% (country)` form with a percent-prefix + general country mention sweep. Handles plural-percent strings, "Sourced from Japan and South Korea", "Headquartered in Saudi Arabia, exports global". Sorted by name length so "United States" wins over "States".
+- **`COUNTRY_COORDINATES` extended** with Canada, Mexico, UK, Germany, France, Italy, Spain, Netherlands, Switzerland, Japan, South Korea, Singapore, Indonesia, Greece, Russia, Nigeria + USA/US aliases. 16 → 32 countries.
+- **`DOMAIN_COORDINATES` extended** with the new families' domain centroids so the last-ditch fallback still lands the node somewhere sensible if no NODE_COORDINATES entry exists.
+
+**Files.**
+- `src/lib/geo-coordinates.ts` — rewritten resolver + expanded tables.
+- `src/lib/__tests__/geo-coordinates.test.ts` — new, 9 tests covering exact match, city scan, US-hub spread, country-regex variants (`100% China`, `60% Brazil / 40% global`, embedded mention), and domain-centroid fallback.
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest **1319/1319** pass.
+
+---
+
+### 2026-05-22 — Shipped: remove stray "CLIENT DEPLOYMENT → Athena Defense" CTA from the canvas
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"we randomly have on the bottom right of the product itself … CLIENT DEPLOYMENT … ATHENA DEFENSE SYSTEMS. It's just so random. I feel like this was intended to be a sandbox, but it seems like it's heavily out of date now … if we're gonna offer a sandbox, I feel like there's a different format that we should do it."*
+
+**What shipped.** Removed the `bottom-4 right-4` floating `<Link href="/client">` and dropped the now-unused `next/link` import in `src/app/page.tsx`. The `/client` route itself stays put — that's a separate decision; this PR only takes the CTA off the workspace canvas where it was reading as a promo on top of the user's live analysis.
+
+**Files.**
+- `src/app/page.tsx` — removed the floating CTA + `Link` import.
+
+**Verification.** `tsc --noEmit` clean (same inherited fci.test drift); lint clean on touched file; vitest 1319/1319 pass.
+
+---
+
+### 2026-05-22 — Shipped: layout-3D + network-metrics moved off the main thread (Web Worker)
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: Web Worker port of `computeLayout3D` / `computeNetworkMetrics`. After the launch-perf chain (PRs #301 / #303 / #304) the user's freeze report stopped, but the d3-force-3d sim + Brandes' centrality were still running synchronously on first 3D mount and on every `topologyKey` change (domain toggle, edge sever). Those are the heaviest pure-data computes in the canvas; moving them off-thread is the right architectural fix.
+
+**What shipped.**
+
+- **`src/lib/workers/layout3d-worker.ts`** — Module-mode Web Worker. Handles `{ id, nodes, edges, prev? }` requests; returns `{ id, positions, metrics }` in one shot (bundled so the canvas doesn't need a second postMessage roundtrip). Both compute functions are pure — perfect worker fodder.
+
+- **`src/lib/workers/layout3d-client.ts`** — Main-thread wrapper. Lazily spins up a single shared worker on first call, multiplexes concurrent requests via a `nextId` epoch, routes each response back to its caller. Includes an SSR / no-Worker fallback that dynamic-imports the sync functions, so the API contract stays Promise-shaped everywhere.
+
+- **`CausalDAG3D.tsx` refactor.** The `positions` and `networkMetrics` useMemos are gone. In their place: a `layoutResult` state populated by an effect on `topologyKey` change, plus a `latestRequestIdRef` to drop stale responses when topology flips multiple times in quick succession (fast domain toggling). Previous positions stay rendered while a new layout computes — no flash, no main-thread block. First-mount-only `COMPUTING LAYOUT…` overlay covers the brief gap before the worker returns the initial layout (the WebGL canvas mounts immediately once the dynamic chunk loads, but orbs can't render until positions arrive).
+
+- **Stable references** — `positions` / `networkMetrics` derivations are wrapped in `useMemo` so the array/map references stay stable across renders that don't actually flip `layoutResult`. Otherwise downstream `useMemo`s keyed on `positions` would invalidate every render.
+
+**Files.**
+- `src/lib/workers/layout3d-worker.ts` (new)
+- `src/lib/workers/layout3d-client.ts` (new)
+- `src/lib/workers/__tests__/layout3d-client.test.ts` (new — 2 tests covering the SSR fallback path: returns positions + metrics for every node; assigns a different id to each call)
+- `src/components/CausalDAG3D.tsx` — sync useMemos → async effect + state + overlay; removed the value imports of `computeLayout3D` / `computeNetworkMetrics` (kept the types).
+
+**Verification.** `tsc --noEmit` clean (same inherited fci.test drift); lint clean on touched files (pre-existing `chiStarSet` warning unchanged); vitest **1321 / 1321** pass.
+
+**Follow-ups.** `CausalDAG2D` still runs `computeNetworkMetrics` synchronously on the main thread. Same pattern would apply (2D layout is light enough that it probably doesn't need the worker, but the metrics compute is identical to 3D's). Defer until needed — 2D is only mounted when actively in 2D view.
+
+---
+
+### 2026-05-22 — Shipped: extract inline ModulePanel panels into `next/dynamic` chunks
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: bundle-size load-time push. PR #300 lazy-loaded the four sub-panels that already lived in their own files. The remaining inline definitions (`TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, `SnapshotIndicator`, plus their co-located helpers — `AxiomIcon`, `ProofTraceList`, `CritSparklineChart`, `CritSparkline`, `shortenEventLabel`, `CriticalityCard`, `type CriticalityEmptyState`) couldn't be deferred without first extracting them to their own files. ~2.5K LOC + heavy estimator-lib transitive deps shipped on every initial paint, even though Spirtes is the only default tab that needs none of them.
+
+**What shipped.**
+
+Three new files under `src/components/modules/`:
+
+- **`CopilotInterdictionResults.tsx`** (~253 LOC) — Pearl-tab solver results card.
+- **`TarskiPanel.tsx`** (~599 LOC) — Tarski-tab axiom panel + its two private helpers (`AxiomIcon`, `ProofTraceList`). Brings `AXIOM_LIBRARY`, `scoreAxiomRelevance` with it.
+- **`ParetoPanel.tsx`** (~1.78K LOC) — Pareto-tab criticality observation panel, the heaviest of the three. Co-locates `SnapshotIndicator` (named export so the outer `ModulePanel` can dynamic-import both from the same chunk), the two sparkline components, `shortenEventLabel`, `CriticalityCard`, and the `CriticalityEmptyState` type. Pulls the estimator-lib transitive deps with it: `lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`, `pareto-relevance-reference`, `moran`, `t1d-estimator-inputs`.
+
+In `ModulePanel.tsx`:
+- Removed all four inline definitions and their helpers.
+- Trimmed the imports list — dropped 14 lib-level imports (estimator regime gates, lppls/ph fits, criticality registry, tarski-data, etc.) that the extracted files now own. Also dropped `useCallback`, `useRef`, `SnapshotDiagnostics`.
+- Added four `next/dynamic` declarations for `TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, and the named `SnapshotIndicator` (via `.then(m => ({ default: m.SnapshotIndicator }))` so it shares the ParetoPanel chunk).
+
+`ModulePanel.tsx` shrank **3384 LOC → 821 LOC**. The default Spirtes-tab first paint is now `CascadeHeader` + `TrinityPanel` + `DiscoveryRunsPanel` (+ optional `TissueCohortView`) — all the heavy regime-gate / criticality-card code is deferred to first-tab-visit.
+
+**Files.**
+- `src/components/modules/CopilotInterdictionResults.tsx` (new)
+- `src/components/modules/TarskiPanel.tsx` (new)
+- `src/components/modules/ParetoPanel.tsx` (new)
+- `src/components/ModulePanel.tsx` — trimmed
+- `src/lib/workers/__tests__/layout3d-client.test.ts` — drive-by: fixed two missing fields on the test graph fixture (`isConfounded` on nodes, `inconsistentEdges` / `restrictedNodes` on metadata) that tsc started flagging since PR #404 landed
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint has 2 errors that are the SAME pre-existing `set-state-in-effect` + `rules-of-hooks` warnings from the original inline definitions (just moved to their new files, identical code); vitest 1321 / 1321 pass.
+
+---
+
+### 2026-05-22 — Shipped: 2D layout sim moves off the main thread (Worker reuse)
+
+**PR:** TBD (about to open).
+
+**Trigger.** Continuation of the load-time arc. PR #404 moved the 3D layout + centrality off the main thread; 2D was still running both synchronously inside the same component. After PR #304 made `CausalDAG2D` lazy + conditional, that compute no longer hits launch — but the first user-initiated 2D-tab visit was still paying ~150-300ms of main-thread block on a 500-node CROSS-DOMAIN workspace.
+
+Estimator-lib audit (the other backlog candidate) turned out to be a no-op in production — the heavy libs (`lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`) are only reachable from `modules/ParetoPanel.tsx` after PR #406, so they already ship only in the Pareto chunk. The `csd-fit-hypo-calibrator.ts` consumer is reachable only from a test fixture, not the runtime bundle. Closed that ticket as already-done.
+
+**What shipped.**
+
+- **Worker generalised.** `src/lib/workers/layout3d-worker.ts` now dispatches on a `kind: "layout3d" | "layout2d"` discriminator. 3D path unchanged; 2D path runs `compute2DForceLayout(nodes, edges)` + `computeNetworkMetrics(nodes, edges)` and posts back `{ positions2d: Map<string, Position2D>, metrics }`. Both layouts share one worker instance.
+- **Client wrapper got a `requestLayout2D` sibling** to `requestLayout3D`. Same epoch-cancellation pattern, same SSR-fallback path (dynamic-imports the sync functions when `Worker` is unavailable).
+- **`CausalDAG2D` refactor.** The synchronous `compute2DForceLayout` + `computeNetworkMetrics` useMemos are gone. In their place: a `useEffect` keyed on the graph `sig` that posts to the worker, plus `cachedLayout` / `networkMetrics` state populated when the response lands. `latestRequestIdRef` drops stale responses on fast topology changes — same epoch pattern as `CausalDAG3D`. Previously-rendered orbs stay put while a new layout computes.
+
+**Files.**
+- `src/lib/workers/layout3d-worker.ts` — kind discriminator, 2D dispatch arm.
+- `src/lib/workers/layout3d-client.ts` — `requestLayout2D` export + shared worker bookkeeping.
+- `src/lib/workers/__tests__/layout3d-client.test.ts` — added one fallback-path test for `requestLayout2D`.
+- `src/components/CausalDAG2D.tsx` — imports trimmed, sync useMemos → async effect + state.
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

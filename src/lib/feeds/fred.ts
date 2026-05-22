@@ -61,6 +61,14 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "CPIAUCSL", label: "CPI-U Year-over-Year", labelPatterns: ["cpi-u year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.2 },
   { id: "CPILFESL", label: "Core CPI Year-over-Year", labelPatterns: ["core cpi year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.4 },
   { id: "T10YIE", label: "10-Year Breakeven Inflation Rate", labelPatterns: ["10y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.4 },
+  // DFII10 = 10-Year Treasury Inflation-Indexed (TIPS) yield. The
+  // canonical FRED-published real rate, daily cadence. Wires the
+  // `ip_real_rate_10y` graph node which was previously historical-only
+  // with a synthetic proxy. Per the inline comment on the
+  // `ip_real_rate_10y__ip_dxy` edge in graph-data.ts: "Literature-cited
+  // until FRED DFII10 (TIPS yield) becomes reachable." It is now
+  // reachable since the FRED_API_KEY landed 2026-05-21.
+  { id: "DFII10", label: "10-Year Treasury TIPS Yield (Real Rate)", labelPatterns: ["10y real interest rate"], unit: "%", capacity: 3, mockValue: 2.0 },
   { id: "T5YIE", label: "5-Year Breakeven Inflation Rate", labelPatterns: ["5y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "CSUSHPISA", label: "Case-Shiller Home Price Index YoY", labelPatterns: ["case-shiller home price index"], unit: "%", capacity: 12, units: "pc1", mockValue: 4.8 },
   // FRED expansion (Phase 4): more macro/financial nodes from graph-data.ts
@@ -68,7 +76,26 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "EMRATIO", label: "Employment-Population Ratio", labelPatterns: ["employment-population ratio"], unit: "%", capacity: 65, mockValue: 60.1 },
   { id: "A191RL1Q225SBEA", label: "Real GDP — QoQ Annualized %", labelPatterns: ["gdp qoq annualized"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "PPIACO", label: "PPI All Commodities", labelPatterns: ["ppi all commodities"], unit: "", capacity: 280, mockValue: 250 },
-  { id: "PPIFGS", label: "PPI Final Demand Goods", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 145, mockValue: 138 },
+  // PPIFGS deleted 2026-05-22: upstream-discontinued since 2015-12. The
+  // FRED API still returns the last-known 2015 value (191.2) for any
+  // request, so check:feeds was reporting it as LIVE even though the
+  // data was 10 years stale. Compounding error: the original
+  // labelPattern was "ppi final demand energy" but PPIFGS is the
+  // *Goods* sub-index, not Energy — so it was also misrouted to the
+  // wrong graph node. Three replacement entries below wire each of the
+  // three PPI Final Demand sub-indices to its correct, current FRED
+  // series. See PR #391 (2026-05-22) for the full diagnostic — a
+  // similar discontinuation pattern was caught for PPILFE (Core PPI)
+  // which is documented as a follow-up.
+  { id: "PPIFIS", label: "PPI Final Demand", labelPatterns: ["ppi final demand"], unit: "", capacity: 165, mockValue: 156 },
+  { id: "PPIFDS", label: "PPI Final Demand Services", labelPatterns: ["ppi final demand services"], unit: "", capacity: 165, mockValue: 156 },
+  { id: "WPSFD4131", label: "PPI Final Demand Energy", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 320, mockValue: 268 },
+  // Core PPI YoY — wires the previously-unwired `ip_core_ppi_yoy` graph
+  // node to PPICOR (PPI by Commodity: Final Demand: Less Foods and Energy)
+  // with units=pc1 transform for year-over-year %. 5.23 % at 2026-04.
+  // Note: PPILFE was the canonical Core PPI series until 2015-12 when FRED
+  // discontinued it; PPICOR is the current successor.
+  { id: "PPICOR", label: "Core PPI Year-over-Year", labelPatterns: ["core ppi year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.2 },
   { id: "T5YIFR", label: "5Y5Y Forward Inflation Expectation", labelPatterns: ["5y5y forward inflation expectation"], unit: "%", capacity: 4, mockValue: 2.3 },
   { id: "PWHEAMTUSDM", label: "Global Wheat Price (Soft Red Winter)", labelPatterns: ["global wheat price"], unit: "$/T", capacity: 400, mockValue: 230 },
   // EM FX stress series — daily FRED publication, scaled to local-per-USD.

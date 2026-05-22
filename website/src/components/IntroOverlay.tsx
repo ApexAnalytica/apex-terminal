@@ -82,7 +82,7 @@ export default function IntroOverlay() {
       <div className="apex-intro-anchor">
         <div className="apex-intro-stage">
           <span className="apex-intro-mantis-frame">
-            {/* Render at 2x the intro display size (440×540) so the image
+            {/* Render at 2x the intro display size (560×680) so the image
                 stays crisp at intro scale on HiDPI displays. CSS shrinks
                 it to fit the frame at intro size, and shrinks further to
                 header size at the end of the animation — only ever
@@ -90,11 +90,11 @@ export default function IntroOverlay() {
             <Image
               src="/mantis.png"
               alt=""
-              width={440}
-              height={540}
+              width={560}
+              height={680}
               priority
               quality={92}
-              sizes="(max-width: 640px) 176px, 220px"
+              sizes="(max-width: 640px) 224px, 280px"
               className="apex-intro-mantis-img"
             />
           </span>

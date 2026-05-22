@@ -49,9 +49,13 @@ defineTool({
 defineTool({
   name: "isolate_nodes",
   description:
-    "Filter the visible graph to a subset of nodes — by free-text query or explicit ids. Non-matching nodes dim out across 2D / 3D / map views.",
+    "Filter the visible graph to a subset of nodes. Two modes: `query=<text>` does a literal substring match against id/shortLabel/label/category/domain (no semantic inference). `ids=A|B|C` isolates an explicit list. Non-matching nodes dim out across 2D / 3D / map views.",
   guidance:
-    "Use whenever the user names a topic, theme, sector, or set of entities ('focus on energy infrastructure', 'just show me the semiconductor stuff'). Match a query against label/category/domain; pass ids when the user names specific nodes. Emit reset_isolation when the conversation broadens again.",
+    "Pick the right mode:\n" +
+    "  - `ids=A|B|C` (PREFERRED for any semantic intent): when the user names a REGION, THEME, GEOGRAPHY, OR ANY CONCEPT that requires you to REASON about which nodes apply. You can see the full node list in === NODES === above — enumerate the relevant ids and emit them. Example: 'show me Europe-related' → enumerate the undersea cables that traverse Europe, the European banks, etc, then emit `ids=ic_flag_europe_asia|ic_seamewe5|fc_cross_border_banking|...`.\n" +
+    "  - `query=<text>` (ONLY for clear literal-substring intent): when you'd expect the literal text to appear in node names/labels. Example: 'show me energy nodes' where many node labels contain 'energy'. If you're not sure the literal text is in the searched fields (id/shortLabel/label/category/domain), use `ids=` instead — `query=` does NOT do semantic matching, only substring.\n" +
+    "Do NOT pre-narrate which specific nodes will be matched. The SYS line below your response shows the actual result. Describe the intent ('isolating Europe-related nodes') and let the result line confirm. If you list specific nodes in prose and the tool matches a different set, the user sees a mismatch.\n" +
+    "Emit reset_isolation when the conversation broadens again.",
   params: {
     query: {
       type: "string",

@@ -52,7 +52,7 @@ function getNodeColor(category: string): string {
     case "regulatory": return "#90a4ae";
     case "environmental": return "#26a69a";
     case "health": return "#ab47bc";
-    default: return "#5a5e72";
+    default: return "var(--text-muted)";
   }
 }
 
@@ -156,11 +156,11 @@ export default function CausalDAG({ shocks }: CausalDAGProps) {
             (s) => s.category === e.source || s.category === e.target
           )
             ? "#ff1744"
-            : "#2a2d45",
+            : "var(--border-bright)",
           strokeWidth: 1.5,
         },
         labelStyle: {
-          fill: "#5a5e72",
+          fill: "var(--text-muted)",
           fontSize: 9,
           fontFamily: "monospace",
         },
@@ -189,7 +189,7 @@ export default function CausalDAG({ shocks }: CausalDAGProps) {
         nodesDraggable={true}
         nodesConnectable={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
         <Controls
           showInteractive={false}
           position="bottom-right"

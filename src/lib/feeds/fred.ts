@@ -61,6 +61,14 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "CPIAUCSL", label: "CPI-U Year-over-Year", labelPatterns: ["cpi-u year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.2 },
   { id: "CPILFESL", label: "Core CPI Year-over-Year", labelPatterns: ["core cpi year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.4 },
   { id: "T10YIE", label: "10-Year Breakeven Inflation Rate", labelPatterns: ["10y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.4 },
+  // DFII10 = 10-Year Treasury Inflation-Indexed (TIPS) yield. The
+  // canonical FRED-published real rate, daily cadence. Wires the
+  // `ip_real_rate_10y` graph node which was previously historical-only
+  // with a synthetic proxy. Per the inline comment on the
+  // `ip_real_rate_10y__ip_dxy` edge in graph-data.ts: "Literature-cited
+  // until FRED DFII10 (TIPS yield) becomes reachable." It is now
+  // reachable since the FRED_API_KEY landed 2026-05-21.
+  { id: "DFII10", label: "10-Year Treasury TIPS Yield (Real Rate)", labelPatterns: ["10y real interest rate"], unit: "%", capacity: 3, mockValue: 2.0 },
   { id: "T5YIE", label: "5-Year Breakeven Inflation Rate", labelPatterns: ["5y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "CSUSHPISA", label: "Case-Shiller Home Price Index YoY", labelPatterns: ["case-shiller home price index"], unit: "%", capacity: 12, units: "pc1", mockValue: 4.8 },
   // FRED expansion (Phase 4): more macro/financial nodes from graph-data.ts

@@ -68,7 +68,20 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "EMRATIO", label: "Employment-Population Ratio", labelPatterns: ["employment-population ratio"], unit: "%", capacity: 65, mockValue: 60.1 },
   { id: "A191RL1Q225SBEA", label: "Real GDP — QoQ Annualized %", labelPatterns: ["gdp qoq annualized"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "PPIACO", label: "PPI All Commodities", labelPatterns: ["ppi all commodities"], unit: "", capacity: 280, mockValue: 250 },
-  { id: "PPIFGS", label: "PPI Final Demand Goods", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 145, mockValue: 138 },
+  // PPIFGS deleted 2026-05-22: upstream-discontinued since 2015-12. The
+  // FRED API still returns the last-known 2015 value (191.2) for any
+  // request, so check:feeds was reporting it as LIVE even though the
+  // data was 10 years stale. Compounding error: the original
+  // labelPattern was "ppi final demand energy" but PPIFGS is the
+  // *Goods* sub-index, not Energy — so it was also misrouted to the
+  // wrong graph node. Three replacement entries below wire each of the
+  // three PPI Final Demand sub-indices to its correct, current FRED
+  // series. See PR #391 (2026-05-22) for the full diagnostic — a
+  // similar discontinuation pattern was caught for PPILFE (Core PPI)
+  // which is documented as a follow-up.
+  { id: "PPIFIS", label: "PPI Final Demand", labelPatterns: ["ppi final demand"], unit: "", capacity: 165, mockValue: 156 },
+  { id: "PPIFDS", label: "PPI Final Demand Services", labelPatterns: ["ppi final demand services"], unit: "", capacity: 165, mockValue: 156 },
+  { id: "WPSFD4131", label: "PPI Final Demand Energy", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 320, mockValue: 268 },
   { id: "T5YIFR", label: "5Y5Y Forward Inflation Expectation", labelPatterns: ["5y5y forward inflation expectation"], unit: "%", capacity: 4, mockValue: 2.3 },
   { id: "PWHEAMTUSDM", label: "Global Wheat Price (Soft Red Winter)", labelPatterns: ["global wheat price"], unit: "$/T", capacity: 400, mockValue: 230 },
   // EM FX stress series — daily FRED publication, scaled to local-per-USD.

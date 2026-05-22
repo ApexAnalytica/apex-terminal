@@ -27,6 +27,7 @@ function tinyGraph(): CausalGraph {
     replacementTime: "10y",
     physicalConstraint: "",
     isRestricted: false,
+    isConfounded: false,
     discoverySource: "DCD" as const,
   });
   return {
@@ -42,6 +43,8 @@ function tinyGraph(): CausalGraph {
       density: 0.25,
       verificationStatus: "VERIFIED",
       constraintType: "—",
+      inconsistentEdges: 0,
+      restrictedNodes: 0,
     },
   };
 }

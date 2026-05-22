@@ -6,7 +6,8 @@ import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { computeLayout3D, computeNetworkMetrics, NodePosition } from "@/lib/graph-layout";
+import type { NodePosition, NodeMetrics } from "@/lib/graph-layout";
+import { requestLayout3D, type LayoutResult } from "@/lib/workers/layout3d-client";
 import { chiStar } from "@/lib/estimators/chi-star";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
@@ -568,17 +569,47 @@ export default function CausalDAG3D() {
   const graphDataForLayoutRef = useRef(graphData);
   graphDataForLayoutRef.current = graphData;
 
-  const positions = useMemo(() => {
+  // Layout + network-metrics state, populated by the Web Worker
+  // (`requestLayout3D`). Both used to be synchronous useMemos that
+  // ran d3-force-3d + Brandes' centrality on the main thread on
+  // every topologyKey change — that was the bulk of the
+  // LAUNCH-WORKSPACE freeze the user reported. They now run off-
+  // thread, and the previously-applied result stays rendered while
+  // a new layout computes. First-layout flash is covered by the
+  // `INITIALIZING LAYOUT…` overlay below.
+  const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
+  // Latest request id — used to drop stale worker responses when
+  // topologyKey flips multiple times in quick succession (fast
+  // domain toggling, repeated severs).
+  const latestRequestIdRef = useRef(-1);
+
+  useEffect(() => {
     const g = graphDataForLayoutRef.current;
-    const result = computeLayout3D(
+    const req = requestLayout3D(
       g.nodes,
       g.edges,
-      positionsRef.current.length > 0 ? positionsRef.current : undefined
+      positionsRef.current.length > 0 ? positionsRef.current : undefined,
     );
-    positionsRef.current = result;
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    latestRequestIdRef.current = req.id;
+    req.then((result) => {
+      if (latestRequestIdRef.current !== req.id) return; // stale, drop
+      positionsRef.current = result.positions;
+      setLayoutResult(result);
+    });
   }, [topologyKey]);
+
+  // Wrap derivations in useMemo so the array / map references stay
+  // stable across renders that don't actually flip `layoutResult`
+  // — otherwise downstream useMemos keyed on `positions` would
+  // invalidate every render.
+  const positions = useMemo<NodePosition[]>(
+    () => layoutResult?.positions ?? [],
+    [layoutResult],
+  );
+  const networkMetrics = useMemo<Record<string, NodeMetrics>>(
+    () => layoutResult?.metrics ?? {},
+    [layoutResult],
+  );
 
   const basePosMap = useMemo(() => {
     const map: Record<string, [number, number, number]> = {};
@@ -587,13 +618,6 @@ export default function CausalDAG3D() {
     });
     return map;
   }, [positions]);
-
-  // Compute network metrics (eigenvector centrality, degree, betweenness, clustering)
-  // These drive node sizing and hover tooltip information
-  const networkMetrics = useMemo(() => {
-    return computeNetworkMetrics(graphData.nodes, graphData.edges);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topologyKey]);
 
   // Selection/ablation Sets — render loop iterates every node and edge, and
   // `multiSelectedNodes.includes(...)` / `ablatedNodeIds.includes(...)` is O(M)
@@ -1049,6 +1073,22 @@ export default function CausalDAG3D() {
     <div style={{ position: "absolute", inset: 0 }} onContextMenu={(e) => e.preventDefault()}>
       <CanvasWatermark />
       <DAGOverlay />
+      {/* First-layout overlay — the WebGL canvas mounts immediately
+          once the dynamic chunk loads, but orbs can't render until
+          the worker returns the initial layout (~150-300ms on a 500-
+          node CROSS-DOMAIN workspace). Without this overlay the user
+          would see an empty black canvas for that interval. Subsequent
+          re-layouts (domain toggle, sever, etc.) keep the previous
+          positions on screen, so this only fires on first mount. */}
+      {!layoutResult && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none bg-background/60"
+        >
+          <div className="text-[10px] font-mono text-text-muted animate-pulse">
+            COMPUTING LAYOUT…
+          </div>
+        </div>
+      )}
       {selectionRect && (
         <div
           style={{

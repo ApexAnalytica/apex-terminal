@@ -46,6 +46,14 @@ interface DAGNode3DProps {
   ablationMode?: boolean;
   metrics?: NodeMetrics;
   epochState?: NodeEpochState;
+  /**
+   * 1-indexed ordinal indicating when this node first activated in the
+   * current replay (1 = first to fire, 2 = second, …). When set, the
+   * node carries a small floating badge so analysts can see propagation
+   * order at a glance. `undefined` = no badge (replay isn't active OR
+   * this node hasn't joined the cascade yet at the current epoch).
+   */
+  activationOrdinal?: number;
   onClick?: () => void;
   onDoubleClick?: () => void;
 }
@@ -70,6 +78,7 @@ function DAGNode3DInner({
   ablationMode = false,
   metrics,
   epochState,
+  activationOrdinal,
   onClick,
   onDoubleClick,
 }: DAGNode3DProps) {
@@ -242,6 +251,50 @@ function DAGNode3DInner({
         </mesh>
       )}
 
+      {/* Cascade sequence badge — small numbered chip floating above
+           the orb during replay. The number is this node's 1-indexed
+           rank in the activation timeline (1 = first to fire). Only
+           renders when an ordinal is supplied AND the orb isn't
+           greyed-out / orbit-camera-active, so it stays out of the
+           way during normal exploration. Suppressed for ablated nodes
+           because they're not contributing to the cascade by
+           construction. */}
+      {activationOrdinal !== undefined && !isOrbiting && !isGreyedOut && !isAblated && (
+        <Html
+          position={[size * 0.9, size * 0.9, 0]}
+          center
+          style={{ pointerEvents: "none" }}
+          zIndexRange={[0, 0]}
+        >
+          <div
+            style={{
+              fontFamily: "monospace",
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "#0a0c14",
+              backgroundColor: "#ffd54f",
+              border: "1px solid rgba(10,12,20,0.7)",
+              borderRadius: "999px",
+              minWidth: "16px",
+              height: "16px",
+              padding: "0 4px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              userSelect: "none",
+              lineHeight: 1,
+              boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+            }}
+            title={`Activation order: ${activationOrdinal} — fired ${
+              activationOrdinal === 1 ? "first" : "after " + (activationOrdinal - 1) + " other node" + (activationOrdinal === 2 ? "" : "s")
+            } in the current cascade`}
+          >
+            {activationOrdinal}
+          </div>
+        </Html>
+      )}
+
       {/* Label — only visible on hover, single-select, neighbour-of-
            select, or multi-select. v1 painted a label on every orb
            permanently and dense graphs read as a hodgepodge of overlapping
@@ -341,6 +394,10 @@ function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
     if (pe.omegaComposite !== ne.omegaComposite) return false;
     if (pe.shockIntensity !== ne.shockIntensity) return false;
   }
+  // Cascade-sequence badge updates as the TimeDial scrubs through replay
+  // (ordinal flips between defined / undefined as nodes join the cascade).
+  // Plain value compare — both are number | undefined.
+  if (prev.activationOrdinal !== next.activationOrdinal) return false;
   // Intentionally not comparing onClick / onDoubleClick — closures rebuild
   // every parent render but their behavior is stable per node.id.
   return true;

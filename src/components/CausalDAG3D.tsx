@@ -11,6 +11,7 @@ import { chiStar } from "@/lib/estimators/chi-star";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
+import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import EdgeInspector from "./EdgeInspector";
@@ -541,6 +542,15 @@ export default function CausalDAG3D() {
     replayActive && replayEpochs.length > 0
       ? replayEpochs[clampedEpoch] ?? null
       : null;
+
+  // Map of nodeId → 1-indexed activation order. Drives the small
+  // numbered badges that float over the orbs during replay. Only
+  // populated when a cascade has actually run; outside replay the
+  // map is empty and no badges render.
+  const activationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
+    return cascadeActivationOrder(replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch]);
 
   const canvasKey = useWebGLRecovery();
   const positionsRef = useRef<NodePosition[]>([]);
@@ -1126,6 +1136,7 @@ export default function CausalDAG3D() {
                     isActivated: node.omegaFragility.composite > 7,
                   } : undefined
                 )}
+                activationOrdinal={activationOrder.get(node.id)}
                 onDoubleClick={() => handleDoubleClick(node.id)}
                 onClick={() => {
                   if (ablationMode) {

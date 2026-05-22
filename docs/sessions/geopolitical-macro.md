@@ -118,13 +118,28 @@ Remaining bare nodes (no public source available): same intentional set as befor
 
 - ✅ **Annual cadence vs daily TimeDial UX** (3-PR iteration: #353 → #375 → #387). FIT toggle + auto-reset + OUT OF WINDOW chip + `1Y/5Y/ALL` dial presets land users at a discoverable solution.
 
-**Only remaining open thread:**
+**All threads now resolved.**
 
-1. **`EIA_API_KEY` (user-action-gated, still unset).** Free at https://www.eia.gov/opendata/register.php. Unlocks the live Strait of Hormuz throughput feed driving the Tarski A-04 chokepoint axiom. Same procedure as the FRED key flow on 2026-05-21 — register, paste the key, I add to Vercel + redeploy without cache + verify with `check:feeds`. ~5 minutes once the key is in hand.
+- ✅ **`EIA_API_KEY` live on prod** (2026-05-22). User registered at https://www.eia.gov/opendata/register.php, key saved to `.env.local` (chmod 600, alongside `FRED_API_KEY`), added to Vercel manifold project (Sensitive, Production + Preview), redeployed with "Use existing Build Cache" UNCHECKED. Hormuz endpoint flipped from `(mock — EIA_API_KEY unset)` to live `EIA v2 / Persian Gulf producers (period 2026-01)` after ~3 min. First live values:
+
+  ```
+  value: 26.053 mb/d   (115% of 21 mb/d stated chokepoint capacity)
+  observedAt: 2026-01-01
+
+  Breakdown by producer:
+    Saudi Arabia  11.930 mb/d
+    UAE            4.779 mb/d
+    Iran           4.692 mb/d
+    Iraq           4.508 mb/d
+    Kuwait         2.882 mb/d
+    Qatar          1.859 mb/d
+  ```
+
+  This is the signal driving the Tarski A-04 chokepoint axiom — value > capacity flags concentration risk.
 
 **Continuation prompt for the next Claude window (paste verbatim):**
 
-> I'm picking up the live-data thread for the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 push is essentially closed (12 PRs merged through #394, FRED_API_KEY live on prod, projected post-deploy state is 68/68 LIVE 0 mock 0 stale 0 miss). Only remaining thread is `EIA_API_KEY` setup — needs user to register at https://www.eia.gov/opendata/register.php and paste the key, then I add it to Vercel + redeploy + verify. If user has the key ready, drive the Chrome extension to add it via vercel.com → manifold project → env vars → Production+Preview → Sensitive → save → redeploy with "Use existing Build Cache" UNCHECKED, then poll `https://manifold.apexanalytica.co/api/feeds/eia/hormuz` until the source string stops saying `(mock — EIA_API_KEY unset)`. Same shape as the FRED rollout documented in the prior session log entry.
+> I'm picking up the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 live-data coverage push is FULLY CLOSED — 12 code PRs + 4 docs PRs merged, FRED_API_KEY + EIA_API_KEY both live on prod, all four feed providers (FRED 55, WB 13, EIA Hormuz, derivations) reading clean (0 mock / 0 stale / 0 miss). No remaining live-data open threads. Likely next themes from "Likely upcoming themes" section: new domain cards for customer pilots, MAP-view geo-coordinates, sanction/export-control axiom expansion with TARSKI, or starting fresh on a different in-scope area. If user says "audit" → run `npm run check:feeds` and report drift. If user says "what's next" → ask them to choose between the upcoming-themes options.
 
 ### Empirical playbook (the data ladder)
 

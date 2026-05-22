@@ -234,7 +234,7 @@ export default function PcmciGraph() {
             y1={20}
             x2={col.x}
             y2={110}
-            stroke="#1a1c2e"
+            stroke="var(--border)"
             strokeWidth={1}
             strokeDasharray="3,3"
           />

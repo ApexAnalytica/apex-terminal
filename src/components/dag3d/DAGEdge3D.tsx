@@ -55,7 +55,7 @@ function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string
     case "directed": return "#00e5ff";
     case "temporal": return "#ffab00";
     case "confounded": return "#ff6d00";
-    default: return "#2a2d45";
+    default: return "#42466a";
   }
 }
 

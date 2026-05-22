@@ -123,10 +123,25 @@ function DAGNode3DInner({
   const dimmed = anyNodeSelected && !isSelected && !isNeighborOfSelected;
   const nodeOpacity = isAblated ? 0.15 : isGreyedOut ? 0.08 : dimmed ? 0.2 : 0.9;
 
+  // Stable per-node phase offset so 192 orbs don't breathe in lockstep
+  // (which would read as a UI sync glitch, not life). djb2-style hash
+  // on node.id → 0..2π, computed once at mount. Cheap, deterministic.
+  const phaseOffsetRef = useRef<number>((() => {
+    let h = 5381;
+    for (let i = 0; i < node.id.length; i++) h = ((h << 5) + h + node.id.charCodeAt(i)) >>> 0;
+    return (h % 1000) / 1000 * Math.PI * 2;
+  })());
+
   useFrame(({ clock }, delta) => {
-    // Gate all per-frame work: skip static nodes that don't need animation (item #2)
-    const needsAnimation = isConsequence || shockGlow > 0 || birthProgress.current < 1 || isSelected;
-    if (!needsAnimation) return;
+    // Per-frame work is now baseline-idle by default — every visible
+    // orb gets a slow breathing pulse so the canvas reads as alive
+    // when nothing's happening. Reasons to skip outright:
+    //   - greyed out (off-active-domain — animating invisible orbs
+    //     spends GPU on nothing)
+    //   - ablated (functionally removed from the cascade; static
+    //     reads correctly)
+    //   - mid-orbit camera (existing perf gate to keep drag smooth)
+    if (isGreyedOut || isAblated || isOrbiting) return;
 
     // Birth animation for consequence nodes
     if (birthProgress.current < 1) {
@@ -140,12 +155,30 @@ function DAGNode3DInner({
     if (meshRef.current) {
       const birth = birthProgress.current;
       const baseScale = (isSelected ? 1.15 : 1) * birth;
-      const pulseIntensity = isConsequence ? 0.08 : (0.03 + shockGlow * 0.12);
-      // Use clock.elapsedTime instead of Date.now() (item #2)
       const t = clock.elapsedTime;
-      const pulseSpeed = isConsequence ? 5 : (2 + shockGlow * 3);
-      const pulse = Math.sin(t * pulseSpeed * (1 + composite / 10)) * pulseIntensity;
-      meshRef.current.scale.setScalar(baseScale + pulse);
+      const phase = phaseOffsetRef.current;
+
+      // Baseline idle pulse — always-on, low amplitude (≈ ±1.5%),
+      // slow (~one cycle every 4-6 s). Each orb runs at its own
+      // phase so the field of 192 orbs reads as a gentle living
+      // breath rather than a synchronised pump.
+      const idleAmp = 0.015;
+      const idleSpeed = 1.1 + composite / 50; // hotter nodes a touch faster
+      const idlePulse = Math.sin(t * idleSpeed + phase) * idleAmp;
+
+      // Stronger pulse layered on top for active states (shock,
+      // consequence) — same shape as before but additive to the
+      // baseline so the idle breath doesn't visibly start/stop when
+      // those states change.
+      let activePulse = 0;
+      if (isConsequence || shockGlow > 0 || isSelected) {
+        const pulseIntensity = isConsequence ? 0.08 : (0.03 + shockGlow * 0.12);
+        const pulseSpeed = isConsequence ? 5 : (2 + shockGlow * 3);
+        activePulse =
+          Math.sin(t * pulseSpeed * (1 + composite / 10) + phase) * pulseIntensity;
+      }
+
+      meshRef.current.scale.setScalar(baseScale + idlePulse + activePulse);
     }
     if (selectionRingRef.current) {
       const t = clock.elapsedTime;

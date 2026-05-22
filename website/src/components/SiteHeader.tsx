@@ -10,11 +10,11 @@ export default function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-4 md:px-6">
+      <div className="mx-auto flex h-[88px] max-w-7xl items-center justify-between px-4 md:px-6">
         {/* Brand — graph mark + wordmark */}
-        <Link href="/" className="group flex items-center gap-2.5">
+        <Link href="/" className="group flex items-center gap-3">
           <BrandMark />
-          <span className="font-[family-name:var(--font-michroma)] text-[12px] tracking-[0.3em] text-foreground group-hover:text-accent-cyan transition-colors">
+          <span className="font-[family-name:var(--font-michroma)] text-[14px] tracking-[0.3em] text-foreground group-hover:text-accent-cyan transition-colors">
             APEX ANALYTICA
           </span>
         </Link>
@@ -99,16 +99,18 @@ export default function SiteHeader() {
 
 /**
  * BrandMark — the Manifold mantis logo (same asset the platform uses on
- * the login page). 1247×1523 PNG, displayed at 44×54 in the header.
+ * the login page). 1247×1523 PNG, displayed at 56×68 in the header
+ * (bumped from 44×54 on 2026-05-21 per user feedback — the mark was
+ * reading as too icon-y, especially relative to the wordmark next to it).
  */
 function BrandMark() {
   return (
-    <span className="relative inline-flex shrink-0" style={{ width: 44, height: 54 }}>
+    <span className="relative inline-flex shrink-0" style={{ width: 56, height: 68 }}>
       <Image
         src="/mantis.png"
         alt="Apex Analytica"
-        width={44}
-        height={54}
+        width={56}
+        height={68}
         priority
         className="object-contain"
       />

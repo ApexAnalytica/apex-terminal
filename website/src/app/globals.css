@@ -171,8 +171,8 @@ body {
    there's no jump cut.
 
    Tunable: --intro-scale controls how big the mantis appears
-   center-screen. At scale 5 the 44px header mantis displays at
-   220px during the intro.
+   center-screen. At scale 5 the 56px header mantis displays at
+   280px during the intro.
 
    Sequence (~2.8s):
      0–600ms     mantis fades in + pops to intro size
@@ -182,17 +182,18 @@ body {
 
 :root {
   --intro-scale: 5;
-  /* Header brand layout, measured from the rendered DOM:
-       mantis(44) + gap(10) + wordmark(132 at 12px·0.3em) = 186px
-       height = 54px
+  /* Header brand layout, measured from the rendered DOM (after
+     2026-05-21 bump from 44/12/54 → 56/14/68):
+       mantis(56) + gap(12) + wordmark(~154 at 14px·0.3em) = ~222px
+       height = 68px
      Halves used to center the visual on the viewport instead of
      its top-left landing on the viewport center. */
-  --intro-half-w: 93px;
-  --intro-half-h: 27px;
+  --intro-half-w: 111px;
+  --intro-half-h: 34px;
   /* Where the SiteHeader brand sits inside the header (px-4 padding,
-     vertically centered in a 68px header with 54px mantis). */
+     vertically centered in an 88px header with 68px mantis: y = 10px). */
   --intro-anchor-x: 16px;
-  --intro-anchor-y: 7px;
+  --intro-anchor-y: 10px;
 }
 
 @media (min-width: 768px) {
@@ -250,7 +251,7 @@ body {
      This way the image is rendered crisp at intro size, and the
      animation only ever scales DOWN (to header size) — which is a
      high-quality downsample, never an upscale. */
-  gap: calc(10px * var(--intro-scale));
+  gap: calc(12px * var(--intro-scale));
   transform-origin: 0 0;
   animation: apex-intro-stage 2800ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
@@ -276,8 +277,8 @@ body {
   flex-shrink: 0;
   /* Native dimensions = intro size; CSS scales DOWN to header size
      at end of animation. */
-  width: calc(44px * var(--intro-scale));
-  height: calc(54px * var(--intro-scale));
+  width: calc(56px * var(--intro-scale));
+  height: calc(68px * var(--intro-scale));
   opacity: 0;
   animation: apex-intro-mantis 600ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
 }
@@ -296,9 +297,9 @@ body {
 
 .apex-intro-wordmark {
   font-family: var(--font-michroma);
-  /* Native font-size = intro display size; CSS scales DOWN to 12px
+  /* Native font-size = intro display size; CSS scales DOWN to 14px
      header size at end of animation via the stage's transform: scale. */
-  font-size: calc(12px * var(--intro-scale));
+  font-size: calc(14px * var(--intro-scale));
   letter-spacing: 0.3em;  /* matches tracking-[0.3em] */
   white-space: nowrap;
   color: var(--foreground);

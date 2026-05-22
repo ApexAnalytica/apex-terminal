@@ -15,11 +15,11 @@ export default function SiteFooter() {
               <Image
                 src="/mantis.png"
                 alt="Apex Analytica"
-                width={44}
-                height={54}
+                width={56}
+                height={68}
                 className="object-contain shrink-0"
               />
-              <span className="font-[family-name:var(--font-michroma)] text-[11px] tracking-[0.3em] text-foreground">
+              <span className="font-[family-name:var(--font-michroma)] text-[13px] tracking-[0.3em] text-foreground">
                 APEX ANALYTICA
               </span>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-data";
@@ -130,6 +130,25 @@ export default function TimeSeriesOverlay() {
   //    This is the explicit trade-off — comparison mode for sparse
   //    series, alignment mode otherwise.
   const [xAxisMode, setXAxisMode] = useState<"dial" | "data">("dial");
+
+  // When the user clicks a dial preset (1H / 1D / 1W / 1M), `timelineRange.start`
+  // changes. That click is the strongest possible signal that they want the
+  // chart to track the dial again, so we auto-reset out of "data" mode.
+  //
+  // We watch `.start` specifically (not `.end`) because `.end` advances every
+  // live tick — watching `.end` would kick the user out of "data" mode every
+  // second, which would defeat the feature. `.start` only changes on dial-
+  // preset clicks and full timeline-range edits.
+  //
+  // Without this reset, the FIT toggle was a one-way trap: once a user clicked
+  // into "data" mode, the chart appeared to ignore subsequent dial clicks
+  // because the chart x-axis stayed pinned to the full data span while the
+  // dial scrubber moved beneath it. Reported as "1D shows curves, 1M flattens
+  // to a line, 1D doesn't restore detail" on 2026-05-21.
+  useEffect(() => {
+    setXAxisMode("dial");
+  }, [timelineRange.start]);
+
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // The SVG uses preserveAspectRatio="none", so viewBox width is set to the
@@ -375,6 +394,24 @@ export default function TimeSeriesOverlay() {
     }
     return { xStart: timelineRange.start, xEnd: timelineRange.end };
   }, [xAxisMode, timelineRange, dataXBounds]);
+
+  // Per-curve count of history points that fall inside the visible x-range.
+  // Used by the legend's "OUT OF WINDOW" badge — when this is 0, the curve
+  // is rendering as a pure hold-forward line at the latest value with no
+  // intra-window detail, and the user should be told to widen the dial
+  // rather than think the data is broken. The hold-forward render itself
+  // stays correct; this is purely a UX signal.
+  const inWindowCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of curves) {
+      let n = 0;
+      for (const h of c.history) {
+        if (h.timestamp >= xStart && h.timestamp <= xEnd) n++;
+      }
+      m.set(c.nodeId, n);
+    }
+    return m;
+  }, [curves, xStart, xEnd]);
 
   // Convert data coordinates to SVG coordinates. Per-curve normalization:
   // when curveId is provided, the value is mapped to its own 0..1 range
@@ -837,9 +874,14 @@ export default function TimeSeriesOverlay() {
             <div className="min-w-[72px] flex-shrink-0" />
             {curves.map((curve) => {
               const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
+              const inWindow = inWindowCounts.get(curve.nodeId) ?? 0;
+              const outOfWindow = inWindow === 0;
               const tooltipParts: string[] = [];
               if (curve.sourceLabel) tooltipParts.push(`${curve.sourceLabel}${curve.sourceUnit ? ` (${curve.sourceUnit})` : ""}`);
               tooltipParts.push(isSparse ? `${curve.pointCount} published timepoint${curve.pointCount !== 1 ? "s" : ""} — hold-forward rendering` : `${curve.pointCount} datapoints`);
+              if (outOfWindow) {
+                tooltipParts.push("⚠ no data inside the current dial window — widen the dial (1W / 1M / ZOOM OUT) to see this curve's shape");
+              }
               tooltipParts.push("Click to remove");
               return (
                 <button
@@ -889,6 +931,26 @@ export default function TimeSeriesOverlay() {
                       }}
                     >
                       {curve.pointCount === 1 ? "STATIC" : `${curve.pointCount}PT`}
+                    </span>
+                  )}
+                  {/* Out-of-window badge — zero history points fall inside
+                      the dial's visible range, so the curve is rendering as
+                      a flat hold-forward line at the latest value with no
+                      intra-window shape. Tells the user this is a cadence
+                      issue (window too tight for this signal's cadence),
+                      not broken data. Hidden in "data" x-axis mode since
+                      that mode by definition zooms to encompass all points. */}
+                  {outOfWindow && xAxisMode === "dial" && (
+                    <span
+                      className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wide px-1 py-px rounded flex-shrink-0"
+                      style={{
+                        color: "var(--accent-amber, #ffb454)",
+                        backgroundColor: "rgba(255, 180, 84, 0.10)",
+                        border: "1px solid rgba(255, 180, 84, 0.40)",
+                      }}
+                      title="No data points inside the dial window — curve is hold-forward only. Widen the dial to see this signal's actual shape."
+                    >
+                      OUT OF WINDOW
                     </span>
                   )}
                   <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">

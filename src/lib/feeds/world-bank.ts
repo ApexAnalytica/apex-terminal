@@ -179,37 +179,27 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 1500,
     mockValue: 1100,
   },
-  // WGI — World Governance Indicators. Annual cadence. Scale runs from
-  // ~-2.5 (worst) to +2.5 (best) where 0 ≈ global average. We surface
-  // Rule of Law (RL.EST) — the dimension most directly relevant to R-04
-  // (Cross-Domain Dependency), which now applies a stricter confidence
-  // cutoff when an edge's endpoint sits in a weak-governance jurisdiction.
+  // WGI — World Governance Indicators — REMOVED 2026-05-22.
+  // Every WGI indicator (RL.EST = Rule of Law, GE.EST = Government
+  // Effectiveness, CC.EST = Control of Corruption, PV.EST = Political
+  // Stability, RQ.EST = Regulatory Quality, VA.EST = Voice & Accountability)
+  // now returns "The indicator was not found. It may have been deleted or
+  // archived." from the WB v2 API. The full WGI dataset has been retired
+  // from this endpoint — probed all 6 codes on 2026-05-22, all return the
+  // same archival message.
   //
-  // `capacity: 0` makes the qualifier display read as "ratio vs world
-  // average". `kind: "governance"` keeps the signal addressable separately
-  // from the generic WB macro indicators that share the same provider.
-  {
-    country: "CHN",
-    indicator: "RL.EST",
-    label: "China Rule of Law (WGI)",
-    labelPatterns: ["china real gdp"],
-    scale: 1,
-    unit: "WGI",
-    capacity: 0,
-    mockValue: -0.4,
-    kind: "governance",
-  },
-  {
-    country: "BRA",
-    indicator: "RL.EST",
-    label: "Brazil Rule of Law (WGI)",
-    labelPatterns: ["brazil real gdp"],
-    scale: 1,
-    unit: "WGI",
-    capacity: 0,
-    mockValue: -0.2,
-    kind: "governance",
-  },
+  // The CHN/RL.EST and BRA/RL.EST entries that previously sat here were
+  // showing as MISS in `check:feeds` and contributed no data to the
+  // R-04 Cross-Domain Dependency axiom. Removed cleanly with no graph-
+  // side change (label patterns "china real gdp" / "brazil real gdp"
+  // also matched the existing GDP entries above, so no node loses
+  // coverage from removing these — the GDP node was always the dominant
+  // signal anyway).
+  //
+  // The `kind: "governance"` discriminator on `WbSeriesConfig` is kept
+  // for future use if a non-WB governance source ever lands. If WB
+  // restores WGI to the v2 API or publishes it under a new code, the
+  // entries can be re-added in the same shape.
   // Phase 13 — promote the 4 fertilizer-market nodes (QAFCO + Ma'aden
   // export destinations for India and Brazil) to live via WB
   // AG.CON.FERT.ZS (Fertilizer consumption, kg per hectare of arable

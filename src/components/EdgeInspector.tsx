@@ -1,7 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { CausalEdge } from "@/lib/types";
+import type { CausalEdge, EdgeAttributeSource } from "@/lib/types";
+import {
+  EDGE_SOURCE_COLOR,
+  EDGE_SOURCE_DESCRIPTION,
+  EDGE_SOURCE_LABEL,
+  hasProvenanceDetail,
+  resolveEdgeAttributeSource,
+} from "@/lib/edge-provenance";
 import { isAutoBridge, extractAutoBridgeScore } from "@/lib/cross-domain-bridging";
 
 /**
@@ -51,6 +58,12 @@ export default function EdgeInspector({
       : edge.type === "confounded"
         ? "CONFOUNDED"
         : "DIRECTED";
+
+  // Resolve provenance once. Missing fields fall back to author so the
+  // analyst always sees *some* signal — silence would be a worse UX
+  // than a muted AUTHOR badge.
+  const weightSource = resolveEdgeAttributeSource(edge.weightSource);
+  const confidenceSource = resolveEdgeAttributeSource(edge.confidenceSource);
 
   return (
     <motion.div
@@ -105,14 +118,16 @@ export default function EdgeInspector({
           </div>
           <div>
             <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">WEIGHT</div>
-            <div className="text-[10px] font-mono text-foreground mt-0.5">
-              {edge.weight.toFixed(2)}
+            <div className="text-[10px] font-mono text-foreground mt-0.5 flex items-center gap-1.5">
+              <span>{edge.weight.toFixed(2)}</span>
+              <ProvenanceBadge source={weightSource} />
             </div>
           </div>
           <div>
             <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">CONFIDENCE</div>
-            <div className="text-[10px] font-mono text-foreground mt-0.5">
-              {(edge.confidence * 100).toFixed(0)}%
+            <div className="text-[10px] font-mono text-foreground mt-0.5 flex items-center gap-1.5">
+              <span>{(edge.confidence * 100).toFixed(0)}%</span>
+              <ProvenanceBadge source={confidenceSource} />
             </div>
           </div>
           <div>
@@ -144,6 +159,28 @@ export default function EdgeInspector({
             />
           </div>
         </div>
+
+        {/* Provenance block — shown when EITHER source carries detail
+            beyond the inline badge (a citation, estimator, R², or note).
+            For the common backfill case where both attributes are bare
+            authored values, only the inline AUTHOR badges next to the
+            stats render — we don't want to scream "audit me" at the
+            analyst on every edge in v1. The visual stays the same
+            two-tone separator pattern as the χ★ block below. */}
+        {(hasProvenanceDetail(weightSource) ||
+          hasProvenanceDetail(confidenceSource)) && (
+          <div className="pt-2 border-t border-border/50 space-y-2">
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+              PROVENANCE
+            </div>
+            {hasProvenanceDetail(weightSource) && (
+              <ProvenanceDetail label="WEIGHT" source={weightSource} />
+            )}
+            {hasProvenanceDetail(confidenceSource) && (
+              <ProvenanceDetail label="CONFIDENCE" source={confidenceSource} />
+            )}
+          </div>
+        )}
 
         {/* AUTO-BRIDGE — rendered when this edge was minted by the
             cross-domain auto-bridging pass (id prefix "auto-bridge").
@@ -223,5 +260,80 @@ export default function EdgeInspector({
         )}
       </div>
     </motion.div>
+  );
+}
+
+/**
+ * Small colored pill rendered inline next to WEIGHT / CONFIDENCE in the
+ * stats row. AUTHOR is intentionally muted gray so it reads as "default,
+ * needs audit" rather than competing with the data colors used by the
+ * other kinds. Hover tooltip carries the full kind description so the
+ * analyst can answer "what does AUTHOR mean here?" without an extra
+ * click.
+ */
+function ProvenanceBadge({ source }: { source: EdgeAttributeSource }) {
+  const color = EDGE_SOURCE_COLOR[source.kind];
+  const label = EDGE_SOURCE_LABEL[source.kind];
+  return (
+    <span
+      className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1 py-px rounded border leading-none"
+      style={{
+        color,
+        borderColor: `${color}55`,
+        backgroundColor: `${color}10`,
+      }}
+      title={EDGE_SOURCE_DESCRIPTION[source.kind]}
+    >
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Expanded provenance row for the bottom PROVENANCE block. Only
+ * rendered when the source carries detail beyond the kind itself
+ * (citation / estimator / R² / note) — otherwise the inline badge
+ * alone covers it.
+ */
+function ProvenanceDetail({
+  label,
+  source,
+}: {
+  label: string;
+  source: EdgeAttributeSource;
+}) {
+  const color = EDGE_SOURCE_COLOR[source.kind];
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+          {label}
+        </div>
+        <ProvenanceBadge source={source} />
+      </div>
+      <div className="text-[10px] font-mono text-foreground/90 leading-relaxed space-y-0.5">
+        {source.citation && (
+          <div>
+            <span className="text-text-muted">cite </span>
+            <span style={{ color }}>{source.citation}</span>
+          </div>
+        )}
+        {source.estimator && (
+          <div>
+            <span className="text-text-muted">estimator </span>
+            <span style={{ color }}>{source.estimator}</span>
+          </div>
+        )}
+        {typeof source.rSquared === "number" && (
+          <div>
+            <span className="text-text-muted">R² </span>
+            <span style={{ color }}>{source.rSquared.toFixed(3)}</span>
+          </div>
+        )}
+        {source.note && (
+          <div className="text-foreground/70 italic">{source.note}</div>
+        )}
+      </div>
+    </div>
   );
 }

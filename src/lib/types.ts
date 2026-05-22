@@ -110,6 +110,43 @@ export type NodeCategory =
 
 export type EdgeType = "directed" | "confounded" | "temporal";
 
+/**
+ * Where an edge attribute (weight, confidence) came from. Surfaces in
+ * EdgeInspector so an analyst can answer "where did this 0.8 come
+ * from?" without leaving the canvas.
+ *
+ * Kinds:
+ *  - author      hand-set during graph construction; no external source
+ *  - literature  point estimate from a published paper / standard
+ *  - regression  fit from a real-data regression on this network
+ *  - discovery   output of a structure-learning run (SPIRTES / FCI / NOTEARS)
+ *  - tarski      value derived from an axiom check / proof trace
+ *
+ * Context fields are kind-flavoured but loose-typed so we can grow
+ * them per-domain without ballooning a discriminated union. Backfill
+ * convention: missing source ≡ `{kind:"author"}` — handled centrally
+ * by `resolveEdgeAttributeSource` in src/lib/edge-provenance.ts so
+ * existing edges don't need to be touched in this PR.
+ */
+export type EdgeAttributeSourceKind =
+  | "author"
+  | "literature"
+  | "regression"
+  | "discovery"
+  | "tarski";
+
+export interface EdgeAttributeSource {
+  kind: EdgeAttributeSourceKind;
+  /** Free-text citation — DOI, paper title, NEJM url, dissertation patch id. */
+  citation?: string;
+  /** Discovery estimator that produced the value (e.g. "FCI", "NOTEARS"). */
+  estimator?: string;
+  /** Regression fit quality (0-1) — populated when kind="regression". */
+  rSquared?: number;
+  /** Free-text caveat / sample size note. Any kind can carry one. */
+  note?: string;
+}
+
 export interface LiveDataHistoryEntry {
   value: number;
   observedAt: string;
@@ -289,6 +326,16 @@ export interface CausalEdge {
   physicalMechanism: string; // e.g. "powers", "constrains supply"
   isSevered?: boolean; // severed by link break tool
   isConsequenceEdge?: boolean; // spawned by link break
+  /**
+   * Where the `weight` value came from. Absent ≡ author-set during
+   * graph construction (see EdgeAttributeSource + resolveEdge-
+   * AttributeSource). Set explicitly when an edge has external
+   * provenance (literature citation, regression fit, discovery run,
+   * Tarski derivation).
+   */
+  weightSource?: EdgeAttributeSource;
+  /** Where the `confidence` value came from. Same semantics as weightSource. */
+  confidenceSource?: EdgeAttributeSource;
 }
 
 export interface GraphMetadata {

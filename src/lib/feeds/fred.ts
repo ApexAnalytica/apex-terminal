@@ -82,6 +82,12 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   { id: "PPIFIS", label: "PPI Final Demand", labelPatterns: ["ppi final demand"], unit: "", capacity: 165, mockValue: 156 },
   { id: "PPIFDS", label: "PPI Final Demand Services", labelPatterns: ["ppi final demand services"], unit: "", capacity: 165, mockValue: 156 },
   { id: "WPSFD4131", label: "PPI Final Demand Energy", labelPatterns: ["ppi final demand energy"], unit: "", capacity: 320, mockValue: 268 },
+  // Core PPI YoY — wires the previously-unwired `ip_core_ppi_yoy` graph
+  // node to PPICOR (PPI by Commodity: Final Demand: Less Foods and Energy)
+  // with units=pc1 transform for year-over-year %. 5.23 % at 2026-04.
+  // Note: PPILFE was the canonical Core PPI series until 2015-12 when FRED
+  // discontinued it; PPICOR is the current successor.
+  { id: "PPICOR", label: "Core PPI Year-over-Year", labelPatterns: ["core ppi year-over-year"], unit: "%", capacity: 5, units: "pc1", mockValue: 3.2 },
   { id: "T5YIFR", label: "5Y5Y Forward Inflation Expectation", labelPatterns: ["5y5y forward inflation expectation"], unit: "%", capacity: 4, mockValue: 2.3 },
   { id: "PWHEAMTUSDM", label: "Global Wheat Price (Soft Red Winter)", labelPatterns: ["global wheat price"], unit: "$/T", capacity: 400, mockValue: 230 },
   // EM FX stress series — daily FRED publication, scaled to local-per-USD.

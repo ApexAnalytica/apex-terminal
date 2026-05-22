@@ -926,6 +926,38 @@ The always-mount pattern was in place to keep the 3D WebGL context alive across 
 
 ---
 
+### 2026-05-22 — Shipped: extract inline ModulePanel panels into `next/dynamic` chunks
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: bundle-size load-time push. PR #300 lazy-loaded the four sub-panels that already lived in their own files. The remaining inline definitions (`TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, `SnapshotIndicator`, plus their co-located helpers — `AxiomIcon`, `ProofTraceList`, `CritSparklineChart`, `CritSparkline`, `shortenEventLabel`, `CriticalityCard`, `type CriticalityEmptyState`) couldn't be deferred without first extracting them to their own files. ~2.5K LOC + heavy estimator-lib transitive deps shipped on every initial paint, even though Spirtes is the only default tab that needs none of them.
+
+**What shipped.**
+
+Three new files under `src/components/modules/`:
+
+- **`CopilotInterdictionResults.tsx`** (~253 LOC) — Pearl-tab solver results card.
+- **`TarskiPanel.tsx`** (~599 LOC) — Tarski-tab axiom panel + its two private helpers (`AxiomIcon`, `ProofTraceList`). Brings `AXIOM_LIBRARY`, `scoreAxiomRelevance` with it.
+- **`ParetoPanel.tsx`** (~1.78K LOC) — Pareto-tab criticality observation panel, the heaviest of the three. Co-locates `SnapshotIndicator` (named export so the outer `ModulePanel` can dynamic-import both from the same chunk), the two sparkline components, `shortenEventLabel`, `CriticalityCard`, and the `CriticalityEmptyState` type. Pulls the estimator-lib transitive deps with it: `lppls-fit`, `ph-fit`, `pareto-relevance-bootstrap`, `pareto-relevance-reference`, `moran`, `t1d-estimator-inputs`.
+
+In `ModulePanel.tsx`:
+- Removed all four inline definitions and their helpers.
+- Trimmed the imports list — dropped 14 lib-level imports (estimator regime gates, lppls/ph fits, criticality registry, tarski-data, etc.) that the extracted files now own. Also dropped `useCallback`, `useRef`, `SnapshotDiagnostics`.
+- Added four `next/dynamic` declarations for `TarskiPanel`, `ParetoPanel`, `CopilotInterdictionResults`, and the named `SnapshotIndicator` (via `.then(m => ({ default: m.SnapshotIndicator }))` so it shares the ParetoPanel chunk).
+
+`ModulePanel.tsx` shrank **3384 LOC → 821 LOC**. The default Spirtes-tab first paint is now `CascadeHeader` + `TrinityPanel` + `DiscoveryRunsPanel` (+ optional `TissueCohortView`) — all the heavy regime-gate / criticality-card code is deferred to first-tab-visit.
+
+**Files.**
+- `src/components/modules/CopilotInterdictionResults.tsx` (new)
+- `src/components/modules/TarskiPanel.tsx` (new)
+- `src/components/modules/ParetoPanel.tsx` (new)
+- `src/components/ModulePanel.tsx` — trimmed
+- `src/lib/workers/__tests__/layout3d-client.test.ts` — drive-by: fixed two missing fields on the test graph fixture (`isConfounded` on nodes, `inconsistentEdges` / `restrictedNodes` on metadata) that tsc started flagging since PR #404 landed
+
+**Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint has 2 errors that are the SAME pre-existing `set-state-in-effect` + `rules-of-hooks` warnings from the original inline definitions (just moved to their new files, identical code); vitest 1321 / 1321 pass.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

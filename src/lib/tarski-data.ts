@@ -561,8 +561,14 @@ export function runTarskiValidation(
   // useHormuzFeed), prefer the quantitative ratio value/capacity. Otherwise
   // fall back to the structural edge-weight sum so demos with no feed
   // attached still produce sensible flags.
+  //
+  // A separate storm check fires independently when a chokepoint carries
+  // a NOAA NHC active-tropical-cyclone signal (`kind: "storm"`) at or
+  // above hurricane intensity (64 kt) — physical disruption to maritime
+  // chokepoint flow regardless of structural / throughput state.
   const A04_LIVE_THRESHOLD = 0.9; // saturation ratio
   const A04_STRUCT_THRESHOLD = 3.0; // edge-weight sum
+  const A04_STORM_THRESHOLD_KT = 64; // hurricane minimum sustained wind
   const chokepoints = graph.nodes.filter((n) =>
     n.label.toLowerCase().includes("strait of hormuz") ||
     n.label.toLowerCase().includes("chokepoint")
@@ -572,26 +578,35 @@ export function runTarskiValidation(
     const outEdges = outboundEdges.get(cp.id) || [];
 
     let violation = false;
-    let detail: string | undefined;
+    const detailParts: string[] = [];
     const throughput = getLiveSignal(cp, "throughput");
     if (throughput) {
       const { value, capacity, unit, source } = throughput;
       const ratio = capacity > 0 ? value / capacity : 0;
       if (ratio > A04_LIVE_THRESHOLD) {
         violation = true;
-        detail = `${cp.label}: ${value.toFixed(2)}/${capacity.toFixed(2)} ${unit} = ${(ratio * 100).toFixed(1)}% — ${source}`;
+        detailParts.push(`${cp.label}: ${value.toFixed(2)}/${capacity.toFixed(2)} ${unit} = ${(ratio * 100).toFixed(1)}% — ${source}`);
       }
     } else {
       const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
                         outEdges.reduce((s, e) => s + e.weight, 0);
       if (totalFlow > A04_STRUCT_THRESHOLD) {
         violation = true;
-        detail = `${cp.label}: structural edge-weight sum ${totalFlow.toFixed(2)} > ${A04_STRUCT_THRESHOLD} (no live feed attached)`;
+        detailParts.push(`${cp.label}: structural edge-weight sum ${totalFlow.toFixed(2)} > ${A04_STRUCT_THRESHOLD} (no live feed attached)`);
       }
+    }
+
+    // Independent storm-disruption check — NOAA NHC active cyclone at
+    // or above hurricane intensity threatens chokepoint physical flow.
+    const storm = getLiveSignal(cp, "storm");
+    if (storm && storm.value >= A04_STORM_THRESHOLD_KT) {
+      violation = true;
+      detailParts.push(`${cp.label}: active storm ${storm.value.toFixed(0)} kt ≥ ${A04_STORM_THRESHOLD_KT} kt hurricane threshold — ${storm.source}`);
     }
 
     if (violation) {
       restrictedNodeIds.add(cp.id);
+      const detail = detailParts.join(" · ");
       for (const e of [...inEdges, ...outEdges]) {
         if (e.type === "temporal" || e.type === "confounded") {
           inconsistentEdgeIds.add(e.id);

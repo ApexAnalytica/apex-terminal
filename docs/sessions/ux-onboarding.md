@@ -141,6 +141,7 @@ News interpreter UI:
 - Persona selection persistence (currently resets on page load).
 - Empty-state language across modules (e.g. "NO DATA — static Ω only" on ΩF SERIES; data-side trigger, our wording).
 - Mobile/tablet responsive behavior — desktop-first; likely a real UX project once a customer asks.
+- **Calculations menu (user-requested, future).** Place it on the bottom-left of the DAG canvas, above the existing DOMAINS frame. A picker that exposes domain-specific calculations the user can invoke directly — e.g. financial Greeks (delta / gamma / vega / theta) on FRED / WB series, T1D-side calcs (HOMA-IR, time-in-range), supply-chain calcs (Herfindahl-Hirschman concentration, throughput-utilisation). Once a calc runs, its result becomes a pushable time series — sender pushes onto the TimeDial overlay so the user can watch "how Greeks evolve over time" alongside live feeds. Routing: the menu chrome + push-to-dial UX lives here (UX & Onboarding); per-domain calc implementations live in the relevant engine session (Pareto for risk-pricing Greeks, Pearl for counterfactual deltas, T1D for clinical scores). Cross-session coordination needed before this can ship.
 
 ## How to start a task
 

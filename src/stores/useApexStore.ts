@@ -25,6 +25,7 @@ import {
   type TarskiValidationReport,
 } from "@/lib/tarski-data";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
+import { applyCrossDomainBridges } from "@/lib/cross-domain-bridging";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
@@ -370,10 +371,15 @@ export const useApexStore = create<ApexState>((set, get) => ({
     // Whenever the graph node id set changes we must re-resolve temporalData
     // and drop pinned-series ids that no longer exist; otherwise the
     // TimeSeriesOverlay shows stale "NO DATA" badges for ghost pins.
+    // Cross-domain auto-bridging — when MULTI-domain composition leaves
+    // the graph in multiple disconnected components, propose heuristic
+    // cross-domain bridge edges (low-confidence, picked up as FLAGGED by
+    // R-04). No-op when the graph is already connected.
+    const { graph: bridged } = applyCrossDomainBridges(g);
     // Apply ΩF live-pillar adjustments (Tarski → J, Spirtes-metrics → C)
     // so a freshly loaded graph carries any overlay derived from incoming
     // node attributes (e.g. live sanctions, out-degree).
-    const adjusted = applyOmegaLiveAdjustments(g);
+    const adjusted = applyOmegaLiveAdjustments(bridged);
     set((s) => ({
       graphData: adjusted,
       initialGraph: adjusted,

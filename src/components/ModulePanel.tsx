@@ -2030,6 +2030,7 @@ function SnapshotIndicator() {
 function CascadeHeader() {
   const graphData = useApexStore((s) => s.graphData);
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const selectedNode = useApexStore((s) => s.selectedNode);
   const selectedNodes = useApexStore((s) => s.selectedNodes);
   // Defer the heavy `graphData` + `selectedNodes` references so the
   // Brandes'-class `netMetrics` computation below runs as low-priority
@@ -2272,6 +2273,116 @@ function CascadeHeader() {
   const metricColor = (val: number, threshLow: number, threshHigh: number) =>
     val < threshLow ? "#00e676" : val < threshHigh ? "#ffab00" : "#ff1744";
 
+  // ─── RELEVANT NOW — contextual callouts ──────────────────────────
+  //
+  // The dropdowns below (eigenvector / betweenness / communities /
+  // uncertainty / DCD / PCMCI+ / FCI) carry a lot of information but
+  // each is collapsed by default and titled in jargon. This zone
+  // surfaces the 2–3 most relevant numbers right now — either for the
+  // selected node, or for the graph as a whole — so the panel reads
+  // top-down: "here's what to look at" → "here are all the metrics".
+  const relevantNowCallouts = useMemo(() => {
+    type Callout = { label: string; value: string; detail?: string; tone?: "amber" | "red" | "green" };
+    const out: Callout[] = [];
+    const selectedNodeObj = selectedNode
+      ? deferredGraphData.nodes.find((n) => n.id === selectedNode)
+      : null;
+
+    if (selectedNodeObj) {
+      // Centrality rank — surface when in top-5 by either measure.
+      const eigenRank = netMetrics.eigenTop.findIndex(
+        (t) => t.id === selectedNodeObj.id,
+      );
+      const betwRank = netMetrics.betweenTop.findIndex(
+        (t) => t.id === selectedNodeObj.id,
+      );
+      if (eigenRank >= 0 || betwRank >= 0) {
+        const parts: string[] = [];
+        if (eigenRank >= 0) parts.push(`#${eigenRank + 1} eigenvector`);
+        if (betwRank >= 0) parts.push(`#${betwRank + 1} betweenness`);
+        out.push({
+          label: "Centrality",
+          value: parts.join(" · "),
+          detail: "top-5 in network",
+          tone: "green",
+        });
+      }
+
+      // Cascade load — elevated above structural median.
+      const cVal = selectedNodeObj.omegaFragility.cascadeLoad;
+      if (cVal >= 7) {
+        out.push({
+          label: "Cascade",
+          value: `C ${cVal.toFixed(1)}`,
+          detail: cVal >= 9 ? "saturated" : "elevated",
+          tone: cVal >= 9 ? "red" : "amber",
+        });
+      }
+
+      // Auto-bridges incident on this node — closes the loop with the
+      // cross-domain bridging pass; the user sees that THIS node is
+      // currently connected to other domains only via heuristic edges.
+      const incidentBridges = deferredGraphData.edges.filter(
+        (e) =>
+          e.id.startsWith("auto-bridge") &&
+          (e.source === selectedNodeObj.id || e.target === selectedNodeObj.id),
+      );
+      if (incidentBridges.length > 0) {
+        out.push({
+          label: "Auto-bridges",
+          value: `${incidentBridges.length} cross-domain`,
+          detail: "FLAGGED · needs verification",
+          tone: "amber",
+        });
+      }
+    } else {
+      // Graph-wide callouts — surface only when something interesting
+      // is going on, so the panel stays empty when the graph is
+      // healthy / connected / stable.
+      if (!netMetrics.isStable) {
+        out.push({
+          label: "Stability",
+          value: `λmax ${netMetrics.lambdaMax.toFixed(2)}`,
+          detail: "UNSTABLE — cascade amplifies",
+          tone: "red",
+        });
+      }
+      if (netMetrics.componentCount > 1) {
+        out.push({
+          label: "Components",
+          value: `${netMetrics.componentCount} disconnected`,
+          detail: "auto-bridges in play",
+          tone: "amber",
+        });
+      }
+      if (netMetrics.crossDomainCommunityCount > 0) {
+        out.push({
+          label: "Cross-domain",
+          value: `${netMetrics.crossDomainCommunityCount} communities`,
+          detail: "emergent groupings span domains",
+          tone: "amber",
+        });
+      }
+      if (netMetrics.uncertainty.lowConfidenceCount > 0) {
+        out.push({
+          label: "Uncertainty",
+          value: `${netMetrics.uncertainty.lowConfidenceCount} low-conf edges`,
+          detail: `μ ${netMetrics.uncertainty.meanEdgeConfidence.toFixed(2)}`,
+          tone: "amber",
+        });
+      }
+    }
+
+    // Cap at 3 so the panel stays scannable.
+    return out.slice(0, 3);
+  }, [selectedNode, deferredGraphData, netMetrics]);
+
+  const toneColor = (tone: "amber" | "red" | "green" | undefined) => {
+    if (tone === "red") return "#ff1744";
+    if (tone === "green") return "#00e676";
+    return "#ffab00"; // amber default
+  };
+
   const toggleMetric = (key: string) => setExpandedMetric(expandedMetric === key ? null : key);
 
   return (
@@ -2279,6 +2390,27 @@ function CascadeHeader() {
       <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-text-muted">
         NETWORK ANALYSIS
       </div>
+
+      {/* RELEVANT NOW — contextual callouts (selected-node or graph-wide) */}
+      {relevantNowCallouts.length > 0 && (
+        <div className="relative px-2 pt-2 pb-1.5 mt-1 rounded border border-accent-amber/40 bg-accent-amber/[0.04]">
+          <div className="absolute -top-1.5 left-2 px-1 bg-bg-base text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
+            RELEVANT NOW
+          </div>
+          <div className="space-y-1">
+            {relevantNowCallouts.map((c, i) => (
+              <div key={`${c.label}-${i}`} className="text-[8px] font-mono leading-tight flex items-baseline gap-1.5">
+                <span style={{ color: toneColor(c.tone) }}>▸</span>
+                <span className="text-text-muted">{c.label}</span>
+                <span className="text-text-primary tabular-nums">{c.value}</span>
+                {c.detail && (
+                  <span className="text-text-muted truncate">— {c.detail}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Scoped indicator */}
       {netMetrics.isScoped && (
@@ -2339,8 +2471,13 @@ function CascadeHeader() {
       {/* Eigenvector Centrality — expandable */}
       <button onClick={() => toggleMetric("eigen")} className="w-full text-left">
         <div className="flex items-center justify-between p-1.5 rounded border border-accent-cyan/20 bg-accent-cyan/5 hover:bg-accent-cyan/8 transition-colors">
-          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
-            EIGENVECTOR CENTRALITY
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan flex items-baseline gap-1.5 min-w-0">
+            <span className="flex-shrink-0">EIGENVECTOR</span>
+            {netMetrics.eigenTop[0] && (
+              <span className="text-text-muted truncate font-mono normal-case tracking-normal">
+                top: <span className="text-accent-cyan">{netMetrics.eigenTop[0].label}</span>
+              </span>
+            )}
           </div>
           <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "eigen" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
             {"\u25BC"}
@@ -2368,8 +2505,13 @@ function CascadeHeader() {
       {/* Betweenness Centrality — expandable */}
       <button onClick={() => toggleMetric("between")} className="w-full text-left">
         <div className="flex items-center justify-between p-1.5 rounded border border-accent-amber/20 bg-accent-amber/5 hover:bg-accent-amber/8 transition-colors">
-          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-            BETWEENNESS CENTRALITY
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber flex items-baseline gap-1.5 min-w-0">
+            <span className="flex-shrink-0">BETWEENNESS</span>
+            {netMetrics.betweenTop[0] && (
+              <span className="text-text-muted truncate font-mono normal-case tracking-normal">
+                top: <span className="text-accent-amber">{netMetrics.betweenTop[0].label}</span>
+              </span>
+            )}
           </div>
           <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "between" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
             {"\u25BC"}

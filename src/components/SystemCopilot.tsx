@@ -11,6 +11,7 @@ import {
   CopilotAction,
 } from "@/lib/copilot-engine";
 import { processLlmActionsWithTrace, stripActions } from "@/lib/copilot-actions";
+import { echoOverlapRatio } from "@/lib/copilot/echo-detection";
 import {
   logTurnTrace,
   hashPrompt,
@@ -245,6 +246,12 @@ export default function SystemCopilot() {
   // within this window catches it.
   const ttsEndedAtRef = useRef<number>(0);
   const TTS_ECHO_GUARD_MS = 5000;
+  // Echo detection thresholds. Token-overlap > 0.85 always
+  // suppresses; > 0.6 suppresses only within the time window.
+  // Real user replies typically share <40% of words with the
+  // recent AI message; pure echo shares ~all of them.
+  const ECHO_OVERLAP_STRONG = 0.85;
+  const ECHO_OVERLAP_TIMED = 0.6;
   // Conversation identity for trace logging. Stable across the
   // session; resets when the chat is cleared. turn_index is a
   // monotonically increasing counter so we can replay traces in
@@ -940,21 +947,28 @@ export default function SystemCopilot() {
 
       // ─── Barge-in detection ────────────────────────────────
       // While TTS is speaking and we hear meaningful voice
-      // activity, cut TTS so the user can speak. A crude feedback
-      // heuristic protects against the mic picking up the AI's
-      // own voice: if everything we transcribed is a substring of
-      // the AI's recent utterance, treat it as echo and ignore.
+      // activity, cut TTS so the user can speak.
+      //
+      // Feedback heuristic — token-overlap. Real user replies
+      // typically share <40% of words with the recent AI text;
+      // pure mic-captured-TTS-echo shares ~all of them. Substring
+      // comparison is too brittle because the recognition
+      // transcribes "8.5" as "eight point five" and drops
+      // hyphens (so "omega-fragility" → "omega fragility"), making
+      // exact-substring matches fail on real echoes.
       if (voiceStageRef.current === "speaking") {
-        const heard = transcript.trim().toLowerCase();
+        const heard = transcript.trim();
         if (heard.length >= 4) {
-          const aiSaid = lastSpokenContentRef.current.toLowerCase();
-          if (aiSaid.includes(heard)) {
+          const overlap = echoOverlapRatio(heard, lastSpokenContentRef.current);
+          if (overlap >= ECHO_OVERLAP_STRONG) {
             voiceLog("ignoring possible TTS feedback", {
               heard: heard.slice(0, 60),
+              overlap: overlap.toFixed(2),
             });
           } else {
             voiceLog("barge-in detected — cancelling TTS", {
               heard: heard.slice(0, 60),
+              overlap: overlap.toFixed(2),
             });
             if (typeof window !== "undefined") {
               window.speechSynthesis?.cancel();
@@ -977,26 +991,36 @@ export default function SystemCopilot() {
           const trimmed = transcript.trim();
 
           // ─── Post-TTS echo guard ───────────────────────────────
-          // Within TTS_ECHO_GUARD_MS of TTS ending, drop any
-          // submission whose lowercased text is fully contained in
-          // the AI's most recent message — almost certainly the
-          // speaker tail bleeding back into the mic, not a real
-          // user utterance. The during-speaking substring check
-          // (above in onresult's barge-in block) handles the
-          // mid-TTS case; this catches the post-TTS tail.
+          // Two tiers:
+          //   - Strong overlap (≥ECHO_OVERLAP_STRONG): suppress
+          //     regardless of timing. Almost certainly an echo
+          //     even if the user paused; only matches when the
+          //     transcript is mostly composed of words from the
+          //     recent AI message.
+          //   - Timed overlap (≥ECHO_OVERLAP_TIMED, within
+          //     TTS_ECHO_GUARD_MS of TTS end): suppress because
+          //     the speaker tail is still in the air. Real user
+          //     replies to a fresh AI response rarely overlap
+          //     more than 40-50% with the AI's words.
+          //
+          // Token-based overlap (vs literal substring) survives
+          // the transcript differences: "8.5" → "eight point
+          // five", "omega-fragility" → "omega fragility", etc.
           if (trimmed && voiceModeRef.current) {
+            const overlap = echoOverlapRatio(trimmed, lastSpokenContentRef.current);
             const sinceTtsMs = Date.now() - ttsEndedAtRef.current;
-            if (sinceTtsMs < TTS_ECHO_GUARD_MS) {
-              const heard = trimmed.toLowerCase();
-              const aiSaid = lastSpokenContentRef.current.toLowerCase();
-              if (aiSaid.includes(heard)) {
-                voiceLog("suppressed post-TTS echo at submit", {
-                  heard: heard.slice(0, 60),
-                  sinceTtsMs,
-                });
-                setInput("");
-                return;
-              }
+            const isStrong = overlap >= ECHO_OVERLAP_STRONG;
+            const isTimedEcho =
+              overlap >= ECHO_OVERLAP_TIMED && sinceTtsMs < TTS_ECHO_GUARD_MS;
+            if (isStrong || isTimedEcho) {
+              voiceLog("suppressed post-TTS echo at submit", {
+                heard: trimmed.slice(0, 60),
+                overlap: overlap.toFixed(2),
+                sinceTtsMs,
+                tier: isStrong ? "strong" : "timed",
+              });
+              setInput("");
+              return;
             }
           }
 

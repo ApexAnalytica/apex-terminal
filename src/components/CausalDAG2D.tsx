@@ -1317,7 +1317,7 @@ function CausalDAG2DInner() {
           nodesDraggable={true}
           nodesConnectable={false}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
           <Controls showInteractive={false} position="bottom-right" />
           <FitViewOnVisible visibleKey={visibleKey} isEmpty={visibleNodes.length === 0} />
         </ReactFlow>

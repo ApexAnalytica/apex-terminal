@@ -156,7 +156,7 @@ export default function CausalDAG({ shocks }: CausalDAGProps) {
             (s) => s.category === e.source || s.category === e.target
           )
             ? "#ff1744"
-            : "#2a2d45",
+            : "var(--border-bright)",
           strokeWidth: 1.5,
         },
         labelStyle: {
@@ -189,7 +189,7 @@ export default function CausalDAG({ shocks }: CausalDAGProps) {
         nodesDraggable={true}
         nodesConnectable={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1a1c2e" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
         <Controls
           showInteractive={false}
           position="bottom-right"

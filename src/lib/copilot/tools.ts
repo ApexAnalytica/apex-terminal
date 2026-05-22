@@ -421,18 +421,32 @@ defineTool({
       return "No interdiction results to apply. Run solve_interdiction first.";
     }
 
+    // Guard against re-applying a cut that's already in place (matters
+    // for node cuts: toggleAblatedNode is a toggle, so running it
+    // twice would un-ablate). Edge severing is already idempotent at
+    // the store level but we mirror the check here for symmetry.
+    const ablatedSet = new Set(store.ablatedNodeIds);
+    const severedSet = new Set(store.severedEdges);
+
     if (targets === "all") {
       const applied: string[] = [];
       for (const iv of last.interventions) {
         if (iv.target.type === "edge") {
-          store.severEdge(iv.target.id);
+          if (!severedSet.has(iv.target.id)) store.severEdge(iv.target.id);
           applied.push(iv.target.label);
         } else {
-          store.toggleAblatedNode(iv.target.id);
+          if (!ablatedSet.has(iv.target.id)) store.toggleAblatedNode(iv.target.id);
           applied.push(iv.target.label);
         }
       }
-      return `Applied all ${applied.length} interdictions: ${applied.join(", ")}`;
+      // Closing the scenario → cuts → impact loop: after the cuts
+      // land, kick off cascade replay so the analyst sees propagation
+      // and the MC fan updates against the new state without having
+      // to chase Start Replay manually. Matches the UI's APPLY ALL &
+      // SIMULATE affordance so chat-driven and click-driven paths
+      // behave identically.
+      store.startAblationReplay();
+      return `Applied all ${applied.length} interdictions: ${applied.join(", ")}. Cascade replay running against the new cut set.`;
     }
 
     // Accept either pipe-separated (new format) or comma-separated
@@ -444,16 +458,16 @@ defineTool({
       const iv = last.interventions[idx];
       if (!iv) continue;
       if (iv.target.type === "edge") {
-        store.severEdge(iv.target.id);
+        if (!severedSet.has(iv.target.id)) store.severEdge(iv.target.id);
         applied.push(iv.target.label);
       } else {
-        store.toggleAblatedNode(iv.target.id);
+        if (!ablatedSet.has(iv.target.id)) store.toggleAblatedNode(iv.target.id);
         applied.push(iv.target.label);
       }
     }
-    return applied.length > 0
-      ? `Applied interdictions: ${applied.join(", ")}`
-      : `No valid intervention indices: ${targets}`;
+    if (applied.length === 0) return `No valid intervention indices: ${targets}`;
+    store.startAblationReplay();
+    return `Applied interdictions: ${applied.join(", ")}. Cascade replay running against the new cut set.`;
   },
 });
 

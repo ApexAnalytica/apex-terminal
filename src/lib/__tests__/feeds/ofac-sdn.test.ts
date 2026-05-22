@@ -7,8 +7,11 @@ import {
 } from "@/lib/feeds/ofac-sdn";
 
 describe("OFAC_SDN_URL", () => {
-  it("points at Treasury's canonical pipe-delimited SDN download", () => {
-    expect(OFAC_SDN_URL).toContain("treasury.gov");
+  it("points at the OFAC sanctionslistservice canonical SDN export", () => {
+    // Treasury migrated the file from www.treasury.gov to
+    // sanctionslistservice.ofac.treas.gov; the legacy URL still 302s
+    // here, but pointing directly saves the redirect round-trip.
+    expect(OFAC_SDN_URL).toContain("sanctionslistservice.ofac.treas.gov");
     expect(OFAC_SDN_URL.endsWith("sdn.csv")).toBe(true);
   });
 });
@@ -76,6 +79,40 @@ describe("parseOfacSdnCsv", () => {
     const csv = ["", "1|", "|||", `2| "Org" |entity|"IRAN"|||||||||`].join("\n");
     const feed = parseOfacSdnCsv(csv);
     expect(feed.jurisdictions.IR.entryCount).toBe(1);
+  });
+
+  // Treasury migrated the file from pipe-delimited to comma-delimited
+  // with quoted strings (concurrent with the URL move). The parser
+  // auto-detects the delimiter so we keep working if they flip back;
+  // this test pins the new format.
+  it("parses comma-delimited rows (current Treasury format) and counts jurisdictions", () => {
+    const csv = [
+      `36,"AEROCARIBBEAN AIRLINES",-0- ,"CUBA",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+      `100,"BANCO IRANIAN",-0- ,"IRAN; IRAN-EO13599",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+      `200,"RUSSIAN BANK",-0- ,"RUSSIA-EO14024",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+      `300,"GENERIC TERROR ENTITY",-0- ,"SDGT",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+    ].join("\n");
+    const feed = parseOfacSdnCsv(csv);
+    expect(feed.jurisdictions.CU.entryCount).toBe(1);
+    expect(feed.jurisdictions.IR.entryCount).toBe(1);
+    expect(feed.jurisdictions.IR.programs).toContain("IRAN");
+    expect(feed.jurisdictions.IR.programs).toContain("IRAN-EO13599");
+    expect(feed.jurisdictions.RU.entryCount).toBe(1);
+    expect(feed.jurisdictions.SDGT).toBeUndefined();
+    expect(feed.totalEntries).toBe(4);
+  });
+
+  // SDN comma format uses `-0-` as the "empty field" sentinel rather
+  // than an empty string. Treat both as empty so we don't bump
+  // `totalEntries` for rows whose Program column has no real program.
+  it("treats `-0-` in the Program column as empty (SDN-empty sentinel)", () => {
+    const csv = [
+      `400,"NAME-ONLY ENTRY",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+      `401,"REAL ENTRY",-0- ,"CUBA",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0-`,
+    ].join("\n");
+    const feed = parseOfacSdnCsv(csv);
+    expect(feed.totalEntries).toBe(1);
+    expect(feed.jurisdictions.CU.entryCount).toBe(1);
   });
 });
 

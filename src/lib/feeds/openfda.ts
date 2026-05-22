@@ -32,12 +32,22 @@ export interface OpenFdaQueryConfig {
   mockValue: number;
 }
 
+// Lucene operator separators are literal SPACES in the search string;
+// `URLSearchParams` form-encodes spaces as `+` on the wire, and OpenFDA
+// decodes those back to spaces before handing them to Lucene. Using `+`
+// directly in the search string would form-encode to `%2B`, which
+// OpenFDA decodes to literal `+` — Lucene sees `+TO+` instead of ` TO `
+// and returns HTTP 500 "Encountered ] ... Was expecting TO". Same trap
+// applies to multi-word phrases inside `"..."` (e.g. "insulin glargine")
+// and to `AND` / `OR` between clauses.
 export const OPENFDA_QUERIES: OpenFdaQueryConfig[] = [
   {
     id: "tzield",
     label: "TZIELD (teplizumab) — anti-CD3 monoclonal",
-    // Match either brand or generic name — FDA labels are inconsistent
-    search: '(patient.drug.openfda.brand_name:"TZIELD"+patient.drug.openfda.generic_name:"teplizumab")',
+    // Brand OR generic — FDA labels are inconsistent, and AND would
+    // require both fields populated which excludes most reports.
+    search:
+      '(patient.drug.openfda.brand_name:"TZIELD" OR patient.drug.openfda.generic_name:"teplizumab")',
     labelPatterns: ["teplizumab"],
     unit: "rpts",
     capacity: 200,
@@ -46,7 +56,7 @@ export const OPENFDA_QUERIES: OpenFdaQueryConfig[] = [
   {
     id: "insulin-glargine",
     label: "Insulin glargine (basal long-acting)",
-    search: 'patient.drug.openfda.generic_name:"insulin+glargine"',
+    search: 'patient.drug.openfda.generic_name:"insulin glargine"',
     labelPatterns: ["insulin glargine"],
     unit: "rpts",
     capacity: 5000,
@@ -74,12 +84,14 @@ export function buildOpenFdaUrl(config: OpenFdaQueryConfig): string {
   const base = "https://api.fda.gov/drug/event.json";
   const params = new URLSearchParams();
   // Restrict to the last year so the count reflects recent scrutiny rather
-  // than cumulative-since-1990s reports.
+  // than cumulative-since-1990s reports. Lucene operator separators are
+  // literal SPACES — see the comment above OPENFDA_QUERIES for why `+`
+  // here would break the upstream parser.
   const year = new Date().getUTCFullYear();
-  const search = `${config.search}+AND+receivedate:[${year - 1}0101+TO+${year}1231]`;
+  const search = `${config.search} AND receivedate:[${year - 1}0101 TO ${year}1231]`;
   params.set("search", search);
   params.set("limit", "1");
-  return `${base}?${params.toString()}`.replace(/\+/g, "+"); // keep + literal in search
+  return `${base}?${params.toString()}`;
 }
 
 interface OpenFdaApiResponse {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
@@ -202,27 +201,12 @@ export default function Home() {
                 <CausalDAGRelief />
               </div>
             )}
-            {/* Client deployment CTA */}
-            <Link
-              href="/client"
-              className="absolute bottom-4 right-4 z-10 group flex items-center gap-2 px-3 py-2 rounded border border-border bg-surface-elevated/80 backdrop-blur-sm hover:border-accent-cyan/60 transition-all duration-200"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-cyan opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-cyan" />
-              </span>
-              <div className="flex flex-col">
-                <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-foreground group-hover:text-accent-cyan transition-colors">
-                  CLIENT DEPLOYMENT
-                </span>
-                <span className="text-[8px] font-mono text-text-muted">
-                  ATHENA DEFENSE SYSTEMS — Try it live
-                </span>
-              </div>
-              <span className="text-[10px] text-text-muted group-hover:text-accent-cyan transition-colors ml-1">
-                &rarr;
-              </span>
-            </Link>
+            {/* The bottom-right CLIENT DEPLOYMENT → /client CTA was removed.
+                It pointed at an Athena Defense sandbox that had drifted out
+                of date and read as a stray promo on a workspace canvas the
+                user is actively analysing. The /client route itself still
+                exists for direct access; surfacing a sandbox at all (and in
+                what shape) is a UX decision we'll revisit separately. */}
           </div>
 
           {/* Risk Propagation Flow */}

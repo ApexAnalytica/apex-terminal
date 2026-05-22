@@ -883,6 +883,21 @@ The always-mount pattern was in place to keep the 3D WebGL context alive across 
 
 ---
 
+### 2026-05-22 — Shipped: remove stray "CLIENT DEPLOYMENT → Athena Defense" CTA from the canvas
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"we randomly have on the bottom right of the product itself … CLIENT DEPLOYMENT … ATHENA DEFENSE SYSTEMS. It's just so random. I feel like this was intended to be a sandbox, but it seems like it's heavily out of date now … if we're gonna offer a sandbox, I feel like there's a different format that we should do it."*
+
+**What shipped.** Removed the `bottom-4 right-4` floating `<Link href="/client">` and dropped the now-unused `next/link` import in `src/app/page.tsx`. The `/client` route itself stays put — that's a separate decision; this PR only takes the CTA off the workspace canvas where it was reading as a promo on top of the user's live analysis.
+
+**Files.**
+- `src/app/page.tsx` — removed the floating CTA + `Link` import.
+
+**Verification.** `tsc --noEmit` clean (same inherited fci.test drift); lint clean on touched file; vitest 1319/1319 pass.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

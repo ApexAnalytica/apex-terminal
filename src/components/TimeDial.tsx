@@ -6,11 +6,18 @@ import { useApexStore } from "@/stores/useApexStore";
 import type { TimeGranularity, TemporalEvent } from "@/lib/temporal-data";
 import { getEventsInRange } from "@/lib/temporal-data";
 
-const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string }[] = [
-  { value: "hour", label: "1H" },
-  { value: "day", label: "1D" },
-  { value: "week", label: "1W" },
-  { value: "month", label: "1M" },
+// Two groups so we can render a subtle visual divider between fast presets
+// (sub-monthly, suitable for daily/weekly FRED + EIA Hormuz) and long presets
+// (year+, suitable for World Bank annual / WGI governance). The divider is
+// rendered inline in the JSX below.
+const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string; group: "short" | "long" }[] = [
+  { value: "hour", label: "1H", group: "short" },
+  { value: "day", label: "1D", group: "short" },
+  { value: "week", label: "1W", group: "short" },
+  { value: "month", label: "1M", group: "short" },
+  { value: "year", label: "1Y", group: "long" },
+  { value: "5year", label: "5Y", group: "long" },
+  { value: "all", label: "ALL", group: "long" },
 ];
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
@@ -37,6 +44,12 @@ function formatDate(ts: number, granularity: TimeGranularity): string {
         month: "short",
         year: "2-digit",
       });
+    case "year":
+    case "5year":
+    case "all":
+      // For long presets, year is the only meaningful x-axis label —
+      // showing month/day on a multi-year axis is noise.
+      return d.toLocaleDateString("en-US", { year: "numeric" });
   }
 }
 
@@ -87,6 +100,15 @@ function generateTicks(
       break;
     case "month":
       step = DAY * 30;
+      break;
+    case "year":
+      step = DAY * 90; // quarterly ticks across a 1y span
+      break;
+    case "5year":
+      step = DAY * 365; // annual ticks across 5y
+      break;
+    case "all":
+      step = DAY * 365 * 5; // 5-year ticks across the full span
       break;
   }
 
@@ -167,6 +189,9 @@ export default function TimeDial() {
       case "day": return DAY;
       case "week": return DAY * 7;
       case "month": return DAY * 30;
+      case "year": return DAY * 30; // step monthly through a 1y span
+      case "5year": return DAY * 90; // step quarterly through 5y
+      case "all": return DAY * 365; // step annually through ALL
     }
   }, [timelineGranularity]);
 
@@ -445,6 +470,15 @@ export default function TimeDial() {
           case "month":
             step = DAY * 30;
             break;
+          case "year":
+            step = DAY * 30;
+            break;
+          case "5year":
+            step = DAY * 90;
+            break;
+          case "all":
+            step = DAY * 365;
+            break;
         }
 
         if (e.key === "ArrowLeft" && e.shiftKey) {
@@ -595,26 +629,45 @@ export default function TimeDial() {
             className="flex items-center gap-1 overflow-hidden"
           >
             <div className="flex gap-0.5 rounded border border-border overflow-hidden">
-              {GRANULARITY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTimelineGranularity(opt.value)}
-                  className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
-                  style={{
-                    backgroundColor:
-                      timelineGranularity === opt.value
-                        ? "rgba(0,229,255,0.15)"
-                        : "transparent",
-                    color:
-                      timelineGranularity === opt.value
-                        ? "var(--accent-cyan)"
-                        : "var(--text-muted)",
-                    borderRight: "1px solid var(--border)",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {GRANULARITY_OPTIONS.map((opt, i) => {
+                // Insert a slightly heavier separator between "month" (short
+                // group) and "year" (long group) so the eye picks up the
+                // cadence-tier boundary without needing a legend.
+                const prev = i > 0 ? GRANULARITY_OPTIONS[i - 1] : null;
+                const isGroupBoundary = prev && prev.group !== opt.group;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setTimelineGranularity(opt.value)}
+                    className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                    style={{
+                      backgroundColor:
+                        timelineGranularity === opt.value
+                          ? "rgba(0,229,255,0.15)"
+                          : "transparent",
+                      color:
+                        timelineGranularity === opt.value
+                          ? "var(--accent-cyan)"
+                          : "var(--text-muted)",
+                      borderRight: "1px solid var(--border)",
+                      borderLeft: isGroupBoundary
+                        ? "1px solid var(--border-bright)"
+                        : undefined,
+                    }}
+                    title={
+                      opt.value === "year"
+                        ? "1 year window — for annual signals (World Bank, WGI)"
+                        : opt.value === "5year"
+                          ? "5 year window — multi-year trend on annual signals"
+                          : opt.value === "all"
+                            ? "Full data span — shows every published observation"
+                            : undefined
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
             {/* Historical play/pause button — only in non-live, non-replay mode */}
             {!isLive && (

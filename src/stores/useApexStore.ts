@@ -1081,19 +1081,42 @@ export const useApexStore = create<ApexState>((set, get) => ({
       // Result: subsequent clicks could shrink further but never expand back.
       // By saving timelineFullRange on first entry, we always have the
       // original extent to expand into.
+      const DAY_MS = 24 * 60 * 60 * 1000;
       const windowMs: Record<TimeGranularity, number> = {
         hour: 60 * 60 * 1000,
-        day: 24 * 60 * 60 * 1000,
-        week: 7 * 24 * 60 * 60 * 1000,
-        month: 30 * 24 * 60 * 60 * 1000,
+        day: DAY_MS,
+        week: 7 * DAY_MS,
+        month: 30 * DAY_MS,
+        year: 365 * DAY_MS,
+        "5year": 5 * 365 * DAY_MS,
+        // "all" maps to a very wide ceiling so it dominates the floor in
+        // the Math.max below. Effectively "show all available data".
+        // 50 years is wider than WB's earliest published series (1970-ish)
+        // so this captures the entire data extent in practice.
+        all: 50 * 365 * DAY_MS,
       };
       const end = s.timelineRange.end;
       const fullRange = s.timelineFullRange ?? { ...s.timelineRange };
-      const newStart = Math.max(fullRange.start, end - windowMs[g]);
+      // For short presets (hour/day/week/month) clamp to the captured
+      // `fullRange.start` (typically end - 60d, the synthetic-data default).
+      // For long presets (year/5year/all) bypass this clamp — the user is
+      // explicitly choosing a window wider than the synthetic baseline,
+      // because they want to see real published history for annual signals.
+      // Without this, 1Y would silently collapse back to 1M.
+      const isLongPreset = g === "year" || g === "5year" || g === "all";
+      const newStart = isLongPreset
+        ? end - windowMs[g]
+        : Math.max(fullRange.start, end - windowMs[g]);
+      // Also widen `timelineFullRange` when a long preset is picked so that
+      // a subsequent ZOOM OUT lands somewhere sensible instead of snapping
+      // back to the 60-day default mid-investigation.
+      const nextFullRange = isLongPreset
+        ? { start: Math.min(fullRange.start, newStart), end: Math.max(fullRange.end, end) }
+        : fullRange;
       return {
         timelineGranularity: g,
         timelineRange: { start: newStart, end },
-        timelineFullRange: fullRange,
+        timelineFullRange: nextFullRange,
       };
     }),
 

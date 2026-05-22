@@ -114,19 +114,51 @@ function DAGEdge3DInner({
 
   const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
 
-  const { curvePoints, midpoint, curve } = useMemo(() => {
+  const { curvePoints, midpoint, curve, chiTrackTop, chiTrackBottom } = useMemo(() => {
     const src = new THREE.Vector3(...sourcePos);
     const tgt = new THREE.Vector3(...targetPos);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
     mid.add(curveOffset);
 
     const c = new THREE.QuadraticBezierCurve3(src, mid, tgt);
-    const pts = c.getPoints(32);
+    const N = 32;
+    const pts = c.getPoints(N);
     const midPt = c.getPoint(0.5);
+
+    // χ★ parallel-track offsets. For each point on the curve, compute
+    // the tangent there, cross with world-up to get a "side" vector
+    // perpendicular to the curve in the horizontal plane, then offset
+    // by ±CHI_TRACK_OFFSET along it. The result is two parallel
+    // 3D curves running alongside the main one — visible as
+    // train-tracks from the standard top-down camera angle. Fallback
+    // when the tangent is parallel to up (rare; vertical edges):
+    // use world-X as the reference perpendicular.
+    const CHI_TRACK_OFFSET = 0.85;
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const worldX = new THREE.Vector3(1, 0, 0);
+    const top: [number, number, number][] = [];
+    const bottom: [number, number, number][] = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const p = pts[i];
+      const tangent = c.getTangent(t);
+      // side = tangent × up, normalised. If tangent is parallel to up
+      // (cross is ~zero), use tangent × worldX as fallback.
+      const side = new THREE.Vector3().crossVectors(tangent, worldUp);
+      if (side.lengthSq() < 1e-6) {
+        side.crossVectors(tangent, worldX);
+      }
+      side.normalize().multiplyScalar(CHI_TRACK_OFFSET);
+      top.push([p.x + side.x, p.y + side.y, p.z + side.z]);
+      bottom.push([p.x - side.x, p.y - side.y, p.z - side.z]);
+    }
+
     return {
       curvePoints: pts.map(p => [p.x, p.y, p.z] as [number, number, number]),
       midpoint: midPt,
       curve: c,
+      chiTrackTop: top,
+      chiTrackBottom: bottom,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posKey, curveOffset]);
@@ -204,27 +236,37 @@ function DAGEdge3DInner({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* χ★ edge outline — drawn BEFORE the main edge line so the
-          narrower cyan/amber line below renders ON TOP, leaving a
-          thin violet ring along the edge instead of obscuring it.
-          Solid for strict bridges, dashed for top-BES. Skipped on
-          severed / ablated edges (their own markers take priority).
-          Note: this replaces the earlier midpoint-pip approach —
-          a traced outline rides the full edge so the χ★ signal
-          is visible anywhere you look at it, including the Map's
-          ocean-spanning arcs where the midpoint pip lived nowhere
-          near the visible edge. */}
+      {/* χ★ parallel tracks — TWO thin violet lines running alongside
+          the main edge, offset perpendicular to the curve tangent by
+          CHI_TRACK_OFFSET world-units (see chiTrackTop / chiTrackBottom
+          in the curve memo above). The cyan/amber main line stays
+          untouched in the middle — this is "train-track" outlining,
+          not a halo. Solid for strict bridges, dashed for top-BES.
+          Skipped on severed / ablated edges (their own markers take
+          priority). */}
       {chiStarTier && !isSevered && !isAblated && (
-        <Line
-          points={curvePoints}
-          color="#7B68EE"
-          lineWidth={Math.max(1, lineWidth) + 1.5}
-          transparent
-          opacity={0.7}
-          dashed={chiStarTier === "top-bes"}
-          dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
-          gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
-        />
+        <>
+          <Line
+            points={chiTrackTop}
+            color="#7B68EE"
+            lineWidth={1.5}
+            transparent
+            opacity={0.85}
+            dashed={chiStarTier === "top-bes"}
+            dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
+            gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
+          />
+          <Line
+            points={chiTrackBottom}
+            color="#7B68EE"
+            lineWidth={1.5}
+            transparent
+            opacity={0.85}
+            dashed={chiStarTier === "top-bes"}
+            dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
+            gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
+          />
+        </>
       )}
 
       {/* Edge line — using drei Line for reliable rendering:

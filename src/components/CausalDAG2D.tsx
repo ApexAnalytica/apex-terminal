@@ -526,8 +526,15 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   const targetNode = useReactFlowStore((s) => s.nodeInternals.get(target));
 
   let edgePath: string | null = null;
-  let midX: number | null = null;
-  let midY: number | null = null;
+  // Perpendicular direction to the edge line, used to compute the
+  // two parallel χ★ "track" paths offset by ±CHI_TRACK_OFFSET pixels.
+  // null when the edge has zero length (no perpendicular defined).
+  let perpDx = 0;
+  let perpDy = 0;
+  let edgeX1 = 0;
+  let edgeY1 = 0;
+  let edgeX2 = 0;
+  let edgeY2 = 0;
   if (sourceNode && targetNode) {
     const sw = sourceNode.width ?? 30;
     const sh = sourceNode.height ?? 30;
@@ -548,13 +555,16 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
       // the orb and overruns the arrow head.
       const sr = sw / 2;
       const tr = tw / 2;
-      const x1 = sxC + ndx * sr;
-      const y1 = syC + ndy * sr;
-      const x2 = txC - ndx * tr;
-      const y2 = tyC - ndy * tr;
-      edgePath = `M ${x1} ${y1} L ${x2} ${y2}`;
-      midX = (x1 + x2) / 2;
-      midY = (y1 + y2) / 2;
+      edgeX1 = sxC + ndx * sr;
+      edgeY1 = syC + ndy * sr;
+      edgeX2 = txC - ndx * tr;
+      edgeY2 = tyC - ndy * tr;
+      edgePath = `M ${edgeX1} ${edgeY1} L ${edgeX2} ${edgeY2}`;
+      // Perpendicular in SVG screen space: rotate the unit direction
+      // 90° counter-clockwise. The +CHI side uses (perpDx, perpDy);
+      // the -CHI side uses (-perpDx, -perpDy).
+      perpDx = -ndy;
+      perpDy = ndx;
     }
   }
   if (!edgePath) return null;
@@ -610,29 +620,52 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   // `adjacency` import — only nodes need it; edges go via source/target.
   void adjacency;
 
-  // χ★ edge outline — renders BEFORE the BaseEdge so the cyan/amber
-  // main line draws on top, leaving a thin violet ring around it.
-  // Solid for strict bridges, dashed for top-BES. Replaces the
-  // earlier midpoint-diamond approach (filled vs hollow polygon at
-  // the line midpoint) — on long edges the midpoint was visually
-  // disconnected from the edge itself, and filled/hollow was too
-  // subtle to distinguish at a glance. Tracing the full line makes
-  // the χ★ signal visible anywhere you look at the edge.
-  const showChiStarOutline =
+  // χ★ parallel tracks — two thin violet lines running alongside the
+  // main edge, offset perpendicular by CHI_TRACK_OFFSET pixels.
+  // Solid for strict bridges, dashed for top-BES. The cyan/amber
+  // main line stays untouched in the middle.
+  //
+  // Why parallel tracks instead of an outline-around (the previous
+  // approach): an outline visually tints the main line — even with
+  // narrow violet behind and cyan in front, the cyan reads as
+  // slightly desaturated because the violet leaks at the edges.
+  // Parallel tracks keep the main line at its true causal-type
+  // color and add the χ★ signal as a separate visual layer
+  // alongside it. Like train tracks.
+  const showChiStarTracks =
     d.chiStarTier !== null &&
     !isThisSelected &&
     d.propagationSignal === 0;
+  const CHI_TRACK_OFFSET = 3.5;
+  const trackTopPath = showChiStarTracks
+    ? `M ${edgeX1 + perpDx * CHI_TRACK_OFFSET} ${edgeY1 + perpDy * CHI_TRACK_OFFSET} L ${edgeX2 + perpDx * CHI_TRACK_OFFSET} ${edgeY2 + perpDy * CHI_TRACK_OFFSET}`
+    : null;
+  const trackBottomPath = showChiStarTracks
+    ? `M ${edgeX1 - perpDx * CHI_TRACK_OFFSET} ${edgeY1 - perpDy * CHI_TRACK_OFFSET} L ${edgeX2 - perpDx * CHI_TRACK_OFFSET} ${edgeY2 - perpDy * CHI_TRACK_OFFSET}`
+    : null;
+  const trackDasharray = d.chiStarTier === "top-bes" ? "4 3" : undefined;
 
   return (
     <>
-      {showChiStarOutline && (
+      {showChiStarTracks && trackTopPath && (
         <path
-          d={edgePath}
+          d={trackTopPath}
           stroke="#7B68EE"
-          strokeWidth={strokeWidth + 2.5}
-          strokeDasharray={d.chiStarTier === "top-bes" ? "4 3" : undefined}
+          strokeWidth={1.25}
+          strokeDasharray={trackDasharray}
           fill="none"
-          opacity={opacity * 0.7}
+          opacity={opacity * 0.85}
+          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
+        />
+      )}
+      {showChiStarTracks && trackBottomPath && (
+        <path
+          d={trackBottomPath}
+          stroke="#7B68EE"
+          strokeWidth={1.25}
+          strokeDasharray={trackDasharray}
+          fill="none"
+          opacity={opacity * 0.85}
           style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
         />
       )}

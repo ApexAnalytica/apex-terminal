@@ -1,29 +1,19 @@
 /**
- * Layout-3D Web Worker.
+ * Layout Web Worker — handles both the 3D force-directed layout
+ * (`computeLayout3D` + `computeNetworkMetrics`) and the 2D force-
+ * directed layout (`compute2DForceLayout` + `computeNetworkMetrics`).
  *
- * Owns the two heaviest synchronous computations the 3D canvas would
- * otherwise run on the main thread on every `topologyKey` change:
+ * Both layouts run pure-data computes (no DOM, no React) so they're
+ * perfect worker fodder. Bundling each layout's metrics into the same
+ * response avoids a second postMessage roundtrip when the canvas
+ * needs both to start rendering.
  *
- *   - `computeLayout3D` — d3-force-3d simulation, 200 iterations of
- *     many-body / link / centering forces. Cold-start cost on a 500-
- *     node CROSS-DOMAIN workspace was the bulk of the LAUNCH-WORKSPACE
- *     freeze the user reported back in this session.
- *   - `computeNetworkMetrics` — eigenvector centrality (30 power-
- *     iteration steps) + sampled Brandes' betweenness + clustering
- *     coefficient. O(V·E)-ish in the worst case.
+ * Message kinds:
+ *   - "layout3d" → { positions: NodePosition[], metrics }
+ *   - "layout2d" → { positions2d: Map<id, Position2D>, metrics }
  *
- * Both are pure (graph in → plain-data out), no DOM access, no React
- * — perfect worker fodder. Bundling them into a single call avoids
- * paying a second postMessage roundtrip when the canvas needs both
- * results to start rendering.
- *
- * Messages:
- *   Request:  { id, nodes, edges, prev? }
- *   Response: { id, positions, metrics }
- *
- * Caller-side cancellation lives in the client wrapper (see
- * `layout3d-client.ts`); the worker itself just answers every
- * request it receives.
+ * Caller-side cancellation lives in the client wrapper
+ * (`layout-client.ts`); the worker itself just answers every request.
  */
 import {
   computeLayout3D,
@@ -31,33 +21,57 @@ import {
   type NodePosition,
   type NodeMetrics,
 } from "@/lib/graph-layout";
+import { compute2DForceLayout, type Position2D } from "@/lib/graph-layout-2d";
 import type { CausalNode, CausalEdge } from "@/lib/types";
 
-interface LayoutRequest {
+interface BaseRequest {
   id: number;
   nodes: CausalNode[];
   edges: CausalEdge[];
+}
+interface Layout3DRequest extends BaseRequest {
+  kind: "layout3d";
   prev?: NodePosition[];
 }
+interface Layout2DRequest extends BaseRequest {
+  kind: "layout2d";
+}
+type LayoutRequest = Layout3DRequest | Layout2DRequest;
 
-interface LayoutResponse {
+interface Layout3DResponse {
   id: number;
+  kind: "layout3d";
   positions: NodePosition[];
   metrics: Record<string, NodeMetrics>;
 }
+interface Layout2DResponse {
+  id: number;
+  kind: "layout2d";
+  positions2d: Map<string, Position2D>;
+  metrics: Record<string, NodeMetrics>;
+}
+type LayoutResponse = Layout3DResponse | Layout2DResponse;
 
-// Vite/Next worker entry: `self` is the dedicated worker scope.
 self.onmessage = (e: MessageEvent<LayoutRequest>) => {
-  const { id, nodes, edges, prev } = e.data;
-  const positions = computeLayout3D(nodes, edges, prev);
-  const metrics = computeNetworkMetrics(nodes, edges);
-  const response: LayoutResponse = { id, positions, metrics };
-  // Plain JSON — no transferable buffers to hand off.
+  const req = e.data;
+  const metrics = computeNetworkMetrics(req.nodes, req.edges);
+  let response: LayoutResponse;
+  if (req.kind === "layout3d") {
+    response = {
+      id: req.id,
+      kind: "layout3d",
+      positions: computeLayout3D(req.nodes, req.edges, req.prev),
+      metrics,
+    };
+  } else {
+    response = {
+      id: req.id,
+      kind: "layout2d",
+      positions2d: compute2DForceLayout(req.nodes, req.edges),
+      metrics,
+    };
+  }
   (self as unknown as Worker).postMessage(response);
 };
 
-// Re-export types so the client wrapper can stay strongly typed without
-// duplicating the protocol shape. They're erased at runtime — the
-// `export {}` keeps this file a module so the `self.onmessage` write
-// doesn't leak into the global module's surface.
-export type { LayoutRequest, LayoutResponse };
+export type { LayoutRequest, LayoutResponse, Layout3DResponse, Layout2DResponse };

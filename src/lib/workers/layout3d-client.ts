@@ -1,79 +1,81 @@
 /**
- * Main-thread client for the layout-3D Web Worker.
+ * Main-thread client for the layout Web Worker.
  *
- * Spins up a single shared worker on first use, multiplexes
- * concurrent requests via a `nextId` epoch, and routes each
- * response to the right caller. Stale responses (whose epoch is
- * older than the latest issued one) are dropped — this is what
- * makes "fast-switching domains" feel snappy: each switch posts a
- * new request, the worker's still finishing the previous one, but
- * by the time it does we already don't care about that result.
+ * Exposes two request functions:
+ *   - `requestLayout3D` — d3-force-3d simulation + network metrics
+ *   - `requestLayout2D` — d3-force-2d simulation + network metrics
+ *
+ * Both share a single worker instance (lazily spun up on first use)
+ * and multiplex concurrent requests via a monotonic `nextId`. Stale
+ * responses (whose epoch is older than the caller's latest issued id)
+ * are dropped — this is what makes fast topology switches feel
+ * snappy: each switch posts a new request, the worker's still
+ * finishing the previous one, but by the time it does we already
+ * don't care about that result.
  *
  * SSR fallback: when `window` is undefined (Next.js server render,
- * test env), fall back to a synchronous compute on the same module
- * so the API surface is identical. This module is imported from
- * `CausalDAG3D`, which is itself `next/dynamic({ ssr: false })`, so
- * the SSR branch shouldn't fire in production — but it keeps the
- * Promise contract honest for vitest and any future test that
- * exercises this client directly.
+ * test env), fall back to a synchronous compute via dynamic import.
+ * This module is imported from `CausalDAG3D` / `CausalDAG2D`, both
+ * of which are themselves `next/dynamic({ ssr: false })`, so the
+ * SSR branch shouldn't fire in production — but it keeps the
+ * Promise contract honest under vitest jsdom.
  */
 import type { NodePosition, NodeMetrics } from "@/lib/graph-layout";
+import type { Position2D } from "@/lib/graph-layout-2d";
 import type { CausalNode, CausalEdge } from "@/lib/types";
 
 export interface LayoutResult {
   positions: NodePosition[];
   metrics: Record<string, NodeMetrics>;
 }
+export interface Layout2DResult {
+  positions2d: Map<string, Position2D>;
+  metrics: Record<string, NodeMetrics>;
+}
 
 interface WorkerResponse {
   id: number;
-  positions: NodePosition[];
+  kind: "layout3d" | "layout2d";
+  positions?: NodePosition[];
+  positions2d?: Map<string, Position2D>;
   metrics: Record<string, NodeMetrics>;
 }
 
 let worker: Worker | null = null;
 let nextId = 0;
-const pending = new Map<number, (r: LayoutResult) => void>();
+// Promise resolvers, keyed by request id. Untyped because we route on
+// the response's `kind` field — the public API guarantees the right
+// shape comes back per call.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pending = new Map<number, (r: any) => void>();
 
 function ensureWorker(): Worker | null {
   if (typeof window === "undefined" || typeof Worker === "undefined") {
     return null;
   }
   if (worker) return worker;
-  // Standard module-worker URL pattern. Next.js / webpack 5 + Turbopack
-  // both recognise `new URL(..., import.meta.url)` as a worker chunk
-  // boundary and emit a separate bundle.
   worker = new Worker(new URL("./layout3d-worker.ts", import.meta.url), {
     type: "module",
   });
   worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-    const { id, positions, metrics } = e.data;
+    const { id, kind } = e.data;
     const resolve = pending.get(id);
-    if (resolve) {
-      pending.delete(id);
-      resolve({ positions, metrics });
+    if (!resolve) return;
+    pending.delete(id);
+    if (kind === "layout3d") {
+      resolve({ positions: e.data.positions!, metrics: e.data.metrics });
+    } else {
+      resolve({ positions2d: e.data.positions2d!, metrics: e.data.metrics });
     }
   };
   worker.onerror = (err) => {
-    // Surface in dev; the caller will keep waiting on the Promise. A
-    // future iteration could reject pending Promises here, but for the
-    // tight loop of "graph topology changed → re-layout" the safer
-    // path on a transient worker error is to leave the previous
-    // positions on screen.
-    console.error("[layout3d-worker] error:", err);
+    console.error("[layout-worker] error:", err);
   };
   return worker;
 }
 
 /**
- * Compute layout + network metrics for a graph, returning a Promise.
- *
- * Each invocation gets a monotonically-increasing `id`. The caller
- * can compare the resolved `id` against the latest issued id (kept
- * by `getLatestRequestId`) to detect stale responses, but the
- * simpler pattern — and what CausalDAG3D uses — is to track its
- * own "current request" ref and only apply the response if it
- * matches.
+ * Compute 3D layout + network metrics, off the main thread.
  */
 export function requestLayout3D(
   nodes: CausalNode[],
@@ -83,8 +85,6 @@ export function requestLayout3D(
   const w = ensureWorker();
   const id = nextId++;
   if (!w) {
-    // SSR / test fallback — synchronous compute. The dynamic import
-    // keeps the d3-force-3d dep out of the SSR bundle path.
     const result = import("@/lib/graph-layout").then(
       ({ computeLayout3D, computeNetworkMetrics }) => ({
         positions: computeLayout3D(nodes, edges, prev),
@@ -95,7 +95,37 @@ export function requestLayout3D(
   }
   const promise = new Promise<LayoutResult>((resolve) => {
     pending.set(id, resolve);
-    w.postMessage({ id, nodes, edges, prev });
+    w.postMessage({ id, kind: "layout3d", nodes, edges, prev });
+  });
+  return Object.assign(promise, { id });
+}
+
+/**
+ * Compute 2D layout + network metrics, off the main thread.
+ *
+ * 2D doesn't support a warm-start `prev` argument (its sim is
+ * cheaper to run cold than to incrementally update for one
+ * topology change), so the signature stays minimal.
+ */
+export function requestLayout2D(
+  nodes: CausalNode[],
+  edges: CausalEdge[],
+): Promise<Layout2DResult> & { id: number } {
+  const w = ensureWorker();
+  const id = nextId++;
+  if (!w) {
+    const result = import("@/lib/graph-layout-2d").then(async ({ compute2DForceLayout }) => {
+      const { computeNetworkMetrics } = await import("@/lib/graph-layout");
+      return {
+        positions2d: compute2DForceLayout(nodes, edges),
+        metrics: computeNetworkMetrics(nodes, edges),
+      };
+    });
+    return Object.assign(result, { id });
+  }
+  const promise = new Promise<Layout2DResult>((resolve) => {
+    pending.set(id, resolve);
+    w.postMessage({ id, kind: "layout2d", nodes, edges });
   });
   return Object.assign(promise, { id });
 }

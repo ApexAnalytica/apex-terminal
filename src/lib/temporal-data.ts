@@ -1,7 +1,13 @@
 import type { CausalNode, CausalEdge, OmegaFragilityProfile } from "./types";
 
 // ─── Temporal Types ──────────────────────────────────────────────
-export type TimeGranularity = "hour" | "day" | "week" | "month";
+// The short presets (hour/day/week/month) cover fast-moving signals (FRED
+// daily, EIA 5-min). The long presets (year/5year/all) cover annual-cadence
+// signals — World Bank annual series, WGI governance — whose published
+// history spans decades. Without these, the dial maxed out at 30 days and
+// annual data always rendered as a flat hold-forward line. See PR #381
+// (2026-05-21 user feedback after the live-data coverage finale).
+export type TimeGranularity = "hour" | "day" | "week" | "month" | "year" | "5year" | "all";
 
 export interface TemporalEvent {
   id: string;

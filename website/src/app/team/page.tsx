@@ -56,7 +56,7 @@ const ADVISORS = [
     scholar: "https://scholar.google.com/citations?user=BLx3FSQAAAAJ",
     expertise: "Natural-disaster risk, climate change, and infrastructure vulnerability.",
     background:
-      "Associate Research Scientist at Johns Hopkins University. Former Senior Consultant at the World Bank.",
+      "Associate Research Scientist at Johns Hopkins University. Senior Consultant at the World Bank.",
   },
   {
     name: "Dr. Arnesh Telukdarie",

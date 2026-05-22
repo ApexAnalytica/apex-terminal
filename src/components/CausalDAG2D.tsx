@@ -40,6 +40,7 @@ import {
   type Position2D,
 } from "@/lib/graph-layout-2d";
 import { computeNetworkMetrics, type NodeMetrics } from "@/lib/graph-layout";
+import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
 import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
@@ -102,7 +103,7 @@ function computeNodeEmphasis(
 }
 
 function CausalNode2D({ data, selected, id }: NodeProps) {
-  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics } = data as {
+  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics, activationOrdinal } = data as {
     label: string;
     category: string;
     domain: string;
@@ -111,6 +112,7 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
     datasetColor?: string;
     shockIntensity?: number;
     metrics?: NodeMetrics;
+    activationOrdinal?: number;
   };
   const { adjacency, hoveredNodeId } = useContext(Dag2DContext);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -191,6 +193,44 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
       <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
       <Handle type="target" position={Position.Left} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="left-target" />
       <Handle type="source" position={Position.Right} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="right-source" />
+
+      {/* Cascade sequence badge. Mirrors the 3D affordance (yellow
+           pill anchored to the upper-right of the orb) so analysts get
+           the same propagation-order readout regardless of view mode.
+           Only renders during replay — when `activationOrdinal` is
+           undefined the badge is absent entirely. */}
+      {activationOrdinal !== undefined && (
+        <div
+          className="absolute pointer-events-none z-10"
+          style={{
+            top: -6,
+            right: -6,
+            minWidth: 16,
+            height: 16,
+            padding: "0 4px",
+            fontFamily: "monospace",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#0a0c14",
+            backgroundColor: "#ffd54f",
+            border: "1px solid rgba(10,12,20,0.7)",
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+            userSelect: "none",
+          }}
+          title={`Activation order: ${activationOrdinal} — fired ${
+            activationOrdinal === 1
+              ? "first"
+              : "after " + (activationOrdinal - 1) + " other node" + (activationOrdinal === 2 ? "" : "s")
+          } in the current cascade`}
+        >
+          {activationOrdinal}
+        </div>
+      )}
 
       <motion.div
         className="rounded-full absolute inset-0"
@@ -675,6 +715,14 @@ function CausalDAG2DInner() {
       ? replayEpochs[clampedEpoch] ?? null
       : null;
 
+  // 1-indexed activation order per node — mirrors the 3D canvas wiring
+  // so both views show the same propagation-sequence badges during
+  // replay. Outside replay this is an empty map and no badges render.
+  const activationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
+    return cascadeActivationOrder(replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch]);
+
   const CONTRACTION = 0.18;
 
   // Force-directed layout. Cached positions come from a one-shot offline
@@ -866,10 +914,11 @@ function CausalDAG2DInner() {
           datasetColor: n.datasetColor,
           shockIntensity: epochShock,
           metrics: networkMetrics[n.id],
+          activationOrdinal: activationOrder.get(n.id),
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics, activationOrder]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {

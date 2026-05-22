@@ -8,9 +8,13 @@ import { defineTool } from "./tool-registry";
 import { getPresetShocks } from "../omega-engine";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { buildGraphFromDomains } from "@/lib/build-domain-graph";
-import { solveInterdiction, type InterdictionCandidate } from "../interdiction-engine";
+import {
+  solveInterdictionAsync,
+  type InterdictionCandidate,
+} from "../interdiction-engine";
 import type { ApexState } from "@/stores/useApexStore";
 import type { CausalNode, CausalGraph } from "../types";
+import { AXIOM_LIBRARY } from "../tarski-data";
 
 // ─── Selection ──────────────────────────────────────────────────
 
@@ -301,9 +305,14 @@ defineTool({
     budget: { type: "number", min: 1, max: 10, default: 3, description: "Max number of cuts" },
     mode: { type: "enum", values: ["edge", "node", "both"] as const, default: "edge" },
   },
-  handler: ({ budget, mode }, ctx) => {
+  // Async handler so the registry's `await tool.handler(...)` lets the
+  // chunked minimax solver yield to the event loop between candidates.
+  // Without this the copilot's "solve interdiction" tool would re-freeze
+  // the UI for the full 5–15s sync solve, even after PR #356 made the
+  // React-component CASCADE DEFENSE non-blocking.
+  handler: async ({ budget, mode }, ctx) => {
     const store = ctx.getStore();
-    const result = solveInterdiction(
+    const result = await solveInterdictionAsync(
       store.graphData,
       store.shocks,
       store.severedEdges,
@@ -617,5 +626,186 @@ defineTool({
   handler: (_params, ctx) => {
     ctx.getStore().resetAblation();
     return "Reset all ablations";
+  },
+});
+
+// ─── Bulk-remove restricted nodes ────────────────────────────────
+//
+// Closes a tool-surface gap: "remove all the redlined nodes that
+// violated Tarski axioms" had no single-tool answer. The LLM
+// would describe the action without emitting it, leaving the user
+// staring at unchanged restricted nodes. This tool turns that
+// intent into one action: ablate every node currently in
+// `tarskiReport.restrictedNodeIds`, optionally narrowed to those
+// flagged by a specific axiom.
+
+defineTool({
+  name: "remove_restricted_nodes",
+  description:
+    "Ablate every Tarski-flagged restricted node (the redlined ones). Removes them from downstream analysis — symmetric with reset_ablation. Optional axiom param narrows the removal to nodes flagged by a specific axiom (by id or name substring, case-insensitive).",
+  guidance:
+    "Use whenever the user says any of: 'remove restricted/redlined/flagged nodes', 'clean up the graph based on Tarski', 'drop the axiom violations', 'show only the verified subgraph by removing the bad nodes', or names a specific axiom to filter on (e.g. 'remove nodes that failed the temporal-priority axiom'). This actually mutates the graph (via ablation); set_truth_filter:verified only hides them visually — pick this tool when the user wants real removal.",
+  params: {
+    axiom: {
+      type: "string",
+      description: "Optional. Axiom id (e.g. A-01) OR a substring of the axiom name. Case-insensitive. Omit to remove ALL restricted nodes.",
+    },
+  },
+  handler: ({ axiom }, ctx) => {
+    const store = ctx.getStore();
+    const report = store.tarskiReport;
+    if (!report) {
+      return "No Tarski report available. Run Tarski validation first, then retry.";
+    }
+    if (report.restrictedNodeIds.size === 0) {
+      return "No restricted nodes to remove — graph is already Tarski-clean.";
+    }
+
+    // Resolve the optional axiom filter into a Set<string> of
+    // matching axiom ids. The user can pass either the id directly
+    // ("A-01") or a substring of the axiom name ("temporal
+    // priority", "multi-int fusion", etc).
+    let axiomIds: Set<string> | null = null;
+    if (axiom && axiom.trim() !== "") {
+      const q = axiom.trim().toLowerCase();
+      const matches = AXIOM_LIBRARY.filter(
+        (a) =>
+          a.id.toLowerCase() === q ||
+          a.id.toLowerCase().includes(q) ||
+          a.name.toLowerCase().includes(q),
+      );
+      if (matches.length === 0) {
+        return `No Tarski axiom matched "${axiom}". Examples: A-01 (Temporal Priority), A-04 (Hormuz Chokepoint), R-01 (Jurisdictional Concentration).`;
+      }
+      axiomIds = new Set(matches.map((a) => a.id));
+    }
+
+    // Resolve the candidate node set. With no filter: every
+    // restricted node. With a filter: only nodes whose proof
+    // traces include at least one matching axiom id. Proof
+    // traces are per-edge, so we promote edge → both endpoints
+    // to get the node set.
+    let candidateIds: Set<string>;
+    if (axiomIds === null) {
+      candidateIds = new Set(report.restrictedNodeIds);
+    } else {
+      candidateIds = new Set<string>();
+      for (const trace of report.proofTraces) {
+        if (!trace.violatedAxioms.some((id) => axiomIds!.has(id))) continue;
+        const edge = store.graphData.edges.find((e) => e.id === trace.edgeId);
+        if (!edge) continue;
+        // Only ablate endpoints that are themselves flagged as
+        // restricted — staying within the Tarski-flagged set.
+        if (report.restrictedNodeIds.has(edge.source)) candidateIds.add(edge.source);
+        if (report.restrictedNodeIds.has(edge.target)) candidateIds.add(edge.target);
+      }
+      if (candidateIds.size === 0) {
+        return `No restricted nodes match axiom "${axiom}".`;
+      }
+    }
+
+    // Skip nodes that are already ablated (toggle would un-ablate
+    // them — wrong direction). Then toggle each remaining one.
+    const alreadyAblated = new Set(store.ablatedNodeIds);
+    const toAblate = [...candidateIds].filter((id) => !alreadyAblated.has(id));
+
+    if (toAblate.length === 0) {
+      return `All ${candidateIds.size} matching restricted node(s) are already ablated.`;
+    }
+
+    // Turn ablation mode on so the rendering layer hides the
+    // ablated subgraph. Then ablate one node at a time — the
+    // store handler auto-ablates each node's connected edges.
+    store.setAblationMode(true);
+    for (const id of toAblate) {
+      store.toggleAblatedNode(id);
+    }
+
+    // Build a human-readable summary referencing labels where
+    // possible. The LLM uses this to explain what it did.
+    const preview = toAblate
+      .slice(0, 5)
+      .map((id) => store.graphData.nodes.find((n) => n.id === id)?.shortLabel ?? id);
+    const more = toAblate.length > 5 ? ` (+${toAblate.length - 5} more)` : "";
+    const scope = axiom ? ` matching axiom "${axiom}"` : "";
+    return (
+      `Removed ${toAblate.length} restricted node${toAblate.length === 1 ? "" : "s"}${scope}: ` +
+      `${preview.join(", ")}${more}. ` +
+      `Use reset_ablation to restore them.`
+    );
+  },
+});
+
+// ─── TTS voice picker ────────────────────────────────────────────
+//
+// Lets the user say "switch to Matthew" or "use a British male
+// voice" and have the copilot actually update the TTS voice.
+// Before this tool, the voice was hardcoded to "first available
+// British female" — fine as a default, but no way to override.
+//
+// We do a case-insensitive substring match on the available
+// SpeechSynthesisVoice names. Store field is just a string; the
+// next speakText() call uses it via the existing override path.
+
+defineTool({
+  name: "set_voice",
+  description:
+    "Change the TTS voice the AI speaks in. Accepts a voice name OR a substring (case-insensitive). Examples: 'Matthew', 'Samantha', 'Daniel', 'British', 'female'. Pass an empty string to clear the override and fall back to the British-female default.",
+  guidance:
+    "Fire whenever the user says 'switch to X voice', 'use the X voice', 'change your voice to X', or names a different speaker. The match is fuzzy — 'matthew' matches 'Microsoft Matthew - English (United States)', 'british male' matches 'Daniel (en-GB)'. If the user's intended voice isn't installed on the machine the call returns a clear error listing what IS available.",
+  params: {
+    name: {
+      type: "string",
+      required: true,
+      description:
+        "Substring of the desired voice name. Empty string resets to the default (British female).",
+    },
+  },
+  legacyParam: "name",
+  handler: ({ name }, ctx) => {
+    const store = ctx.getStore();
+    const trimmed = (name ?? "").trim();
+
+    // Empty string = clear override → fall back to British female.
+    if (trimmed === "") {
+      store.setPreferredVoiceName(null);
+      return "Cleared voice override — using British female default on next response.";
+    }
+
+    // Browser-only: getVoices is on window.speechSynthesis.
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      // Still set the override — speakText falls back gracefully.
+      store.setPreferredVoiceName(trimmed);
+      return `Voice override set to "${trimmed}" (speech synthesis not available in this environment to verify).`;
+    }
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      // Voices load asynchronously in some browsers — set the
+      // override anyway, speakText will resolve it later.
+      store.setPreferredVoiceName(trimmed);
+      return `Voice override set to "${trimmed}" — will activate on the next response (voice list still loading).`;
+    }
+
+    const q = trimmed.toLowerCase();
+    const match = voices.find((v) => v.name.toLowerCase().includes(q));
+
+    if (!match) {
+      // Don't persist a bad override — leave the previous default
+      // intact. Show the user a sample of available voices so they
+      // can pick again.
+      const sample = voices
+        .filter((v) => v.lang.startsWith("en"))
+        .slice(0, 8)
+        .map((v) => `${v.name} (${v.lang})`)
+        .join(", ");
+      return (
+        `No voice on this machine matches "${trimmed}". ` +
+        `Available English voices: ${sample}${voices.length > 8 ? ", …" : ""}.`
+      );
+    }
+
+    store.setPreferredVoiceName(trimmed);
+    return `Voice switched to ${match.name} (${match.lang}). Takes effect on the next response.`;
   },
 });

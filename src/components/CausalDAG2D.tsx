@@ -40,6 +40,7 @@ import {
   type Position2D,
 } from "@/lib/graph-layout-2d";
 import { computeNetworkMetrics, type NodeMetrics } from "@/lib/graph-layout";
+import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
 import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
@@ -102,7 +103,7 @@ function computeNodeEmphasis(
 }
 
 function CausalNode2D({ data, selected, id }: NodeProps) {
-  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics } = data as {
+  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics, activationOrdinal, isAblated } = data as {
     label: string;
     category: string;
     domain: string;
@@ -111,6 +112,8 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
     datasetColor?: string;
     shockIntensity?: number;
     metrics?: NodeMetrics;
+    activationOrdinal?: number;
+    isAblated?: boolean;
   };
   const { adjacency, hoveredNodeId } = useContext(Dag2DContext);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -175,13 +178,19 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
   const isHoverDriven = hoveredNodeId !== null;
   const dimOpacity = isHoverDriven ? 0.18 : 0.5;
 
+  // Ablated orbs are dimmed hard (mirrors the 3D `0.15` treatment in
+  // DAGNode3D). Ablation takes priority over the hover/select dim
+  // because an ablated node is functionally removed from the cascade
+  // and should read that way regardless of any other state.
+  const finalOpacity = isAblated ? 0.15 : isDim ? dimOpacity : 1;
+
   return (
     <motion.div
       className="relative"
       style={{
         width: diameter,
         height: diameter,
-        opacity: isDim ? dimOpacity : 1,
+        opacity: finalOpacity,
         transition: "opacity 180ms ease-out",
       }}
       animate={isRinged ? { scale: 1.1 } : { scale: 1 }}
@@ -191,6 +200,44 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
       <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
       <Handle type="target" position={Position.Left} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="left-target" />
       <Handle type="source" position={Position.Right} style={{ background: "transparent", border: "none", width: 0, height: 0 }} id="right-source" />
+
+      {/* Cascade sequence badge. Mirrors the 3D affordance (yellow
+           pill anchored to the upper-right of the orb) so analysts get
+           the same propagation-order readout regardless of view mode.
+           Only renders during replay — when `activationOrdinal` is
+           undefined the badge is absent entirely. */}
+      {activationOrdinal !== undefined && (
+        <div
+          className="absolute pointer-events-none z-10"
+          style={{
+            top: -6,
+            right: -6,
+            minWidth: 16,
+            height: 16,
+            padding: "0 4px",
+            fontFamily: "monospace",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#0a0c14",
+            backgroundColor: "#ffd54f",
+            border: "1px solid rgba(10,12,20,0.7)",
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+            userSelect: "none",
+          }}
+          title={`Activation order: ${activationOrdinal} — fired ${
+            activationOrdinal === 1
+              ? "first"
+              : "after " + (activationOrdinal - 1) + " other node" + (activationOrdinal === 2 ? "" : "s")
+          } in the current cascade`}
+        >
+          {activationOrdinal}
+        </div>
+      )}
 
       <motion.div
         className="rounded-full absolute inset-0"
@@ -563,21 +610,32 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   // `adjacency` import — only nodes need it; edges go via source/target.
   void adjacency;
 
-  // χ★ midpoint marker geometry. Diamond = 45°-rotated square; SVG
-  // <polygon> takes the four vertex coordinates.
-  const CHI_HALF = 5;
-  const chiStarPolygon =
-    midX !== null && midY !== null
-      ? `${midX},${midY - CHI_HALF} ${midX + CHI_HALF},${midY} ${midX},${midY + CHI_HALF} ${midX - CHI_HALF},${midY}`
-      : null;
-  const showChiStarMarker =
+  // χ★ edge outline — renders BEFORE the BaseEdge so the cyan/amber
+  // main line draws on top, leaving a thin violet ring around it.
+  // Solid for strict bridges, dashed for top-BES. Replaces the
+  // earlier midpoint-diamond approach (filled vs hollow polygon at
+  // the line midpoint) — on long edges the midpoint was visually
+  // disconnected from the edge itself, and filled/hollow was too
+  // subtle to distinguish at a glance. Tracing the full line makes
+  // the χ★ signal visible anywhere you look at the edge.
+  const showChiStarOutline =
     d.chiStarTier !== null &&
     !isThisSelected &&
-    d.propagationSignal === 0 &&
-    chiStarPolygon !== null;
+    d.propagationSignal === 0;
 
   return (
     <>
+      {showChiStarOutline && (
+        <path
+          d={edgePath}
+          stroke="#7B68EE"
+          strokeWidth={strokeWidth + 2.5}
+          strokeDasharray={d.chiStarTier === "top-bes" ? "4 3" : undefined}
+          fill="none"
+          opacity={opacity * 0.7}
+          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
+        />
+      )}
       <BaseEdge
         id={id}
         path={edgePath}
@@ -590,24 +648,6 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
           transition: "opacity 180ms ease-out",
         }}
       />
-      {/* χ★ midpoint marker — discrete violet diamond at the edge
-          midpoint instead of a halo, so the load-bearing skeleton
-          reads as a constellation of pips rather than smudging the
-          cyan / amber edge color. Two tiers: filled diamond for
-          strict bridges (cutting disconnects the graph), hollow
-          outline for top-BES (high shortest-path load without
-          disconnecting). Skipped on the selected edge + during
-          propagation flash so those signals stay unambiguous. */}
-      {showChiStarMarker && (
-        <polygon
-          points={chiStarPolygon!}
-          fill={d.chiStarTier === "bridge" ? "#7B68EE" : "none"}
-          stroke="#7B68EE"
-          strokeWidth={1.5}
-          opacity={opacity * 0.95}
-          style={{ transition: "opacity 180ms ease-out", pointerEvents: "none" }}
-        />
-      )}
     </>
   );
 }
@@ -674,6 +714,24 @@ function CausalDAG2DInner() {
     replayActive && replayEpochs.length > 0
       ? replayEpochs[clampedEpoch] ?? null
       : null;
+
+  // 1-indexed activation order per node — mirrors the 3D canvas wiring
+  // so both views show the same propagation-sequence badges during
+  // replay. Outside replay this is an empty map and no badges render.
+  const activationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
+    return cascadeActivationOrder(replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch]);
+
+  // Global ablation set — hoisted up so the node-builder useMemo
+  // below can dim ablated nodes. The store hooks themselves live a
+  // bit lower (next to the click handlers); we read the array here
+  // and read the actions there.
+  const ablatedNodeIdsForBuilder = useApexStore((s) => s.ablatedNodeIds);
+  const ablatedNodeSet = useMemo(
+    () => new Set(ablatedNodeIdsForBuilder),
+    [ablatedNodeIdsForBuilder],
+  );
 
   const CONTRACTION = 0.18;
 
@@ -866,10 +924,12 @@ function CausalDAG2DInner() {
           datasetColor: n.datasetColor,
           shockIntensity: epochShock,
           metrics: networkMetrics[n.id],
+          activationOrdinal: activationOrder.get(n.id),
+          isAblated: ablatedNodeSet.has(n.id),
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics, activationOrder, ablatedNodeSet]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {
@@ -1000,6 +1060,13 @@ function CausalDAG2DInner() {
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  // Ablation mode is global — when on, clicks across every visual
+  // toggle ablation instead of selection. Mirrors the 3D wiring; the
+  // canonical handler is `ablationMode ? toggleAblatedNode : setSelectedNode`.
+  // (The `ablatedNodeSet` Set used by the node-builder memo above is
+  // declared earlier — re-deriving here would shadow it.)
+  const ablationMode = useApexStore((s) => s.ablationMode);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
 
   // Hand-rolled shift+drag marquee. We bypass React Flow's built-in
   // selection (which is unreliable when combined with panOnDrag) and
@@ -1095,9 +1162,17 @@ function CausalDAG2DInner() {
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
       setSelectedEdge(null);
-      setSelectedNode(rfNode.id);
+      // In ablation mode, clicks toggle ablation instead of moving the
+      // selection. Matches the 3D / Map / Relief behaviour so the
+      // affordance is identical regardless of which view the user
+      // happens to be in.
+      if (ablationMode) {
+        toggleAblatedNode(rfNode.id);
+      } else {
+        setSelectedNode(rfNode.id);
+      }
     },
-    [setSelectedNode]
+    [setSelectedNode, ablationMode, toggleAblatedNode]
   );
 
   const onPaneClick = useCallback(() => {

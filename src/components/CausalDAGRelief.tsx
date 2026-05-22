@@ -861,6 +861,15 @@ function CausalDAGReliefInner() {
   const graphData = useFilteredGraph();
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  // Ablation mode is global — click on a mountain peak in ablation
+  // mode toggles the underlying node instead of selecting it, and
+  // ablated nodes get their composite zeroed so the mountain sinks
+  // into the terrain (visible "removed from cascade" treatment that
+  // works on a heightmap where opacity doesn't apply the same way).
+  const ablationMode = useApexStore((s) => s.ablationMode);
+  const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
+  const ablatedNodeSet = useMemo(() => new Set(ablatedNodeIds), [ablatedNodeIds]);
   const [pickHint, setPickHint] = useState<string | null>(null);
   // χ★ overlay toggle. Default OFF: Relief is for the fragility heat
   // distribution; the chokepoint structure is a separate question
@@ -954,11 +963,24 @@ function CausalDAGReliefInner() {
         };
       });
     }
+    // Ablated nodes get their composite zeroed BEFORE the field-input
+    // builds the heightmap — the corresponding mountain sinks into the
+    // baseline terrain, which is the heightmap-native way to render
+    // "functionally removed from the cascade." Applied after the
+    // snapshot override so an ablated node stays sunk even if the
+    // simulator was about to put it under stress.
+    if (ablatedNodeSet.size > 0) {
+      nodes = nodes.map((n) =>
+        ablatedNodeSet.has(n.id)
+          ? { ...n, omegaFragility: { ...n.omegaFragility, composite: 0 } }
+          : n,
+      );
+    }
     if (isolateSelection && multiSelectedSet.size > 0) {
       nodes = nodes.filter((n) => multiSelectedSet.has(n.id));
     }
     return nodes;
-  }, [graphData.nodes, currentSnapshot, isolateSelection, multiSelectedSet]);
+  }, [graphData.nodes, currentSnapshot, isolateSelection, multiSelectedSet, ablatedNodeSet]);
 
   const surfaceTint =
     !isolateSelection && multiSelectedSet.size > 0 ? 0.4 : 1;
@@ -1080,6 +1102,18 @@ function CausalDAGReliefInner() {
       activeField,
     );
     if (id) {
+      if (ablationMode) {
+        // In ablation mode, picking a peak toggles ablation of that
+        // node — same semantics as 3D / 2D / Map. We still surface
+        // the pickHint so the user sees which node was hit.
+        toggleAblatedNode(id);
+        const node = graphData.nodes.find((n) => n.id === id);
+        setPickHint(
+          node ? `${node.label} — ${ablatedNodeSet.has(id) ? "restored" : "ablated"}` : id,
+        );
+        window.setTimeout(() => setPickHint(null), 1400);
+        return;
+      }
       setSelectedNode(id);
       const node = graphData.nodes.find((n) => n.id === id);
       setPickHint(node?.label ?? id);

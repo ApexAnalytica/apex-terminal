@@ -58,8 +58,17 @@ export interface OfacSdnFeed {
   source: string;
 }
 
-/** OFAC publishes the canonical SDN file at this Treasury URL (pipe-delimited CSV). */
-export const OFAC_SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv";
+/**
+ * OFAC publishes the canonical SDN file at this URL. Treasury migrated
+ * the export from `www.treasury.gov/ofac/downloads/sdn.csv` to the
+ * `sanctionslistservice.ofac.treas.gov` host; the legacy URL still 302s
+ * to here, but we point directly at the new host to save the redirect
+ * round-trip. Format also flipped from pipe-delimited to comma-delimited
+ * during the move — the parser auto-detects the delimiter on the first
+ * row so we keep working if Treasury flips back.
+ */
+export const OFAC_SDN_URL =
+  "https://sanctionslistservice.ofac.treas.gov/api/publicationpreview/exports/sdn.csv";
 
 /** Resolve an OFAC program token to a country code. Returns null when the
  *  program isn't bound to a single jurisdiction (cyber, SDGT, NPWMD, etc.). */
@@ -74,24 +83,45 @@ export function programToCountry(program: string): { code: string; country: stri
 /**
  * Parse OFAC SDN.csv text into a per-jurisdiction summary.
  *
- * The OFAC SDN file is pipe-delimited (despite the .csv extension). Columns:
- *   ent_num | SDN_Name | SDN_Type | Program | Title | Call_Sign |
- *   Vess_type | Tonnage | GRT | Vess_flag | Vess_owner | Remarks
+ * Columns (unchanged across format revisions):
+ *   ent_num , SDN_Name , SDN_Type , Program , Title , Call_Sign ,
+ *   Vess_type , Tonnage , GRT , Vess_flag , Vess_owner , Remarks
  *
  * The Program field is itself semicolon-separated (e.g. "IRAN; IRAN-EO13599").
- * Quoted fields containing pipes are unwrapped — defensive against future
- * rows but the official file historically does not embed pipes.
+ *
+ * Historically Treasury served this as a pipe-delimited file (despite the
+ * .csv extension) but they switched to comma-delimited with quoted strings
+ * at some point — likely when the file moved from `treasury.gov` to
+ * `sanctionslistservice.ofac.treas.gov`. The parser now auto-detects the
+ * delimiter on the first non-empty row: if it contains a `|`, the file is
+ * pipe-delimited; otherwise comma-delimited. This way we keep working if
+ * Treasury flips back without code changes.
+ *
+ * Empty fields in the comma-delimited file are encoded as `-0-` (a SDN
+ * convention) rather than an empty token. We treat both `-0-` and `""` as
+ * empty when extracting the Program column.
  */
 export function parseOfacSdnCsv(csv: string): OfacSdnFeed {
   const lines = csv.split(/\r?\n/).filter((l) => l.length > 0);
   const jurisdictions: Record<string, OfacJurisdictionEntry> = {};
   let totalEntries = 0;
 
+  // Auto-detect delimiter on the first non-empty line. Pipe wins if present
+  // (the historic format); fall back to comma (the new format).
+  const delimiter = lines.length > 0 && lines[0].includes("|") ? "|" : ",";
+
   for (const line of lines) {
-    const fields = splitPipeRow(line);
+    const fields = splitDelimitedRow(line, delimiter);
     if (fields.length < 4) continue;
-    const programField = fields[3] ?? "";
-    const programs = programField.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+    const rawProgramField = fields[3]?.trim() ?? "";
+    // `-0-` is the SDN convention for "empty" in the comma-delimited
+    // export; treat it the same as a literal empty string so we don't
+    // count empty-program rows.
+    if (rawProgramField === "" || rawProgramField === "-0-") continue;
+    const programs = rawProgramField
+      .split(/[;,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s !== "-0-");
     if (programs.length === 0) continue;
     totalEntries += 1;
 
@@ -124,8 +154,14 @@ export function parseOfacSdnCsv(csv: string): OfacSdnFeed {
   };
 }
 
-/** Split a pipe-delimited line, honouring `"..."` quoted fields. */
-function splitPipeRow(line: string): string[] {
+/**
+ * Split a delimited line honouring `"..."` quoted fields. Used for both
+ * the historic pipe-delimited and the current comma-delimited OFAC SDN
+ * exports — `parseOfacSdnCsv` picks the delimiter based on what the
+ * upstream file actually contains. Quote-handling logic is identical
+ * across delimiters; only the field separator changes.
+ */
+function splitDelimitedRow(line: string, delimiter: string): string[] {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -135,7 +171,7 @@ function splitPipeRow(line: string): string[] {
       inQuotes = !inQuotes;
       continue;
     }
-    if (ch === "|" && !inQuotes) {
+    if (ch === delimiter && !inQuotes) {
       out.push(cur);
       cur = "";
       continue;

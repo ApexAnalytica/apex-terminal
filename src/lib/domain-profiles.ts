@@ -309,6 +309,13 @@ export const T1D_PROFILE: DomainProfile = {
     "nlme",
     "hlm-cross-species",
   ],
+  // F → "hypoglycemic episode (CGM < 70 mg/dL) within next 30 minutes"
+  // event rate, derived from the live D1NAMO csd-fit-hypo-calibration
+  // run (PR #200): 9 T1D subjects, 8,102 (F, label) pairs, AUROC 0.589
+  // on F → hypo. Real CGM substrate, real labelled hypos. The reference
+  // is a thin shape-conversion of the existing calibration JSON via
+  // scripts/build-d1namo-relevance-reference.ts.
+  relevanceReferenceId: "d1namo-cgm-hypo",
 };
 
 // ─── AI Safety / IDS — endogenous catastrophic failure in AI systems ─

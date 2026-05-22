@@ -60,7 +60,14 @@ function CausalDAGMapInner() {
     selectedNodes,
     setSelectedNodes,
     isolateSelection,
+    // Global ablation state. Click in ablation mode toggles ablation
+    // instead of selection; ablated nodes paint with low opacity so
+    // they read as "removed from the cascade" the way they do in 3D.
+    ablationMode,
+    ablatedNodeIds,
+    toggleAblatedNode,
   } = useApexStore();
+  const ablatedNodeSet = useMemo(() => new Set(ablatedNodeIds), [ablatedNodeIds]);
   // Use the same filtered graph as 2D and 3D views for consistent data
   const activeGraph = useFilteredGraph();
 
@@ -176,14 +183,15 @@ function CausalDAGMapInner() {
         node.datasetColor ??
         getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
-      // Two dim modes:
-      //  - isolate ON  → opacity 0.15 (existing behaviour)
-      //  - isolate OFF → opacity 0.35 (multi-select spotlight, matches 2D
-      //    where multiSelected.length > 0 alone dims non-selected nodes)
+      // Three dim modes (in priority order):
+      //  - ablated     → opacity 0.15 (mirror 3D / 2D — wins regardless)
+      //  - isolate ON  → opacity 0.15
+      //  - multi-select with isolate OFF → opacity 0.35
       const isMultiSelectActive = selectedSet.size > 0;
       const isOutOfScope = isMultiSelectActive && !selectedSet.has(node.id);
-      const isDimmed = isOutOfScope;
-      const dimOpacity = isolateSelection ? 0.15 : 0.35;
+      const isAblated = ablatedNodeSet.has(node.id);
+      const isDimmed = isAblated || isOutOfScope;
+      const dimOpacity = isAblated ? 0.15 : isolateSelection ? 0.15 : 0.35;
       const omega = node.omegaFragility.composite;
 
       return {
@@ -199,6 +207,7 @@ function CausalDAGMapInner() {
           color: domainColor,
           isSelected,
           isDimmed,
+          isAblated,
           // Size based on omega score
           radius: Math.max(4, omega * 1.2),
           opacity: isDimmed ? dimOpacity : 1,
@@ -208,7 +217,7 @@ function CausalDAGMapInner() {
       };
     });
     return { type: "FeatureCollection", features };
-  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection]);
+  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection, ablatedNodeSet]);
 
   // Build GeoJSON for edges — split into solid and dashed to match 3D conventions:
   //   directed  → cyan (#00e5ff) — solid
@@ -244,7 +253,7 @@ function CausalDAGMapInner() {
     };
   }, [activeGraph]);
 
-  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarMarkerGeoJSON } = useMemo(() => {
+  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarOutlineGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
       nodeMap.set(
@@ -256,12 +265,16 @@ function CausalDAGMapInner() {
     const selectedSet = new Set(selectedNodes);
     const solidFeatures: Feature<LineString>[] = [];
     const dashedFeatures: Feature<LineString>[] = [];
-    // χ★ midpoint markers — discrete violet pips at each χ★ edge's
-    // visual midpoint (the t=0.5 point along the bezier polyline)
-    // rather than smudging the line color with a halo. Tier property
-    // ('bridge' / 'top-bes') drives the circle layer's fill via a
-    // paint expression below.
-    const markerFeatures: Feature<Point>[] = [];
+    // χ★ outline features — wider violet line traced along each χ★
+    // edge's full bezier polyline, rendered BEFORE the main edge
+    // layers so the narrower cyan/amber line draws on top and leaves
+    // a thin violet ring around the edge. Replaces the earlier
+    // midpoint-circle approach — on long ocean-spanning arcs the
+    // midpoint pip lived nowhere near the visible edge, which was
+    // confusing. Tier property ('bridge' / 'top-bes') drives the
+    // line-dasharray paint expression below: solid for bridges,
+    // dashed for top-BES.
+    const outlineFeatures: Feature<LineString>[] = [];
 
     activeGraph.edges.forEach((edge) => {
       const source = nodeMap.get(edge.source);
@@ -359,33 +372,33 @@ function CausalDAGMapInner() {
         solidFeatures.push(feature);
       }
 
-      // χ★ marker: discrete violet pip at the bezier midpoint
-      // (t=0.5 along the sampled polyline) rather than a halo around
-      // the line. Skipped on severed (their slate styling takes
-      // priority) and on dimmed multi-selection out-of-scope edges
-      // (would compete with the dim treatment). Tier property drives
-      // the circle layer paint expression — filled for strict
-      // bridges, hollow outline for top-BES.
+      // χ★ outline: wider violet line tracing the full bezier
+      // polyline. Same coordinates as the main edge, but rendered
+      // BEFORE so the narrower cyan/amber line on top leaves a thin
+      // violet ring around the edge. Skipped on severed (their slate
+      // styling takes priority) and on dimmed multi-selection
+      // out-of-scope edges (would compete with the dim treatment).
+      // Tier property drives the line-dasharray paint expression —
+      // solid for strict bridges, dashed for top-BES.
       if (chiStarInfo.chiStarSet.has(edge.id) && !isSevered && !edgeIsDimmed) {
-        const midIdx = Math.floor(coordinates.length / 2);
-        const mid = coordinates[midIdx];
-        if (mid) {
-          markerFeatures.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: mid },
-            properties: {
-              id: `${edge.id}-chi`,
-              tier: chiStarInfo.bridgeSet.has(edge.id) ? "bridge" : "top-bes",
-            },
-          });
-        }
+        outlineFeatures.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates },
+          properties: {
+            id: `${edge.id}-chi-outline`,
+            tier: chiStarInfo.bridgeSet.has(edge.id) ? "bridge" : "top-bes",
+            // Outline width derived from the main edge's width — keeps
+            // a consistent ring thickness across thin and thick edges.
+            width: edge.weight * 2 + 4.5,
+          },
+        });
       }
     });
 
     return {
       solidEdgeGeoJSON: { type: "FeatureCollection" as const, features: solidFeatures },
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
-      chiStarMarkerGeoJSON: { type: "FeatureCollection" as const, features: markerFeatures },
+      chiStarOutlineGeoJSON: { type: "FeatureCollection" as const, features: outlineFeatures },
     };
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo]);
 
@@ -542,7 +555,11 @@ function CausalDAGMapInner() {
         const nodeId = feature.properties?.id;
         if (nodeId) {
           setSelectedEdge(null);
-          if (e.originalEvent.shiftKey) {
+          // Ablation mode preempts both single and shift-select. Same
+          // semantics as 3D / 2D — click toggles ablation, full stop.
+          if (ablationMode) {
+            toggleAblatedNode(nodeId);
+          } else if (e.originalEvent.shiftKey) {
             setSelectedNodes(
               selectedNodes.includes(nodeId)
                 ? selectedNodes.filter((id: string) => id !== nodeId)
@@ -568,7 +585,7 @@ function CausalDAGMapInner() {
         return;
       }
     },
-    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
+    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge, ablationMode, toggleAblatedNode],
   );
 
   const [hoveredFeature, setHoveredFeature] = useState(false);
@@ -737,6 +754,36 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
+        {/* χ★ outline — wider violet line traced along each χ★ edge,
+            rendered FIRST so the narrower solid + dashed edge layers
+            below draw ON TOP and leave a thin violet ring around the
+            edge. Solid for strict bridges, dashed for top-BES (paint
+            expression on the `tier` property). Replaces the earlier
+            midpoint-circle approach so on long ocean-spanning arcs
+            the χ★ signal is visible along the whole edge instead of
+            stranded in the middle of the Pacific. */}
+        <Source id="edges-chi-star-outline" type="geojson" data={chiStarOutlineGeoJSON}>
+          <Layer
+            id="edge-chi-star-outline"
+            type="line"
+            paint={{
+              "line-color": "#7B68EE",
+              "line-opacity": 0.7,
+              "line-width": ["get", "width"],
+              "line-dasharray": [
+                "case",
+                ["==", ["get", "tier"], "top-bes"],
+                ["literal", [3, 2]],
+                ["literal", [1, 0]],
+              ],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
         {/* Solid edge lines: directed (cyan) + temporal (amber) */}
         <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
@@ -768,32 +815,6 @@ function CausalDAGMapInner() {
             layout={{
               "line-cap": "round",
               "line-join": "round",
-            }}
-          />
-        </Source>
-
-        {/* χ★ midpoint markers — discrete violet pips at the bezier
-            midpoint of each χ★ edge. Rendered AFTER the edge lines so
-            the pip sits on top of the line, BEFORE the node circles so
-            nodes remain the dominant focal points. Two tiers via a
-            paint expression: filled circle for strict bridges, hollow
-            outline-only ring for top-BES. */}
-        <Source id="edges-chi-star-markers" type="geojson" data={chiStarMarkerGeoJSON}>
-          <Layer
-            id="edge-chi-star-markers"
-            type="circle"
-            paint={{
-              "circle-color": [
-                "case",
-                ["==", ["get", "tier"], "bridge"],
-                "#7B68EE",
-                "rgba(0,0,0,0)",
-              ],
-              "circle-radius": 4,
-              "circle-stroke-color": "#7B68EE",
-              "circle-stroke-width": 1.5,
-              "circle-opacity": 0.95,
-              "circle-stroke-opacity": 0.95,
             }}
           />
         </Source>

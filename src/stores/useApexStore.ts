@@ -225,6 +225,15 @@ export interface ApexState {
   setOllamaModel: (model: string) => void;
   setIsLlmStreaming: (streaming: boolean) => void;
 
+  /**
+   * Optional TTS voice override. When set, speakText() prefers
+   * any SpeechSynthesisVoice whose name contains this string
+   * (case-insensitive). When null, the existing British-female
+   * fallback chain runs. Set via the copilot's set_voice tool.
+   */
+  preferredVoiceName: string | null;
+  setPreferredVoiceName: (name: string | null) => void;
+
   // Sandbox
   sandboxOrgName: string | null;
   setSandboxOrgName: (name: string | null) => void;
@@ -677,6 +686,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setGeminiModel: (model) => set({ geminiModel: model }),
   setOllamaUrl: (url) => set({ ollamaUrl: url }),
   setOllamaModel: (model) => set({ ollamaModel: model }),
+  preferredVoiceName: null,
+  setPreferredVoiceName: (name) => set({ preferredVoiceName: name }),
   setIsLlmStreaming: (streaming) => set({ isLlmStreaming: streaming }),
 
   // Sandbox

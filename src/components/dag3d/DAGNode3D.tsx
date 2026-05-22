@@ -46,6 +46,14 @@ interface DAGNode3DProps {
   ablationMode?: boolean;
   metrics?: NodeMetrics;
   epochState?: NodeEpochState;
+  /**
+   * 1-indexed ordinal indicating when this node first activated in the
+   * current replay (1 = first to fire, 2 = second, …). When set, the
+   * node carries a small floating badge so analysts can see propagation
+   * order at a glance. `undefined` = no badge (replay isn't active OR
+   * this node hasn't joined the cascade yet at the current epoch).
+   */
+  activationOrdinal?: number;
   onClick?: () => void;
   onDoubleClick?: () => void;
 }
@@ -70,6 +78,7 @@ function DAGNode3DInner({
   ablationMode = false,
   metrics,
   epochState,
+  activationOrdinal,
   onClick,
   onDoubleClick,
 }: DAGNode3DProps) {
@@ -114,10 +123,25 @@ function DAGNode3DInner({
   const dimmed = anyNodeSelected && !isSelected && !isNeighborOfSelected;
   const nodeOpacity = isAblated ? 0.15 : isGreyedOut ? 0.08 : dimmed ? 0.2 : 0.9;
 
+  // Stable per-node phase offset so 192 orbs don't breathe in lockstep
+  // (which would read as a UI sync glitch, not life). djb2-style hash
+  // on node.id → 0..2π, computed once at mount. Cheap, deterministic.
+  const phaseOffsetRef = useRef<number>((() => {
+    let h = 5381;
+    for (let i = 0; i < node.id.length; i++) h = ((h << 5) + h + node.id.charCodeAt(i)) >>> 0;
+    return (h % 1000) / 1000 * Math.PI * 2;
+  })());
+
   useFrame(({ clock }, delta) => {
-    // Gate all per-frame work: skip static nodes that don't need animation (item #2)
-    const needsAnimation = isConsequence || shockGlow > 0 || birthProgress.current < 1 || isSelected;
-    if (!needsAnimation) return;
+    // Per-frame work is now baseline-idle by default — every visible
+    // orb gets a slow breathing pulse so the canvas reads as alive
+    // when nothing's happening. Reasons to skip outright:
+    //   - greyed out (off-active-domain — animating invisible orbs
+    //     spends GPU on nothing)
+    //   - ablated (functionally removed from the cascade; static
+    //     reads correctly)
+    //   - mid-orbit camera (existing perf gate to keep drag smooth)
+    if (isGreyedOut || isAblated || isOrbiting) return;
 
     // Birth animation for consequence nodes
     if (birthProgress.current < 1) {
@@ -131,12 +155,30 @@ function DAGNode3DInner({
     if (meshRef.current) {
       const birth = birthProgress.current;
       const baseScale = (isSelected ? 1.15 : 1) * birth;
-      const pulseIntensity = isConsequence ? 0.08 : (0.03 + shockGlow * 0.12);
-      // Use clock.elapsedTime instead of Date.now() (item #2)
       const t = clock.elapsedTime;
-      const pulseSpeed = isConsequence ? 5 : (2 + shockGlow * 3);
-      const pulse = Math.sin(t * pulseSpeed * (1 + composite / 10)) * pulseIntensity;
-      meshRef.current.scale.setScalar(baseScale + pulse);
+      const phase = phaseOffsetRef.current;
+
+      // Baseline idle pulse — always-on, low amplitude (≈ ±1.5%),
+      // slow (~one cycle every 4-6 s). Each orb runs at its own
+      // phase so the field of 192 orbs reads as a gentle living
+      // breath rather than a synchronised pump.
+      const idleAmp = 0.015;
+      const idleSpeed = 1.1 + composite / 50; // hotter nodes a touch faster
+      const idlePulse = Math.sin(t * idleSpeed + phase) * idleAmp;
+
+      // Stronger pulse layered on top for active states (shock,
+      // consequence) — same shape as before but additive to the
+      // baseline so the idle breath doesn't visibly start/stop when
+      // those states change.
+      let activePulse = 0;
+      if (isConsequence || shockGlow > 0 || isSelected) {
+        const pulseIntensity = isConsequence ? 0.08 : (0.03 + shockGlow * 0.12);
+        const pulseSpeed = isConsequence ? 5 : (2 + shockGlow * 3);
+        activePulse =
+          Math.sin(t * pulseSpeed * (1 + composite / 10) + phase) * pulseIntensity;
+      }
+
+      meshRef.current.scale.setScalar(baseScale + idlePulse + activePulse);
     }
     if (selectionRingRef.current) {
       const t = clock.elapsedTime;
@@ -242,6 +284,50 @@ function DAGNode3DInner({
         </mesh>
       )}
 
+      {/* Cascade sequence badge — small numbered chip floating above
+           the orb during replay. The number is this node's 1-indexed
+           rank in the activation timeline (1 = first to fire). Only
+           renders when an ordinal is supplied AND the orb isn't
+           greyed-out / orbit-camera-active, so it stays out of the
+           way during normal exploration. Suppressed for ablated nodes
+           because they're not contributing to the cascade by
+           construction. */}
+      {activationOrdinal !== undefined && !isOrbiting && !isGreyedOut && !isAblated && (
+        <Html
+          position={[size * 0.9, size * 0.9, 0]}
+          center
+          style={{ pointerEvents: "none" }}
+          zIndexRange={[0, 0]}
+        >
+          <div
+            style={{
+              fontFamily: "monospace",
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "#0a0c14",
+              backgroundColor: "#ffd54f",
+              border: "1px solid rgba(10,12,20,0.7)",
+              borderRadius: "999px",
+              minWidth: "16px",
+              height: "16px",
+              padding: "0 4px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              userSelect: "none",
+              lineHeight: 1,
+              boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+            }}
+            title={`Activation order: ${activationOrdinal} — fired ${
+              activationOrdinal === 1 ? "first" : "after " + (activationOrdinal - 1) + " other node" + (activationOrdinal === 2 ? "" : "s")
+            } in the current cascade`}
+          >
+            {activationOrdinal}
+          </div>
+        </Html>
+      )}
+
       {/* Label — only visible on hover, single-select, neighbour-of-
            select, or multi-select. v1 painted a label on every orb
            permanently and dense graphs read as a hodgepodge of overlapping
@@ -341,6 +427,10 @@ function arePropsEqual(prev: DAGNode3DProps, next: DAGNode3DProps) {
     if (pe.omegaComposite !== ne.omegaComposite) return false;
     if (pe.shockIntensity !== ne.shockIntensity) return false;
   }
+  // Cascade-sequence badge updates as the TimeDial scrubs through replay
+  // (ordinal flips between defined / undefined as nodes join the cascade).
+  // Plain value compare — both are number | undefined.
+  if (prev.activationOrdinal !== next.activationOrdinal) return false;
   // Intentionally not comparing onClick / onDoubleClick — closures rebuild
   // every parent render but their behavior is stable per node.id.
   return true;

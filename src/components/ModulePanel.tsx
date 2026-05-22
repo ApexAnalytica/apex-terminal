@@ -43,9 +43,11 @@ import SnapshotDiagnostics from "./SnapshotDiagnostics";
 // pull their JS on first paint:
 //   - MonteCarloForecast (714 LOC + simulation helpers)  → Pearl tab
 //   - VX880TrialPanel (910 LOC + cohort helpers)         → Pearl tab
-//   - InterdictionPanel (191 LOC)                        → Pareto tab
+//   - InterdictionPanel (191 LOC)                        → Pearl tab (moved
+//                                                          from Pareto)
 //   - TissueCohortView (504 LOC + d1namo cohort data)    → Spirtes tab
 //     but only when isT1DDomain is true, so worth deferring
+// ScenarioInput + AblationPanel are small (<5KB each) and load inline.
 // Each has a small loading hint that matches the panel padding so the
 // layout doesn't jump when the chunk lands.
 const PANEL_LOADER = (
@@ -69,9 +71,16 @@ const VX880TrialPanel = dynamic(
   () => import("./VX880TrialPanel"),
   { ssr: false, loading: () => PANEL_LOADER },
 );
+const ScenarioInput = dynamic(() => import("./ScenarioInput"), {
+  ssr: false,
+});
+const AblationPanel = dynamic(() => import("./AblationPanel"), {
+  ssr: false,
+});
 
 export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
+  const setActiveModule = useApexStore((s) => s.setActiveModule);
   const setInterventionMode = useApexStore((s) => s.setInterventionMode);
   // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
   // domain is loaded, so it doesn't pollute non-life-sciences flows.
@@ -149,11 +158,16 @@ export default function ModulePanel() {
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Run interdiction from the copilot to produce candidate cuts, then the Monte Carlo
-              forecast auto-simulates the counterfactual {"\u03A9"}-buffer trajectory under those cuts.
+              Intervention surface. Describe a scenario, run the solver to
+              find candidate cuts, or pick your own cuts manually. The Monte
+              Carlo forecast auto-simulates the counterfactual {"\u03A9"}-buffer
+              trajectory under whatever cuts are active.
             </div>
-            <VX880TrialPanel />
+            <ScenarioInput />
+            <InterdictionPanel />
             <CopilotInterdictionResults />
+            <AblationPanel />
+            <VX880TrialPanel />
             <MonteCarloForecast expanded={expandedChart === "pearl"} />
           </div>
         )}
@@ -161,12 +175,20 @@ export default function ModulePanel() {
         {activeModule === "pareto" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Inject exogenous disruption scenarios, assess systemic fragility,
-              then run interdiction to find optimal defensive interventions.
+              Criticality observation. Inject shocks and read the model
+              relevance cards to see which estimators trust the regime.
+              Defensive cuts and scenario interdiction live in{" "}
+              <button
+                type="button"
+                onClick={() => setActiveModule("pearl")}
+                className="underline decoration-dotted text-accent-amber hover:text-accent-amber/80"
+              >
+                PEARL {"\u2192"}
+              </button>
+              .
             </div>
             <SnapshotIndicator />
             <ParetoPanel expandedChart={expandedChart} setExpandedChart={setExpandedChart} />
-            <InterdictionPanel />
             <NewsInterpreterPanel />
           </div>
         )}
@@ -180,7 +202,41 @@ function CopilotInterdictionResults() {
   const lastResult = useApexStore((s) => s.lastInterdictionResult);
   const severEdge = useApexStore((s) => s.severEdge);
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
+  // Graph + multi-selection store hooks for the "ISOLATE AFFECTED"
+  // affordance below: when the scenario interdiction returns cuts,
+  // the user wants to drill into just the affected nodes — same way
+  // the lasso ISOLATE button works on a marquee selection. We pull
+  // the affected node ids out of `lastResult.interventions` (target.id
+  // for node-type cuts; both edge endpoints for edge-type cuts), then
+  // write them into `selectedNodes` + flip `isolateSelection`. The
+  // existing canvas isolate machinery does the rest, identically
+  // across 3D / 2D / Map / Relief.
+  const graphData = useApexStore((s) => s.graphData);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const setIsolateSelection = useApexStore((s) => s.setIsolateSelection);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+
+  // Affected node set. Memoised on the interdiction result + graph
+  // edge list so toggling isolate doesn't recompute it. Edge-cut
+  // interventions contribute BOTH endpoints — severing X → Y
+  // functionally affects both vertices' neighbourhoods.
+  const affectedNodeIds = useMemo(() => {
+    if (!lastResult) return [] as string[];
+    const ids = new Set<string>();
+    for (const iv of lastResult.interventions) {
+      if (iv.target.type === "node") {
+        ids.add(iv.target.id);
+      } else if (iv.target.type === "edge") {
+        const edge = graphData.edges.find((e) => e.id === iv.target.id);
+        if (edge) {
+          ids.add(edge.source);
+          ids.add(edge.target);
+        }
+      }
+    }
+    return Array.from(ids);
+  }, [lastResult, graphData.edges]);
 
   if (!lastResult) return null;
 
@@ -199,12 +255,46 @@ function CopilotInterdictionResults() {
         <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
           {isFallback ? "STRUCTURAL VULNERABILITY CUTS" : "INTERDICTION RESULTS"}
         </span>
-        <button
-          onClick={() => useApexStore.getState().setLastInterdictionResult(null)}
-          className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
-        >
-          DISMISS
-        </button>
+        <div className="flex items-center gap-2">
+          {/* ISOLATE AFFECTED — mirrors the lasso panel's ISOLATE
+              button, bootstrapped from the interdiction's affected node
+              set instead of a marquee drag. When toggled on, the
+              canvas across every view (3D / 2D / Map / Relief) filters
+              to just the affected nodes so the analyst can examine
+              "which ones are reflected" without losing them in the
+              field of 192 orbs. Toggling off keeps the selection
+              populated so the user can re-isolate without recomputing. */}
+          {affectedNodeIds.length > 0 && (
+            <button
+              onClick={() => {
+                if (isolateSelection) {
+                  setIsolateSelection(false);
+                } else {
+                  setSelectedNodes(affectedNodeIds);
+                  setIsolateSelection(true);
+                }
+              }}
+              className={`text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border transition-colors ${
+                isolateSelection
+                  ? "border-accent-amber/60 text-accent-amber bg-accent-amber/10"
+                  : "border-border text-text-muted hover:text-accent-amber hover:border-accent-amber/40"
+              }`}
+              title={
+                isolateSelection
+                  ? "Show all nodes again. The affected set stays selected so you can re-isolate later."
+                  : `Hide non-affected nodes across every view (${affectedNodeIds.length} node${affectedNodeIds.length === 1 ? "" : "s"} affected by the proposed cuts).`
+              }
+            >
+              {isolateSelection ? "SHOW ALL" : "ISOLATE AFFECTED"}
+            </button>
+          )}
+          <button
+            onClick={() => useApexStore.getState().setLastInterdictionResult(null)}
+            className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
+          >
+            DISMISS
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-3 text-[8px] font-mono">

@@ -52,6 +52,7 @@ import { EMPTY_GRAPH } from "@/lib/graph-data";
 import { simulateCascade, simulateCascadeAsync } from "@/lib/cascade-simulator";
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
+import type { TrainingTrace } from "@/lib/discovery/training-trace-types";
 import { generateTemporalData } from "@/lib/temporal-data";
 
 /** Cap on how many feed-emitted events we retain in temporalData.events.
@@ -262,6 +263,16 @@ export interface ApexState {
   setSelectedDomains: (domains: string[]) => void;
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
+
+  // Live continual-learning training trace (Phase 3 PR 5). Null
+  // means "no customer-uploaded trace; UI surfaces fall back to the
+  // synthetic demo trace and render the SYNTHETIC badge." Set this
+  // via `loadTrainingTraceFromJSON` / `loadTrainingTraceFromCSV` from
+  // the AI Safety panel's LOAD TRACE affordance. Source.kind on a
+  // trace ingested through those adapters is always "live"; the
+  // SnapshotDiagnostics card reads `sourceKind` and flips the badge.
+  loadedTrainingTrace: TrainingTrace | null;
+  setLoadedTrainingTrace: (trace: TrainingTrace | null) => void;
 
   // Persona
   activePersona:
@@ -812,6 +823,11 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSelectedDomains: (domains) => set({ selectedDomains: domains }),
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
+
+  // Live continual-learning training trace (Phase 3 PR 5). Null until
+  // a customer uploads via the AI Safety panel's LOAD TRACE control.
+  loadedTrainingTrace: null,
+  setLoadedTrainingTrace: (trace) => set({ loadedTrainingTrace: trace }),
 
   // Persona (default: financial — more specific than the prior "analyst")
   activePersona: "financial",

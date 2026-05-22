@@ -36,6 +36,9 @@ import {
   AI_SAFETY_DEMO_EXPOSURE,
   buildAISafetyDemoTrace,
 } from "@/lib/discovery/ai-safety-demo-trace";
+import { loadTrainingTraceFromJSON } from "@/lib/discovery/training-trace-json-adapter";
+import { loadTrainingTraceFromCSV } from "@/lib/discovery/training-trace-csv-adapter";
+import { TrainingTraceValidationError } from "@/lib/discovery/training-trace-validator";
 import CapabilityBadge from "./CapabilityBadge";
 
 type Band = {
@@ -100,6 +103,8 @@ function topologyBand(density: number): Band {
 export default function SnapshotDiagnostics() {
   const graph = useFilteredGraph();
   const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const loadedTrainingTrace = useApexStore((s) => s.loadedTrainingTrace);
+  const setLoadedTrainingTrace = useApexStore((s) => s.setLoadedTrainingTrace);
   const isAISafety = useMemo(
     () => resolveDomainProfile(selectedDomains).id === "ai-safety",
     [selectedDomains],
@@ -107,17 +112,23 @@ export default function SnapshotDiagnostics() {
   const [expanded, setExpanded] = useState<
     "tail" | "topology" | "forgetting" | null
   >(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Ω-Forgetting Pressure — AI-domain-only diagnostic. Runs on the
-  // built-in synthetic demo trace until PR 5 lands a real ingester;
-  // sourceKind stays "synthetic" so the SYNTHETIC badge is rendered
-  // alongside the reading and no customer business decision runs off it.
+  // Ω-Forgetting Pressure — AI-domain-only diagnostic. Prefers the
+  // user-uploaded trace (Phase 3 PR 5 ingesters) when present; falls
+  // back to the synthetic demo trace when nothing is loaded. The
+  // SYNTHETIC badge follows `result.sourceKind`, so the surface
+  // automatically flips to LIVE the moment a customer-uploaded trace
+  // is set in the store.
   const forgetting = useMemo(() => {
     if (!isAISafety) return null;
-    const trace = buildAISafetyDemoTrace();
+    const trace = loadedTrainingTrace ?? buildAISafetyDemoTrace();
     const fr = computeFR(trace);
     const result = computeOmegaForgettingPressure(fr, {
-      exposure: AI_SAFETY_DEMO_EXPOSURE,
+      // Apply the canonical AI Safety exposure only on the demo trace.
+      // For customer-uploaded traces we have no information about
+      // their production exposure mix — fall through to uniform.
+      exposure: loadedTrainingTrace ? undefined : AI_SAFETY_DEMO_EXPOSURE,
     });
     const peak = peakPressure(result);
     return {
@@ -126,8 +137,67 @@ export default function SnapshotDiagnostics() {
       peak,
       taskCount: fr.tasks.length,
       epochCount: trace.epochs.length,
+      isUserTrace: loadedTrainingTrace !== null,
     };
-  }, [isAISafety]);
+  }, [isAISafety, loadedTrainingTrace]);
+
+  // ── File-picker handler — JSON or CSV based on extension. ──────
+  const onTraceFile = (file: File | null) => {
+    if (!file) return;
+    setLoadError(null);
+    const reader = new FileReader();
+    reader.onerror = () =>
+      setLoadError("Could not read file (FileReader error).");
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      try {
+        if (file.name.toLowerCase().endsWith(".json")) {
+          const trace = loadTrainingTraceFromJSON(text);
+          setLoadedTrainingTrace(trace);
+        } else if (file.name.toLowerCase().endsWith(".csv")) {
+          // For CSV we need explicit task refs. Pre-PR-6 the customer
+          // must use the JSON path if they want richer metadata.
+          // Default heuristic: scan the header for `acc_<id>` columns.
+          const header = text.split(/\r?\n/)[0] ?? "";
+          const taskIds = header
+            .split(",")
+            .map((c) => c.trim())
+            .filter((c) => c.startsWith("acc_"))
+            .map((c) => c.slice("acc_".length));
+          if (taskIds.length === 0) {
+            throw new TrainingTraceValidationError(
+              "CSV header must contain at least one acc_<task_id> column",
+            );
+          }
+          const trace = loadTrainingTraceFromCSV(text, {
+            id: file.name.replace(/\.[^.]+$/, ""),
+            label: file.name,
+            tasks: taskIds.map((id) => ({
+              id,
+              label: id,
+              scope: "attack-class" as const,
+            })),
+          });
+          setLoadedTrainingTrace(trace);
+        } else {
+          setLoadError(
+            `Unsupported extension on "${file.name}". Use .json or .csv.`,
+          );
+        }
+      } catch (err) {
+        const msg =
+          err instanceof TrainingTraceValidationError
+            ? err.message
+            : err instanceof SyntaxError
+              ? `Invalid JSON: ${err.message}`
+              : err instanceof Error
+                ? err.message
+                : "Failed to parse training trace.";
+        setLoadError(msg);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Tail Depth — empirical α-CVaR over the per-node ΩF composite
   // distribution of the live filtered graph. α = 0.9 standard.
@@ -301,8 +371,10 @@ export default function SnapshotDiagnostics() {
               FORGETTING · Ω-FP
             </span>
             <div className="flex items-center gap-1.5">
-              {forgetting.result.sourceKind === "synthetic" && (
+              {forgetting.result.sourceKind === "synthetic" ? (
                 <CapabilityBadge capability="live-synthetic" />
+              ) : (
+                <CapabilityBadge capability="live" labelOverride="LIVE" />
               )}
               {Number.isFinite(forgetting.result.pressure) && (
                 <span
@@ -433,11 +505,65 @@ export default function SnapshotDiagnostics() {
               ))}
             </div>
             <div className="text-[8px] font-mono text-text-muted/70 leading-relaxed">
-              SYNTHETIC trace — no customer business decision runs off
-              this reading. A real PyTorch / TF training-log ingester
-              ships in PR 5; once a live trace is loaded the badge
-              flips to LIVE. Source: Ghauri 2025 (D.Eng., Ch. 8 —
-              catastrophic forgetting in continual-learning IDS).
+              {forgetting.isUserTrace ? (
+                <>
+                  LIVE trace · ingested from{" "}
+                  <span className="text-foreground">
+                    {forgetting.result.traceId}
+                  </span>{" "}
+                  via the {forgetting.result.sourceKind} adapter path.
+                  Uniform exposure applied — pass a per-task exposure
+                  vector via the API to weight tasks differently.
+                </>
+              ) : (
+                <>
+                  SYNTHETIC trace — no customer business decision runs
+                  off this reading. Load a live PyTorch / TF training-
+                  log CSV or JSON to flip the badge to LIVE. Source:
+                  Ghauri 2025 (D.Eng., Ch. 8 — catastrophic forgetting
+                  in continual-learning IDS).
+                </>
+              )}
+            </div>
+            {/* Load / clear controls — Phase 3 PR 5 ingester surface. */}
+            <div className="pt-2 border-t border-border/40 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-foreground transition-colors">
+                  <span className="px-1.5 py-0.5 rounded border border-border bg-surface">
+                    LOAD TRACE…
+                  </span>
+                  <input
+                    type="file"
+                    accept=".json,.csv,application/json,text/csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      onTraceFile(e.target.files?.[0] ?? null);
+                      // Reset so the same file can be re-selected.
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <span className="text-[8px] font-mono text-text-muted/70">
+                  .json (TrainingTrace schema) · .csv (epoch + acc_&lt;id&gt;
+                  columns)
+                </span>
+                {forgetting.isUserTrace && (
+                  <button
+                    onClick={() => {
+                      setLoadedTrainingTrace(null);
+                      setLoadError(null);
+                    }}
+                    className="ml-auto text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted hover:text-foreground transition-colors px-1.5 py-0.5 rounded border border-border"
+                  >
+                    CLEAR
+                  </button>
+                )}
+              </div>
+              {loadError && (
+                <div className="text-[8px] font-mono text-[#ff7043] leading-relaxed">
+                  {loadError}
+                </div>
+              )}
             </div>
           </div>
         )}

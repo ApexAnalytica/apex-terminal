@@ -97,6 +97,7 @@ export default function SystemCopilot() {
   const geminiModel = useApexStore((s) => s.geminiModel);
   const ollamaUrl = useApexStore((s) => s.ollamaUrl);
   const ollamaModel = useApexStore((s) => s.ollamaModel);
+  const preferredVoiceName = useApexStore((s) => s.preferredVoiceName);
   const isLlmStreaming = useApexStore((s) => s.isLlmStreaming);
   const setLlmProvider = useApexStore((s) => s.setLlmProvider);
   const setClaudeApiKey = useApexStore((s) => s.setClaudeApiKey);
@@ -236,6 +237,14 @@ export default function SystemCopilot() {
   // and ignore. Imperfect but cheap, and the alternative (no
   // barge-in) is worse for the user.
   const lastSpokenContentRef = useRef<string>("");
+  // Timestamp (ms epoch) of the most recent TTS end, used by the
+  // submit-time echo guard. When the mic captures audio shortly
+  // after TTS finishes, that audio is often the speaker tail
+  // bleeding back into the mic — even after voiceStage has flipped
+  // from "speaking" to "listening". A submit-time substring check
+  // within this window catches it.
+  const ttsEndedAtRef = useRef<number>(0);
+  const TTS_ECHO_GUARD_MS = 5000;
   // Conversation identity for trace logging. Stable across the
   // session; resets when the chat is cleared. turn_index is a
   // monotonically increasing counter so we can replay traces in
@@ -308,17 +317,25 @@ export default function SystemCopilot() {
     utterance.pitch = 1.05;
     utterance.volume = 1;
 
-    // Preference order: British female by named voice → any en-GB
-    // female → any en-GB → any English female → any English.
-    // The named-voice list covers what macOS / Windows / Chrome
-    // typically ship: Kate, Serena, Susan, Hazel are en-GB female.
     const voices = window.speechSynthesis.getVoices();
     const nameMatches = (v: SpeechSynthesisVoice, ...needles: string[]) =>
       needles.some((n) => v.name.includes(n));
     const isFemaleName = (v: SpeechSynthesisVoice) =>
       v.name.toLowerCase().includes("female") ||
       nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie", "Fiona", "Tessa", "Karen", "Moira", "Samantha", "Allison", "Ava");
+
+    // Override path: if the copilot's set_voice tool has stashed a
+    // preferred name, try that first (case-insensitive substring
+    // match on voice.name). Falls through to the British-female
+    // chain if no match — better to keep talking in some voice
+    // than to silently fail.
+    const override = preferredVoiceName?.trim().toLowerCase();
+    const overrideMatch = override
+      ? voices.find((v) => v.name.toLowerCase().includes(override))
+      : undefined;
+
     const preferred =
+      overrideMatch ??
       // First: named en-GB female voices.
       voices.find((v) => v.lang === "en-GB" && nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie")) ??
       // Then: any en-GB voice tagged female (Google's "Google UK English Female", Microsoft "Hazel").
@@ -338,7 +355,7 @@ export default function SystemCopilot() {
     utterance.onerror = () => onFinish?.();
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [preferredVoiceName]);
 
   // Auto-speak assistant responses when TTS or voiceMode is on.
   // In voiceMode, the onFinish hook auto-restarts listening so the
@@ -378,6 +395,10 @@ export default function SystemCopilot() {
         return;
       }
       closed = true;
+      // Stamp the TTS-end time so the submit-time echo guard can
+      // suppress speaker-tail audio that lands during the next few
+      // hundred ms while the mic flips back to "listening".
+      ttsEndedAtRef.current = Date.now();
       voiceLog("closeVoiceLoop", {
         reason,
         voiceModeRef: voiceModeRef.current,
@@ -954,6 +975,31 @@ export default function SystemCopilot() {
         setTimeout(() => {
           if (isStale()) return;
           const trimmed = transcript.trim();
+
+          // ─── Post-TTS echo guard ───────────────────────────────
+          // Within TTS_ECHO_GUARD_MS of TTS ending, drop any
+          // submission whose lowercased text is fully contained in
+          // the AI's most recent message — almost certainly the
+          // speaker tail bleeding back into the mic, not a real
+          // user utterance. The during-speaking substring check
+          // (above in onresult's barge-in block) handles the
+          // mid-TTS case; this catches the post-TTS tail.
+          if (trimmed && voiceModeRef.current) {
+            const sinceTtsMs = Date.now() - ttsEndedAtRef.current;
+            if (sinceTtsMs < TTS_ECHO_GUARD_MS) {
+              const heard = trimmed.toLowerCase();
+              const aiSaid = lastSpokenContentRef.current.toLowerCase();
+              if (aiSaid.includes(heard)) {
+                voiceLog("suppressed post-TTS echo at submit", {
+                  heard: heard.slice(0, 60),
+                  sinceTtsMs,
+                });
+                setInput("");
+                return;
+              }
+            }
+          }
+
           if (trimmed) {
             const userMsg: CopilotMessage = {
               id: `user-${Date.now()}`,

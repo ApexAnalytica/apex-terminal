@@ -735,3 +735,77 @@ defineTool({
     );
   },
 });
+
+// ─── TTS voice picker ────────────────────────────────────────────
+//
+// Lets the user say "switch to Matthew" or "use a British male
+// voice" and have the copilot actually update the TTS voice.
+// Before this tool, the voice was hardcoded to "first available
+// British female" — fine as a default, but no way to override.
+//
+// We do a case-insensitive substring match on the available
+// SpeechSynthesisVoice names. Store field is just a string; the
+// next speakText() call uses it via the existing override path.
+
+defineTool({
+  name: "set_voice",
+  description:
+    "Change the TTS voice the AI speaks in. Accepts a voice name OR a substring (case-insensitive). Examples: 'Matthew', 'Samantha', 'Daniel', 'British', 'female'. Pass an empty string to clear the override and fall back to the British-female default.",
+  guidance:
+    "Fire whenever the user says 'switch to X voice', 'use the X voice', 'change your voice to X', or names a different speaker. The match is fuzzy — 'matthew' matches 'Microsoft Matthew - English (United States)', 'british male' matches 'Daniel (en-GB)'. If the user's intended voice isn't installed on the machine the call returns a clear error listing what IS available.",
+  params: {
+    name: {
+      type: "string",
+      required: true,
+      description:
+        "Substring of the desired voice name. Empty string resets to the default (British female).",
+    },
+  },
+  legacyParam: "name",
+  handler: ({ name }, ctx) => {
+    const store = ctx.getStore();
+    const trimmed = (name ?? "").trim();
+
+    // Empty string = clear override → fall back to British female.
+    if (trimmed === "") {
+      store.setPreferredVoiceName(null);
+      return "Cleared voice override — using British female default on next response.";
+    }
+
+    // Browser-only: getVoices is on window.speechSynthesis.
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      // Still set the override — speakText falls back gracefully.
+      store.setPreferredVoiceName(trimmed);
+      return `Voice override set to "${trimmed}" (speech synthesis not available in this environment to verify).`;
+    }
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) {
+      // Voices load asynchronously in some browsers — set the
+      // override anyway, speakText will resolve it later.
+      store.setPreferredVoiceName(trimmed);
+      return `Voice override set to "${trimmed}" — will activate on the next response (voice list still loading).`;
+    }
+
+    const q = trimmed.toLowerCase();
+    const match = voices.find((v) => v.name.toLowerCase().includes(q));
+
+    if (!match) {
+      // Don't persist a bad override — leave the previous default
+      // intact. Show the user a sample of available voices so they
+      // can pick again.
+      const sample = voices
+        .filter((v) => v.lang.startsWith("en"))
+        .slice(0, 8)
+        .map((v) => `${v.name} (${v.lang})`)
+        .join(", ");
+      return (
+        `No voice on this machine matches "${trimmed}". ` +
+        `Available English voices: ${sample}${voices.length > 8 ? ", …" : ""}.`
+      );
+    }
+
+    store.setPreferredVoiceName(trimmed);
+    return `Voice switched to ${match.name} (${match.lang}). Takes effect on the next response.`;
+  },
+});

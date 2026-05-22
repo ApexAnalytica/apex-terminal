@@ -181,7 +181,7 @@ export default function DcdGraph() {
             onClick={() => setShowInfo(!showInfo)}
             className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
             style={{
-              color: showInfo ? "#00e5ff" : "#5a5e72",
+              color: showInfo ? "#00e5ff" : "var(--text-muted)",
               borderColor: showInfo ? "rgba(0,229,255,0.3)" : "rgba(90,94,114,0.3)",
               backgroundColor: showInfo ? "rgba(0,229,255,0.08)" : "transparent",
             }}
@@ -320,7 +320,7 @@ export default function DcdGraph() {
                 {hoveredNodeData.label}
               </div>
               <div>
-                <span style={{ color: "#5a5e72" }}>{"\u03A9"} </span>
+                <span style={{ color: "var(--text-muted)" }}>{"\u03A9"} </span>
                 <span style={{ color: "#00e5ff" }}>
                   {hoveredNodeData.omegaFragility.composite.toFixed(1)}
                 </span>
@@ -357,13 +357,13 @@ export default function DcdGraph() {
                   color: "#c8cad0",
                 }}
               >
-                <div style={{ fontSize: 5, color: "#5a5e72" }}>
+                <div style={{ fontSize: 5, color: "var(--text-muted)" }}>
                   {hoveredEdgeData.physicalMechanism || "—"}
                 </div>
                 <div style={{ marginTop: 1 }}>
-                  <span style={{ color: "#5a5e72" }}>w=</span>
+                  <span style={{ color: "var(--text-muted)" }}>w=</span>
                   <span style={{ color: "#00e5ff" }}>{hoveredEdgeData.weight.toFixed(2)}</span>
-                  <span style={{ color: "#5a5e72", marginLeft: 4 }}>conf=</span>
+                  <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>conf=</span>
                   <span style={{ color: "#00e5ff" }}>{(hoveredEdgeData.confidence * 100).toFixed(0)}%</span>
                 </div>
               </div>

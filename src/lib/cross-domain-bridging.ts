@@ -255,3 +255,27 @@ export function applyCrossDomainBridges(
     bridges,
   };
 }
+
+/** Stable id prefix that `bridgesToEdges` stamps on every auto-bridge. */
+export const AUTO_BRIDGE_ID_PREFIX = "auto-bridge";
+
+/** True iff this edge was minted by `bridgesToEdges` — used by the
+ *  EdgeInspector (and any other consumer) to show that the link is
+ *  heuristically proposed rather than curator-authored. */
+export function isAutoBridge(edge: { id: string }): boolean {
+  return edge.id.startsWith(AUTO_BRIDGE_ID_PREFIX);
+}
+
+/** Pull the heuristic score out of an auto-bridge's `physicalMechanism`
+ *  string. Returns null for non-auto-bridge edges or when the format
+ *  doesn't match. Format (from `bridgesToEdges`):
+ *  `"auto-bridge: <rationale> (heuristic score 0.XX)"`. */
+export function extractAutoBridgeScore(
+  physicalMechanism: string | null | undefined,
+): number | null {
+  if (!physicalMechanism) return null;
+  const match = /heuristic score ([0-9.]+)/.exec(physicalMechanism);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return Number.isFinite(n) ? n : null;
+}

@@ -4,6 +4,9 @@ import {
   findConnectedComponents,
   proposeCrossDomainBridges,
   bridgesToEdges,
+  isAutoBridge,
+  extractAutoBridgeScore,
+  AUTO_BRIDGE_ID_PREFIX,
 } from "@/lib/cross-domain-bridging";
 import { makeGraph, makeNode, makeEdge } from "./fixtures/graph-fixtures";
 
@@ -285,5 +288,46 @@ describe("applyCrossDomainBridges", () => {
     const { graph: after } = applyCrossDomainBridges(before);
     const { components: afterComps } = findConnectedComponents(after);
     expect(afterComps.length).toBeLessThan(beforeComps.length);
+  });
+});
+
+describe("isAutoBridge / extractAutoBridgeScore — EdgeInspector helpers", () => {
+  it("isAutoBridge: true on auto-bridge id prefix, false on regular edges", () => {
+    expect(isAutoBridge({ id: "auto-bridge-0-A-B" })).toBe(true);
+    expect(isAutoBridge({ id: AUTO_BRIDGE_ID_PREFIX })).toBe(true);
+    expect(isAutoBridge({ id: "regular-edge-id" })).toBe(false);
+    expect(isAutoBridge({ id: "e1" })).toBe(false);
+    expect(isAutoBridge({ id: "" })).toBe(false);
+  });
+
+  it("extractAutoBridgeScore: pulls the score out of the physicalMechanism string", () => {
+    expect(
+      extractAutoBridgeScore(
+        "auto-bridge: same category (energy) · Ω 7.5×6.2 (heuristic score 0.73)",
+      ),
+    ).toBeCloseTo(0.73);
+    expect(extractAutoBridgeScore("auto-bridge: x · (heuristic score 0.5)")).toBe(0.5);
+  });
+
+  it("extractAutoBridgeScore: returns null on null / undefined / unmatched strings", () => {
+    expect(extractAutoBridgeScore(null)).toBeNull();
+    expect(extractAutoBridgeScore(undefined)).toBeNull();
+    expect(extractAutoBridgeScore("")).toBeNull();
+    expect(extractAutoBridgeScore("regular physical mechanism, no score")).toBeNull();
+  });
+
+  it("end-to-end: bridgesToEdges output is recognised by isAutoBridge + has extractable score", () => {
+    const edges = bridgesToEdges([
+      {
+        sourceId: "A",
+        targetId: "B",
+        score: 0.65,
+        rationale: "same category (energy)",
+        componentA: 0,
+        componentB: 1,
+      },
+    ]);
+    expect(isAutoBridge(edges[0])).toBe(true);
+    expect(extractAutoBridgeScore(edges[0].physicalMechanism)).toBeCloseTo(0.65);
   });
 });

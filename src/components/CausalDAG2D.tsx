@@ -103,7 +103,7 @@ function computeNodeEmphasis(
 }
 
 function CausalNode2D({ data, selected, id }: NodeProps) {
-  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics, activationOrdinal } = data as {
+  const { label, category, domain, omegaComposite, isRestricted, datasetColor, shockIntensity, metrics, activationOrdinal, isAblated } = data as {
     label: string;
     category: string;
     domain: string;
@@ -113,6 +113,7 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
     shockIntensity?: number;
     metrics?: NodeMetrics;
     activationOrdinal?: number;
+    isAblated?: boolean;
   };
   const { adjacency, hoveredNodeId } = useContext(Dag2DContext);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -177,13 +178,19 @@ function CausalNode2D({ data, selected, id }: NodeProps) {
   const isHoverDriven = hoveredNodeId !== null;
   const dimOpacity = isHoverDriven ? 0.18 : 0.5;
 
+  // Ablated orbs are dimmed hard (mirrors the 3D `0.15` treatment in
+  // DAGNode3D). Ablation takes priority over the hover/select dim
+  // because an ablated node is functionally removed from the cascade
+  // and should read that way regardless of any other state.
+  const finalOpacity = isAblated ? 0.15 : isDim ? dimOpacity : 1;
+
   return (
     <motion.div
       className="relative"
       style={{
         width: diameter,
         height: diameter,
-        opacity: isDim ? dimOpacity : 1,
+        opacity: finalOpacity,
         transition: "opacity 180ms ease-out",
       }}
       animate={isRinged ? { scale: 1.1 } : { scale: 1 }}
@@ -723,6 +730,16 @@ function CausalDAG2DInner() {
     return cascadeActivationOrder(replayEpochs, clampedEpoch);
   }, [replayActive, replayEpochs, clampedEpoch]);
 
+  // Global ablation set — hoisted up so the node-builder useMemo
+  // below can dim ablated nodes. The store hooks themselves live a
+  // bit lower (next to the click handlers); we read the array here
+  // and read the actions there.
+  const ablatedNodeIdsForBuilder = useApexStore((s) => s.ablatedNodeIds);
+  const ablatedNodeSet = useMemo(
+    () => new Set(ablatedNodeIdsForBuilder),
+    [ablatedNodeIdsForBuilder],
+  );
+
   const CONTRACTION = 0.18;
 
   // Force-directed layout. Cached positions come from a one-shot offline
@@ -915,10 +932,11 @@ function CausalDAG2DInner() {
           shockIntensity: epochShock,
           metrics: networkMetrics[n.id],
           activationOrdinal: activationOrder.get(n.id),
+          isAblated: ablatedNodeSet.has(n.id),
         },
       };
     });
-  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics, activationOrder]);
+  }, [graphData, nodePositions, truthFilter, currentSnapshot, adjacency, networkMetrics, activationOrder, ablatedNodeSet]);
 
   // Filter nodes for isolation mode
   const visibleNodes = useMemo(() => {
@@ -1049,6 +1067,13 @@ function CausalDAG2DInner() {
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
+  // Ablation mode is global — when on, clicks across every visual
+  // toggle ablation instead of selection. Mirrors the 3D wiring; the
+  // canonical handler is `ablationMode ? toggleAblatedNode : setSelectedNode`.
+  // (The `ablatedNodeSet` Set used by the node-builder memo above is
+  // declared earlier — re-deriving here would shadow it.)
+  const ablationMode = useApexStore((s) => s.ablationMode);
+  const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
 
   // Hand-rolled shift+drag marquee. We bypass React Flow's built-in
   // selection (which is unreliable when combined with panOnDrag) and
@@ -1144,9 +1169,17 @@ function CausalDAG2DInner() {
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
       setSelectedEdge(null);
-      setSelectedNode(rfNode.id);
+      // In ablation mode, clicks toggle ablation instead of moving the
+      // selection. Matches the 3D / Map / Relief behaviour so the
+      // affordance is identical regardless of which view the user
+      // happens to be in.
+      if (ablationMode) {
+        toggleAblatedNode(rfNode.id);
+      } else {
+        setSelectedNode(rfNode.id);
+      }
     },
-    [setSelectedNode]
+    [setSelectedNode, ablationMode, toggleAblatedNode]
   );
 
   const onPaneClick = useCallback(() => {

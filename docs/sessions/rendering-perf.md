@@ -898,6 +898,34 @@ The always-mount pattern was in place to keep the 3D WebGL context alive across 
 
 ---
 
+### 2026-05-22 — Shipped: layout-3D + network-metrics moved off the main thread (Web Worker)
+
+**PR:** TBD (about to open).
+
+**Trigger.** Backlog: Web Worker port of `computeLayout3D` / `computeNetworkMetrics`. After the launch-perf chain (PRs #301 / #303 / #304) the user's freeze report stopped, but the d3-force-3d sim + Brandes' centrality were still running synchronously on first 3D mount and on every `topologyKey` change (domain toggle, edge sever). Those are the heaviest pure-data computes in the canvas; moving them off-thread is the right architectural fix.
+
+**What shipped.**
+
+- **`src/lib/workers/layout3d-worker.ts`** — Module-mode Web Worker. Handles `{ id, nodes, edges, prev? }` requests; returns `{ id, positions, metrics }` in one shot (bundled so the canvas doesn't need a second postMessage roundtrip). Both compute functions are pure — perfect worker fodder.
+
+- **`src/lib/workers/layout3d-client.ts`** — Main-thread wrapper. Lazily spins up a single shared worker on first call, multiplexes concurrent requests via a `nextId` epoch, routes each response back to its caller. Includes an SSR / no-Worker fallback that dynamic-imports the sync functions, so the API contract stays Promise-shaped everywhere.
+
+- **`CausalDAG3D.tsx` refactor.** The `positions` and `networkMetrics` useMemos are gone. In their place: a `layoutResult` state populated by an effect on `topologyKey` change, plus a `latestRequestIdRef` to drop stale responses when topology flips multiple times in quick succession (fast domain toggling). Previous positions stay rendered while a new layout computes — no flash, no main-thread block. First-mount-only `COMPUTING LAYOUT…` overlay covers the brief gap before the worker returns the initial layout (the WebGL canvas mounts immediately once the dynamic chunk loads, but orbs can't render until positions arrive).
+
+- **Stable references** — `positions` / `networkMetrics` derivations are wrapped in `useMemo` so the array/map references stay stable across renders that don't actually flip `layoutResult`. Otherwise downstream `useMemo`s keyed on `positions` would invalidate every render.
+
+**Files.**
+- `src/lib/workers/layout3d-worker.ts` (new)
+- `src/lib/workers/layout3d-client.ts` (new)
+- `src/lib/workers/__tests__/layout3d-client.test.ts` (new — 2 tests covering the SSR fallback path: returns positions + metrics for every node; assigns a different id to each call)
+- `src/components/CausalDAG3D.tsx` — sync useMemos → async effect + state + overlay; removed the value imports of `computeLayout3D` / `computeNetworkMetrics` (kept the types).
+
+**Verification.** `tsc --noEmit` clean (same inherited fci.test drift); lint clean on touched files (pre-existing `chiStarSet` warning unchanged); vitest **1321 / 1321** pass.
+
+**Follow-ups.** `CausalDAG2D` still runs `computeNetworkMetrics` synchronously on the main thread. Same pattern would apply (2D layout is light enough that it probably doesn't need the worker, but the metrics compute is identical to 3D's). Defer until needed — 2D is only mounted when actively in 2D view.
+
+---
+
 ## How a fresh session resumes
 
 1. Read this file bottom-up — the most recent entry is the live state.

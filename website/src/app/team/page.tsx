@@ -229,7 +229,7 @@ function PersonTile({
   variant: "team" | "advisor";
 }) {
   const c = colorMap[person.color];
-  const photoSize = variant === "team" ? 112 : 96;
+  const photoSize = variant === "team" ? 160 : 144;
   return (
     <div
       className={`relative bg-surface-elevated border border-border rounded-lg p-5 transition-colors flex flex-col gap-4 ${c.soft}`}
@@ -264,7 +264,7 @@ function PersonTile({
           >
             <span
               className={`font-[family-name:var(--font-michroma)] tracking-[0.1em] ${c.text}`}
-              style={{ fontSize: variant === "team" ? 28 : 22 }}
+              style={{ fontSize: variant === "team" ? 40 : 33 }}
             >
               {person.initials}
             </span>

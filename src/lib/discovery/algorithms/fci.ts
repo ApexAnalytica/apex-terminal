@@ -68,12 +68,26 @@ import type { Cohort, Subject, Variable } from "../cohort-types";
 import type { DiscoveryAlgorithm } from "../algorithm-interface";
 import type { DiscoveredEdge, DiscoveryResult } from "../run-types";
 import { partialCorrelation } from "./_partial-correlation";
+import { cmiKnnTest } from "./_cmi-knn";
+import type { CITestResult } from "./_ci-test";
+
+/** CI-test selector. `partial-correlation` is linear-Gaussian (fast,
+ *  baseline); `cmi-knn` is nonparametric k-NN — slower but detects
+ *  nonlinear conditional dependence. */
+export type CiTestKind = "partial-correlation" | "cmi-knn";
 
 export interface FciParams {
   /** Significance threshold for the conditional-independence test. */
   alpha: number;
   /** Cap on the conditioning-set size during the skeleton phase. */
   maxCondsDim: number;
+  /** Which CI test to use in the skeleton phase. Default
+   *  "partial-correlation" preserves v0.5 behaviour. "cmi-knn"
+   *  enables nonparametric testing for non-Gaussian data. */
+  ciTest: CiTestKind;
+  /** k for the CMI-knn estimator (only used when ciTest = "cmi-knn").
+   *  Default 5 — smaller = lower bias, more variance. */
+  cmiKnnK: number;
   /** Cap on the number of intermediates V_1..V_{n-2} in R4's
    *  discriminating-path search (n-1 = path edge count). Default 5.
    *  Lowering trades completeness on long latent-confounder chains for
@@ -90,11 +104,28 @@ export interface FciParams {
 const DEFAULT_PARAMS: FciParams = {
   alpha: 0.05,
   maxCondsDim: 3,
+  ciTest: "partial-correlation",
+  cmiKnnK: 5,
   maxDiscriminatingPathLength: 5,
   gridSeconds: 300,
   minGridPoints: 30,
   minN: 30,
 };
+
+/** Dispatches to the CI test selected by `FciParams.ciTest`. Returns
+ *  the shared `CITestResult` shape ({r, p, n}) regardless of which
+ *  underlying estimator runs. */
+function runCITest(
+  x: number[],
+  y: number[],
+  Z: number[][],
+  params: FciParams,
+): CITestResult | null {
+  if (params.ciTest === "cmi-knn") {
+    return cmiKnnTest(x, y, Z, { k: params.cmiKnnK, minN: params.minN });
+  }
+  return partialCorrelation(x, y, Z, { min_n: params.minN });
+}
 
 // ─── Cohort → contemporaneous data matrix ────────────────────────────
 
@@ -236,7 +267,7 @@ function runSkeleton(
   // Capture marginals first so we can annotate edges later regardless of pruning.
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const r = partialCorrelation(data[i], data[j], [], { min_n: params.minN });
+      const r = runCITest(data[i], data[j], [], params);
       if (r) marginalR.set(pairKey(i, j), { r: r.r, p: r.p, n: r.n });
     }
   }
@@ -258,9 +289,7 @@ function runSkeleton(
             for (const k of cset) r.push(data[k][row]);
             Zcols.push(r);
           }
-          const result = partialCorrelation(data[i], data[j], Zcols, {
-            min_n: params.minN,
-          });
+          const result = runCITest(data[i], data[j], Zcols, params);
           if (!result) continue;
           if (result.p > params.alpha) {
             adj[i].delete(j);
@@ -671,9 +700,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.5.0",
+  version: "0.6.0",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). Linear-Gaussian CI tests via partial correlation.",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). CI test configurable via `ciTest`: default linear-Gaussian partial correlation; opt into nonparametric k-NN CMI (Frenzel-Pompe 2007) for non-Gaussian data via `ciTest: \"cmi-knn\"`.",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -708,7 +737,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.5)`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.6, ci=${params.ciTest})`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

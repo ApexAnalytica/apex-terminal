@@ -974,3 +974,83 @@ describe("fciAlgorithm — output shape", () => {
     expect((result.diagnostics as { reason?: string }).reason).toBeDefined();
   });
 });
+
+// ─── FCI v0.6 — CMI-knn nonparametric CI test ─────────────────────────
+//
+// FCI now offers two CI tests: the v0.5 default `partial-correlation`
+// (linear-Gaussian, fast) and the new `cmi-knn` (k-NN conditional
+// mutual information, slower but detects nonlinear dependence).
+// These tests cover the integration: that the param is wired, that
+// the linear chain still recovers under cmi-knn, and that nonlinear
+// dependence — which partial correlation misses — gets caught.
+
+describe("fciAlgorithm — CMI-knn ciTest (FCI v0.6)", () => {
+  it("evidence string declares the active ci test", () => {
+    const cohort = buildCohort({
+      variableIds: ["x", "y", "z"],
+      generate: (_, rand) => {
+        const x = gauss(rand);
+        const y = 0.9 * x + 0.3 * gauss(rand);
+        const z = 0.9 * y + 0.3 * gauss(rand);
+        return { x, y, z };
+      },
+      nSubjects: 2,
+      nSteps: 80,
+      seed: 1100,
+    });
+    const cmiResult = fciAlgorithm.run(cohort, { ciTest: "cmi-knn" });
+    const cmiEdge = cmiResult.edges[0];
+    expect(cmiEdge?.evidence).toContain("ci=cmi-knn");
+
+    const parResult = fciAlgorithm.run(cohort);
+    const parEdge = parResult.edges[0];
+    expect(parEdge?.evidence).toContain("ci=partial-correlation");
+  });
+
+  it("recovers a linear chain (X→Y→Z) under cmi-knn — sanity-check fallback to baseline", () => {
+    const cohort = buildCohort({
+      variableIds: ["x", "y", "z"],
+      generate: (_, rand) => {
+        const x = gauss(rand);
+        const y = 0.9 * x + 0.3 * gauss(rand);
+        const z = 0.9 * y + 0.3 * gauss(rand);
+        return { x, y, z };
+      },
+      nSubjects: 2,
+      nSteps: 80,
+      seed: 1200,
+    });
+    const result = fciAlgorithm.run(cohort, { ciTest: "cmi-knn" });
+    // Should keep X-Y and Y-Z adjacencies on the chain (just like the
+    // partial-correlation default). Direction-agnostic check.
+    expect(findEdge(result.edges, "x", "y")).toBeDefined();
+    expect(findEdge(result.edges, "y", "z")).toBeDefined();
+  });
+
+  it("catches NONLINEAR dependence (Y = sin(X) + noise) that partial-correlation misses", () => {
+    // Construct a 2-variable cohort where X→Y via Y=sin(X)+noise.
+    // Partial correlation sees Pearson r ≈ 0 (sin is symmetric around 0),
+    // so it'll drop the X-Y edge at the marginal CI test. CMI-knn sees
+    // the nonlinear coupling.
+    const cohort = buildCohort({
+      variableIds: ["x", "y"],
+      generate: (_, rand) => {
+        const x = gauss(rand) * Math.PI;
+        const y = Math.sin(x) + 0.2 * gauss(rand);
+        return { x, y };
+      },
+      nSubjects: 3,
+      nSteps: 100,
+      seed: 1300,
+    });
+    const parResult = fciAlgorithm.run(cohort);
+    const cmiResult = fciAlgorithm.run(cohort, { ciTest: "cmi-knn" });
+
+    const parXY = findEdge(parResult.edges, "x", "y");
+    const cmiXY = findEdge(cmiResult.edges, "x", "y");
+    // Partial-correlation should drop the X-Y edge (no linear signal).
+    expect(parXY).toBeUndefined();
+    // CMI-knn should keep it.
+    expect(cmiXY).toBeDefined();
+  });
+});

@@ -88,6 +88,12 @@ export interface FciParams {
   /** k for the CMI-knn estimator (only used when ciTest = "cmi-knn").
    *  Default 5 — smaller = lower bias, more variance. */
   cmiKnnK: number;
+  /** If > 0, swap the CMI-knn χ²(1) asymptotic p-value for an empirical
+   *  local-permutation null (Kim et al. 2022 variant). Default 0
+   *  (asymptotic). Each permutation costs ~one extra `cmiKnn` call, so
+   *  expect a B× slowdown; opt in for small graphs / final-pass
+   *  validation, not for the full skeleton phase on a 30-node graph. */
+  cmiKnnPermutations: number;
   /** Cap on the number of intermediates V_1..V_{n-2} in R4's
    *  discriminating-path search (n-1 = path edge count). Default 5.
    *  Lowering trades completeness on long latent-confounder chains for
@@ -106,6 +112,7 @@ const DEFAULT_PARAMS: FciParams = {
   maxCondsDim: 3,
   ciTest: "partial-correlation",
   cmiKnnK: 5,
+  cmiKnnPermutations: 0,
   maxDiscriminatingPathLength: 5,
   gridSeconds: 300,
   minGridPoints: 30,
@@ -122,7 +129,11 @@ function runCITest(
   params: FciParams,
 ): CITestResult | null {
   if (params.ciTest === "cmi-knn") {
-    return cmiKnnTest(x, y, Z, { k: params.cmiKnnK, minN: params.minN });
+    return cmiKnnTest(x, y, Z, {
+      k: params.cmiKnnK,
+      minN: params.minN,
+      nPermutations: params.cmiKnnPermutations,
+    });
   }
   return partialCorrelation(x, y, Z, { min_n: params.minN });
 }
@@ -700,9 +711,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.6.0",
+  version: "0.6.2",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). CI test configurable via `ciTest`: default linear-Gaussian partial correlation; opt into nonparametric k-NN CMI (Frenzel-Pompe 2007) for non-Gaussian data via `ciTest: \"cmi-knn\"`.",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). CI test configurable via `ciTest`: default linear-Gaussian partial correlation; opt into nonparametric k-NN CMI (Frenzel-Pompe 2007) for non-Gaussian data via `ciTest: \"cmi-knn\"`. KD-tree backed neighbour search (v0.6.1) + opt-in local-permutation null (Kim et al. 2022 variant) for rigorous p-values via `cmiKnnPermutations > 0` (v0.6.2).",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -737,7 +748,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.6, ci=${params.ciTest})`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.6.2, ci=${params.ciTest}${params.cmiKnnPermutations > 0 ? `+perm${params.cmiKnnPermutations}` : ""})`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

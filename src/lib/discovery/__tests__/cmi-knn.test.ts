@@ -174,3 +174,94 @@ describe("cmiKnnTest — {r, p, n} CITestResult shape", () => {
     expect(() => cmiKnnTest([1, 2], [1, 2, 3], [])).toThrow();
   });
 });
+
+describe("cmiKnnTest — local-permutation null (Kim et al. 2022 variant)", () => {
+  it("under H0 (independent X, Y) the permutation p-value stays > 0.1", () => {
+    const rng = lcg(700);
+    const N = 200;
+    const x = Array.from({ length: N }, () => gauss(rng));
+    const y = Array.from({ length: N }, () => gauss(rng));
+    const res = cmiKnnTest(x, y, [], {
+      nPermutations: 49,
+      seed: 12345,
+    });
+    expect(res).not.toBeNull();
+    // True p-value should be ~U(0,1) under H0; 0.1 is a loose threshold
+    // that virtually all H0 runs will clear under a seeded RNG.
+    expect(res!.p).toBeGreaterThan(0.1);
+  });
+
+  it("under H1 (strong linear dependence) the permutation p-value drops to ≤ 1/(B+1)", () => {
+    const rng = lcg(701);
+    const N = 200;
+    const x: number[] = [];
+    const y: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const xi = gauss(rng);
+      x.push(xi);
+      y.push(0.9 * xi + 0.3 * gauss(rng));
+    }
+    const B = 49;
+    const res = cmiKnnTest(x, y, [], {
+      nPermutations: B,
+      seed: 12345,
+    });
+    expect(res).not.toBeNull();
+    // No permutation should clear the observed CMI on this strong-
+    // dependence cohort, so ge = 0 and p = 1/(B+1).
+    expect(res!.p).toBeCloseTo(1 / (1 + B), 5);
+  });
+
+  it("default `nPermutations: 0` falls back to the χ²(1) asymptotic (v0.6 behaviour preserved)", () => {
+    const rng = lcg(702);
+    const N = 100;
+    const x: number[] = [];
+    const y: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const xi = gauss(rng);
+      x.push(xi);
+      y.push(0.9 * xi + 0.3 * gauss(rng));
+    }
+    const asymptotic = cmiKnnTest(x, y, []);
+    const explicitZero = cmiKnnTest(x, y, [], { nPermutations: 0 });
+    expect(asymptotic).not.toBeNull();
+    expect(explicitZero).not.toBeNull();
+    expect(asymptotic!.p).toBeCloseTo(explicitZero!.p, 12);
+  });
+
+  it("seeded permutation is deterministic — same seed → same p-value", () => {
+    const rng = lcg(703);
+    const N = 80;
+    const x = Array.from({ length: N }, () => gauss(rng));
+    const y = Array.from({ length: N }, () => gauss(rng));
+    const a = cmiKnnTest(x, y, [], { nPermutations: 31, seed: 99 });
+    const b = cmiKnnTest(x, y, [], { nPermutations: 31, seed: 99 });
+    expect(a!.p).toBe(b!.p);
+  });
+
+  it("conditional permutation respects the Z-stratum (CMI(X,Y|X) stays small under H0)", () => {
+    // X→Y dependence is fully explained by Z=X. Local permutation
+    // should swap X values WITHIN Z-neighbourhoods, breaking the X-Y
+    // tie while preserving X-Z marginal — so the permuted CMI should
+    // not be smaller than observed in any systematic way.
+    const rng = lcg(704);
+    const N = 150;
+    const x: number[] = [];
+    const y: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const xi = gauss(rng);
+      x.push(xi);
+      y.push(0.9 * xi + 0.3 * gauss(rng));
+    }
+    const Z = x.map((v) => [v]);
+    const res = cmiKnnTest(x, y, Z, {
+      nPermutations: 31,
+      kPerm: 8,
+      seed: 12345,
+    });
+    expect(res).not.toBeNull();
+    // The observed CMI(X, Y | X) ≈ 0 and most permuted samples will be
+    // around the same magnitude → p-value should NOT be tiny.
+    expect(res!.p).toBeGreaterThan(0.05);
+  });
+});

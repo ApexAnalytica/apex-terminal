@@ -134,10 +134,124 @@ function erf(x: number): number {
 }
 
 export interface CmiKnnOptions {
-  /** Number of nearest neighbours. Default 5. */
+  /** Number of nearest neighbours for the CMI estimator. Default 5. */
   k?: number;
   /** Minimum sample size to run the test. Default 30. */
   minN?: number;
+  /**
+   * If > 0, use a local-permutation null distribution for the p-value
+   * instead of the χ²(1) asymptotic. Each permutation shuffles X via
+   * `nPermutationSwaps` random-walk swaps where each swap is between
+   * two indices in each other's Z-neighborhood (size `kPerm`). This is
+   * the practical variant of Kim et al. (2022) — strictly more
+   * rigorous than the χ² asymptotic for conditional-independence
+   * testing, at the cost of `nPermutations · cmiKnn` extra work.
+   * Default 0 (asymptotic, preserves v0.6 behaviour).
+   */
+  nPermutations?: number;
+  /**
+   * Z-space neighbourhood size for the local permutation. Default 10.
+   * Smaller = more local (preserves Z structure more tightly, less
+   * statistical power); larger → unconditional permutation in the
+   * limit. Ignored when `nPermutations` = 0.
+   */
+  kPerm?: number;
+  /**
+   * Number of random-walk swaps per permutation. Default 5·N; smaller
+   * = less mixing, larger = more expensive. Ignored when
+   * `nPermutations` = 0.
+   */
+  nPermutationSwaps?: number;
+  /** Deterministic seed for the permutation RNG. Default Date.now(). */
+  seed?: number;
+}
+
+/** Tiny LCG — same constants we use elsewhere in the discovery suite.
+ *  Returned values are in [0, 1). */
+function makeRng(seed: number): () => number {
+  let state = seed >>> 0;
+  if (state === 0) state = 1;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+/**
+ * Build a locally-permuted copy of `x` via random-walk swaps. Each
+ * swap exchanges X_i and X_j where j is randomly chosen from i's Z-
+ * neighbourhood. Approximates a draw from the conditional permutation
+ * distribution X | (Y, Z); see Kim et al. (2022, "Local Permutation
+ * Test for Conditional Independence") for the formal treatment.
+ *
+ * `zNeighbours[i]` must be a non-empty array of neighbour indices
+ * (excluding i itself) — `localPermutationPValue` builds this via
+ * KD-tree before calling.
+ */
+function localPermuteX(
+  x: number[],
+  zNeighbours: number[][],
+  nSwaps: number,
+  rng: () => number,
+): number[] {
+  const N = x.length;
+  const out = x.slice();
+  for (let s = 0; s < nSwaps; s++) {
+    const i = Math.floor(rng() * N);
+    const neighbours = zNeighbours[i];
+    if (neighbours.length === 0) continue;
+    const j = neighbours[Math.floor(rng() * neighbours.length)];
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
+
+/**
+ * Empirical p-value for H0: X ⊥ Y | Z via the local-permutation test.
+ * Returns the standard (1 + ge) / (1 + B) form with +1 smoothing so
+ * the p-value is never 0 (which would mean "infinitely confident in
+ * dependence" — Monte-Carlo error makes that overclaim).
+ */
+function localPermutationPValue(
+  x: number[],
+  y: number[],
+  Z: number[][],
+  observedCmi: number,
+  k: number,
+  kPerm: number,
+  nPermutations: number,
+  nSwaps: number,
+  rng: () => number,
+): number {
+  const N = x.length;
+  const nCond = Z.length === 0 ? 0 : Z[0].length;
+  // Pre-build the Z-neighbourhood list once. When |Z|=0, every other
+  // sample is a valid swap partner (the "unconditional" baseline).
+  const zNeighbours: number[][] = new Array(N);
+  if (nCond > 0) {
+    const zTree = buildKdTree(Z);
+    for (let i = 0; i < N; i++) {
+      const nn = kNearest(zTree, Z[i], kPerm, i);
+      zNeighbours[i] = nn.map((n) => n.index);
+    }
+  } else {
+    for (let i = 0; i < N; i++) {
+      const all: number[] = [];
+      for (let j = 0; j < N; j++) if (j !== i) all.push(j);
+      zNeighbours[i] = all;
+    }
+  }
+
+  let ge = 0;
+  for (let b = 0; b < nPermutations; b++) {
+    const xPerm = localPermuteX(x, zNeighbours, nSwaps, rng);
+    const cmiPerm = cmiKnn(xPerm, y, Z, k);
+    if (cmiPerm >= observedCmi) ge += 1;
+  }
+  // +1 smoothing — p-value is never exactly 0.
+  return (1 + ge) / (1 + nPermutations);
 }
 
 /**
@@ -193,6 +307,27 @@ export function cmiKnnTest(
   if (n <= k + 1) return null;
 
   const cmi = cmiKnn(xc, yc, Zc, k);
+
+  const nPermutations = options?.nPermutations ?? 0;
+  if (nPermutations > 0) {
+    const kPerm = Math.min(options?.kPerm ?? 10, n - 1);
+    const nSwaps = options?.nPermutationSwaps ?? 5 * n;
+    const rng = makeRng(options?.seed ?? Date.now());
+    const pValue = localPermutationPValue(
+      xc,
+      yc,
+      Zc,
+      cmi,
+      k,
+      kPerm,
+      nPermutations,
+      nSwaps,
+      rng,
+    );
+    return { r: cmi, p: pValue, n };
+  }
+
+  // Default: χ²(1) asymptotic — fast, v0.6 behaviour.
   const stat = 2 * n * cmi;
   const pValue = 1 - chi2Cdf1(stat);
   return { r: cmi, p: pValue, n };

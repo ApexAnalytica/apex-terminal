@@ -18,14 +18,18 @@
 //
 // Honest framing:
 //   - k = 5 by default. Smaller k = lower bias, higher variance.
-//   - Naive O(N²) k-NN search — fine for N ≤ ~500 / FCI on ~30 vars.
-//     For larger problems a KD-tree would be the right upgrade.
+//   - KD-tree neighbour search (Chebyshev / max-norm) — O(N log N) build
+//     + O(k · log N) per query average for low-dim point sets (d ≤ ~10).
+//     Replaces the v0.6 naive O(N²) sort. The conditional-MI case has
+//     dim = 2 + |Z|; for FCI with maxCondsDim ≤ 3 this stays well
+//     inside the KD-tree's effective regime.
 //   - p-value uses the χ²(1) asymptotic of 2N·CMI (Kullback 1959).
 //     Strictly valid for discrete MI; reasonable approximation for
 //     k-NN MI with large N. For a rigorous test, use a local-
 //     permutation null (Kim et al. 2022) — deferred.
 
 import type { CITestResult } from "./_ci-test";
+import { buildKdTree, kNearest, countWithinRadius } from "./_kd-tree";
 
 const DEFAULT_K = 5;
 
@@ -44,18 +48,13 @@ export function digamma(x: number): number {
   return result;
 }
 
-function chebyshevDist(a: number[], b: number[]): number {
-  let d = 0;
-  for (let i = 0; i < a.length; i++) {
-    const dd = Math.abs(a[i] - b[i]);
-    if (dd > d) d = dd;
-  }
-  return d;
-}
-
 /** Frenzel-Pompe k-NN estimator for I(X; Y | Z) in nats.
  *  X, Y are length-N arrays; Z is N × |Z| (each row a conditioning
- *  vector). Pass `Z = []` for unconditional MI. */
+ *  vector). Pass `Z = []` for unconditional MI.
+ *
+ *  KD-tree variant: one tree per (joint, xz, yz, z) point set is built
+ *  once at the start, then queried N times. Per-call complexity drops
+ *  from O(N²) to roughly O(N · k · log N). */
 export function cmiKnn(
   x: number[],
   y: number[],
@@ -78,29 +77,24 @@ export function cmiKnn(
     zOnly[i] = zi;
   }
 
+  // Build KD-trees once. Z-tree is skipped when |Z| = 0 (unconditional
+  // MI shortcuts n_z(i) ≡ N − 1).
+  const jointTree = buildKdTree(joint);
+  const xzTree = buildKdTree(xz);
+  const yzTree = buildKdTree(yz);
+  const zTree = nCond > 0 ? buildKdTree(zOnly) : null;
+
   let sumDigamma = 0;
   let validCount = 0;
   for (let i = 0; i < N; i++) {
-    // k-th nearest in joint space.
-    const dists: number[] = [];
-    for (let j = 0; j < N; j++) {
-      if (j === i) continue;
-      dists.push(chebyshevDist(joint[i], joint[j]));
-    }
-    dists.sort((a, b) => a - b);
-    const eps = dists[k - 1];
+    const neighbours = kNearest(jointTree, joint[i], k, i);
+    if (neighbours.length < k) continue;
+    const eps = neighbours[k - 1].dist;
     if (!Number.isFinite(eps) || eps === 0) continue;
 
-    let nxz = 0;
-    let nyz = 0;
-    let nz = 0;
-    for (let j = 0; j < N; j++) {
-      if (j === i) continue;
-      if (chebyshevDist(xz[i], xz[j]) < eps) nxz++;
-      if (chebyshevDist(yz[i], yz[j]) < eps) nyz++;
-      if (nCond > 0 && chebyshevDist(zOnly[i], zOnly[j]) < eps) nz++;
-    }
-    if (nCond === 0) nz = N - 1; // unconditional: Z is empty, all points share the same "Z bin"
+    const nxz = countWithinRadius(xzTree, xz[i], eps, i);
+    const nyz = countWithinRadius(yzTree, yz[i], eps, i);
+    const nz = nCond > 0 ? countWithinRadius(zTree, zOnly[i], eps, i) : N - 1;
 
     sumDigamma +=
       digamma(nz + 1) - digamma(nxz + 1) - digamma(nyz + 1);

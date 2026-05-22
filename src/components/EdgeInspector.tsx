@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { CausalEdge } from "@/lib/types";
+import { isAutoBridge, extractAutoBridgeScore } from "@/lib/cross-domain-bridging";
 
 /**
  * Per-edge χ★ context — when present, the edge is in the χ★ set
@@ -143,6 +144,43 @@ export default function EdgeInspector({
             />
           </div>
         </div>
+
+        {/* AUTO-BRIDGE — rendered when this edge was minted by the
+            cross-domain auto-bridging pass (id prefix "auto-bridge").
+            The amber color matches the RELEVANT NOW callout for the
+            same edges in the right panel. */}
+        {isAutoBridge(edge) && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                AUTO-BRIDGE
+              </div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider tabular-nums text-accent-amber">
+                HEURISTIC · UNVERIFIED
+              </div>
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              Heuristically proposed cross-domain link — added so SPIRTES&#39;s
+              centrality / community / cascade metrics see a connected graph.
+              Confidence 0.5 (below R-04&#39;s 0.7 cutoff by design) so this
+              edge surfaces as FLAGGED until verified or curator-promoted.
+            </div>
+            {(() => {
+              const score = extractAutoBridgeScore(edge.physicalMechanism);
+              if (score === null) return null;
+              return (
+                <div className="mt-1.5 flex gap-4 text-[10px] font-mono tabular-nums">
+                  <div>
+                    <span className="text-text-muted">SCORE </span>
+                    <span className="text-accent-amber">
+                      {score.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* χ★ membership — only rendered when this edge is in χ★.
             The violet color (#7B68EE) matches the canvas halo + the

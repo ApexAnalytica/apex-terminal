@@ -217,44 +217,58 @@ function EncodingLegend({
           }
         />
         <LegendRow
-          label="χ★ STRICT BRIDGE (solid violet outline)"
-          help="A thin solid violet outline traces the edge along its full length. Removing this edge disconnects the (undirected) graph — every cascade path between the two resulting components must traverse it. Click the edge for BES + rank. Source: Ghauri 2025 D.Eng."
+          label="χ★ STRICT BRIDGE (solid violet tracks)"
+          help="Two thin solid violet lines run alongside the edge — like train tracks. Removing this edge disconnects the (undirected) graph; every cascade path between the resulting components must traverse it. Click the edge for BES + rank. Source: Ghauri 2025 D.Eng."
           swatch={
             <div className="flex items-center">
-              {/* Inner cyan line with violet outer ring — mirrors the
-                  canvas treatment so the swatch matches what the user
-                  sees on the graph. */}
-              <span className="relative h-1.5 w-7">
+              {/* Train-track swatch: cyan line in the middle, two thin
+                  violet rails above and below. Mirrors the canvas. */}
+              <span className="relative h-2.5 w-7">
                 <span
-                  className="absolute inset-0 rounded-sm"
-                  style={{ backgroundColor: "#7B68EE", opacity: 0.75 }}
+                  className="absolute left-0 right-0 h-px"
+                  style={{ top: "20%", backgroundColor: "#7B68EE", opacity: 0.85 }}
                 />
                 <span
                   className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px"
                   style={{ backgroundColor: "#00e5ff" }}
+                />
+                <span
+                  className="absolute left-0 right-0 h-px"
+                  style={{ bottom: "20%", backgroundColor: "#7B68EE", opacity: 0.85 }}
                 />
               </span>
             </div>
           }
         />
         <LegendRow
-          label="χ★ TOP-BES (dashed violet outline)"
-          help="A thin dashed violet outline traces the edge. High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."
+          label="χ★ TOP-BES (dashed violet tracks)"
+          help="Two thin dashed violet lines run alongside the edge. High Bridge-Edge Strength — participates in many shortest paths even though removing it doesn't formally disconnect the graph."
           swatch={
             <div className="flex items-center">
-              <span className="relative h-1.5 w-7">
+              <span className="relative h-2.5 w-7">
                 <span
-                  className="absolute inset-0 rounded-sm"
+                  className="absolute left-0 right-0 h-px"
                   style={{
+                    top: "20%",
                     backgroundImage:
                       "linear-gradient(to right, #7B68EE 60%, transparent 60%)",
                     backgroundSize: "5px 100%",
-                    opacity: 0.75,
+                    opacity: 0.85,
                   }}
                 />
                 <span
                   className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px"
                   style={{ backgroundColor: "#00e5ff" }}
+                />
+                <span
+                  className="absolute left-0 right-0 h-px"
+                  style={{
+                    bottom: "20%",
+                    backgroundImage:
+                      "linear-gradient(to right, #7B68EE 60%, transparent 60%)",
+                    backgroundSize: "5px 100%",
+                    opacity: 0.85,
+                  }}
                 />
               </span>
             </div>

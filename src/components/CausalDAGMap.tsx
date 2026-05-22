@@ -754,22 +754,45 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
-        {/* χ★ outline — wider violet line traced along each χ★ edge,
-            rendered FIRST so the narrower solid + dashed edge layers
-            below draw ON TOP and leave a thin violet ring around the
-            edge. Solid for strict bridges, dashed for top-BES (paint
-            expression on the `tier` property). Replaces the earlier
-            midpoint-circle approach so on long ocean-spanning arcs
-            the χ★ signal is visible along the whole edge instead of
-            stranded in the middle of the Pacific. */}
-        <Source id="edges-chi-star-outline" type="geojson" data={chiStarOutlineGeoJSON}>
+        {/* χ★ parallel tracks — TWO thin violet lines running alongside
+            each χ★ edge, offset perpendicular to the line direction
+            using MapLibre's `line-offset` paint property. Solid for
+            strict bridges, dashed for top-BES (driven by a paint
+            expression on the `tier` property). The cyan/amber main
+            line draws below at offset=0, untouched, so the parallel
+            tracks read as a clean "train tracks" outline alongside it
+            rather than smearing the main edge color. */}
+        <Source id="edges-chi-star-track-top" type="geojson" data={chiStarOutlineGeoJSON}>
           <Layer
-            id="edge-chi-star-outline"
+            id="edge-chi-star-track-top"
             type="line"
             paint={{
               "line-color": "#7B68EE",
-              "line-opacity": 0.7,
-              "line-width": ["get", "width"],
+              "line-opacity": 0.85,
+              "line-width": 1.5,
+              "line-offset": 3,
+              "line-dasharray": [
+                "case",
+                ["==", ["get", "tier"], "top-bes"],
+                ["literal", [3, 2]],
+                ["literal", [1, 0]],
+              ],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+        <Source id="edges-chi-star-track-bottom" type="geojson" data={chiStarOutlineGeoJSON}>
+          <Layer
+            id="edge-chi-star-track-bottom"
+            type="line"
+            paint={{
+              "line-color": "#7B68EE",
+              "line-opacity": 0.85,
+              "line-width": 1.5,
+              "line-offset": -3,
               "line-dasharray": [
                 "case",
                 ["==", ["get", "tier"], "top-bes"],

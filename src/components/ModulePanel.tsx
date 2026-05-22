@@ -2381,8 +2381,13 @@ function CascadeHeader() {
       {/* Eigenvector Centrality — expandable */}
       <button onClick={() => toggleMetric("eigen")} className="w-full text-left">
         <div className="flex items-center justify-between p-1.5 rounded border border-accent-cyan/20 bg-accent-cyan/5 hover:bg-accent-cyan/8 transition-colors">
-          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
-            EIGENVECTOR CENTRALITY
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan flex items-baseline gap-1.5 min-w-0">
+            <span className="flex-shrink-0">EIGENVECTOR</span>
+            {netMetrics.eigenTop[0] && (
+              <span className="text-text-muted truncate font-mono normal-case tracking-normal">
+                top: <span className="text-accent-cyan">{netMetrics.eigenTop[0].label}</span>
+              </span>
+            )}
           </div>
           <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "eigen" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
             {"\u25BC"}
@@ -2410,8 +2415,13 @@ function CascadeHeader() {
       {/* Betweenness Centrality — expandable */}
       <button onClick={() => toggleMetric("between")} className="w-full text-left">
         <div className="flex items-center justify-between p-1.5 rounded border border-accent-amber/20 bg-accent-amber/5 hover:bg-accent-amber/8 transition-colors">
-          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-            BETWEENNESS CENTRALITY
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber flex items-baseline gap-1.5 min-w-0">
+            <span className="flex-shrink-0">BETWEENNESS</span>
+            {netMetrics.betweenTop[0] && (
+              <span className="text-text-muted truncate font-mono normal-case tracking-normal">
+                top: <span className="text-accent-amber">{netMetrics.betweenTop[0].label}</span>
+              </span>
+            )}
           </div>
           <span className="text-[8px] text-text-muted" style={{ transform: expandedMetric === "between" ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", transition: "transform 0.2s" }}>
             {"\u25BC"}

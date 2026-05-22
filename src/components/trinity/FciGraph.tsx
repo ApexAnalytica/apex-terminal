@@ -84,7 +84,7 @@ export default function FciGraph() {
             onClick={() => setShowInfo(!showInfo)}
             className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
             style={{
-              color: showInfo ? "#ff1744" : "#5a5e72",
+              color: showInfo ? "#ff1744" : "var(--text-muted)",
               borderColor: showInfo ? "rgba(255,23,68,0.3)" : "rgba(90,94,114,0.3)",
               backgroundColor: showInfo ? "rgba(255,23,68,0.08)" : "transparent",
             }}

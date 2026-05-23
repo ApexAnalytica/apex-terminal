@@ -33,9 +33,10 @@
 // This gives a uniformly-sampled (n_grid, n_variables) matrix per
 // subject that the lag scan can run over.
 
-import type { Cohort, Subject, Variable } from "../cohort-types";
+import type { Cohort } from "../cohort-types";
 import type { DiscoveryAlgorithm } from "../algorithm-interface";
 import type { DiscoveredEdge, DiscoveryResult } from "../run-types";
+import { buildSubjectGrid } from "./_cohort-data";
 
 export interface LagCorrelationParams {
   /** Maximum lag in seconds. Default 1800 (30 min) — sane for T1D dynamics. */
@@ -62,74 +63,9 @@ const DEFAULT_PARAMS: LagCorrelationParams = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────
-
-/**
- * Resample one subject's measurements onto a uniform (n_grid × n_vars) matrix.
- *
- * Returns `null` if the subject has fewer than `minGridPoints` grid steps.
- */
-function buildSubjectGrid(
-  subject: Subject,
-  variables: Variable[],
-  gridSeconds: number,
-  minGridPoints: number,
-): Float64Array[] | null {
-  if (subject.measurements.length === 0) return null;
-
-  // Find the subject's t-range.
-  let tMin = Infinity;
-  let tMax = -Infinity;
-  for (const m of subject.measurements) {
-    if (m.t < tMin) tMin = m.t;
-    if (m.t > tMax) tMax = m.t;
-  }
-  const span = tMax - tMin;
-  const nGrid = Math.floor(span / gridSeconds);
-  if (nGrid < minGridPoints) return null;
-
-  // Bucket measurements per variable.
-  const byVar = new Map<string, { t: number; value: number }[]>();
-  for (const v of variables) byVar.set(v.id, []);
-  for (const m of subject.measurements) {
-    const arr = byVar.get(m.variableId);
-    if (!arr) continue;
-    if (typeof m.value === "number" && Number.isFinite(m.value)) {
-      arr.push({ t: m.t - tMin, value: m.value });
-    }
-  }
-
-  // For each variable, materialise an nGrid-length Float64Array using
-  // the resampling rule appropriate for its kind.
-  const grid: Float64Array[] = variables.map((v) => {
-    const out = new Float64Array(nGrid);
-    const events = byVar.get(v.id) ?? [];
-    if (v.kind === "event" || v.kind === "binary") {
-      // Count events per grid bucket.
-      for (const e of events) {
-        const idx = Math.min(nGrid - 1, Math.max(0, Math.floor(e.t / gridSeconds)));
-        out[idx] += e.value;
-      }
-    } else {
-      // Continuous: sample-and-hold from the most recent prior event.
-      // (For sparse/sparse-ish series this still works — buckets without
-      // a recent prior measurement get NaN, which the corr code skips.)
-      events.sort((a, b) => a.t - b.t);
-      let lastVal = NaN;
-      let cursor = 0;
-      for (let i = 0; i < nGrid; i++) {
-        const tCenter = (i + 0.5) * gridSeconds;
-        while (cursor < events.length && events[cursor].t <= tCenter) {
-          lastVal = events[cursor].value;
-          cursor += 1;
-        }
-        out[i] = lastVal;
-      }
-    }
-    return out;
-  });
-
-  return grid;
-}
+//
+// `buildSubjectGrid` is shared with the other contemporaneous-discovery
+// algorithms and now lives in `_cohort-data.ts`.
 
 /** Pearson correlation on aligned arrays, skipping NaN-pair entries. */
 function pearson(x: Float64Array, y: Float64Array): { r: number; n: number } {

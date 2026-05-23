@@ -26,6 +26,50 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 ---
 
+## At-a-glance — PRs shipped from this session
+
+A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
+
+**2026-05-22 round (load-time + Map placement)**
+
+| PR | What |
+|---|---|
+| #409 | `perf(2d)`: 2D layout sim + network metrics → layout Web Worker (`requestLayout2D` arm; same epoch cancellation pattern as 3D) |
+| #406 | `perf(bundle)`: extract `TarskiPanel` / `ParetoPanel` / `CopilotInterdictionResults` / `SnapshotIndicator` from `ModulePanel.tsx` into `next/dynamic` chunks (`ModulePanel.tsx` 3384 → 821 LOC) |
+| #404 | `perf(3d)`: 3D layout sim + network metrics → Web Worker (`src/lib/workers/layout3d-{worker,client}.ts`) |
+| #399 | `fix(ui)`: removed the stray "CLIENT DEPLOYMENT → Athena Defense" CTA on the canvas |
+| #398 | `feat(map)`: Map geo-placement — US-hub spread (replaces Kansas-blob centroid) + ~100 NODE_COORDINATES entries for Athena ISR, T1D, T1D VX-880, AI Safety / IDS, Macro Impact, Frontier Science; city/institution name scan; smarter country regex; 16 → 32 country centroids |
+
+**2026-05-07 round (launch freeze + UX polish)**
+
+| PR | What |
+|---|---|
+| #304 | `fix(perf)`: `CausalDAG2D` lazy + conditional — no parallel layout sim on launch |
+| #303 | `perf(topo)`: 4σ Gaussian truncation in `computeReliefField` / `computeReliefLayers` / `computeFusedReliefField` (~5-10× kernel speedup) |
+| #301 | `fix(perf)`: launch-workspace freeze — `applyOmegaLiveAdjustments` O(N×E) → O(N+E); `useDeferredValue` on `StructuralMetrics.omegaBridgeDensity` + `CascadeHeader.netMetrics` |
+| #300 | `perf(bundle)`: first wave of `next/dynamic` panel deferrals (`MonteCarloForecast`, `VX880TrialPanel`, `InterdictionPanel`, `TissueCohortView`) |
+| #299 | `perf(map)`: per-frame particle layer → imperative `setData` (no React reconciliation per rAF tick) |
+| #288 | `fix(timeline)`: cap `loadRealTemporalData` range at `Date.now()` — no more scrubbing into 2030 |
+| #285 | `fix(map)`: upgrade `maplibre-gl` v4.7 → v5.24 so the globe projection actually renders |
+| #283 | `feat(canvas)`: `startTransition` around ISOLATE toggle; TOPO shift-lasso selection |
+| #281 | `feat(canvas)`: unified card-colour resolver (`getDomainCardColor` in `lib/domains`); Map globe projection in style spec (made live by #285) |
+
+**Older entries** live in `## Session log` below; see the dated section headers for each.
+
+---
+
+## Backlog (next-up, ordered roughly by priority)
+
+- **Time-dial-driven positional response.** When the timeline scrubs forward, currently the per-node ΩF (criticality) values do update — but **distances** between nodes don't visibly react. The user expects: as criticality changes per snapshot, the canvas layout reorganises (or contracts) so the visual encoding reflects the new regime. 2D has a `CONTRACTION = 0.18` overlay that pulls stressed nodes toward stressed neighbours on each replay tick — needs verification it's actually firing (and is visible at all). 3D and Map have no equivalent. Once live feeds are wired more broadly, this becomes the canonical "watch the system change as time flows" demo, so the positional layer needs to actually move. Scope:
+  - Audit the existing 2D replay contraction — confirm it still fires and tune its magnitude so the user can SEE it
+  - Add an equivalent 3D pull-stressed-neighbours overlay on top of the cached layout (don't re-run the force sim — too expensive per tick; do a lightweight per-frame perturbation)
+  - Decide Map behaviour: positions are geographic so they can't move freely — but radius / glow could scale with criticality per snapshot
+- **TOPO compute-shader port for real-time scrub perf.** Deferred since PR #303 (4σ truncation) covered the headline cost. Only worth doing if real-time scrub still drops frames in production.
+- **Real bundle-analyzer pass.** The sandbox can't run `ANALYZE=true next build` end-to-end (Google Fonts + missing AI-SDK deps). Needs a working env.
+- **Framer-motion tree-shake audit.** Same — needs the analyzer.
+
+---
+
 ## Session log
 
 ### 2026-05-02 — Issue #2 fix shipped: temporalData invariant on graph swap

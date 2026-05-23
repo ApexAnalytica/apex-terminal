@@ -979,14 +979,14 @@ export default function TimeDial() {
                             : bufferValue < 35
                               ? "var(--accent-amber)"
                               : "var(--accent-cyan)"
-                          : "rgba(90, 94, 114, 0.2)",
+                          : "color-mix(in srgb, var(--text-muted) 20%, transparent)",
                     }}
                   />
                 ))}
               </div>
             </div>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Timeline tabs */}
             <div className="flex items-center gap-0.5">
@@ -1043,7 +1043,7 @@ export default function TimeDial() {
               BRANCH
             </button>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Stop button */}
             <button

@@ -776,7 +776,7 @@ export default function TimeDial() {
           ref={trackRef}
           data-timedial-track="true"
           className="relative h-6 cursor-crosshair rounded"
-          style={{ backgroundColor: "rgba(26,28,46,0.8)" }}
+          style={{ backgroundColor: "color-mix(in srgb, var(--border) 80%, transparent)" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

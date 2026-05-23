@@ -270,6 +270,22 @@ describe("derivationsProvider.matchPayload — Phase 14 composites", () => {
     expect(mena.source).toContain("mean MENA FX depreciation");
   });
 
+  it("emits NY Fed Consumer Inflation Expectations as proxy from UMich", () => {
+    const nodes = [
+      makeNode({
+        id: "umich",
+        label: "UMich Consumer Inflation Expectations",
+        liveData: [{ ...liveIndicator(3.5, 5, "FRED · MICH"), unit: "%" }],
+      }),
+      makeNode({ id: "nyfed", label: "NY Fed Consumer Inflation Expectations" }),
+    ];
+    const batch = derivationsProvider.matchPayload({ trigger: "now" }, nodes);
+    const nyfed = batch.updates.find((u) => u.nodeId === "nyfed")!.point;
+    expect(nyfed.value).toBe(3.5);
+    expect(nyfed.source).toContain("UMich Consumer Inflation Expectations (proxy");
+    expect(nyfed.source).toContain("r≈0.85");
+  });
+
   it("emits CB Policy Rate Regime as pass-through from live Fed Funds Target Range", () => {
     const nodes = [
       makeNode({

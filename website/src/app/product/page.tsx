@@ -272,7 +272,7 @@ export default function ProductPage() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/contact" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import OmegaRadar from "@/components/visuals/OmegaRadar";
@@ -173,9 +172,10 @@ export default function FrameworkPage() {
           <WeightStack />
         </div>
         <p className="mt-3 text-[11.5px] font-mono text-text-muted leading-relaxed max-w-2xl">
-          A reinsurer evaluating sovereign credit cares about J and T. A
-          supply-chain operator cares about I and R. The same five pillars,
-          reweighted to your risk model.
+          A Geopolitical Analyst weights J and T for sovereign credit. A
+          Macro Analyst weights C and R for inflation pass-through. A
+          Financial Analyst weights I and T for counterparty stress.
+          The same five pillars, configured per persona.
         </p>
       </Section>
 
@@ -236,12 +236,7 @@ export default function FrameworkPage() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>OPEN TERMINAL</CTAButton>
-              <Link
-                href="/product"
-                className="text-center font-[family-name:var(--font-michroma)] text-[11px] tracking-[0.25em] text-text-muted hover:text-foreground"
-              >
-                ← BACK TO PRODUCT
-              </Link>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>

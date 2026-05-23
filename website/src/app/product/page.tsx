@@ -14,9 +14,9 @@ const ENGINES = [
     summary:
       "Recovers the causal topology of a critical system from observational data — which nodes act on which, and through what edges.",
     detail: [
-      "Constraint-based + score-based search over conditional independencies",
-      "Linear PCMCI variant for time-indexed feeds",
-      "Side-by-side panel comparison across discovery algorithms",
+      "Constraint-based, score-based, and gradient-based search across observational data",
+      "Five discovery algorithms compared side-by-side — PC, FCI (CMI-knn), NOTEARS, PCMCI-linear, lag-correlation",
+      "Auto → confirmed edge lifecycle with promote / demote affordance",
     ],
     pillar: "C · CASCADE LOAD",
   },
@@ -40,9 +40,9 @@ const ENGINES = [
     summary:
       "Asks what-if questions on the causal graph — substitute a node, sever an edge, model an embargo — and computes the counterfactual world.",
     detail: [
-      "Substitution counterfactuals for irreplaceability scoring",
-      "Counterfactual recovery time estimation",
-      "Intervention design for stress-tests",
+      "Unified intervention surface — scenario input, ablation, and interdiction co-located on one pane",
+      "APPLY ALL + SIMULATE — counterfactual cascade auto-runs after intervention",
+      "Explainable cuts — every interdicted edge surfaces a WHY trace back to the graph",
     ],
     pillar: "I · IRREPLACEABILITY  ·  R · RESTORATION",
   },
@@ -270,9 +270,12 @@ export default function ProductPage() {
               MANIFOLD IS A TEMPLATE
             </div>
             <p className="text-[12.5px] font-mono text-foreground/85 leading-relaxed">
-              Criticality looks different in finance than it does in fertilizer
-              supply chains. Engines are pluggable per domain — swap the
-              criticality core, retain the rest of the system.
+              Criticality in fertilizer supply chains looks nothing like
+              criticality in pancreatic biology — and the same Manifold
+              substrate renders both. Engines plug per domain; the
+              criticality core swaps; the rest of the system stays put.
+              The same codebase ships today as a macro-impact terminal,
+              a geopolitical terminal, and a biomedical-research terminal.
             </p>
             <div className="pt-2">
               <Link

@@ -51,10 +51,11 @@
 //   - Same varsortability sensitivity as linear NOTEARS — column
 //     standardisation mitigates it but doesn't eliminate.
 
-import type { Cohort, Subject, Variable } from "../cohort-types";
+import type { Cohort } from "../cohort-types";
 import type { DiscoveryAlgorithm } from "../algorithm-interface";
 import type { DiscoveredEdge, DiscoveryResult } from "../run-types";
 import { Mat, matExp, trace, zeros } from "./_matrix-ops";
+import { buildSubjectGrid } from "./_cohort-data";
 
 export interface NotearsMlpParams {
   /** Hidden-layer width per MLP. Default 8. */
@@ -103,57 +104,6 @@ const DEFAULT_PARAMS: NotearsMlpParams = {
 // Inlined version (mirrors notears.ts / fci.ts / pcmci.ts). DRY across
 // algorithms is a deferred refactor — each algorithm currently owns its
 // own resampling so per-algorithm grid params can drift independently.
-
-function buildSubjectGrid(
-  subject: Subject,
-  variables: Variable[],
-  gridSeconds: number,
-  minGridPoints: number,
-): Float64Array[] | null {
-  if (subject.measurements.length === 0) return null;
-  let tMin = Infinity;
-  let tMax = -Infinity;
-  for (const m of subject.measurements) {
-    if (m.t < tMin) tMin = m.t;
-    if (m.t > tMax) tMax = m.t;
-  }
-  const nGrid = Math.floor((tMax - tMin) / gridSeconds);
-  if (nGrid < minGridPoints) return null;
-
-  const byVar = new Map<string, { t: number; value: number }[]>();
-  for (const v of variables) byVar.set(v.id, []);
-  for (const m of subject.measurements) {
-    const arr = byVar.get(m.variableId);
-    if (!arr) continue;
-    if (typeof m.value === "number" && Number.isFinite(m.value)) {
-      arr.push({ t: m.t - tMin, value: m.value });
-    }
-  }
-
-  return variables.map((v) => {
-    const out = new Float64Array(nGrid);
-    const events = byVar.get(v.id) ?? [];
-    if (v.kind === "event" || v.kind === "binary") {
-      for (const e of events) {
-        const idx = Math.min(nGrid - 1, Math.max(0, Math.floor(e.t / gridSeconds)));
-        out[idx] += e.value;
-      }
-    } else {
-      events.sort((a, b) => a.t - b.t);
-      let lastVal = NaN;
-      let cursor = 0;
-      for (let i = 0; i < nGrid; i++) {
-        const tCenter = (i + 0.5) * gridSeconds;
-        while (cursor < events.length && events[cursor].t <= tCenter) {
-          lastVal = events[cursor].value;
-          cursor += 1;
-        }
-        out[i] = lastVal;
-      }
-    }
-    return out;
-  });
-}
 
 function buildDataMatrix(
   cohort: Cohort,

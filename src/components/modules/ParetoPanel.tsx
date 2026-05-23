@@ -9,7 +9,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getPresetShocks } from "@/lib/omega-engine";
 import { getEngineProvider } from "@/lib/engines";
 import { getDomainColor } from "@/lib/graph-data";
 import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
@@ -86,7 +85,6 @@ function ParetoPanel({
   setExpandedChart: (id: string | null) => void;
 }) {
   const shocks = useApexStore((s) => s.shocks);
-  const addShock = useApexStore((s) => s.addShock);
   const removeShock = useApexStore((s) => s.removeShock);
   const graphData = useApexStore((s) => s.graphData);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -122,7 +120,6 @@ function ParetoPanel({
   }, [activeProfile.relevanceReferenceId]);
 
   const engine = useMemo(() => getEngineProvider(), []);
-  const presetShocks = useMemo(() => getPresetShocks(), []);
   const omegaState = useMemo(() => engine.scanTailRisk(shocks), [engine, shocks]);
 
   // During replay, derive buffer from current epoch snapshot for dynamic T=
@@ -1115,36 +1112,16 @@ function ParetoPanel({
         </div>
       )}
 
-      {/* Scenario Injector */}
-      <div className="mt-3">
-        <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-red mb-1">
-          SCENARIO INJECTION
-        </div>
-        <div className="text-[8px] font-mono text-text-muted mb-1.5">
-          Activate disruption scenarios to stress-test the network. Each scenario shifts all three criticality horizons.
-        </div>
-        <div className="space-y-1 max-h-36 overflow-y-auto">
-          {presetShocks.map((shock) => {
-            const isActive = shocks.some((s) => s.id === shock.id);
-            return (
-              <button
-                key={shock.id}
-                onClick={() => !isActive && addShock(shock)}
-                disabled={isActive}
-                className="w-full text-left text-[8px] font-mono p-1.5 border rounded transition-colors disabled:opacity-30"
-                style={{
-                  borderColor: isActive ? "rgba(255,23,68,0.3)" : "var(--border)",
-                  backgroundColor: isActive ? "rgba(255,23,68,0.05)" : "transparent",
-                  color: isActive ? "var(--accent-red)" : "var(--text-muted)",
-                }}
-              >
-                {shock.name}
-                <span className="opacity-60 ml-1">SEV:{(shock.severity * 100).toFixed(0)}%</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Scenario injection (preset shock buttons) intentionally
+          removed from PARETO. PEARL's `ScenarioInput` is now the
+          canonical scenario entry — either NL ("simulate a Hormuz
+          closure") routed through the copilot's `solve_interdiction`
+          tool, or `add_shock` invoked directly from chat. PARETO is
+          purely the sensing layer: it shows how criticality estimators
+          read against whatever shock state is in the store, no matter
+          how it got there. The ACTIVE SCENARIOS readout above stays
+          so an analyst working on PARETO can see + dismiss active
+          shocks without context-switching to PEARL. */}
     </>
   );
 }

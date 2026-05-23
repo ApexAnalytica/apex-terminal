@@ -7,6 +7,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
+import { explainIntervention } from "@/lib/interdiction-explain";
 
 function CopilotInterdictionResults() {
   const lastResult = useApexStore((s) => s.lastInterdictionResult);
@@ -34,6 +35,13 @@ function CopilotInterdictionResults() {
   const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
   const severedEdges = useApexStore((s) => s.severedEdges);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  // Index of the row currently expanded into its "WHY THIS CUT?"
+  // narrative, or null for "all collapsed". Single-expansion (not
+  // multi) so the card stays compact; opening a new row collapses
+  // the prior expansion. Defensibility matters more than visual
+  // density here — commercial buyers click WHY? to read prose,
+  // they don't compare three explanations at once.
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   // Affected node set. Memoised on the interdiction result + graph
   // edge list so toggling isolate doesn't recompute it. Edge-cut
@@ -204,37 +212,98 @@ function CopilotInterdictionResults() {
             const isApplied = appliedIds.has(iv.target.id);
             const actionLabel = iv.target.type === "edge" ? "SEVER" : "ABLATE";
             const appliedLabel = iv.target.type === "edge" ? "SEVERED" : "ABLATED";
+            const isExpanded = expandedIndex === i;
+            // Greedy-walk + mechanism narrative for this cut. The
+            // fallback (structural-vulnerability) path uses proxy
+            // scores instead of real marginal damage deltas, so the
+            // "Worst-case damage X → Y" line would be misleading
+            // there — suppress the WHY? affordance for that case.
+            const explanation =
+              !isFallback ? explainIntervention(lastResult, i, graphData) : null;
             return (
               <div
                 key={iv.target.id}
-                className="flex items-center gap-2 p-1.5 rounded border border-border bg-surface-elevated"
+                className="rounded border border-border bg-surface-elevated"
               >
-                <span className="text-[8px] font-mono text-accent-cyan w-4 shrink-0">{i + 1}.</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[8px] font-mono text-foreground truncate">{iv.target.label}</div>
-                  <div className="text-[7px] font-mono text-text-muted">
-                    {iv.target.type} — {rankLabel} {iv.marginalReduction.toFixed(1)}{rankUnit}
+                <div className="flex items-center gap-2 p-1.5">
+                  <span className="text-[8px] font-mono text-accent-cyan w-4 shrink-0">{i + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[8px] font-mono text-foreground truncate">{iv.target.label}</div>
+                    <div className="text-[7px] font-mono text-text-muted">
+                      {iv.target.type} — {rankLabel} {iv.marginalReduction.toFixed(1)}{rankUnit}
+                    </div>
                   </div>
+                  {/* WHY THIS CUT? — expands a per-row narrative
+                      block underneath. Pure read affordance; doesn't
+                      modify any store state. Hidden on the fallback
+                      path (proxy scores, not real damage deltas).
+                      Single-expansion: opening one collapses any
+                      other open row to keep the card compact. */}
+                  {explanation && (
+                    <button
+                      onClick={() =>
+                        setExpandedIndex(isExpanded ? null : i)
+                      }
+                      className={`px-1.5 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors shrink-0 border ${
+                        isExpanded
+                          ? "border-accent-cyan/40 text-accent-cyan bg-accent-cyan/5"
+                          : "border-border text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40"
+                      }`}
+                      title={isExpanded ? "Hide explanation" : "Why was this cut recommended?"}
+                      aria-expanded={isExpanded}
+                    >
+                      {isExpanded ? "HIDE" : "WHY?"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (isApplied) return;
+                      if (iv.target.type === "edge") {
+                        severEdge(iv.target.id);
+                      } else {
+                        toggleAblatedNode(iv.target.id);
+                      }
+                      setAppliedIds((prev) => new Set([...prev, iv.target.id]));
+                    }}
+                    disabled={isApplied}
+                    className={`px-2 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors shrink-0 ${
+                      isApplied
+                        ? "text-accent-green border border-accent-green/30 bg-accent-green/5"
+                        : "text-accent-red border border-accent-red/30 hover:bg-accent-red/10"
+                    }`}
+                  >
+                    {isApplied ? appliedLabel : actionLabel}
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    if (isApplied) return;
-                    if (iv.target.type === "edge") {
-                      severEdge(iv.target.id);
-                    } else {
-                      toggleAblatedNode(iv.target.id);
-                    }
-                    setAppliedIds((prev) => new Set([...prev, iv.target.id]));
-                  }}
-                  disabled={isApplied}
-                  className={`px-2 py-0.5 rounded text-[7px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors shrink-0 ${
-                    isApplied
-                      ? "text-accent-green border border-accent-green/30 bg-accent-green/5"
-                      : "text-accent-red border border-accent-red/30 hover:bg-accent-red/10"
-                  }`}
-                >
-                  {isApplied ? appliedLabel : actionLabel}
-                </button>
+                {/* Expanded narrative block — three paragraphs:
+                    rank (where this cut sits in the greedy walk),
+                    damage delta (before / after / % reduction this
+                    step contributes), and mechanism (what this cut
+                    actually does, sourced from the edge's
+                    physicalMechanism field or the node's
+                    incoming/outgoing degree). Renders only when
+                    `expandedIndex === i` and an explanation was
+                    computed (i.e. not the fallback path). */}
+                {isExpanded && explanation && (
+                  <div className="border-t border-border/40 px-2 py-1.5 space-y-1.5 bg-surface/30">
+                    <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+                      <span className="text-accent-amber">RANK </span>
+                      {explanation.rank}
+                    </div>
+                    <div className="text-[7px] font-mono text-text-muted leading-relaxed">
+                      <span className="text-accent-amber">DAMAGE </span>
+                      {explanation.damageDelta}
+                    </div>
+                    <div className="text-[7px] font-mono text-text-muted leading-relaxed space-y-0.5">
+                      <div>
+                        <span className="text-accent-amber">MECHANISM</span>
+                      </div>
+                      {explanation.mechanism.map((line, j) => (
+                        <div key={j}>{line}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

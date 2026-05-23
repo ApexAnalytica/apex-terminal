@@ -168,9 +168,9 @@ export default function ModulePanel() {
         {activeModule === "pareto" && (
           <div className="p-4 space-y-3">
             <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Criticality observation. Inject shocks and read the model
-              relevance cards to see which estimators trust the regime.
-              Defensive cuts and scenario interdiction live in{" "}
+              Sensing layer. Read the criticality cards + snapshot
+              diagnostics to see how the system is reading. Inject
+              scenarios and run defensive cuts from{" "}
               <button
                 type="button"
                 onClick={() => setActiveModule("pearl")}
@@ -178,7 +178,8 @@ export default function ModulePanel() {
               >
                 PEARL {"\u2192"}
               </button>
-              .
+              \u2014 whatever shocks live in the store flow back here as
+              shifts in the relevance + snapshot readings.
             </div>
             <SnapshotIndicator />
             <ParetoPanel expandedChart={expandedChart} setExpandedChart={setExpandedChart} />

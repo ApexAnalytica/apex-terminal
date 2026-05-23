@@ -819,11 +819,15 @@ function CausalDAG2DInner() {
   );
 
   // Replay contraction magnitude. 0.18 was the original — visually
-  // subtle even at peak shock (~0.18 × max-pull-distance per tick).
-  // 0.35 is the new floor: pinches stressed clusters tight enough
-  // to *see* as the cascade rolls, matching the visual budget the
-  // user expects when scrubbing the time dial.
-  const CONTRACTION = 0.35;
+  // subtle even at peak shock. Pushed to 0.35 in the first revision;
+  // then production showed dial-scrub *still* feeling positionally
+  // frozen because synthetic temporal data only varies omega by
+  // ±0.5 around base, and the old `(omega-5)/5` stress mapping
+  // produced stress 0.1-0.3 at typical levels → pull 3-10% of
+  // distance, imperceptible. Pushed to 0.55 here paired with a
+  // steeper stress curve below to make the historical-mode signal
+  // actually readable.
+  const CONTRACTION = 0.55;
 
   // Force-directed layout. Cached positions come from a one-shot offline
   // simulation per graph signature; live positions are written by the rAF
@@ -1005,15 +1009,28 @@ function CausalDAG2DInner() {
           currentSnapshot.nodeStates[nbId]?.shockIntensity ?? 0;
       } else {
         // Historical / dial-scrub mode — stress as a unit fraction of
-        // how far the node's ΩF sits above neutral 5/10. Caps at 1.0
-        // for omega ≥ 10. Below neutral the node doesn't contract.
+        // how far the node's ΩF sits above a low-water mark. Caps at
+        // 1.0 for omega ≥ 8. Below the low-water mark the node
+        // doesn't contract.
+        //
+        // Earlier we used `(omega-5)/5` which only crossed 1.0 at
+        // omega 10 — but synthetic temporal data drifts within ±0.5
+        // of base, so typical historical omegas sit in the 5-7 band
+        // and the old curve produced stress 0.1-0.3 → pull 3-10% of
+        // distance, basically invisible. The 4 → 8 ramp below makes
+        // typical historical omegas (5-7) produce stress 0.25-0.75
+        // → pull 14-41% of distance with the new CONTRACTION=0.55.
+        // That's the difference between "the dial scrub is broken"
+        // and "I can see the cluster pinching as the cascade rolls."
         const omega = n.omegaFragility?.composite ?? 0;
-        stress = Math.max(0, Math.min(1, (omega - 5) / 5));
+        stress = Math.max(0, Math.min(1, (omega - 4) / 4));
         neighborStressOf = (nbId) => {
           const nb = nodeById.get(nbId);
           if (!nb) return 0;
           const nbOmega = nb.omegaFragility?.composite ?? 0;
-          return Math.max(0, Math.min(1, (nbOmega - 5) / 5));
+          // Same 4 → 8 ramp as the self branch above so neighbours
+          // contribute weight in lockstep with the contracting node.
+          return Math.max(0, Math.min(1, (nbOmega - 4) / 4));
         };
       }
       if (stress > 0.01) {

@@ -751,14 +751,19 @@ export default function CausalDAG3D() {
         return state ? state.shockIntensity : 0;
       }
       // Historical mode: use the temporal omega value directly
-      // High omega (>5) = stressed, pulls inward
-      // Low omega (<5) = relaxed, pushes outward
+      // High omega (>4) = stressed, pulls inward
+      // Low omega (<4) = relaxed, pushes outward
       // Use O(1) nodeById lookup (item #10) instead of O(N) find
       const node = nodeById.get(nodeId);
       if (!node) return 0;
       const omega = node.omegaFragility.composite;
-      // Map 0-10 omega to -1 to +1 stress (5 = neutral)
-      return Math.max(-1, Math.min(1, (omega - 5) / 4));
+      // Map omega → [-1, +1] stress with a steeper curve around the
+      // mid-band so synthetic temporal data's typical ±0.5 drift
+      // around omega 5-7 actually moves the orb. Old `(omega-5)/4`
+      // produced stress 0.25-0.5 at typical levels; new ramp puts
+      // it at 0.5-0.75 — paired with the 2D CONTRACTION push, the
+      // dial scrub finally reads as "the cluster is breathing."
+      return Math.max(-1, Math.min(1, (omega - 4) / 3));
     };
 
     // Compute network centroid

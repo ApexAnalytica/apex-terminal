@@ -10,6 +10,7 @@ import { lagCorrelationAlgorithm } from "./algorithms/lag-correlation";
 import { pcmciLinearAlgorithm } from "./algorithms/pcmci-linear";
 import { fciAlgorithm } from "./algorithms/fci";
 import { notearsAlgorithm } from "./algorithms/notears";
+import { notearsMlpAlgorithm } from "./algorithms/notears-mlp";
 
 // Erase the parameter generic so the registry is uniform; param shape
 // is documented per-algorithm via its description string + the source.
@@ -26,6 +27,10 @@ const REGISTRY: Record<string, DiscoveryAlgorithm<Record<string, unknown>>> = {
     fciAlgorithm as unknown as DiscoveryAlgorithm<Record<string, unknown>>,
   [notearsAlgorithm.id]:
     notearsAlgorithm as unknown as DiscoveryAlgorithm<Record<string, unknown>>,
+  [notearsMlpAlgorithm.id]:
+    notearsMlpAlgorithm as unknown as DiscoveryAlgorithm<
+      Record<string, unknown>
+    >,
 };
 
 /** Look up an algorithm by id; returns null if unknown. */

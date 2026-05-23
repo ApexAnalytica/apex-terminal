@@ -171,6 +171,14 @@ export default function TimeDial() {
   const [rangeAnchor, setRangeAnchor] = useState<number | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<TemporalEvent | null>(null);
   const [historicalPlaying, setHistoricalPlaying] = useState(false);
+  // Granularity row used to render all 7 presets (1H..ALL) inline,
+  // which crowded the dial header on narrow viewports. Now collapses
+  // to a single chip showing the active preset; clicking expands the
+  // full row, picking any preset re-collapses. User feedback:
+  // "the time dial itself has a very extensive selection window …
+  // we should make that collapsible so there's more room for the
+  // time dial itself."
+  const [granularityExpanded, setGranularityExpanded] = useState(false);
   const historicalPlayRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
 
@@ -628,47 +636,67 @@ export default function TimeDial() {
             exit={{ opacity: 0, width: 0 }}
             className="flex items-center gap-1 overflow-hidden"
           >
-            <div className="flex gap-0.5 rounded border border-border overflow-hidden">
-              {GRANULARITY_OPTIONS.map((opt, i) => {
-                // Insert a slightly heavier separator between "month" (short
-                // group) and "year" (long group) so the eye picks up the
-                // cadence-tier boundary without needing a legend.
-                const prev = i > 0 ? GRANULARITY_OPTIONS[i - 1] : null;
-                const isGroupBoundary = prev && prev.group !== opt.group;
-                return (
-                  <button
-                    key={opt.value}
-                    onClick={() => setTimelineGranularity(opt.value)}
-                    className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
-                    style={{
-                      backgroundColor:
-                        timelineGranularity === opt.value
-                          ? "rgba(0,229,255,0.15)"
-                          : "transparent",
-                      color:
-                        timelineGranularity === opt.value
-                          ? "var(--accent-cyan)"
-                          : "var(--text-muted)",
-                      borderRight: "1px solid var(--border)",
-                      borderLeft: isGroupBoundary
-                        ? "1px solid var(--border-bright)"
-                        : undefined,
-                    }}
-                    title={
-                      opt.value === "year"
-                        ? "1 year window — for annual signals (World Bank, WGI)"
-                        : opt.value === "5year"
-                          ? "5 year window — multi-year trend on annual signals"
-                          : opt.value === "all"
-                            ? "Full data span — shows every published observation"
-                            : undefined
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+            {granularityExpanded ? (
+              <div className="flex gap-0.5 rounded border border-border overflow-hidden">
+                {GRANULARITY_OPTIONS.map((opt, i) => {
+                  // Insert a slightly heavier separator between "month" (short
+                  // group) and "year" (long group) so the eye picks up the
+                  // cadence-tier boundary without needing a legend.
+                  const prev = i > 0 ? GRANULARITY_OPTIONS[i - 1] : null;
+                  const isGroupBoundary = prev && prev.group !== opt.group;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setTimelineGranularity(opt.value);
+                        setGranularityExpanded(false);
+                      }}
+                      className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                      style={{
+                        backgroundColor:
+                          timelineGranularity === opt.value
+                            ? "rgba(0,229,255,0.15)"
+                            : "transparent",
+                        color:
+                          timelineGranularity === opt.value
+                            ? "var(--accent-cyan)"
+                            : "var(--text-muted)",
+                        borderRight: "1px solid var(--border)",
+                        borderLeft: isGroupBoundary
+                          ? "1px solid var(--border-bright)"
+                          : undefined,
+                      }}
+                      title={
+                        opt.value === "year"
+                          ? "1 year window — for annual signals (World Bank, WGI)"
+                          : opt.value === "5year"
+                            ? "5 year window — multi-year trend on annual signals"
+                            : opt.value === "all"
+                              ? "Full data span — shows every published observation"
+                              : undefined
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <button
+                onClick={() => setGranularityExpanded(true)}
+                className="px-2 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded border border-border flex items-center gap-1 hover:bg-white/5 transition-colors"
+                style={{
+                  color: "var(--accent-cyan)",
+                  backgroundColor: "rgba(0,229,255,0.08)",
+                }}
+                title="Click to change time-window preset"
+              >
+                <span>
+                  {GRANULARITY_OPTIONS.find((o) => o.value === timelineGranularity)?.label ?? "—"}
+                </span>
+                <span className="opacity-60 text-[7px]">▾</span>
+              </button>
+            )}
             {/* Historical play/pause button — only in non-live, non-replay mode */}
             {!isLive && (
               <button

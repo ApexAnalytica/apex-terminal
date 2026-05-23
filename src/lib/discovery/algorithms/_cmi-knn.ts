@@ -162,6 +162,17 @@ export interface CmiKnnOptions {
    * `nPermutations` = 0.
    */
   nPermutationSwaps?: number;
+  /**
+   * Permutation Markov chain. `"swap"` (default) is the practical
+   * variant — direct value-swaps within Z-neighbourhoods, fast but the
+   * stationary distribution is only approximately uniform over the
+   * matching polytope. `"matching"` is the formal Kim et al. (2022)
+   * Algorithm 1 — tracks π explicitly and accepts only swaps that
+   * respect both endpoints' Z-NN constraints. Strictly more rigorous,
+   * at the cost of higher reject rates (so use more swaps for the same
+   * mixing).
+   */
+  permutationMode?: "swap" | "matching";
   /** Deterministic seed for the permutation RNG. Default Date.now(). */
   seed?: number;
 }
@@ -184,9 +195,11 @@ function makeRng(seed: number): () => number {
  * distribution X | (Y, Z); see Kim et al. (2022, "Local Permutation
  * Test for Conditional Independence") for the formal treatment.
  *
- * `zNeighbours[i]` must be a non-empty array of neighbour indices
- * (excluding i itself) — `localPermutationPValue` builds this via
- * KD-tree before calling.
+ * Stationary distribution: NOT uniform over the matching polytope —
+ * direct swaps on the value array don't enforce the bijection
+ * constraint that π(j) must also be a valid Z-neighbour of i (only
+ * the forward direction is checked). For a uniform sample over the
+ * matching polytope use `localMatchingPermutation` instead.
  */
 function localPermuteX(
   x: number[],
@@ -209,6 +222,56 @@ function localPermuteX(
 }
 
 /**
+ * Formal Kim et al. (2022) Algorithm 1 — Markov chain over the matching
+ * polytope. Tracks the permutation π explicitly. At each step propose
+ * swapping π(i) ↔ π(j); accept iff the resulting assignment respects
+ * BOTH endpoints' Z-neighbourhood constraints:
+ *   π'(i) ∈ NN_Z(i) ∪ {i}  AND  π'(j) ∈ NN_Z(j) ∪ {j}
+ * The bijection constraint (only valid swaps) makes the stationary
+ * distribution uniform over the matching polytope — strictly more
+ * rigorous than the direct-swap chain in `localPermuteX`, at the cost
+ * of higher reject rates (and so longer mixing time).
+ *
+ * Returns the permutation array; apply via `applyPermutationToX`.
+ */
+function localMatchingPermutation(
+  zNeighbours: number[][],
+  nSwaps: number,
+  rng: () => number,
+): number[] {
+  const N = zNeighbours.length;
+  const pi = Array.from({ length: N }, (_, i) => i);
+  // Per-i neighbour sets for O(1) lookup. Include self so the identity
+  // permutation is always a valid start state.
+  const nnSet: Set<number>[] = zNeighbours.map((arr) => {
+    const s = new Set(arr);
+    return s;
+  });
+
+  for (let s = 0; s < nSwaps; s++) {
+    const i = Math.floor(rng() * N);
+    const j = Math.floor(rng() * N);
+    if (i === j) continue;
+    const newPiI = pi[j]; // would assign pi[j] to position i
+    const newPiJ = pi[i]; // would assign pi[i] to position j
+    const validI = newPiI === i || nnSet[i].has(newPiI);
+    const validJ = newPiJ === j || nnSet[j].has(newPiJ);
+    if (validI && validJ) {
+      pi[i] = newPiI;
+      pi[j] = newPiJ;
+    }
+  }
+  return pi;
+}
+
+/** Apply a permutation to an X array: out[i] = x[π[i]]. */
+function applyPermutationToX(x: number[], pi: number[]): number[] {
+  const out = new Array<number>(x.length);
+  for (let i = 0; i < pi.length; i++) out[i] = x[pi[i]];
+  return out;
+}
+
+/**
  * Empirical p-value for H0: X ⊥ Y | Z via the local-permutation test.
  * Returns the standard (1 + ge) / (1 + B) form with +1 smoothing so
  * the p-value is never 0 (which would mean "infinitely confident in
@@ -224,6 +287,7 @@ function localPermutationPValue(
   nPermutations: number,
   nSwaps: number,
   rng: () => number,
+  mode: "swap" | "matching",
 ): number {
   const N = x.length;
   const nCond = Z.length === 0 ? 0 : Z[0].length;
@@ -246,7 +310,13 @@ function localPermutationPValue(
 
   let ge = 0;
   for (let b = 0; b < nPermutations; b++) {
-    const xPerm = localPermuteX(x, zNeighbours, nSwaps, rng);
+    let xPerm: number[];
+    if (mode === "matching") {
+      const pi = localMatchingPermutation(zNeighbours, nSwaps, rng);
+      xPerm = applyPermutationToX(x, pi);
+    } else {
+      xPerm = localPermuteX(x, zNeighbours, nSwaps, rng);
+    }
     const cmiPerm = cmiKnn(xPerm, y, Z, k);
     if (cmiPerm >= observedCmi) ge += 1;
   }
@@ -313,6 +383,7 @@ export function cmiKnnTest(
     const kPerm = Math.min(options?.kPerm ?? 10, n - 1);
     const nSwaps = options?.nPermutationSwaps ?? 5 * n;
     const rng = makeRng(options?.seed ?? Date.now());
+    const mode = options?.permutationMode ?? "swap";
     const pValue = localPermutationPValue(
       xc,
       yc,
@@ -323,6 +394,7 @@ export function cmiKnnTest(
       nPermutations,
       nSwaps,
       rng,
+      mode,
     );
     return { r: cmi, p: pValue, n };
   }

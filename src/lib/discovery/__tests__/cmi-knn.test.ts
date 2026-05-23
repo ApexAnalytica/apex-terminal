@@ -239,6 +239,57 @@ describe("cmiKnnTest — local-permutation null (Kim et al. 2022 variant)", () =
     expect(a!.p).toBe(b!.p);
   });
 
+  it("permutationMode='matching' (Kim et al. 2022 Algorithm 1) gives a valid p-value under H0", () => {
+    const rng = lcg(750);
+    const N = 150;
+    const x = Array.from({ length: N }, () => gauss(rng));
+    const y = Array.from({ length: N }, () => gauss(rng));
+    const res = cmiKnnTest(x, y, [], {
+      nPermutations: 49,
+      permutationMode: "matching",
+      seed: 54321,
+    });
+    expect(res).not.toBeNull();
+    expect(res!.p).toBeGreaterThan(0.05);
+    expect(res!.p).toBeLessThanOrEqual(1);
+  });
+
+  it("permutationMode='matching' detects strong dependence (H1)", () => {
+    const rng = lcg(751);
+    const N = 150;
+    const x: number[] = [];
+    const y: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const xi = gauss(rng);
+      x.push(xi);
+      y.push(0.9 * xi + 0.3 * gauss(rng));
+    }
+    const B = 49;
+    const res = cmiKnnTest(x, y, [], {
+      nPermutations: B,
+      permutationMode: "matching",
+      seed: 54321,
+    });
+    expect(res).not.toBeNull();
+    // No permutation should clear the observed CMI on this strong-
+    // dependence cohort, so ge = 0 and p = 1/(B+1).
+    expect(res!.p).toBeCloseTo(1 / (1 + B), 5);
+  });
+
+  it("default permutation mode is 'swap' (preserves v0.6.2 behaviour)", () => {
+    const rng = lcg(752);
+    const N = 100;
+    const x = Array.from({ length: N }, () => gauss(rng));
+    const y = Array.from({ length: N }, () => gauss(rng));
+    const def = cmiKnnTest(x, y, [], { nPermutations: 31, seed: 9999 });
+    const explicitSwap = cmiKnnTest(x, y, [], {
+      nPermutations: 31,
+      permutationMode: "swap",
+      seed: 9999,
+    });
+    expect(def!.p).toBe(explicitSwap!.p);
+  });
+
   it("conditional permutation respects the Z-stratum (CMI(X,Y|X) stays small under H0)", () => {
     // X→Y dependence is fully explained by Z=X. Local permutation
     // should swap X values WITHIN Z-neighbourhoods, breaking the X-Y

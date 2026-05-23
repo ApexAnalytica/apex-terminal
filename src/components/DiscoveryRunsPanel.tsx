@@ -10,9 +10,12 @@ import CapabilityBadge from "./CapabilityBadge";
 // When they switch to real partner-cohort data, these stay "live"; the
 // distinction would be encoded as `live-synthetic` on the cohort, not
 // the algorithm.
-const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
+export const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
   "lag-correlation": "live",
   "pcmci-linear": "live",
+  "fci": "live",
+  "notears": "live",
+  "notears-mlp": "live",
   "bocpd-hypo-calibration": "live",
   "csd-fit-hypo-calibration": "live",
 };

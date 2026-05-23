@@ -3,6 +3,7 @@ import {
   CausalShock,
   CausalNode,
   CausalEdge,
+  EdgeType,
   ModuleId,
   ViewMode,
   NodeSizeMetric,
@@ -301,6 +302,14 @@ export interface ApexState {
   visibleDiscoverySources: Set<string>; // discovery sources to show (empty = all)
   setVisibleCategories: (categories: Set<string>) => void;
   setVisibleDiscoverySources: (sources: Set<string>) => void;
+
+  // Edge-type visibility — drives the per-type show/hide toggle row
+  // in DAGOverlay. Set semantics: any member present is VISIBLE.
+  // Empty set is treated as "all visible" so older clients without
+  // the setting still render every edge.
+  visibleEdgeTypes: Set<EdgeType>;
+  toggleEdgeTypeVisibility: (type: EdgeType) => void;
+  setVisibleEdgeTypes: (types: Set<EdgeType>) => void;
 
   // Import modal
   importModalOpen: boolean;
@@ -842,6 +851,20 @@ export const useApexStore = create<ApexState>((set, get) => ({
   visibleDiscoverySources: new Set<string>(),
   setVisibleCategories: (categories) => set({ visibleCategories: categories }),
   setVisibleDiscoverySources: (sources) => set({ visibleDiscoverySources: sources }),
+
+  // Edge-type visibility — defaults to "show all four types". Toggling
+  // an edge type drops it from / adds it back to the Set; consumers
+  // (4 canvas surfaces) treat an empty Set as "all visible" so older
+  // sessions without the setting render every edge.
+  visibleEdgeTypes: new Set<EdgeType>(["directed", "temporal", "confounded", "flow"]),
+  toggleEdgeTypeVisibility: (type) =>
+    set((s) => {
+      const next = new Set(s.visibleEdgeTypes);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return { visibleEdgeTypes: next };
+    }),
+  setVisibleEdgeTypes: (types) => set({ visibleEdgeTypes: types }),
 
   // Import
   importModalOpen: false,

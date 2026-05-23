@@ -513,6 +513,7 @@ export default function CausalDAG3D() {
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
   const scissorsMode = useApexStore((s) => s.scissorsMode);
   const severedEdges = useApexStore((s) => s.severedEdges);
   const severEdge = useApexStore((s) => s.severEdge);
@@ -1218,6 +1219,10 @@ export default function CausalDAG3D() {
 
             // Hide edges that don't connect two selected nodes when isolation is active
             if (isolateSelection && multiSelectedSet.size > 0 && (!multiSelectedSet.has(edge.source) || !multiSelectedSet.has(edge.target))) return null;
+
+            // Per-edge-type visibility filter. Empty Set = show all
+            // (back-compat). User-driven via the DAGOverlay chip strip.
+            if (visibleEdgeTypes.size > 0 && !visibleEdgeTypes.has(edge.type)) return null;
 
             const isHighlighted =
               interventionMode &&

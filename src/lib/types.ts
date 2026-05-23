@@ -108,7 +108,23 @@ export type NodeCategory =
   | "agriculture"
   | "science";
 
-export type EdgeType = "directed" | "confounded" | "temporal";
+/**
+ * Edge-type discriminator. Visual encoding (kept in lockstep across
+ * the four canvas surfaces — see `CausalDAG2D` / `DAGEdge3D` /
+ * `CausalDAGMap` / `CausalDAGRelief`):
+ *
+ *   - `directed`   → cyan, solid, arrow on target. "A → B" causal claim.
+ *   - `temporal`   → amber, solid, arrow on target, animated particle.
+ *                    Lag-correlation: A leads B with a delay.
+ *   - `confounded` → orange, dashed. Latent common cause (no direct link).
+ *   - `flow`       → teal-green, solid, arrow on target, animated
+ *                    particle (faster cadence than temporal). Directed
+ *                    transmission of material / capital / signal through
+ *                    the network. Distinct from `directed` (causal claim)
+ *                    and `temporal` (lag correlation) — `flow` is
+ *                    "stuff is actually moving here".
+ */
+export type EdgeType = "directed" | "confounded" | "temporal" | "flow";
 
 /**
  * Where an edge attribute (weight, confidence) came from. Surfaces in

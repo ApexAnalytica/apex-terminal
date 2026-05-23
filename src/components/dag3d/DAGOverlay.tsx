@@ -208,6 +208,17 @@ function EncodingLegend({
           }
         />
         <LegendRow
+          label="FLOW (teal, animated →)"
+          help="Directed transmission of material / capital / signal through the network. Distinct from CAUSAL (a claim of cause) and TEMPORAL (a lag correlation) — flow means stuff is actually moving along this edge."
+          swatch={
+            <div className="flex items-center gap-0.5">
+              <span className="h-0.5 w-6" style={{ backgroundColor: "#1de9b6" }} />
+              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: "#1de9b6", boxShadow: "0 0 4px #1de9b6" }} />
+              <span className="text-[8px]" style={{ color: "#1de9b6" }}>▶</span>
+            </div>
+          }
+        />
+        <LegendRow
           label="INCONSISTENT (red)"
           help="Tarski filter: edge violates a domain-aware axiom. Only visible when the verified-truth filter is on."
           swatch={
@@ -308,6 +319,8 @@ export default function DAGOverlay() {
   const activeModule = useApexStore((s) => s.activeModule);
   const viewMode = useApexStore((s) => s.viewMode);
   const setViewMode = useApexStore((s) => s.setViewMode);
+  const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
+  const toggleEdgeTypeVisibility = useApexStore((s) => s.toggleEdgeTypeVisibility);
   const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
   const setNodeSizeMetric = useApexStore((s) => s.setNodeSizeMetric);
   const truthFilter = useApexStore((s) => s.truthFilter);
@@ -475,6 +488,51 @@ export default function DAGOverlay() {
           the corner stays clean. View labels still say which view is
           active via the highlighted button. */}
       <div className="absolute top-3 right-3 flex items-center gap-2 pointer-events-auto">
+        {/* Per-edge-type visibility toggle. Each chip shows / hides
+            its edge type across every canvas surface (consumers read
+            `visibleEdgeTypes` from the store and filter). Visible all
+            four types by default; click a chip to dim → hide that
+            type, click again to bring it back. Same rationale as the
+            LEGEND popover next to it but interactive — the LEGEND
+            documents what each type means, this strip controls which
+            of them are on screen. */}
+        {(viewMode === "3d" || viewMode === "2d" || viewMode === "map") && (
+          <div className="flex items-center gap-0.5 rounded border border-border overflow-hidden">
+            {(
+              [
+                { type: "directed", label: "CAUSAL", color: "#00e5ff" },
+                { type: "temporal", label: "TEMP", color: "#ffab00" },
+                { type: "confounded", label: "CONF", color: "#ff6d00" },
+                { type: "flow", label: "FLOW", color: "#1de9b6" },
+              ] as const
+            ).map(({ type, label, color }) => {
+              // Empty Set === everything visible (back-compat).
+              const isVisible =
+                visibleEdgeTypes.size === 0 || visibleEdgeTypes.has(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleEdgeTypeVisibility(type)}
+                  className="px-1.5 py-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors border-r border-border last:border-r-0"
+                  style={{
+                    backgroundColor: isVisible
+                      ? `${color}15`
+                      : "transparent",
+                    color: isVisible ? color : "var(--text-muted)",
+                    opacity: isVisible ? 1 : 0.45,
+                  }}
+                  title={
+                    isVisible
+                      ? `Hide ${label} edges`
+                      : `Show ${label} edges`
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {/* Encoding legend — visible in 3D and 2D where the visual
             primitive is a sized, coloured node with edges. MAP and TOPO
             have their own legends. Click opens a popover documenting

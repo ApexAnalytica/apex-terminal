@@ -66,6 +66,7 @@ function CausalDAGMapInner() {
     ablationMode,
     ablatedNodeIds,
     toggleAblatedNode,
+    visibleEdgeTypes,
   } = useApexStore();
   const ablatedNodeSet = useMemo(() => new Set(ablatedNodeIds), [ablatedNodeIds]);
   // Use the same filtered graph as 2D and 3D views for consistent data
@@ -281,6 +282,10 @@ function CausalDAGMapInner() {
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
+      // Per-edge-type visibility filter (driven by the DAGOverlay
+      // chip strip). Empty Set = show all (back-compat).
+      if (visibleEdgeTypes.size > 0 && !visibleEdgeTypes.has(edge.type)) return;
+
       // Three modes for edges when a multi-selection is active:
       //  - isolate ON   → cull edges that don't connect two selected nodes
       //  - isolate OFF  → render but dim edges with no selected endpoint
@@ -342,7 +347,9 @@ function CausalDAGMapInner() {
             ? "#ffab00"
             : edge.type === "confounded"
               ? "#ff6d00"
-              : "#00e5ff";
+              : edge.type === "flow"
+                ? "#1de9b6"
+                : "#00e5ff";
 
       // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
       const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
@@ -400,7 +407,7 @@ function CausalDAGMapInner() {
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
       chiStarOutlineGeoJSON: { type: "FeatureCollection" as const, features: outlineFeatures },
     };
-  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo]);
+  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo, visibleEdgeTypes]);
 
   // Extract temporal edge paths directly from the solid edge GeoJSON features
   // so particles follow the exact same sampled bezier polyline as the

@@ -29,6 +29,10 @@ import {
 } from "@/lib/pareto-relevance";
 import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import {
+  buildScopedAdjacency,
+  inducedEdgeCount,
+} from "@/lib/pareto-scoped-subgraph";
+import {
   loadRelevanceReference,
   lookupRelevanceReference,
   type ReferenceLookupResult,
@@ -516,8 +520,32 @@ function ParetoPanel({
     }
 
     const inputs: ModelRelevanceInput[] = [];
-    const edgeCount = graphData.edges.filter((e) => !e.isSevered).length;
-    const nodeCount = graphData.nodes.length;
+
+    // ── Scope-aware sub-score inputs ───────────────────────────────
+    // F and E already honor `scopedNodeIds` via `scopedOmegaSeries`
+    // (the trajectory the live estimators fit against). G, S, and M
+    // historically used the FULL graph, which made the relevance
+    // composite only partially reactive to lasso selection — exactly
+    // the gap the 2026-05-03 "per-selection model relevance"
+    // directive was calling out ("it can change based off of what the
+    // user selects using the Lasso tool, and it recalculates model
+    // relevance accordingly"). Lifting them to scope here closes that
+    // loop so all five sub-scores agree on what "the system under
+    // analysis" actually is.
+    //
+    // `scopedNodeIds` already collapses the two cases:
+    //   - Lasso active → user's selection
+    //   - No lasso     → top-N risk nodes
+    // So the relevance card is ALWAYS scoped, just to different
+    // defaults depending on whether the user has lassoed anything.
+    // S — edges that live entirely inside the scope (both endpoints
+    // selected). Honors `isSevered` for post-cut analysis: a severed
+    // edge no longer contributes to topology sufficiency. Extracted
+    // into `inducedEdgeCount` so the math is unit-testable.
+    const edgeCount = inducedEdgeCount(graphData.edges, scopedNodeIds);
+    // G — node count for topology sufficiency, scoped to the user's
+    // selection (or top-N fallback).
+    const nodeCount = scopedNodeIds.length;
 
     // Always push live estimators into the relevance batch — even when the
     // trajectory is too thin to fit. The sub-score helpers handle insufficient
@@ -583,36 +611,33 @@ function ParetoPanel({
     });
 
     // M — spatial consistency. Computed once across all models from the
-    // live T1D adjacency (binary, symmetric, row-normalised) and per-node
+    // SCOPED adjacency (binary, symmetric, row-normalised) and per-node
     // ΩF composite values. Same Moran kernel the standalone Moran card
     // already uses, so the breakdown row matches the card by construction.
-    const t1dValues: number[] = T1D_NODE_IDS.map((nid) => {
+    //
+    // Previously this was hardcoded to T1D_NODE_IDS — fine for T1D, but
+    // for any other domain (geopolitical / AI-safety / multi-domain) it
+    // was computing Moran on the WRONG subgraph. Now uses `scopedNodeIds`
+    // so:
+    //   - T1D profile with no selection → top-N T1D risk nodes (the
+    //     ones the rest of the card already analyses)
+    //   - Geopolitical profile           → top-N geopolitical risk nodes
+    //   - Lasso active                   → the user's actual selection
+    //
+    // Moran needs n ≥ 3 to compute a meaningful I + permutation test.
+    // Below that threshold spatialConsistency falls back to the neutral
+    // M = 1.0 ("no evaluable graph"), which preserves the historical
+    // behaviour at degenerate selections.
+    const scopedValues: number[] = scopedNodeIds.map((nid) => {
       const gn = graphData.nodes.find((nd) => nd.id === nid);
       return gn?.omegaFragility.composite ?? 0;
     });
-    const t1dAdjacency: number[][] = (() => {
-      const n = T1D_NODE_IDS.length;
-      const W: number[][] = Array.from({ length: n }, () =>
-        new Array(n).fill(0),
-      );
-      const idxOf = (nid: string) => T1D_NODE_IDS.indexOf(nid);
-      for (const e of graphData.edges) {
-        if (e.isSevered) continue;
-        const si = idxOf(e.source);
-        const ti = idxOf(e.target);
-        if (si >= 0 && ti >= 0) {
-          W[si][ti] = 1;
-          W[ti][si] = 1;
-        }
-      }
-      // Row-normalise.
-      return W.map((row) => {
-        const rs = row.reduce((a, b) => a + b, 0);
-        return rs > 0 ? row.map((v) => v / rs) : row;
-      });
-    })();
+    const scopedAdjacency = buildScopedAdjacency(
+      graphData.edges,
+      scopedNodeIds,
+    );
     const consistency = spatialConsistency(
-      { values: t1dValues, adjacency: t1dAdjacency },
+      { values: scopedValues, adjacency: scopedAdjacency },
       moransI,
     );
 
@@ -626,7 +651,7 @@ function ParetoPanel({
       prevCompositesRef.current.set(key, breakdown.composite);
     }
     return result;
-  }, [csdData, phData, lpplsData, bocpdData, graphData.edges, graphData.nodes, scopeLabel, activeProfile]);
+  }, [csdData, phData, lpplsData, bocpdData, graphData.edges, graphData.nodes, scopeLabel, activeProfile, scopedNodeIds]);
 
   const paretoSectionExpanded = expandedChart === "pareto";
 

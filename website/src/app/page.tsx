@@ -90,32 +90,63 @@ export default function Home() {
                 <CTAButton href="/product" variant="secondary">EXPLORE THE PRODUCT</CTAButton>
               </div>
 
-              <div className="pt-6 grid grid-cols-3 gap-4 max-w-md">
-                <Stat label="ENGINES" value="04" />
-                <Stat label="ΩF PILLARS" value="05" />
-                <Stat label="DOMAINS" value="08" />
+              {/* Proof-of-real stat strip (was "04 ENGINES · 05 ΩF
+                  PILLARS · 08 DOMAINS" — those counted internal building
+                  blocks and answered the wrong question for a prospect.
+                  Replaced 2026-05-23 with three claims a prospect can
+                  verify on /product or by talking to us:
+                  - live data sources (not a sandboxed demo)
+                  - shipped discovery algorithms (not vaporware)
+                  - the actual access path (48-hr pilot, not paperwork). */}
+              <div className="pt-6 grid grid-cols-3 gap-4 max-w-lg">
+                <Stat
+                  value="10+"
+                  label="LIVE FEEDS"
+                  sub="FRED · WORLD BANK · NOAA"
+                />
+                <Stat
+                  value="5"
+                  label="ALGORITHMS"
+                  sub="PC · FCI · PCMCI · NOTEARS · LAG-CORR"
+                />
+                <Stat
+                  value="48 HRS"
+                  label="PILOT"
+                  sub="BEFORE PAPERWORK"
+                />
               </div>
             </div>
 
+            {/* Hero topology panel. Reframed 2026-05-23: previous version
+                read as abstract chrome ("CAUSAL TOPOLOGY · LIVE" with
+                window-style traffic-light dots and made-up ΩSF/ΩSX
+                metrics in the footer). Renamed to a specific scenario
+                (TSMC Arizona-1 — same anchor as the manufacturing
+                sampleNode + audit case) with a one-line cascade claim
+                that ties the visual to a concrete consequence and a
+                CTA path to /access. */}
             <div className="relative">
               <div className="relative bg-surface/40 border border-border rounded-lg p-4 backdrop-blur">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent-red/70" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent-amber/70" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent-green/70" />
-                  </div>
-                  <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted">
-                    CAUSAL TOPOLOGY · LIVE
+                <div className="flex items-baseline justify-between mb-3 gap-3">
+                  <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/80">
+                    // MANUFACTURING
+                  </span>
+                  <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-text-muted text-right">
+                    SAMPLE · TSMC ARIZONA-1 NEIGHBORHOOD
                   </span>
                 </div>
                 <div className="aspect-[4/3] w-full">
                   <HeroGraph />
                 </div>
-                <div className="mt-3 flex items-center justify-between text-[10px] font-mono text-text-muted/70 tracking-wider">
-                  <span>NODES 8 · EDGES 11</span>
-                  <span>ΩSF 7.42 · ΩSX 6.18</span>
-                </div>
+                <p className="mt-3 text-[11px] font-mono text-text-muted leading-snug">
+                  If this node fails, 37 downstream nodes lose function.{" "}
+                  <Link
+                    href="/access"
+                    className="text-accent-cyan/80 hover:text-accent-cyan transition-colors"
+                  >
+                    Try this on your own graph ›
+                  </Link>
+                </p>
               </div>
             </div>
           </div>
@@ -274,7 +305,15 @@ export default function Home() {
 
 /* ───────── Tiles ───────── */
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
   return (
     <div className="border-l border-border pl-3">
       <div className="font-[family-name:var(--font-michroma)] text-2xl text-accent-cyan/90 leading-none">
@@ -283,6 +322,11 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="mt-1 font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-text-muted">
         {label}
       </div>
+      {sub ? (
+        <div className="mt-1 font-mono text-[9px] tracking-wider text-text-muted/70 leading-tight">
+          {sub}
+        </div>
+      ) : null}
     </div>
   );
 }

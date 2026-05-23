@@ -34,7 +34,8 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: lazy `SystemCopilot` chunk + lazy `buildGraphFromDomains` / `AXIOM_LIBRARY` inside copilot tool handlers — pulls ~6.8 K LOC off the initial-paint bundle |
+| TBD | `feat(timedial)`: granularity picker collapses to a single chip; click to expand, pick-to-collapse |
+| #432 | `perf(bundle)`: lazy `SystemCopilot` chunk + lazy `buildGraphFromDomains` / `AXIOM_LIBRARY` inside copilot tool handlers — pulls ~6.8 K LOC off the initial-paint bundle |
 | #427 | `feat(2d)`: dial-scrub now moves orbs via historical-omega contraction (matched 3D's already-shipped fallback); CONTRACTION 0.18 → 0.35 for visibility |
 | #409 | `perf(2d)`: 2D layout sim + network metrics → layout Web Worker (`requestLayout2D` arm; same epoch cancellation pattern as 3D) |
 | #406 | `perf(bundle)`: extract `TarskiPanel` / `ParetoPanel` / `CopilotInterdictionResults` / `SnapshotIndicator` from `ModulePanel.tsx` into `next/dynamic` chunks (`ModulePanel.tsx` 3384 → 821 LOC) |
@@ -62,10 +63,12 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 ## Backlog (next-up, ordered roughly by priority)
 
-- **Platform load-time deep-dive (NEW).** Whole-app audit looking for any low-hanging perf items not yet covered by the per-canvas work above. Candidates the previous sweeps left on the table: `framer-motion` tree-shaking (used widely — verify nothing's pulling the full lib), any module-level top-of-file imports of heavy estimator libs OUTSIDE `ParetoPanel.tsx`, top-level imports of `three`/drei in non-canvas files, large JSON imports done eagerly, `react-pdf`-style heavy embeds, and feed-registry polling that fires before the user interacts. Pair with a real `ANALYZE=true next build` run when the env supports it.
-- **Time-dial-driven positional response.** _Partly shipped — 2026-05-22._ 2D contraction now handles both cascade replay AND dial-scrub (historical-omega fallback) and bumped its magnitude 0.18 → 0.35 for visibility. 3D already had the historical-fallback path (push/pull at PULL_MAX 0.45 / PUSH_MAX 0.25). Map relies on omega-scaled radius (no geo-position movement — geographic positions are correct as-is). Remaining: verify in production that the new 2D movement reads at typical omega levels; if 3D still feels subtle, raise PULL_MAX / PUSH_MAX next.
+- **Flow edge type + edge-type visibility toggles (NEW).** Add a third edge type — `"flow"` — alongside `"directed"` and `"temporal"`. UI affordance to toggle each edge type's visibility on/off across the four canvas surfaces. Touches: `CausalEdge` type, edge styling helpers (already extracted in `lib/edge-styling`), 2D/3D/Map/TOPO consumers, and LEGEND. Needs data-team alignment on what `"flow"` means semantically (material flow vs. information flow vs. cascade-propagation flow) and which existing edges should be re-tagged.
+- **Time-dial range-selector collapsible (NEW).** The 1H / 1Y / 5Y / ALL preset row at the bottom of the dial currently takes a fixed slice of horizontal space. User wants it collapsible so the dial itself can take the full width when the user isn't picking a range.
+- **Distance measures on dial scrub — verify in production (NEW).** User reports that after PR #427 the orbs still don't appear to move during dial scrub. The fix is in main; possible causes: (a) deployment hasn't picked up yet, (b) temporal data isn't actually populating `graphData.nodes[].omegaFragility.composite` per scrub tick for the user's loaded workspace, (c) the contraction magnitude is still too subtle to read at this user's typical omega distribution, (d) 3D path's `(omega - 5) / 4` mapping doesn't actually trigger because temporal omegas don't drift far from neutral. Investigation step: confirm `useTemporalGraph` is wired correctly into `useFilteredGraph` for the user's loaded domain set, and instrument the contraction to log how much the centroid pull actually displaces typical orbs per tick.
+- **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432: lazy SystemCopilot + lazy heavy copilot-tool deps)._ Remaining candidates: split `graph-data.ts` (3413 LOC) into a tiny `graph-color.ts` (just `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`) and a separate heavy data file — ~13 consumers only need the helpers but currently pull the whole module; lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (same pattern as `tools.ts` but harder since the helpers are sync); audit `TimeSeriesOverlay` (987 LOC) + `TimeDial` (1179 LOC) for dynamic-loadability; `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
+- **Time-dial-driven positional response (round 1).** _Shipped — 2026-05-22 (PR #427)._ 2D contraction now handles both cascade replay AND dial-scrub (historical-omega fallback); CONTRACTION 0.18 → 0.35 for visibility. 3D already had the historical-fallback path. Map relies on omega-scaled radius. Production verification queued above.
 - **TOPO compute-shader port for real-time scrub perf.** Deferred since PR #303 (4σ truncation) covered the headline cost. Only worth doing if real-time scrub still drops frames in production.
-- **Real bundle-analyzer pass.** The sandbox can't run `ANALYZE=true next build` end-to-end (Google Fonts + missing AI-SDK deps). Needs a working env. Combine with the platform load-time deep-dive above.
 
 ---
 
@@ -1024,6 +1027,19 @@ Estimator-lib audit (the other backlog candidate) turned out to be a no-op in pr
 **Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
 
 ---
+
+### 2026-05-22 — Shipped: collapsible time-dial granularity picker
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"the time dial itself has a very extensive selection window now all the way from one hour to all. We should make that collapsible so that there's more room for the time dial itself as well."*
+
+**What shipped.** `TimeDial` granularity picker now collapses to a single chip showing the active preset (e.g. `1Y ▾`). Clicking the chip expands the full row (1H / 1D / 1W / 1M / 1Y / 5Y / ALL); picking any preset re-collapses. No behavioural change beyond the toggle — same `setTimelineGranularity` writes, same group-divider styling when expanded, same tooltips.
+
+**Files.**
+- `src/components/TimeDial.tsx` — `granularityExpanded` state; render-time branch on the granularity block.
+
+**Verification.** `tsc --noEmit` clean; lint clean; vitest 1504 / 1504 pass.
 
 ### 2026-05-22 — Shipped: load-time deep-dive round 1 — lazy SystemCopilot + lazy heavy copilot-tool deps
 

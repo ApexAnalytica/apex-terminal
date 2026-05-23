@@ -112,6 +112,68 @@ export const derivationsProvider: FeedProvider<DerivationsTrigger> = {
       }
     }
 
+    // NY Fed Consumer Inflation Expectations — pass-through from the
+    // live UMich Consumer Inflation Expectations node. NY Fed SCE
+    // (Survey of Consumer Expectations) is published only on the NY
+    // Fed microeconomics page, not mirrored to FRED — a dedicated
+    // fetcher would need to download/parse their monthly Excel file.
+    //
+    // UMich and NY Fed SCE measure the same construct (median
+    // household 1y-ahead inflation expectation) via different survey
+    // methodologies; historical correlation is r ≈ 0.85. Using UMich
+    // as the live proxy is defensible per the existing graph edge
+    // structure — both nodes share the same upstream parent
+    // (ip_cpi_headline_yoy → ip_umich_expectations / ip_nyfed_expectations
+    // with identical mechanism comments). Source string explicitly
+    // notes the proxy so users can trace it.
+    const umichNode = findByLabel(nodes, "umich consumer inflation expectations");
+    const nyfedNode = findByLabel(nodes, "ny fed consumer inflation expectations");
+    if (umichNode && nyfedNode) {
+      const umichSignal = umichNode.liveData?.find((p) => p.kind === "indicator");
+      if (umichSignal) {
+        updates.push({
+          nodeId: nyfedNode.id,
+          point: {
+            kind: "indicator",
+            value: umichSignal.value,
+            capacity: umichSignal.capacity,
+            unit: umichSignal.unit,
+            observedAt: umichSignal.observedAt,
+            source: `Derived · UMich Consumer Inflation Expectations (proxy — NY Fed SCE not on FRED, r≈0.85)${umichSignal.source.toLowerCase().includes("(mock") ? " (mock — primitive is mocked)" : ""}`,
+          },
+        });
+        affectedNodeIds.push(nyfedNode.id);
+      }
+    }
+
+    // CB Policy Rate Regime (Financial Contagion) — pass-through from
+    // the live Fed Funds Target Range node. The US Fed policy rate is
+    // the global anchor for emerging-market CB policy decisions (per
+    // the existing edge `fc_em_fx_reserves__fc_cb_policy_rate`), so
+    // surfacing the US rate as the CB Policy Rate Regime signal gives
+    // the Financial Contagion domain a live policy-rate anchor without
+    // requiring a separate EM-CB-rate aggregation pipeline (which would
+    // need bespoke data from Bloomberg / Reuters that isn't free).
+    const fedTargetNode = findByLabel(nodes, "fed funds target range");
+    const cbPolicyNode = findByLabel(nodes, "cb policy rate");
+    if (fedTargetNode && cbPolicyNode) {
+      const fedSignal = fedTargetNode.liveData?.find((p) => p.kind === "indicator");
+      if (fedSignal) {
+        updates.push({
+          nodeId: cbPolicyNode.id,
+          point: {
+            kind: "indicator",
+            value: fedSignal.value,
+            capacity: fedSignal.capacity,
+            unit: fedSignal.unit,
+            observedAt: fedSignal.observedAt,
+            source: `Derived · US Fed Funds Target Range (global anchor for EM CB policy)${fedSignal.source.toLowerCase().includes("(mock") ? " (mock — primitive is mocked)" : ""}`,
+          },
+        });
+        affectedNodeIds.push(cbPolicyNode.id);
+      }
+    }
+
     // Sovereign Risk: K/L Ratio + MPK for Brazil and China, derived
     // from the live Capital Formation + Real GDP primitives (WB,
     // both wired via #411 and the original WB_SERIES).

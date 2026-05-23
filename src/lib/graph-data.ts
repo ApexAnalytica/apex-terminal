@@ -2778,6 +2778,79 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+
+  // ─── Shared Infrastructure (cross-domain chokepoints, ports, cables) ────
+  // Phase 16 pilot — replace single-concept-multi-dimension nodes with
+  // facet decomposition. A geographic chokepoint like the Strait of Hormuz
+  // isn't one variable — it's a cluster of variables (throughput, capacity,
+  // war-risk premium, etc.) that each have their own data sources and
+  // downstream effects. Pearl-style causal logic requires nodes that
+  // represent ONE intervenable variable; the previous `qf_strait_of_hormuz`
+  // + `mn_strait_of_hormuz` per-domain copies conflated all dimensions into
+  // a single node and duplicated state across two domains.
+  //
+  // This block introduces the canonical facets in a new "Shared
+  // Infrastructure" domain. Per-domain Hormuz nodes (qf_/mn_) are kept for
+  // backward compatibility — their downstream edges still propagate — and
+  // are now FED by the canonical facets via cross-domain edges (see edges
+  // section below). A follow-up PR (#2) will migrate downstream edges off
+  // the per-domain copies and delete them.
+  //
+  // The shared-infra pattern is the template for: Hormuz (this pilot),
+  // Ras Laffan port (Qatar LNG hub), Abqaiq Plants (Saudi crude
+  // processing), 2Africa undersea cable, and any future multi-domain
+  // physical infrastructure.
+  {
+    id: "si_hormuz_throughput",
+    label: "Strait of Hormuz — Throughput",
+    shortLabel: "SOH-T",
+    category: "infrastructure",
+    // Live signal from EIA Persian Gulf producers. Throughput is a flow
+    // measurement (mb/d). Compared to capacity for the chokepoint axiom.
+    omegaFragility: omega(7.8, 9.0, 3.5, 9.0, 9.5, 6.5),
+    globalConcentration: "100% Persian Gulf transit",
+    replacementTime: "n/a (metric, not asset)",
+    physicalConstraint: "Aggregate flow through the strait; bounded above by capacity and below by demand. Disruption (closure, blockade) cascades to global oil prices within hours.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_hormuz_capacity",
+    label: "Strait of Hormuz — Capacity",
+    shortLabel: "SOH-C",
+    category: "infrastructure",
+    // Static facet — published EIA stated chokepoint capacity. Doesn't
+    // move much (decades to build alternative pipelines), but the
+    // throughput/capacity ratio is what the Tarski A-04 axiom flags.
+    omegaFragility: omega(7.5, 10, 9.0, 7.0, 8.5, 6.0),
+    globalConcentration: "100% Persian Gulf transit",
+    replacementTime: "10-15 years (SUMED + Iraq-Turkey pipeline expansion + UAE crude bypass)",
+    physicalConstraint: "Tanker traffic ceiling at ~21 mb/d; constrained by 2-3 deepwater shipping lanes. Alternative routes exist (SUMED, UAE bypass) but combined capacity is <5 mb/d.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_hormuz_war_risk_premium",
+    label: "Strait of Hormuz — War-Risk Premium",
+    shortLabel: "SOH-W",
+    category: "infrastructure",
+    // Risk facet — captures geopolitical disruption probability. No free
+    // public source (Lloyd's marine insurance is paywalled), so this stays
+    // synthetic for now. Architectural seat for future wiring once a
+    // proxy is found (VIX correlation, naval activity, Iran tension index).
+    omegaFragility: omega(8.5, 8.0, 5.0, 9.5, 8.0, 9.5),
+    globalConcentration: "100% Iran / Oman territorial waters",
+    replacementTime: "Inversely proportional to geopolitical detente",
+    physicalConstraint: "Insurance premium spikes 10-30× during conflict episodes (e.g. Tanker War 1984-88, 2019 Gulf incidents). Tail-depth heavy — modal regime is benign, but tail events are catastrophic.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -3253,6 +3326,36 @@ const EDGES: CausalEdge[] = [
   { id: "ais_attack_ddos__ic_telecom_egypt", source: "ais_attack_ddos", target: "ic_telecom_egypt", weight: 0.55, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "DDoS attacks target telecom-aggregation hubs (Telecom Egypt's 10 landing stations are a high-value target by traffic concentration). Successful saturation cascades to all transit cables landing there." },
   { id: "ais_attack_ddos__ic_latency_risk", source: "ais_attack_ddos", target: "ic_latency_risk", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Volumetric DDoS against transit infrastructure produces measurable latency spikes — the same risk surface measured by ic_latency_risk for cable-failure scenarios." },
   { id: "ais_attack_mitm__fc_cross_border_banking", source: "ais_attack_mitm", target: "fc_cross_border_banking", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "MITM attacks targeting interbank message integrity (SWIFT, downgrade, downgrade-after-handshake) erode the trust assumptions cross-border settlement depends on. Manifests as latency + reconciliation drift in the financial-contagion graph." },
+
+  // ─── Shared Infrastructure → Domain cross-domain edges (Phase 16) ──
+  // The new canonical facet nodes (si_hormuz_*) feed the existing
+  // per-domain Hormuz copies (qf_/mn_strait_of_hormuz) which keep their
+  // downstream edges intact. This is the additive-pilot pattern: the
+  // facets get live data, the per-domain nodes continue propagating
+  // cascade into their domain's downstream operations. A follow-up PR
+  // will migrate downstream edges directly off the facets and delete
+  // the per-domain copies.
+  //
+  // The intra-facet relationship: throughput is bounded by capacity;
+  // war-risk premium negatively correlates with effective throughput
+  // (high risk = forced reroute = lower realized throughput at Hormuz
+  // specifically). Both relationships have high confidence — they're
+  // mechanical, not statistical.
+  { id: "si_hormuz_capacity__si_hormuz_throughput", source: "si_hormuz_capacity", target: "si_hormuz_throughput", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Physical capacity sets the upper bound on observed throughput. Realized throughput operates below capacity except in rare full-saturation episodes — the throughput/capacity ratio is the canonical chokepoint-stress signal (Tarski A-04)." },
+  { id: "si_hormuz_war_risk_premium__si_hormuz_throughput", source: "si_hormuz_war_risk_premium", target: "si_hormuz_throughput", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Elevated war-risk premium causes tanker operators to reroute via SUMED, longer Cape Horn alternatives, or to delay shipments — directly reducing observed Hormuz throughput. Empirically: 2019 Gulf incidents reduced monthly Hormuz throughput by 12-18% vs prior 12-month average." },
+
+  // Facet → per-domain Hormuz copies. Higher-confidence cross-domain
+  // edges because the per-domain nodes are CURRENTLY the only consumers
+  // of the throughput signal (will be eliminated in the follow-up PR).
+  { id: "si_hormuz_throughput__qf_strait_of_hormuz", source: "si_hormuz_throughput", target: "qf_strait_of_hormuz", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Per-domain QAFCO Hormuz copy reflects the canonical throughput signal — same physical strait, same flow measurement. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream QAFCO operations are wired directly to si_hormuz_throughput." },
+  { id: "si_hormuz_throughput__mn_strait_of_hormuz", source: "si_hormuz_throughput", target: "mn_strait_of_hormuz", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Per-domain Ma'aden Hormuz copy reflects the canonical throughput signal — same physical strait, same flow measurement. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream Ma'aden operations are wired directly to si_hormuz_throughput." },
+
+  // Cross-domain bridges: war-risk premium directly affects Financial
+  // Contagion (insurance / OAS pricing) and Supply Chain (food shipping
+  // costs route around the strait). These are NEW signal paths the
+  // single-node design couldn't carry — facet decomposition unlocks
+  // them by separating the risk facet from the throughput facet.
+  { id: "si_hormuz_war_risk_premium__sc_shipping_cost_index", source: "si_hormuz_war_risk_premium", target: "sc_shipping_cost_index", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Gulf war-risk spikes drive marine insurance premiums (Lloyd's W3 list inclusion) and trigger Suez/Cape rerouting decisions — both feed directly into the Cass Freight Expenditures Index. Channel was hidden in the single-node Hormuz design because throughput-and-risk were conflated." },
 ];
 
 const METADATA: GraphMetadata = {

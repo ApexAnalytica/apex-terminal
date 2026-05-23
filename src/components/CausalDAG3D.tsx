@@ -13,6 +13,10 @@ import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
 import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
+import {
+  cascadeEdgeActivationOrder,
+  type EdgeActivationInfo,
+} from "@/lib/cascade-edge-activation-order";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import EdgeInspector from "./EdgeInspector";
@@ -552,6 +556,19 @@ export default function CausalDAG3D() {
     if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
     return cascadeActivationOrder(replayEpochs, clampedEpoch);
   }, [replayActive, replayEpochs, clampedEpoch]);
+
+  // Per-edge firing info — `{ ordinal, activationEpoch }` for edges
+  // whose target has activated by `clampedEpoch`. Drives the FIRE
+  // pulse in `DAGEdge3D` (brighter + larger particle, color flash)
+  // during a small window around each edge's activation epoch, so
+  // the cascade reads as edges-firing-in-order rather than just
+  // nodes-lighting-up-with-static-edges.
+  const edgeActivationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) {
+      return new Map<string, EdgeActivationInfo>();
+    }
+    return cascadeEdgeActivationOrder(graphData.edges, replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch, graphData.edges]);
 
   const canvasKey = useWebGLRecovery();
   const positionsRef = useRef<NodePosition[]>([]);
@@ -1243,6 +1260,9 @@ export default function CausalDAG3D() {
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
                 onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}
                 epochState={currentSnapshot?.edgeStates[edge.id]}
+                fireActivationEpoch={edgeActivationOrder.get(edge.id)?.activationEpoch}
+                currentEpoch={clampedEpoch}
+                replayActive={replayActive}
                 chiStarTier={
                   chiStarInfo.bridgeSet.has(edge.id)
                     ? "bridge"

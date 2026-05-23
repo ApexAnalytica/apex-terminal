@@ -34,7 +34,8 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
-| TBD | `feat(2d)`: dial-scrub now moves orbs via historical-omega contraction (matched 3D's already-shipped fallback); CONTRACTION 0.18 → 0.35 for visibility |
+| TBD | `perf(bundle)`: lazy `SystemCopilot` chunk + lazy `buildGraphFromDomains` / `AXIOM_LIBRARY` inside copilot tool handlers — pulls ~6.8 K LOC off the initial-paint bundle |
+| #427 | `feat(2d)`: dial-scrub now moves orbs via historical-omega contraction (matched 3D's already-shipped fallback); CONTRACTION 0.18 → 0.35 for visibility |
 | #409 | `perf(2d)`: 2D layout sim + network metrics → layout Web Worker (`requestLayout2D` arm; same epoch cancellation pattern as 3D) |
 | #406 | `perf(bundle)`: extract `TarskiPanel` / `ParetoPanel` / `CopilotInterdictionResults` / `SnapshotIndicator` from `ModulePanel.tsx` into `next/dynamic` chunks (`ModulePanel.tsx` 3384 → 821 LOC) |
 | #404 | `perf(3d)`: 3D layout sim + network metrics → Web Worker (`src/lib/workers/layout3d-{worker,client}.ts`) |
@@ -1023,6 +1024,26 @@ Estimator-lib audit (the other backlog candidate) turned out to be a no-op in pr
 **Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
 
 ---
+
+### 2026-05-22 — Shipped: load-time deep-dive round 1 — lazy SystemCopilot + lazy heavy copilot-tool deps
+
+**PR:** TBD (about to open).
+
+**Trigger.** User asked for a platform load-time deep-dive. Found a clear gap: `SystemCopilot` was statically imported on `page.tsx` (~2 K LOC component), and its dep chain pulled in **~6,800 LOC of graph data + axiom library** via `copilot-actions` → `copilot/tools.ts` → `buildGraphFromDomains` + `AXIOM_LIBRARY`. The graph-data side was supposed to be lazy-loaded (the comment in `page.tsx` near `DomainSelector` even calls it out as a deliberate split), but the copilot tools registry undid that split by side-effect importing the same heavy modules.
+
+**What shipped.**
+
+1. **`SystemCopilot` → `next/dynamic`.** The whole left-column copilot chunk now ships separately. A small `LOADING COPILOT…` placeholder shows in the column for ~50-100 ms after first paint, then the chat surface mounts. Everything copilot-related (tools, conversation, the copilot-engine, copilot-context) lazy-loads in the copilot chunk.
+
+2. **`copilot/tools.ts` lazy-imports its heavy deps.** Top-of-file `import { buildGraphFromDomains }` and `import { AXIOM_LIBRARY }` removed; both replaced with `await import(...)` inline inside the specific tool handlers that need them (`applyDomainFilter` and the axiom-filtered restricted-nodes handler). Result: even inside the copilot chunk, the graph-data + axiom-library blocks only load when a user actually invokes those tools — small async delay on first use, otherwise free.
+
+The `applyDomainFilter` helper became `async`; its callers (the `set_domains` / `select_domains` tool handlers) were already typed `string | Promise<string>` so no signature changes upstream. The `remove_restricted_nodes` handler was synchronous; bumped it to `async`.
+
+**Files.**
+- `src/app/page.tsx` — `SystemCopilot` static import → `dynamic`.
+- `src/lib/copilot/tools.ts` — heavy imports moved to inline `await import(...)` inside the consuming handlers.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors); lint clean; vitest 1504 / 1504 pass.
 
 ### 2026-05-22 — Shipped: 2D contraction now responds to time-dial scrub, not just cascade replay
 

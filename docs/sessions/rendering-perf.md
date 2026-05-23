@@ -30,10 +30,11 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-22 round (load-time + Map placement)**
+**2026-05-22 round (load-time + Map placement + criticality response)**
 
 | PR | What |
 |---|---|
+| TBD | `feat(2d)`: dial-scrub now moves orbs via historical-omega contraction (matched 3D's already-shipped fallback); CONTRACTION 0.18 → 0.35 for visibility |
 | #409 | `perf(2d)`: 2D layout sim + network metrics → layout Web Worker (`requestLayout2D` arm; same epoch cancellation pattern as 3D) |
 | #406 | `perf(bundle)`: extract `TarskiPanel` / `ParetoPanel` / `CopilotInterdictionResults` / `SnapshotIndicator` from `ModulePanel.tsx` into `next/dynamic` chunks (`ModulePanel.tsx` 3384 → 821 LOC) |
 | #404 | `perf(3d)`: 3D layout sim + network metrics → Web Worker (`src/lib/workers/layout3d-{worker,client}.ts`) |
@@ -60,13 +61,10 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 ## Backlog (next-up, ordered roughly by priority)
 
-- **Time-dial-driven positional response.** When the timeline scrubs forward, currently the per-node ΩF (criticality) values do update — but **distances** between nodes don't visibly react. The user expects: as criticality changes per snapshot, the canvas layout reorganises (or contracts) so the visual encoding reflects the new regime. 2D has a `CONTRACTION = 0.18` overlay that pulls stressed nodes toward stressed neighbours on each replay tick — needs verification it's actually firing (and is visible at all). 3D and Map have no equivalent. Once live feeds are wired more broadly, this becomes the canonical "watch the system change as time flows" demo, so the positional layer needs to actually move. Scope:
-  - Audit the existing 2D replay contraction — confirm it still fires and tune its magnitude so the user can SEE it
-  - Add an equivalent 3D pull-stressed-neighbours overlay on top of the cached layout (don't re-run the force sim — too expensive per tick; do a lightweight per-frame perturbation)
-  - Decide Map behaviour: positions are geographic so they can't move freely — but radius / glow could scale with criticality per snapshot
+- **Platform load-time deep-dive (NEW).** Whole-app audit looking for any low-hanging perf items not yet covered by the per-canvas work above. Candidates the previous sweeps left on the table: `framer-motion` tree-shaking (used widely — verify nothing's pulling the full lib), any module-level top-of-file imports of heavy estimator libs OUTSIDE `ParetoPanel.tsx`, top-level imports of `three`/drei in non-canvas files, large JSON imports done eagerly, `react-pdf`-style heavy embeds, and feed-registry polling that fires before the user interacts. Pair with a real `ANALYZE=true next build` run when the env supports it.
+- **Time-dial-driven positional response.** _Partly shipped — 2026-05-22._ 2D contraction now handles both cascade replay AND dial-scrub (historical-omega fallback) and bumped its magnitude 0.18 → 0.35 for visibility. 3D already had the historical-fallback path (push/pull at PULL_MAX 0.45 / PUSH_MAX 0.25). Map relies on omega-scaled radius (no geo-position movement — geographic positions are correct as-is). Remaining: verify in production that the new 2D movement reads at typical omega levels; if 3D still feels subtle, raise PULL_MAX / PUSH_MAX next.
 - **TOPO compute-shader port for real-time scrub perf.** Deferred since PR #303 (4σ truncation) covered the headline cost. Only worth doing if real-time scrub still drops frames in production.
-- **Real bundle-analyzer pass.** The sandbox can't run `ANALYZE=true next build` end-to-end (Google Fonts + missing AI-SDK deps). Needs a working env.
-- **Framer-motion tree-shake audit.** Same — needs the analyzer.
+- **Real bundle-analyzer pass.** The sandbox can't run `ANALYZE=true next build` end-to-end (Google Fonts + missing AI-SDK deps). Needs a working env. Combine with the platform load-time deep-dive above.
 
 ---
 
@@ -1023,6 +1021,29 @@ Estimator-lib audit (the other backlog candidate) turned out to be a no-op in pr
 - `src/components/CausalDAG2D.tsx` — imports trimmed, sync useMemos → async effect + state.
 
 **Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
+
+---
+
+### 2026-05-22 — Shipped: 2D contraction now responds to time-dial scrub, not just cascade replay
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"previously, when we were running this criticality, you should be able to see distance measures changing as you play the time dial forward."* Scrubbing the dial was visually altering colour / glow / orb size per-tick, but the canvas was positionally frozen — orbs stayed at their cached layout coordinates regardless of how the per-node ΩF (criticality) was changing.
+
+**Diagnosis.** Two different paths populate per-tick criticality:
+- **Cascade replay** populates `currentSnapshot.nodeStates[]` per epoch.
+- **Time-dial scrub** uses `useTemporalGraph` to inject historical ΩF values directly into `graphData.nodes[].omegaFragility.composite`. `currentSnapshot` stays null.
+
+`CausalDAG3D.posMap` already handled both: when `currentSnapshot` is null but a node carries a non-neutral omega, it derives stress from `(omega - 5) / 4` and applies push/pull. `CausalDAG2D`'s contraction was hard-coded to the `if (currentSnapshot)` branch only — so dial-scrub left it positionally frozen.
+
+**What shipped.**
+- Added a historical-omega fallback path inside `CausalDAG2D`'s `nodes` useMemo. When `currentSnapshot` is null, derives stress as `max(0, (omega − 5) / 5)` and pulls the node toward its stressed-neighbour centroid the same way. Below-neutral omega doesn't contract (2D's contraction is one-directional by design — only pulls inward).
+- Bumped `CONTRACTION` magnitude 0.18 → 0.35. The original was visually subtle even at peak shock; the new floor pinches stressed clusters tight enough that the eye actually catches the movement during a typical scrub.
+
+**Files.**
+- `src/components/CausalDAG2D.tsx` — historical-mode stress derivation + magnitude bump.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors); lint clean on touched file; vitest 1489 / 1489 pass.
 
 ---
 

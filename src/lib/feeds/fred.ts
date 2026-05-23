@@ -78,6 +78,14 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   // own annual energy-outlook bands. labelPattern targets the
   // "natural gas feedstock system" node in graph-data.ts.
   { id: "MHHNGSP", label: "Henry Hub Natural Gas Spot Price (USD/MMBtu)", labelPatterns: ["natural gas feedstock", "henry hub"], unit: "$/MMBtu", capacity: 5, mockValue: 3.2 },
+  // WPULEUS3 = Weekly U.S. Percent Utilization of Refinery Operable
+  // Capacity. FRED republishes the EIA WPSR series. Closes the 10b-ii
+  // piece of the EIA expansion follow-up without needing a dedicated
+  // EIA petroleum/pnp proxy. Capacity = 90 because refinery utilization
+  // historically operates at 85-95%; above 95% is full saturation
+  // ("running on fumes" — same regime EIA calls out as elevated stress
+  // in its Weekly Petroleum Status Report commentary).
+  { id: "WPULEUS3", label: "US Refinery Utilization (% of operable capacity)", labelPatterns: ["us refinery utilization", "refinery utilization"], unit: "%", capacity: 90, mockValue: 88.5 },
   // Fertilizer Manufacturing PPI — wires `sc_fertilizer_price_index`
   // (Supply Chain Food Security domain). Previously historical-only via
   // `bunge_food_security` snapshot. FRED PCU3253132531 is the BLS PPI by

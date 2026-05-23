@@ -157,7 +157,7 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | 9 | World Bank Pink Sheet | Commodity prices (wheat, fertilizer, phosphate, urea, ammonia) — needs CSV scraper | blocked: needs scraper |
 | 10a | Henry Hub natural gas (via FRED MHHNGSP) → `Natural gas feedstock system` | 1 node | **shipped** |
 | 10b-i | EIA Saudi crude production → Abqaiq Plants / Juaymah Crude Terminal (+ any future "Saudi Crude Production" labeled node) | 2+ nodes | **shipped** |
-| 10b-ii | EIA US refinery utilization (petroleum/pnp endpoint, different schema) | ~1 node | not started |
+| 10b-ii | US refinery utilization (via FRED WPULEUS3) — closes the EIA expansion picture | future refinery-util node | **shipped** |
 
 **Honest scoping notes:**
 - Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.

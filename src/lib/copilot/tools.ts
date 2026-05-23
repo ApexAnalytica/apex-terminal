@@ -7,14 +7,27 @@
 import { defineTool } from "./tool-registry";
 import { getPresetShocks } from "../omega-engine";
 import { DOMAIN_CARDS } from "@/lib/domains";
-import { buildGraphFromDomains } from "@/lib/build-domain-graph";
+// `buildGraphFromDomains` lives in a module that statically imports the
+// four large graph-data files (~5K LOC total). Top-of-file import would
+// drag those into every consumer of `copilot/tools.ts` — including
+// SystemCopilot's initial-paint bundle. Lazy-imported inside the
+// `applyDomainFilter` helper instead so the heavy data only loads when
+// the user actually invokes a `set_domains` / `select_domains` tool
+// call, which is rare enough that the small async delay on first use
+// is well worth the launch-time win.
+// import { buildGraphFromDomains } from "@/lib/build-domain-graph";
 import {
   solveInterdictionAsync,
   type InterdictionCandidate,
 } from "../interdiction-engine";
 import type { ApexState } from "@/stores/useApexStore";
 import type { CausalNode, CausalGraph } from "../types";
-import { AXIOM_LIBRARY } from "../tarski-data";
+// `AXIOM_LIBRARY` is an 891-LOC dataset of Tarski axiom definitions —
+// huge module. Top-of-file import dragged it into SystemCopilot's
+// initial-paint bundle even though only one handler (the axiom-
+// filtered `remove_restricted_nodes` tool) actually reads it. Lazy-
+// imported inline below.
+// import { AXIOM_LIBRARY } from "../tarski-data";
 
 // ─── Selection ──────────────────────────────────────────────────
 
@@ -257,12 +270,16 @@ defineTool({
 
 // ─── Domains ────────────────────────────────────────────────────
 
-function applyDomainFilter(domainIds: string[], store: ApexState): string {
+async function applyDomainFilter(domainIds: string[], store: ApexState): Promise<string> {
   // Validate against known domains.
   const validIds = domainIds.filter((id) => DOMAIN_CARDS.find((d) => d.id === id && d.hasData));
   if (validIds.length === 0) {
     return `No valid domains found. Available: ${DOMAIN_CARDS.filter((d) => d.hasData).map((d) => d.id).join(", ")}`;
   }
+  // Lazy-load the graph-builder + its ~5K LOC of bundled graph-data
+  // here so the static import chain stays light. See the import-
+  // comment at the top of this file.
+  const { buildGraphFromDomains } = await import("@/lib/build-domain-graph");
   const graph = buildGraphFromDomains(validIds);
   store.setGraphData(graph);
   store.setSelectedDomains(validIds);
@@ -669,7 +686,7 @@ defineTool({
       description: "Optional. Axiom id (e.g. A-01) OR a substring of the axiom name. Case-insensitive. Omit to remove ALL restricted nodes.",
     },
   },
-  handler: ({ axiom }, ctx) => {
+  handler: async ({ axiom }, ctx) => {
     const store = ctx.getStore();
     const report = store.tarskiReport;
     if (!report) {
@@ -686,6 +703,9 @@ defineTool({
     let axiomIds: Set<string> | null = null;
     if (axiom && axiom.trim() !== "") {
       const q = axiom.trim().toLowerCase();
+      // Lazy-load the 891-LOC axiom library. See the import-comment
+      // at the top of this file.
+      const { AXIOM_LIBRARY } = await import("../tarski-data");
       const matches = AXIOM_LIBRARY.filter(
         (a) =>
           a.id.toLowerCase() === q ||

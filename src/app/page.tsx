@@ -6,13 +6,36 @@ import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
 import { useFeedRegistry } from "@/hooks/useFeedRegistry";
 import HeaderBar from "@/components/HeaderBar";
-import SystemCopilot from "@/components/SystemCopilot";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
 import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import TimeDial from "@/components/TimeDial";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
+
+// SystemCopilot pulls a heavy dep tree on its static-import chain:
+// copilot-actions → tools.ts → tarski-data (891 LOC) + (lazy-imported
+// since this change) the four large graph-data modules; copilot-engine
+// + copilot-context also pull AXIOM_LIBRARY at their top level. Roughly
+// 1-2 KLOC of axiom text + 6-7 KLOC of graph-data definitions used to
+// land in the initial-paint bundle just because the left-column copilot
+// panel is statically imported. Lazy-loading the whole copilot column
+// punts that entire chain into its own chunk; the column shows a small
+// "loading copilot…" placeholder for ~50-100ms after first paint, then
+// the chat surface mounts.
+const SystemCopilot = dynamic(
+  () => import("@/components/SystemCopilot"),
+  {
+    ssr: false,
+    loading: () => (
+      <aside className="w-[340px] border-r border-border bg-surface flex items-start px-4 pt-4">
+        <div className="text-[10px] font-mono text-text-muted/60 animate-pulse">
+          LOADING COPILOT…
+        </div>
+      </aside>
+    ),
+  },
+);
 
 // Lazy-loaded modals — neither is on the critical path. Both render
 // nothing visible until the user explicitly opens them, so deferring

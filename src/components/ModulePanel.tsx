@@ -560,20 +560,40 @@ function CascadeHeader() {
         NETWORK ANALYSIS
       </div>
 
-      {/* RELEVANT NOW — contextual callouts (selected-node or graph-wide) */}
+      {/* AT A GLANCE — contextual highlights (selected-node or graph-wide)
+          Replaces the older "RELEVANT NOW" floating-label box. The
+          fieldset-legend trick we had needed the panel parent bg to be
+          `bg-bg-base` to mask the border, but the right column actually
+          uses `bg-surface`, so the label appeared to cross through the
+          border. Flat inline header + explanatory subtitle here. */}
       {relevantNowCallouts.length > 0 && (
-        <div className="relative px-2 pt-2 pb-1.5 mt-1 rounded border border-accent-amber/40 bg-accent-amber/[0.04]">
-          <div className="absolute -top-1.5 left-2 px-1 bg-bg-base text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-            RELEVANT NOW
+        <div className="px-2 py-2 mt-1 rounded border border-border bg-surface-elevated/50">
+          <div className="flex items-baseline justify-between mb-0.5">
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-secondary">
+              AT A GLANCE
+            </div>
+            <div className="text-[7px] font-mono text-text-muted/60">
+              context signals
+            </div>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 mt-1">
             {relevantNowCallouts.map((c, i) => (
-              <div key={`${c.label}-${i}`} className="text-[8px] font-mono leading-tight flex items-baseline gap-1.5">
-                <span style={{ color: toneColor(c.tone) }}>▸</span>
+              <div
+                key={`${c.label}-${i}`}
+                className="text-[9px] font-mono leading-tight flex items-baseline gap-1.5"
+              >
+                <span
+                  style={{ color: toneColor(c.tone) }}
+                  className="text-[8px] leading-none"
+                >
+                  ●
+                </span>
                 <span className="text-text-muted">{c.label}</span>
-                <span className="text-text-primary tabular-nums">{c.value}</span>
+                <span className="text-foreground tabular-nums">{c.value}</span>
                 {c.detail && (
-                  <span className="text-text-muted truncate">— {c.detail}</span>
+                  <span className="text-text-muted/70 truncate">
+                    — {c.detail}
+                  </span>
                 )}
               </div>
             ))}

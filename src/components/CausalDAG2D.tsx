@@ -765,6 +765,7 @@ function CausalDAG2DInner() {
   const interventionEpochs = useApexStore((s) => s.interventionEpochs);
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
@@ -1112,6 +1113,7 @@ function CausalDAG2DInner() {
         const isSelected = selectedEdge?.id === e.id;
         const isTemporal = e.type === "temporal";
         const isConfounded = e.type === "confounded";
+        const isFlow = e.type === "flow";
         // FIRE pulse — peaks at the edge's activation epoch and decays
         // over a 3-epoch window. 0 when the edge never fired in the
         // visible cascade. Severed / ablated suppress separately in
@@ -1128,7 +1130,9 @@ function CausalDAG2DInner() {
             ? "#ffab00"
             : isConfounded
               ? "#ff6d00"
-              : "#00e5ff";
+              : isFlow
+                ? "#1de9b6"
+                : "#00e5ff";
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
         // Power-scale weight to widen the visible width range. Real
         // edge weights cluster between 0.4 and 0.8, so a linear
@@ -1138,7 +1142,7 @@ function CausalDAG2DInner() {
         // as ~3× a thin one even at typical clustering.
         const w = Math.max(0, Math.min(1, e.weight));
         const baseWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
-        const showArrow = e.type === "directed" || isTemporal;
+        const showArrow = e.type === "directed" || isTemporal || isFlow;
 
         return {
           id: e.id,
@@ -1173,10 +1177,24 @@ function CausalDAG2DInner() {
 
   // Filter edges for isolation mode
   const visibleEdges = useMemo(() => {
-    if (!isolateSelection || multiSelectedNodes.length === 0) return edges;
+    // Empty set = show all (back-compat for sessions whose store
+    // doesn't yet carry the setting). Lookup is O(1) per edge via
+    // the existing `edgeById` Map.
+    const filterByType = (edgesArr: typeof edges) =>
+      visibleEdgeTypes.size === 0
+        ? edgesArr
+        : edgesArr.filter((e) => {
+            const raw = edgeById.get(e.id);
+            return raw ? visibleEdgeTypes.has(raw.type) : true;
+          });
+    if (!isolateSelection || multiSelectedNodes.length === 0) {
+      return filterByType(edges);
+    }
     const selSet = new Set(multiSelectedNodes);
-    return edges.filter((e) => selSet.has(e.source) && selSet.has(e.target));
-  }, [edges, isolateSelection, multiSelectedNodes]);
+    return filterByType(
+      edges.filter((e) => selSet.has(e.source) && selSet.has(e.target)),
+    );
+  }, [edges, isolateSelection, multiSelectedNodes, visibleEdgeTypes, edgeById]);
 
   // Stable key over the *set* of rendered node ids — drives FitViewOnVisible so
   // the viewport re-centers whenever the visible set changes, including

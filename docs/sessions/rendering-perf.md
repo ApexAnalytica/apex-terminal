@@ -34,7 +34,8 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
-| TBD | `feat(timedial)`: granularity picker collapses to a single chip; click to expand, pick-to-collapse |
+| TBD | `feat(edges)`: new `"flow"` edge type (teal-green solid + animated arrow, distinct from `"directed"` claim and `"temporal"` lag) + per-edge-type visibility toggle chip strip in DAGOverlay across 2D / 3D / Map |
+| #435 | `feat(timedial)`: granularity picker collapses to a single chip; click to expand, pick-to-collapse |
 | #432 | `perf(bundle)`: lazy `SystemCopilot` chunk + lazy `buildGraphFromDomains` / `AXIOM_LIBRARY` inside copilot tool handlers — pulls ~6.8 K LOC off the initial-paint bundle |
 | #427 | `feat(2d)`: dial-scrub now moves orbs via historical-omega contraction (matched 3D's already-shipped fallback); CONTRACTION 0.18 → 0.35 for visibility |
 | #409 | `perf(2d)`: 2D layout sim + network metrics → layout Web Worker (`requestLayout2D` arm; same epoch cancellation pattern as 3D) |
@@ -63,7 +64,7 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 ## Backlog (next-up, ordered roughly by priority)
 
-- **Flow edge type + edge-type visibility toggles (NEW).** Add a third edge type — `"flow"` — alongside `"directed"` and `"temporal"`. UI affordance to toggle each edge type's visibility on/off across the four canvas surfaces. Touches: `CausalEdge` type, edge styling helpers (already extracted in `lib/edge-styling`), 2D/3D/Map/TOPO consumers, and LEGEND. Needs data-team alignment on what `"flow"` means semantically (material flow vs. information flow vs. cascade-propagation flow) and which existing edges should be re-tagged.
+- **Flow edge type + edge-type visibility toggles.** _Infrastructure shipped — 2026-05-22._ `"flow"` edge type wired across all four canvas surfaces with teal-green solid + animated arrow visual; per-type visibility chip strip in DAGOverlay (CAUSAL / TEMP / CONF / FLOW) hides/shows each type instantly. Open: data-team alignment on what `"flow"` means semantically + which existing edges should be re-tagged (no edge in the loaded datasets carries `type: "flow"` yet).
 - **Time-dial range-selector collapsible (NEW).** The 1H / 1Y / 5Y / ALL preset row at the bottom of the dial currently takes a fixed slice of horizontal space. User wants it collapsible so the dial itself can take the full width when the user isn't picking a range.
 - **Distance measures on dial scrub — verify in production (NEW).** User reports that after PR #427 the orbs still don't appear to move during dial scrub. The fix is in main; possible causes: (a) deployment hasn't picked up yet, (b) temporal data isn't actually populating `graphData.nodes[].omegaFragility.composite` per scrub tick for the user's loaded workspace, (c) the contraction magnitude is still too subtle to read at this user's typical omega distribution, (d) 3D path's `(omega - 5) / 4` mapping doesn't actually trigger because temporal omegas don't drift far from neutral. Investigation step: confirm `useTemporalGraph` is wired correctly into `useFilteredGraph` for the user's loaded domain set, and instrument the contraction to log how much the centroid pull actually displaces typical orbs per tick.
 - **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432: lazy SystemCopilot + lazy heavy copilot-tool deps)._ Remaining candidates: split `graph-data.ts` (3413 LOC) into a tiny `graph-color.ts` (just `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`) and a separate heavy data file — ~13 consumers only need the helpers but currently pull the whole module; lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (same pattern as `tools.ts` but harder since the helpers are sync); audit `TimeSeriesOverlay` (987 LOC) + `TimeDial` (1179 LOC) for dynamic-loadability; `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
@@ -1027,6 +1028,34 @@ Estimator-lib audit (the other backlog candidate) turned out to be a no-op in pr
 **Verification.** `tsc --noEmit` clean (same pre-existing inherited errors); lint clean on touched files; vitest 1322 / 1322 pass.
 
 ---
+
+### 2026-05-22 — Shipped: `flow` edge type + per-type visibility toggle row
+
+**PR:** TBD (about to open).
+
+**Trigger.** User: *"we have directed relationships. We have temporal relationships. And we should also have a flow relationship where it might make sense. And one thing we should give the ability to is to be able to toggle different types of connections we want to be able to see visually."*
+
+**What shipped.**
+
+1. **New `"flow"` edge type.** `EdgeType = "directed" | "temporal" | "confounded"` becomes `EdgeType = "directed" | "temporal" | "confounded" | "flow"`. Visual: solid teal-green (`#1de9b6`), arrow on target, animated particle with a slightly faster cadence than `"temporal"` so the eye reads "stuff in motion" vs `"temporal"`'s slower "lag" cadence. Distinct from `"directed"` (a causal claim) and `"temporal"` (a lag correlation) — flow is "material / capital / signal is actually moving along this edge."
+2. **Store-side visibility filter.** New `visibleEdgeTypes: Set<EdgeType>` slice + `toggleEdgeTypeVisibility(type)` action + `setVisibleEdgeTypes(types)` setter. Default = all four types visible. Empty Set is treated as "all visible" by consumers so older sessions without the setting still render every edge.
+3. **UI: chip row in `DAGOverlay`.** Four chips (CAUSAL / TEMP / CONF / FLOW) live in the top-right near the LEGEND button, on 3D / 2D / Map. Click to toggle each type on/off across every canvas. Chip background uses the type's colour at low opacity when visible, fades to muted grey when hidden.
+4. **All four canvas surfaces wired.** 2D filters at the `visibleEdges` useMemo via `edgeById` lookup (O(1) per edge); 3D filters inline in the edge map at `CausalDAG3D.tsx`; Map filters at the GeoJSON-build forEach loop. The rendering switch statements in each (2D `EmphasizedEdge`, `DAGEdge3D.getEdgeColor`, Map's `edgeColor` ternary chain) now include the `"flow"` case rendering the teal-green solid + arrow.
+5. **LEGEND popover.** Added the FLOW row alongside CAUSAL / TEMPORAL / CONFOUNDED, with a teal-green swatch.
+
+**Caveats.** No existing dataset carries `type: "flow"` yet — the rendering + filter infrastructure is in place, but the user will only see flow edges once data sources tag edges that way. Data-team alignment needed on the semantic ("material flow" vs "capital flow" vs "cascade-propagation flow" — anything that's actually-in-motion belongs here, anything that's a causal claim stays as `"directed"`).
+
+**Files.**
+- `src/lib/types.ts` — `EdgeType` union extended.
+- `src/stores/useApexStore.ts` — `visibleEdgeTypes` slice + toggle.
+- `src/components/dag3d/DAGOverlay.tsx` — chip strip + new LEGEND row.
+- `src/components/CausalDAG2D.tsx` — `visibleEdges` filter; `isFlow` color/arrow handling.
+- `src/components/CausalDAG3D.tsx` — inline filter in edge map.
+- `src/components/dag3d/DAGEdge3D.tsx` — `"flow"` case in `getEdgeColor`; faster anim cadence for flow.
+- `src/components/CausalDAGMap.tsx` — filter at edges forEach; `"flow"` colour branch.
+- `src/lib/__tests__/store-visible-edge-types.test.ts` — new, 5 tests covering toggle / set / empty-set back-compat.
+
+**Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors); lint pre-existing warnings only; vitest **1511 / 1511** pass.
 
 ### 2026-05-22 — Shipped: collapsible time-dial granularity picker
 

@@ -74,6 +74,7 @@ function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string
     case "directed": return "#00e5ff";
     case "temporal": return "#ffab00";
     case "confounded": return "#ff6d00";
+    case "flow": return "#1de9b6";
     default: return "#42466a";
   }
 }
@@ -191,6 +192,7 @@ function DAGEdge3DInner({
 
   // Edge type determines rendering style
   const isTemporalFlow = edge.type === "temporal";
+  const isFlow = edge.type === "flow";
   const isDashed = edge.type === "confounded" || isVerifiedInconsistent ||
     isAblated || isSevered;
 
@@ -230,13 +232,17 @@ function DAGEdge3DInner({
   // wouldn't kick in, but the fire moment still needs to render
   // a particle whoosh.
   const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
-    (isTemporalFlow || propSignal > 0.3 || fireIntensity > 0.05);
+    (isTemporalFlow || isFlow || propSignal > 0.3 || fireIntensity > 0.05);
   // Boost the animation speed during the fire pulse so the particle
   // visibly accelerates at firing time — matches the human read of
-  // "signal arriving fast" vs "signal continuously flowing."
-  const animSpeed = isTemporalFlow
-    ? 0.4 + fireIntensity * 0.6
-    : 0.3 + propSignal * 0.5 + fireIntensity * 0.8;
+  // "signal arriving fast" vs "signal continuously flowing." Flow
+  // edges run a touch faster than temporal to give a distinct
+  // "stuff in motion" cadence (vs. temporal's slower "lag" cadence).
+  const animSpeed = isFlow
+    ? 0.6 + fireIntensity * 0.6
+    : isTemporalFlow
+      ? 0.4 + fireIntensity * 0.6
+      : 0.3 + propSignal * 0.5 + fireIntensity * 0.8;
 
   // Animate particle along curve for temporal/causal edges.
   // Reads from the pre-cached curvePoints array (allocated once per

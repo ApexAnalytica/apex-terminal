@@ -172,9 +172,10 @@ export default function FrameworkPage() {
           <WeightStack />
         </div>
         <p className="mt-3 text-[11.5px] font-mono text-text-muted leading-relaxed max-w-2xl">
-          A reinsurer evaluating sovereign credit cares about J and T. A
-          supply-chain operator cares about I and R. The same five pillars,
-          reweighted to your risk model.
+          A Geopolitical Analyst weights J and T for sovereign credit. A
+          Macro Analyst weights C and R for inflation pass-through. A
+          Financial Analyst weights I and T for counterparty stress.
+          The same five pillars, configured per persona.
         </p>
       </Section>
 

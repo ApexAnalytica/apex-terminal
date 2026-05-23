@@ -270,9 +270,12 @@ export default function ProductPage() {
               MANIFOLD IS A TEMPLATE
             </div>
             <p className="text-[12.5px] font-mono text-foreground/85 leading-relaxed">
-              Criticality looks different in finance than it does in fertilizer
-              supply chains. Engines are pluggable per domain — swap the
-              criticality core, retain the rest of the system.
+              Criticality in fertilizer supply chains looks nothing like
+              criticality in pancreatic biology — and the same Manifold
+              substrate renders both. Engines plug per domain; the
+              criticality core swaps; the rest of the system stays put.
+              The same codebase ships today as a macro-impact terminal,
+              a geopolitical terminal, and a biomedical-research terminal.
             </p>
             <div className="pt-2">
               <Link

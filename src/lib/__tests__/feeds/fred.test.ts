@@ -142,6 +142,14 @@ describe("mockFredFeed", () => {
       expect(ids.has(id), `expected FRED_SERIES to include ${id}`).toBe(true);
     }
   });
+
+  it("includes the Henry Hub natural-gas spot-price series (MHHNGSP) for the gas-feedstock node", () => {
+    const henry = FRED_SERIES.find((s) => s.id === "MHHNGSP");
+    expect(henry).toBeDefined();
+    expect(henry!.labelPatterns).toContain("natural gas feedstock");
+    expect(henry!.unit).toBe("$/MMBtu");
+    expect(henry!.capacity).toBe(5); // stress-regime threshold (USD per MMBtu)
+  });
 });
 
 describe("fredProvider.matchPayload", () => {

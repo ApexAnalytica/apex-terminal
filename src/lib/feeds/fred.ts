@@ -69,6 +69,15 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   // until FRED DFII10 (TIPS yield) becomes reachable." It is now
   // reachable since the FRED_API_KEY landed 2026-05-21.
   { id: "DFII10", label: "10-Year Treasury TIPS Yield (Real Rate)", labelPatterns: ["10y real interest rate"], unit: "%", capacity: 3, mockValue: 2.0 },
+  // MHHNGSP = Henry Hub Natural Gas Spot Price (monthly avg, USD per
+  // MMBtu). FRED republishes the EIA series. Henry Hub is the US Gulf
+  // benchmark for natural gas pricing; Asian LNG (JKM) and European TTF
+  // track it with regional spreads, so it's a reasonable proxy for the
+  // gas-input cost across petrochemical / LNG nodes. Capacity = 5
+  // separates "normal" ($2–4) from "stress" ($5+) regimes per EIA's
+  // own annual energy-outlook bands. labelPattern targets the
+  // "natural gas feedstock system" node in graph-data.ts.
+  { id: "MHHNGSP", label: "Henry Hub Natural Gas Spot Price (USD/MMBtu)", labelPatterns: ["natural gas feedstock", "henry hub"], unit: "$/MMBtu", capacity: 5, mockValue: 3.2 },
   // Fertilizer Manufacturing PPI — wires `sc_fertilizer_price_index`
   // (Supply Chain Food Security domain). Previously historical-only via
   // `bunge_food_security` snapshot. FRED PCU3253132531 is the BLS PPI by

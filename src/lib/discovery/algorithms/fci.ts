@@ -94,6 +94,12 @@ export interface FciParams {
    *  expect a B× slowdown; opt in for small graphs / final-pass
    *  validation, not for the full skeleton phase on a 30-node graph. */
   cmiKnnPermutations: number;
+  /** Permutation Markov chain when `cmiKnnPermutations > 0`.
+   *  `"swap"` (default) is fast and approximate; `"matching"` is the
+   *  formal Kim et al. 2022 Algorithm 1 — uniform over the matching
+   *  polytope but higher reject rates, so use more swaps for the same
+   *  mixing. Ignored when `cmiKnnPermutations` = 0. */
+  cmiKnnPermutationMode: "swap" | "matching";
   /** Cap on the number of intermediates V_1..V_{n-2} in R4's
    *  discriminating-path search (n-1 = path edge count). Default 5.
    *  Lowering trades completeness on long latent-confounder chains for
@@ -113,6 +119,7 @@ const DEFAULT_PARAMS: FciParams = {
   ciTest: "partial-correlation",
   cmiKnnK: 5,
   cmiKnnPermutations: 0,
+  cmiKnnPermutationMode: "swap",
   maxDiscriminatingPathLength: 5,
   gridSeconds: 300,
   minGridPoints: 30,
@@ -133,6 +140,7 @@ function runCITest(
       k: params.cmiKnnK,
       minN: params.minN,
       nPermutations: params.cmiKnnPermutations,
+      permutationMode: params.cmiKnnPermutationMode,
     });
   }
   return partialCorrelation(x, y, Z, { min_n: params.minN });
@@ -711,9 +719,9 @@ function classifyMarks(markA: Mark, markB: Mark): string {
 
 export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
   id: "fci",
-  version: "0.6.2",
+  version: "0.6.3",
   description:
-    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). CI test configurable via `ciTest`: default linear-Gaussian partial correlation; opt into nonparametric k-NN CMI (Frenzel-Pompe 2007) for non-Gaussian data via `ciTest: \"cmi-knn\"`. KD-tree backed neighbour search (v0.6.1) + opt-in local-permutation null (Kim et al. 2022 variant) for rigorous p-values via `cmiKnnPermutations > 0` (v0.6.2).",
+    "FCI (Fast Causal Inference) — skeleton phase + v-structure orientation + Zhang's R1 + R2 + R3 + R4 orientation rules. R4 handles discriminating paths of arbitrary length via BFS through parents-of-C colliders (cap configurable via maxDiscriminatingPathLength, default 5). Returns a PAG with endpoint marks (circle / arrow / tail). CI test configurable via `ciTest`: default linear-Gaussian partial correlation; opt into nonparametric k-NN CMI (Frenzel-Pompe 2007) for non-Gaussian data via `ciTest: \"cmi-knn\"`. KD-tree backed neighbour search (v0.6.1) + opt-in local-permutation null via `cmiKnnPermutations > 0` (v0.6.2). Permutation chain configurable via `cmiKnnPermutationMode`: `\"swap\"` (default, fast approximate) or `\"matching\"` (formal Kim et al. 2022 Algorithm 1, uniform over the matching polytope) (v0.6.3).",
   defaultParams: DEFAULT_PARAMS,
   run(cohort: Cohort, paramOverrides?: Partial<FciParams>): DiscoveryResult {
     const params: FciParams = { ...DEFAULT_PARAMS, ...paramOverrides };
@@ -748,7 +756,7 @@ export const fciAlgorithm: DiscoveryAlgorithm<FciParams> = {
         target: variableIds[targetIdx],
         strength: marg ? Math.abs(marg.r) : 0,
         pValue: marg?.p,
-        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.6.2, ci=${params.ciTest}${params.cmiKnnPermutations > 0 ? `+perm${params.cmiKnnPermutations}` : ""})`,
+        evidence: `${visual} — ${cls} (skeleton ⌷ v-structures + R1/R2/R3/R4, FCI v0.6.3, ci=${params.ciTest}${params.cmiKnnPermutations > 0 ? `+perm${params.cmiKnnPermutations}(${params.cmiKnnPermutationMode})` : ""})`,
         endpointMarks: { sourceMark, targetMark },
       });
     }

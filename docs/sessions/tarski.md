@@ -155,7 +155,8 @@ A multi-PR program of work to migrate the graph from snapshot data → live feed
 | 7 | BLS labor stats | ~10 labor/employment nodes | not started |
 | 8 | NOAA NHC active tropical cyclones | Per-basin storm aggregates (Atlantic / EP / CP) attached to shipping nodes via labelPatterns | **shipped** |
 | 9 | World Bank Pink Sheet | Commodity prices (wheat, fertilizer, phosphate, urea, ammonia) — needs CSV scraper | blocked: needs scraper |
-| 10 | EIA expansion | Saudi crude production, US refinery utilization, Henry Hub natural gas | not started |
+| 10a | Henry Hub natural gas (via FRED MHHNGSP) → `Natural gas feedstock system` | 1 node | **shipped** |
+| 10b | EIA expansion (Saudi crude, US refinery utilization) — needs custom EIA parser; deferred | ~2 nodes | not started |
 
 **Honest scoping notes:**
 - Not every node has a public real-time data source. Specific corporate operations ("Refinery Throughput", "Aramco production") don't have free public APIs. Options: paid sources (Bloomberg/Vortexa), inferred from related public series (EIA international), or stay synthetic and tag `mode: "modeled"` (vs `"live"` / `"static"`) so the chip color reflects honest provenance.

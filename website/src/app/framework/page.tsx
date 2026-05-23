@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import OmegaRadar from "@/components/visuals/OmegaRadar";
@@ -236,12 +235,7 @@ export default function FrameworkPage() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>OPEN TERMINAL</CTAButton>
-              <Link
-                href="/product"
-                className="text-center font-[family-name:var(--font-michroma)] text-[11px] tracking-[0.25em] text-text-muted hover:text-foreground"
-              >
-                ← BACK TO PRODUCT
-              </Link>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>

@@ -95,6 +95,17 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   // the graph node's mechanism comment are not publicly available, so
   // Cass is the closest free alternative.
   { id: "FRGEXPUSM649NCIS", label: "Cass Freight Expenditures Index", labelPatterns: ["shipping cost index"], unit: "", capacity: 4, mockValue: 3.4 },
+  // Regional Fed manufacturing surveys as ISM PMI proxies. ISM's PMI is
+  // proprietary (subscription-only since ~2015), so the proxy strategy
+  // uses the Philadelphia Fed Manufacturing Business Outlook Survey for
+  // manufacturing and the Dallas Fed Texas Service Sector Outlook Survey
+  // for services. Both are publicly-available diffusion indices that
+  // economists track alongside ISM and which historically correlate
+  // r=0.6-0.8 with the ISM headlines. Monthly cadence, current to 2026-04
+  // or 2026-05. Capacity 0 (diffusion indices are signed centered at 0).
+  // Mock values reflect roughly neutral readings.
+  { id: "GACDFSA066MSFRBPHI", label: "Philly Fed Manufacturing (ISM PMI proxy)", labelPatterns: ["ism manufacturing pmi"], unit: "", capacity: 0, mockValue: 0 },
+  { id: "TSSOSBACTSAMFRBDAL", label: "Dallas Fed Services (ISM PMI Services proxy)", labelPatterns: ["ism services pmi"], unit: "", capacity: 0, mockValue: 0 },
   { id: "T5YIE", label: "5-Year Breakeven Inflation Rate", labelPatterns: ["5y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "CSUSHPISA", label: "Case-Shiller Home Price Index YoY", labelPatterns: ["case-shiller home price index"], unit: "%", capacity: 12, units: "pc1", mockValue: 4.8 },
   // FRED expansion (Phase 4): more macro/financial nodes from graph-data.ts

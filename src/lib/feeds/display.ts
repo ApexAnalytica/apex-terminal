@@ -77,6 +77,18 @@ const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal>
       qualifier: ratio > 0 ? `${(ratio * 100).toFixed(0)}%` : undefined,
     };
   },
+  /** Production rate (e.g. Saudi crude in mb/d). Same shape as
+   *  throughput visually — value with utilisation-vs-capacity percent
+   *  — but kept distinct as a kind so multiple production-rate feeds
+   *  could coexist on one node without clobbering throughput. */
+  production: (p) => {
+    const ratio = p.capacity > 0 ? p.value / p.capacity : 0;
+    return {
+      shortLabel: shortLabelFromSource(p.source),
+      primaryValue: `${p.value.toFixed(2)} ${p.unit}`,
+      qualifier: ratio > 0 ? `${(ratio * 100).toFixed(0)}%` : undefined,
+    };
+  },
   sanctions: (p) => {
     // source format: "OFAC SDN — Iran: IRAN, IRAN-EO13599, …"
     const countryMatch = /—\s*([^:]+):/.exec(p.source);

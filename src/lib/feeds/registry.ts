@@ -13,6 +13,7 @@
 import { clinicalTrialsProvider } from "./providers/clinical-trials";
 import { derivationsProvider } from "./providers/derivations";
 import { eiaHormuzProvider } from "./providers/eia-hormuz";
+import { eiaSaudiCrudeProvider } from "./providers/eia-saudi-crude";
 import { fredProvider } from "./providers/fred";
 import { noaaStormsProvider } from "./providers/noaa-storms";
 import { ofacSdnProvider } from "./providers/ofac-sdn";
@@ -28,6 +29,7 @@ import type { FeedProvider } from "./providers/types";
  */
 export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   eiaHormuzProvider,
+  eiaSaudiCrudeProvider,
   ofacSdnProvider,
   fredProvider,
   worldBankProvider,

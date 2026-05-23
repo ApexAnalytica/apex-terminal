@@ -82,6 +82,21 @@ describe("formatLiveSignal", () => {
     expect(f.qualifier).toBe("88%");
   });
 
+  it("formats a production signal with utilisation percent (same shape as throughput)", () => {
+    const f = formatLiveSignal(
+      point({
+        kind: "production",
+        value: 9.1,
+        capacity: 12,
+        unit: "mb/d",
+        source: "EIA v2 / Saudi Arabia crude production (period 2025-03)",
+      }),
+    );
+    expect(f.shortLabel).toBe("EIA");
+    expect(f.primaryValue).toBe("9.10 mb/d");
+    expect(f.qualifier).toBe("76%");
+  });
+
   it("formats a sanctions signal with country and program count", () => {
     const f = formatLiveSignal(
       point({

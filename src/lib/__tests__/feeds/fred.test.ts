@@ -150,6 +150,14 @@ describe("mockFredFeed", () => {
     expect(henry!.unit).toBe("$/MMBtu");
     expect(henry!.capacity).toBe(5); // stress-regime threshold (USD per MMBtu)
   });
+
+  it("includes the US refinery utilization series (WPULEUS3) for refinery-throughput nodes", () => {
+    const refUtil = FRED_SERIES.find((s) => s.id === "WPULEUS3");
+    expect(refUtil).toBeDefined();
+    expect(refUtil!.labelPatterns).toContain("refinery utilization");
+    expect(refUtil!.unit).toBe("%");
+    expect(refUtil!.capacity).toBe(90); // 90% = elevated regime; >95 = saturation
+  });
 });
 
 describe("fredProvider.matchPayload", () => {

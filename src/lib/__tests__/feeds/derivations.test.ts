@@ -270,6 +270,22 @@ describe("derivationsProvider.matchPayload — Phase 14 composites", () => {
     expect(mena.source).toContain("mean MENA FX depreciation");
   });
 
+  it("emits CB Policy Rate Regime as pass-through from live Fed Funds Target Range", () => {
+    const nodes = [
+      makeNode({
+        id: "fed_target",
+        label: "Fed Funds Target Range",
+        liveData: [{ ...liveIndicator(5.5, 6, "FRED · DFEDTARU"), unit: "%" }],
+      }),
+      makeNode({ id: "cb_policy", label: "CB Policy Rate Regime" }),
+    ];
+    const batch = derivationsProvider.matchPayload({ trigger: "now" }, nodes);
+    const cb = batch.updates.find((u) => u.nodeId === "cb_policy")!.point;
+    expect(cb.value).toBe(5.5);
+    expect(cb.unit).toBe("%");
+    expect(cb.source).toContain("US Fed Funds Target Range (global anchor for EM CB policy)");
+  });
+
   it("does not emit K/L or MPK when capital + GDP primitives are missing", () => {
     const nodes = [
       makeNode({ id: "br_kl", label: "Brazil K/L Ratio" }),

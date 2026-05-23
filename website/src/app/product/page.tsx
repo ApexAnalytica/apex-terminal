@@ -4,6 +4,7 @@ import CTAButton from "@/components/ui/CTAButton";
 import EngineFlow from "@/components/visuals/EngineFlow";
 import EngineGraph from "@/components/visuals/EngineGraph";
 import { SITE } from "@/lib/site";
+import { DOMAINS, DOMAIN_SLUGS } from "@/lib/domains";
 
 const ENGINES = [
   {
@@ -60,15 +61,18 @@ const ENGINES = [
   },
 ] as const;
 
-const DOMAIN_STACKS = [
-  { domain: "MANUFACTURING",  color: "bg-accent-cyan",     stack: "SPIRTES · PEARL · PARETO" },
-  { domain: "INFRASTRUCTURE", color: "bg-accent-purple",   stack: "SPIRTES · TARSKI · PARETO" },
-  { domain: "ECONOMIC",       color: "bg-accent-amber",    stack: "SPIRTES · PARETO" },
-  { domain: "FINANCE",        color: "bg-accent-orange",   stack: "PEARL · PARETO" },
-  { domain: "ENERGY",         color: "bg-accent-green",    stack: "ALL FOUR" },
-  { domain: "GEOPOLITICAL",   color: "bg-accent-red",      stack: "TARSKI · PEARL" },
-  { domain: "SCIENCE",        color: "bg-accent-magenta",  stack: "SPIRTES · PEARL" },
-];
+// Derived from the source-of-truth domain catalog (DOMAINS in
+// lib/domains.ts) so the engine roster on /product can never drift
+// from the per-slug pages. Previously hand-rolled, and 7 of 8 rows
+// had stale stacks + INSURANCE was missing entirely (audit 2026-05-22).
+const DOMAIN_STACKS = DOMAIN_SLUGS.map((slug) => {
+  const d = DOMAINS[slug];
+  return {
+    domain: d.name.toUpperCase(),
+    color: `bg-accent-${d.color}`,
+    stack: d.engines.join(" · "),
+  };
+});
 
 const colorMap: Record<string, { text: string; border: string; bg: string }> = {
   cyan:   { text: "text-accent-cyan",   border: "border-accent-cyan/30",   bg: "bg-accent-cyan" },

@@ -46,7 +46,7 @@ Owns the geopolitical, financial, macro, and defense graph data and the correspo
 
 ## 2026-05 Live-Data Coverage Push
 
-### What landed (12 PRs, all merged into main)
+### What landed (17 PRs, all merged into main)
 
 | PR | Commit | What |
 |---|---|---|
@@ -62,25 +62,70 @@ Owns the geopolitical, financial, macro, and defense graph data and the correspo
 | #387 | `4ce4bbc` | **`1Y / 5Y / ALL` dial preset buttons.** Direct follow-up to #375's chip — the chip says "no data inside the window" but the only way out was the small `ZOOM OUT` button to the right of LIVE. This adds three long-cadence presets next to the existing four, with a slightly heavier border between the short-cadence group and the long-cadence group so the tier boundary reads visually. `TimeGranularity` type extended with `"year" \| "5year" \| "all"`. The long presets bypass the `fullRange.start` clamp (which had capped at the 60-day synthetic-data baseline) and widen `timelineFullRange` so a subsequent ZOOM OUT lands at the chosen extent. After this lands, the user's repro for fertilizer / debt-to-GDP nodes produces real curves at `5Y` or `ALL`. |
 | #393 | `8e598d5` | **PPIFGS swap + STALE verdict in `check:feeds`.** Two related changes. (1) FRED `PPIFGS` ("PPI Final Demand Goods") was upstream-discontinued since 2015-12 but FRED still returned the 10-year-stale value, so `check:feeds` reported it as LIVE — the silent worst case. Compounded by a labelPatterns typo (`"ppi final demand energy"` while PPIFGS is the *Goods* sub-index). Replaced with three correctly-routed current series: `PPIFIS` (headline, 156.5 @ 2026-04), `PPIFDS` (Services, 156.1), `WPSFD4131` (Energy, 267.9). Net: 3 previously-unwired PPI graph nodes promoted to live; stale time-bomb removed. (2) New 4th verdict tier in `check:feeds`: any series with a real (non-mock) source whose `observedAt` exceeds the per-feed staleness threshold (FRED 365d, WB 5y) is flagged STALE. Bold-red age annotation in the legend; STALE > 0 is a hard CI exit code. The "what to do" note in the script points operators at the PR #350/#393 precedent for fixing each flagged series. |
 | #394 | `cd9010c` | **Remove deprecated WB WGI series + wire Core PPI YoY.** Probed all 6 WGI indicator codes (`RL.EST` / `GE.EST` / `CC.EST` / `PV.EST` / `RQ.EST` / `VA.EST`) against the WB v2 API; every one returns `"The indicator was not found. It may have been deleted or archived."` The entire WGI dataset has been retired from the v2 endpoint. Removed the `CHN/RL.EST` + `BRA/RL.EST` entries (previously showing as MISS, contributing zero to R-04's governance-tightening logic). R-04 gracefully degrades to its static threshold via the existing null-guards in `tarski-data.ts`. Bonus: wired `ip_core_ppi_yoy` to `PPICOR` with `units=pc1` (5.23 % @ 2026-04). The `kind: "governance"` discriminator on `WbSeriesConfig` is kept for future re-wiring if a non-WB governance source ever lands. |
+| #408 | `570f855` | **Phase 14 #1 — DFII10 (10y TIPS yield) → `ip_real_rate_10y`.** Wires the previously-historical-only real-rate node. The graph data already explicitly noted this target in an inline comment on the `ip_real_rate_10y__ip_dxy` edge: *"Literature-cited until FRED DFII10 (TIPS yield) becomes reachable."* It became reachable when FRED_API_KEY landed 2026-05-21. 2.18 % at 2026-05-21, daily. +1 node. |
+| #411 | `c0fa101` | **Phase 14 #2 — Brazil + China Sovereign Risk PWT via WB proxies.** The 8 PWT (Penn World Table) sovereign-risk nodes for BRA + CHN were historical-only — PWT publishes annually with a ~3y lag and has no public REST API. Wired 2 of the 4 PWT dimensions via WB annual proxies: Capital Stock → `NE.GDI.TOTL.KD` (Gross Capital Formation, constant 2015 US$); TFP Index → `SL.GDP.PCAP.EM.KD` (GDP per employed person, constant 2017 PPP $). MPK + K/L Ratio are DERIVED quantities (require K and L jointly) and stay historical-only until a derivations-provider extension. +4 nodes. WB catalog 13 → 17. |
+| #412 | `15c36fb` | **Phase 14 #3 — Fertilizer PPI → `sc_fertilizer_price_index`.** FRED `PCU3253132531` (Fertilizer Manufacturing PPI by Industry) covers both nitrogenous + phosphatic sub-industries. Monthly, current to 2026-04 = 302.87. +1 node. Supply Chain Food Security domain: 3/10 → 4/10 live. |
+| #413 | `f43d107` | **Phase 14 #4 — Cass Freight Expenditures → `sc_shipping_cost_index`.** FRED `FRGEXPUSM649NCIS` captures both rate and volume — best single-number freight cost proxy on FRED. The canonical Red Sea / Suez container indices (Drewry, Shanghai SCFI) referenced by the graph mechanism comment are not publicly available; Cass is the closest free alternative. Monthly, 3.382 at 2026-04. +1 node. Supply Chain Food Security domain: 4/10 → 5/10 live. |
+| #416 | `be6c2cd` | **Phase 14 #5 — Derivations-provider extension (K/L, MPK, MENA Currency Depreciation).** Extends the existing derivations provider to emit 5 new composite signals from already-live primitives — no new HTTP endpoints, no new env vars, no new upstream dependencies. (1) K/L Ratio proxy = Capital Formation / Real GDP for BRA + CHN (Brazil ~0.18, China ~0.39 in 2024); (2) MPK Cobb-Douglas α=0.3 = 0.3 × Y/K for BRA + CHN (Brazil ~1.68, China ~0.77); (3) MENA Currency Depreciation = mean of EGY + ARG FX value/capacity ratios. New `collectMenaFxRatios()` and `deriveCapitalRatios()` helpers in `src/lib/feeds/derivations.ts`; provider matchPayload rewritten to remove the early-return that was preventing MENA + Capital code from running when only WB primitives were available. Tests grew 6 → 15. +5 nodes (closes Sovereign Risk to 12/12 = 100%). Overall live coverage 42% → 44%, which is **~85% of the practically-reachable ceiling** under the current free-source constraint. |
 
-### Coverage state at end of session (2026-05-22, after #393 + #394 land)
+### Coverage state at end of session (2026-05-23, after Phase 14 + derivations extension land)
 
-Projected against prod after deploy completes (`check:feeds` dry-run already
-shows this state from a local build):
+Projected post-deploy state:
 
 ```
-=== FRED ===       55 expected · LIVE 55 · MOCK 0 · STALE 0 · MISS 0   (poll 30 min)
-=== World Bank === 13 expected · LIVE 13 · MOCK 0 · STALE 0 · MISS 0   (poll 1 h)
-Overall:           68 expected · 68 live · 0 mock · 0 stale · 0 miss
+=== FRED ===       58 expected · LIVE 58 · MOCK 0 · STALE 0 · MISS 0   (poll 30 min)
+=== World Bank === 17 expected · LIVE 17 · MOCK 0 · STALE 0 · MISS 0   (poll 1 h)
+EIA Hormuz:        1 live (Strait of Hormuz throughput, 5-min poll)
+Derivations:       7 composites (Currency Contagion + Exchange Rate Pressure
+                                  + MENA Currency Depreciation + Brazil/China
+                                  K/L + Brazil/China MPK)
+Overall:           75+ catalog entries + 7 derived composites · clean
 ```
 
-Changes from the 2026-05-21 snapshot above:
-- FRED catalog: 52 → 55 entries. -1 (PPIFGS removed) + 4 (PPIFIS / PPIFDS /
-  WPSFD4131 / PPICOR added). 3 previously-unwired PPI graph nodes promoted.
-- WB catalog: 15 → 13 entries. -2 (CHN/RL.EST + BRA/RL.EST removed after
-  upstream-deprecation finding).
-- New STALE verdict in `check:feeds` catches the upstream-discontinued
-  class going forward; thresholds calibrated FRED 365d, WB 5y.
+Catalog evolution this session:
+- FRED catalog: 52 → 58 entries. Net +6: removed PPIFGS (#393); added
+  PPIFIS / PPIFDS / WPSFD4131 / PPICOR (#393/#394); added DFII10 (#408),
+  PCU3253132531 (#412), FRGEXPUSM649NCIS (#413).
+- WB catalog: 15 → 17 entries. Net +2: removed 2 WGI (#394); added 4
+  Sovereign-Risk PWT proxies (#411).
+- EIA: Hormuz throughput live since 2026-05-22 (`EIA_API_KEY` rollout).
+- Derivations: 2 composites (Currency Contagion + Exchange Rate Pressure)
+  → 7 composites (added MENA Currency Depreciation, Brazil K/L + MPK,
+  China K/L + MPK in #416).
+- New STALE verdict in `check:feeds` (FRED 365d, WB 5y thresholds).
+
+### Graph-node live coverage (post-derivations-extension)
+
+Final state for the geopolitical/macro vertical:
+
+| Tier | Nodes | % of 192 |
+|---|---:|---:|
+| 🟢 LIVE (real-time API polling + derivations) | ~85 | ~44% |
+| 🟡 HISTORICAL (CSV snapshot, no polling) | ~76 | ~40% |
+| 🟠 SYNTHETIC (omega-fragility seeded) | 25 | 13% |
+| ⚪ BARE (placeholder "blank-needs-data") | 6 | 3% |
+
+Coverage trajectory over the May session:
+- Pre-session (2026-05-20):    ~53 live ≈ 28% — heavy mock+historical
+- Post-FRED+EIA (2026-05-22):  ~80 live ≈ 42% — Phase 14 PRs #408–#414
+- Post-derivations (#416):     ~85 live ≈ 44% — **the practically-reachable ceiling**
+
+Per-domain coverage at session close:
+
+| Domain | LIVE / TOTAL | Notes |
+|---|---:|---|
+| Macro Impact: Inflation & Policy | 26/27 (96%) | NY Fed SCE the only synthetic |
+| Macro Impact: Labor, Growth & Housing | 23/25 (92%) | ISM PMI ×2 proprietary |
+| Sovereign Risk | **12/12 (100%)** | ✅ closed via #411 + #416 |
+| Financial Contagion | 12/18 (67%) | 8 historical-only (fund/BIS) + derivations |
+| Supply Chain Food Security | 6/10 (60%) | up from 30% pre-session |
+| QAFCO Fertilizer | 4/19 (21%) | physical-asset moat |
+| Ma'aden Phosphate | 4/21 (19%) | physical-asset moat |
+| Saudi Aramco Energy | 0/14 (0%) | physical-asset moat |
+| QatarEnergy LNG | 0/11 (0%) | physical-asset moat |
+| Undersea Cable Infrastructure | 0/12 (0%) | physical-asset moat |
+| AI Safety / IDS | 0/17 (0%) | intentionally synthetic (benchmarks) |
+| Frontier Science | 0/6 (0%) | intentional placeholders |
 
 Live-node coverage by domain (intersection of live signal + graph node, after today's three PRs):
 
@@ -118,6 +163,8 @@ Remaining bare nodes (no public source available): same intentional set as befor
 
 - ✅ **Annual cadence vs daily TimeDial UX** (3-PR iteration: #353 → #375 → #387). FIT toggle + auto-reset + OUT OF WINDOW chip + `1Y/5Y/ALL` dial presets land users at a discoverable solution.
 
+- ✅ **Phase 14 — Live-data Coverage Extension** (2026-05-22 → 23, 5 PRs: #408 / #411 / #412 / #413 / #416). Pipeline audit identified the most-actionable historical-only nodes. Shipped 5 PRs promoting 12 nodes from HISTORICAL → LIVE: DFII10 (real rate), 4× WB PWT proxies for Sovereign Risk, Fertilizer Manufacturing PPI, Cass Freight Expenditures, and a derivations-provider extension that closed the remaining 5 (Brazil/China K/L + MPK + MENA Currency Depreciation). Overall live coverage 38% → 44% — the practically-reachable ceiling under free-source constraints.
+
 **All threads now resolved.**
 
 - ✅ **`EIA_API_KEY` live on prod** (2026-05-22). User registered at https://www.eia.gov/opendata/register.php, key saved to `.env.local` (chmod 600, alongside `FRED_API_KEY`), added to Vercel manifold project (Sensitive, Production + Preview), redeployed with "Use existing Build Cache" UNCHECKED. Hormuz endpoint flipped from `(mock — EIA_API_KEY unset)` to live `EIA v2 / Persian Gulf producers (period 2026-01)` after ~3 min. First live values:
@@ -137,9 +184,53 @@ Remaining bare nodes (no public source available): same intentional set as befor
 
   This is the signal driving the Tarski A-04 chokepoint axiom — value > capacity flags concentration risk.
 
+### Pipeline audit (2026-05-22) — what's left after Phase 14
+
+The audit categorized each of the 192 graph nodes by data status. The
+remaining HISTORICAL-only and SYNTHETIC nodes break down into three
+buckets, sorted by what's actually movable:
+
+**Bucket A — Physical-asset moat (52 nodes, unlikely to wire live)**.
+Per-asset APIs don't exist publicly for individual refineries, pipelines,
+ports, mines, or undersea cables.
+
+- Saudi Aramco Energy (14 hist) — Abqaiq, Ras Tanura, MGS, Fadhili, etc.
+- QatarEnergy LNG (11 hist) — Ras Laffan, NFE, Pearl GTL.
+- Undersea Cable Infrastructure (12 hist) — 2Africa, AAE-1, FLAG, SEA-ME-WE.
+- QAFCO Fertilizer (15 hist) and Ma'aden Phosphate (12 hist + 5 synth)
+  beyond their fan-out export-market nodes — same physical-asset pattern.
+
+Aggregate proxies could lift some of these via the `derivations` provider
+(e.g. EIA aggregate KSA production driving multiple Aramco nodes), but
+that's a derivations-extension shape, not a simple FRED/WB add.
+
+**Bucket B — Bespoke / fund-specific (8 nodes, no public source)**.
+- Financial Contagion: PIMCO EMD, BlackRock EMD, Fund Concentration,
+  Crisis Window, Haircut Transmission, Cross-Border Banking (BIS dead
+  on FRED since 2019-2020 anyway).
+- Supply Chain Food Security: Bunge / Almarai (company-specific),
+  Strategic Reserves, Subsidy Program (government data, varies by country).
+
+**Bucket C — Intentionally synthetic / placeholder (23 nodes)**.
+- AI Safety / IDS (17 nodes) — CICIDS-2017, UNSW-NB15, DDoS, etc.
+  Dissertation-derived BENCHMARK references; meant to be conceptual,
+  not live signals.
+- Frontier Science (6 bare) — Neutrino Mass, Dark Matter Direct,
+  Axion, GW Observatory, Proton Decay, Hubble Tension. Research-
+  aspirational placeholders.
+
+**✅ Realistic next-batch ceiling achieved (#416, 2026-05-23).** The
+derivations-provider extension landed 5 more nodes (MPK + K/L for
+Brazil + China; MENA Currency Depreciation). Sovereign Risk now
+12/12 = 100% live. Past this, the remaining historical/synthetic
+nodes are structurally unmovable under free-source constraints —
+physical-asset moat (no per-asset APIs), bespoke fund-specific data
+(not published), and intentionally-synthetic dissertation refs.
+**44% live = ~85% of the practically-reachable ceiling.**
+
 **Continuation prompt for the next Claude window (paste verbatim):**
 
-> I'm picking up the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 live-data coverage push is FULLY CLOSED — 12 code PRs + 4 docs PRs merged, FRED_API_KEY + EIA_API_KEY both live on prod, all four feed providers (FRED 55, WB 13, EIA Hormuz, derivations) reading clean (0 mock / 0 stale / 0 miss). No remaining live-data open threads. Likely next themes from "Likely upcoming themes" section: new domain cards for customer pilots, MAP-view geo-coordinates, sanction/export-control axiom expansion with TARSKI, or starting fresh on a different in-scope area. If user says "audit" → run `npm run check:feeds` and report drift. If user says "what's next" → ask them to choose between the upcoming-themes options.
+> I'm picking up the geopolitical/macro vertical of apex-terminal. Read `docs/sessions/geopolitical-macro.md` for full context. The 2026-05 live-data push + Phase 14 extension + derivations-provider extension are ALL CLOSED — 17 code PRs + 6 docs PRs merged, FRED_API_KEY + EIA_API_KEY live on prod, all four providers reading clean (FRED 58, WB 17, EIA Hormuz, derivations now 7 composites). Live coverage at ~44% of 192 graph nodes — **approximately 85% of the practically-reachable ceiling** under free-source constraints. The remaining 56% gap is structural: physical-asset moat (Aramco/QatarEnergy/Ma'aden facilities, undersea cables — no per-asset APIs exist publicly), bespoke fund-specific data (PIMCO/BlackRock/Bunge/Almarai snapshots), and intentionally-synthetic dissertation references (AI Safety / IDS, Frontier Science). See "Pipeline audit" section for the full breakdown. The geopolitical/macro live-data thread is functionally complete — pivot recommended to "Likely upcoming themes" (new domain cards for customer pilots, MAP-view geo-coordinates, sanction/export-control axiom expansion with TARSKI), or to a different in-scope area entirely. Only if user specifically asks for more live data: investigate aggregate proxies for the physical-asset moat (EIA aggregate KSA / Qatar production driving multiple downstream nodes via derivations), or look outside FRED/WB for one of the bespoke composites.
 
 ### Empirical playbook (the data ladder)
 

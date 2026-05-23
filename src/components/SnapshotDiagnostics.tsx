@@ -22,8 +22,21 @@
 
 import { useMemo, useState } from "react";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
+import { useApexStore } from "@/stores/useApexStore";
 import { cvarW1, tailDepthScore } from "@/lib/estimators/cvar-w1";
 import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { computeFR } from "@/lib/discovery/fr-estimator";
+import {
+  computeOmegaForgettingPressure,
+  peakPressure,
+} from "@/lib/discovery/omega-forgetting-pressure";
+import { forgettingPressureBand } from "@/lib/omega-forgetting-pressure-display";
+import {
+  AI_SAFETY_DEMO_EXPOSURE,
+  buildAISafetyDemoTrace,
+} from "@/lib/discovery/ai-safety-demo-trace";
+import CapabilityBadge from "./CapabilityBadge";
 
 type Band = {
   label: string;
@@ -86,7 +99,35 @@ function topologyBand(density: number): Band {
 
 export default function SnapshotDiagnostics() {
   const graph = useFilteredGraph();
-  const [expanded, setExpanded] = useState<"tail" | "topology" | null>(null);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const isAISafety = useMemo(
+    () => resolveDomainProfile(selectedDomains).id === "ai-safety",
+    [selectedDomains],
+  );
+  const [expanded, setExpanded] = useState<
+    "tail" | "topology" | "forgetting" | null
+  >(null);
+
+  // Ω-Forgetting Pressure — AI-domain-only diagnostic. Runs on the
+  // built-in synthetic demo trace until PR 5 lands a real ingester;
+  // sourceKind stays "synthetic" so the SYNTHETIC badge is rendered
+  // alongside the reading and no customer business decision runs off it.
+  const forgetting = useMemo(() => {
+    if (!isAISafety) return null;
+    const trace = buildAISafetyDemoTrace();
+    const fr = computeFR(trace);
+    const result = computeOmegaForgettingPressure(fr, {
+      exposure: AI_SAFETY_DEMO_EXPOSURE,
+    });
+    const peak = peakPressure(result);
+    return {
+      result,
+      band: forgettingPressureBand(result.pressure),
+      peak,
+      taskCount: fr.tasks.length,
+      epochCount: trace.epochs.length,
+    };
+  }, [isAISafety]);
 
   // Tail Depth — empirical α-CVaR over the per-node ΩF composite
   // distribution of the live filtered graph. α = 0.9 standard.
@@ -240,6 +281,62 @@ export default function SnapshotDiagnostics() {
         </button>
       </div>
 
+      {/* ── Ω-Forgetting Pressure (AI Safety only) ───────────────── */}
+      {forgetting && (
+        <button
+          onClick={() =>
+            setExpanded(expanded === "forgetting" ? null : "forgetting")
+          }
+          className="w-full text-left p-2 rounded border transition-all"
+          style={{
+            borderColor:
+              expanded === "forgetting"
+                ? forgetting.band.color
+                : "var(--border)",
+            backgroundColor: "var(--surface)",
+          }}
+        >
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+              FORGETTING · Ω-FP
+            </span>
+            <div className="flex items-center gap-1.5">
+              {forgetting.result.sourceKind === "synthetic" && (
+                <CapabilityBadge capability="live-synthetic" />
+              )}
+              {Number.isFinite(forgetting.result.pressure) && (
+                <span
+                  className="text-[8px] font-[family-name:var(--font-michroma)] tabular-nums font-bold"
+                  style={{ color: forgetting.band.color }}
+                >
+                  {forgetting.band.label}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            {Number.isFinite(forgetting.result.pressure) ? (
+              <>
+                <span
+                  className="text-[20px] font-[family-name:var(--font-michroma)] tabular-nums leading-none"
+                  style={{ color: forgetting.band.color }}
+                >
+                  {forgetting.result.pressure.toFixed(3)}
+                </span>
+                <span className="text-[9px] font-mono text-text-muted/70">
+                  Σ exposure · FR · {forgetting.taskCount} tasks ·{" "}
+                  {forgetting.epochCount} epochs
+                </span>
+              </>
+            ) : (
+              <span className="text-[10px] font-mono text-text-muted">
+                NO TRAINING TRACE
+              </span>
+            )}
+          </div>
+        </button>
+      )}
+
       {/* Expanded detail ─────────────────────────────────────── */}
       {expanded === "tail" && tail.ok && (
         <div className="p-3 rounded border border-border bg-surface space-y-2">
@@ -292,6 +389,58 @@ export default function SnapshotDiagnostics() {
           </div>
         </div>
       )}
+
+      {expanded === "forgetting" &&
+        forgetting &&
+        Number.isFinite(forgetting.result.pressure) && (
+          <div className="p-3 rounded border border-border bg-surface space-y-2">
+            <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+              <span className="text-foreground">
+                {forgetting.band.tooltip}
+              </span>
+            </div>
+            <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+              Ω-FP = Σ<sub>k</sub> exposure<sub>k</sub> · normalizedFR
+              <sub>k</sub> on the canonical AI Safety IDS demo trace
+              (DDoS / MITM / Heartbleed curriculum,{" "}
+              {forgetting.epochCount} epochs). Peak Ω-FP ={" "}
+              {Number.isFinite(forgetting.peak.value)
+                ? forgetting.peak.value.toFixed(3)
+                : "—"}
+              {forgetting.peak.epochIndex >= 0 && (
+                <> at epoch {forgetting.peak.epochIndex}</>
+              )}
+              .
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                TOP CONTRIBUTORS
+              </div>
+              {forgetting.result.contributions.slice(0, 3).map((c) => (
+                <div
+                  key={c.taskId}
+                  className="font-mono text-[9px] text-foreground tabular-nums flex items-center gap-2"
+                >
+                  <span className="text-text-muted">{c.taskId}</span>
+                  <span className="text-text-muted/70">
+                    exp {c.exposure.toFixed(2)} · FR{" "}
+                    {c.normalizedFR.toFixed(3)} →{" "}
+                  </span>
+                  <span className="text-foreground">
+                    {c.contribution.toFixed(3)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="text-[8px] font-mono text-text-muted/70 leading-relaxed">
+              SYNTHETIC trace — no customer business decision runs off
+              this reading. A real PyTorch / TF training-log ingester
+              ships in PR 5; once a live trace is loaded the badge
+              flips to LIVE. Source: Ghauri 2025 (D.Eng., Ch. 8 —
+              catastrophic forgetting in continual-learning IDS).
+            </div>
+          </div>
+        )}
     </div>
   );
 }

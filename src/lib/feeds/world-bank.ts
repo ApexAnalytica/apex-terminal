@@ -179,6 +179,68 @@ export const WB_SERIES: WbSeriesConfig[] = [
     capacity: 1500,
     mockValue: 1100,
   },
+  // Phase 14 — Sovereign Risk PWT proxies. The 8 PWT (Penn World Table)
+  // nodes for Brazil + China (Capital Stock, TFP Index, MPK, K/L Ratio)
+  // were historical-only — PWT publishes annually with a ~3y lag and has
+  // no public REST API. WB has reasonable annual proxies for two of the
+  // four dimensions:
+  //
+  //   - Capital Stock → NE.GDI.TOTL.KD (Gross Capital Formation, constant
+  //     2015 USD). FLOW not STOCK, but the closest WB-published annual
+  //     measure of capital accumulation. Annual cadence matches PWT.
+  //
+  //   - TFP Index → SL.GDP.PCAP.EM.KD (GDP per person employed, constant
+  //     2017 PPP $). LABOR PRODUCTIVITY proxy — captures the output-per-
+  //     worker dimension that TFP approximates. Not strict Solow-residual
+  //     TFP (which requires capital + labor decomposition), but the
+  //     closest WB single-series proxy.
+  //
+  // MPK (Marginal Product of Capital) and K/L Ratio are derived quantities
+  // — they require K and L jointly. Better wired via the `derivations`
+  // provider in a future PR. For now they stay historical-only.
+  //
+  // Capacities calibrated against current 2024 values: BRA capital 364B,
+  // CHN capital 7.24T, BRA productivity $41.4k, CHN productivity $45.8k.
+  {
+    country: "BRA",
+    indicator: "NE.GDI.TOTL.KD",
+    label: "Brazil Gross Capital Formation (constant 2015 US$)",
+    labelPatterns: ["brazil capital stock"],
+    scale: 1e9,
+    unit: "$B",
+    capacity: 500,
+    mockValue: 364,
+  },
+  {
+    country: "CHN",
+    indicator: "NE.GDI.TOTL.KD",
+    label: "China Gross Capital Formation (constant 2015 US$)",
+    labelPatterns: ["china capital stock"],
+    scale: 1e12,
+    unit: "$T",
+    capacity: 10,
+    mockValue: 7.24,
+  },
+  {
+    country: "BRA",
+    indicator: "SL.GDP.PCAP.EM.KD",
+    label: "Brazil GDP per Employed Person (constant 2017 PPP $)",
+    labelPatterns: ["brazil tfp index"],
+    scale: 1,
+    unit: "$",
+    capacity: 50000,
+    mockValue: 41441,
+  },
+  {
+    country: "CHN",
+    indicator: "SL.GDP.PCAP.EM.KD",
+    label: "China GDP per Employed Person (constant 2017 PPP $)",
+    labelPatterns: ["china tfp index"],
+    scale: 1,
+    unit: "$",
+    capacity: 55000,
+    mockValue: 45842,
+  },
   // WGI — World Governance Indicators — REMOVED 2026-05-22.
   // Every WGI indicator (RL.EST = Rule of Law, GE.EST = Government
   // Effectiveness, CC.EST = Control of Corruption, PV.EST = Political

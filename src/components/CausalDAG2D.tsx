@@ -41,6 +41,10 @@ import {
 import { type NodeMetrics } from "@/lib/graph-layout";
 import { requestLayout2D } from "@/lib/workers/layout3d-client";
 import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
+import {
+  cascadeEdgeActivationOrder,
+  edgeFireIntensity,
+} from "@/lib/cascade-edge-activation-order";
 import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
@@ -492,6 +496,18 @@ interface EmphasizedEdgeData {
   isConfounded: boolean;
   isSelected: boolean;
   propagationSignal: number;
+  /**
+   * Cascade-fire pulse intensity in [0, 1]. Peaks at this edge's
+   * activation epoch (when its target node first activated) and decays
+   * over a few epochs. 0 outside the firing window or when replay
+   * isn't active. Drives a brightness + stroke-width pulse so the
+   * moment of signal arrival reads as a clear punctuation rather than
+   * a continuation of the steady propagationSignal flow above.
+   *
+   * Computed at the canvas level via `cascadeEdgeActivationOrder` +
+   * `edgeFireIntensity`; see CausalDAG2D's `edgeActivationEpochs`.
+   */
+  fireIntensity: number;
   showArrow: boolean;
   /**
    * χ★ tier — drives the discrete violet midpoint marker rendered
@@ -606,14 +622,30 @@ function EmphasizedEdge(props: EdgeProps<EmphasizedEdgeData>) {
   if (d.propagationSignal > 0) {
     opacity = Math.min(1, d.baseOpacity + d.propagationSignal * 0.3);
   }
+  // FIRE pulse — adds on top of the steady-flow propagationSignal
+  // boost. Peaks at the activation epoch and decays over a 3-epoch
+  // window, so the moment of signal arrival reads as a clear visual
+  // punctuation. Combined with the strokeWidth boost below and the
+  // color shift toward amber, the eye registers "edge fired NOW"
+  // even when the underlying propagationSignal stays low.
+  if (d.fireIntensity > 0) {
+    opacity = Math.min(1, opacity + d.fireIntensity * 0.5);
+  }
 
   const strokeWidth = isThisSelected
     ? d.baseWidth + 1.5
-    : d.propagationSignal > 0
-      ? d.baseWidth + d.propagationSignal * 2
+    : d.propagationSignal > 0 || d.fireIntensity > 0
+      ? d.baseWidth + d.propagationSignal * 2 + d.fireIntensity * 1.8
       : d.baseWidth;
 
-  const stroke = d.propagationSignal > 0 ? "#ffab00" : d.baseColor;
+  // Stroke color: amber during steady-flow, white-hot during fire peak
+  // (the brightening reads as "this just fired" against the amber
+  // flow). Falls back to baseColor when neither signal is active.
+  const stroke = d.fireIntensity > 0.4
+    ? "#ffffff"
+    : d.propagationSignal > 0 || d.fireIntensity > 0
+      ? "#ffab00"
+      : d.baseColor;
   const strokeDasharray = d.isConfounded || d.isInconsistent ? "5,5" : undefined;
 
   // Reference-stable adjacency to avoid lint complaining about the unused
@@ -755,6 +787,25 @@ function CausalDAG2DInner() {
     if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
     return cascadeActivationOrder(replayEpochs, clampedEpoch);
   }, [replayActive, replayEpochs, clampedEpoch]);
+
+  // Per-edge cascade fire — mirrors the 3D canvas wiring (see
+  // CausalDAG3D.tsx). Map<edgeId, activationEpoch> so the edge data
+  // builder can drop a `fireIntensity` field per edge.
+  const edgeActivationEpochs = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) {
+      return new Map<string, number>();
+    }
+    const result = cascadeEdgeActivationOrder(
+      graphData.edges,
+      replayEpochs,
+      clampedEpoch,
+    );
+    const out = new Map<string, number>();
+    for (const [edgeId, info] of result) {
+      out.set(edgeId, info.activationEpoch);
+    }
+    return out;
+  }, [replayActive, replayEpochs, clampedEpoch, graphData.edges]);
 
   // Global ablation set — hoisted up so the node-builder useMemo
   // below can dim ablated nodes. The store hooks themselves live a
@@ -1028,6 +1079,15 @@ function CausalDAG2DInner() {
         const isSelected = selectedEdge?.id === e.id;
         const isTemporal = e.type === "temporal";
         const isConfounded = e.type === "confounded";
+        // FIRE pulse — peaks at the edge's activation epoch and decays
+        // over a 3-epoch window. 0 when the edge never fired in the
+        // visible cascade. Severed / ablated suppress separately in
+        // the renderer; here we just pipe the math.
+        const fireActivationEpoch = edgeActivationEpochs.get(e.id);
+        const fireIntensity =
+          replayActive && fireActivationEpoch !== undefined
+            ? edgeFireIntensity(fireActivationEpoch, clampedEpoch)
+            : 0;
 
         const baseColor = isInconsistent
           ? "#ff1744"
@@ -1065,6 +1125,7 @@ function CausalDAG2DInner() {
             isConfounded,
             isSelected,
             propagationSignal,
+            fireIntensity,
             showArrow,
             chiStarTier: chiStarInfo.bridgeSet.has(e.id)
               ? ("bridge" as const)
@@ -1074,7 +1135,7 @@ function CausalDAG2DInner() {
           },
         };
       }),
-    [graphData, truthFilter, currentSnapshot, selectedEdge, chiStarInfo]
+    [graphData, truthFilter, currentSnapshot, selectedEdge, chiStarInfo, edgeActivationEpochs, clampedEpoch, replayActive]
   );
 
   // Filter edges for isolation mode

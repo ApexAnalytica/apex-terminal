@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
+import { edgeFireIntensity } from "@/lib/cascade-edge-activation-order";
 
 interface DAGEdge3DProps {
   edge: CausalEdge;
@@ -25,6 +26,24 @@ interface DAGEdge3DProps {
   onAblationClick?: () => void;
   onEdgeClick?: () => void;
   epochState?: EdgeEpochState;
+  /**
+   * Cascade-firing pulse inputs. When the current replay epoch falls
+   * within a small window of this edge's `fireActivationEpoch`, the
+   * edge renders a brief "FIRE" pulse (brighter line, larger flow
+   * particle, color flash toward white). Driven by
+   * `cascadeEdgeActivationOrder` — see src/lib/cascade-edge-activation-
+   * order.ts. Undefined when the edge never fires in the visible
+   * cascade window; pulse is suppressed in that case.
+   */
+  fireActivationEpoch?: number;
+  /** Current replay epoch — read by `edgeFireIntensity` per-frame. */
+  currentEpoch?: number;
+  /**
+   * True iff cascade replay is in progress. Gates the FIRE pulse so
+   * the brightness boost doesn't fire spuriously when the user is
+   * just hovering over an idle graph.
+   */
+  replayActive?: boolean;
   /**
    * χ★ tier — discrete midpoint marker tells the user this edge is
    * in the load-bearing skeleton without smudging the cyan / amber
@@ -78,10 +97,17 @@ function DAGEdge3DInner({
   onAblationClick,
   onEdgeClick,
   epochState,
+  fireActivationEpoch,
+  currentEpoch,
+  replayActive = false,
   chiStarTier = null,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
   const particleRef = useRef<THREE.Mesh>(null);
+  // FIRE-pulse halo — co-located with the particle so it inherits the
+  // particle's path along the curve. Same useFrame block updates both
+  // refs so the halo doesn't drift away from its core particle.
+  const haloRef = useRef<THREE.Mesh>(null);
   const particleT = useRef(Math.random()); // stagger start positions
 
   // Color: match 2D exactly
@@ -172,21 +198,45 @@ function DAGEdge3DInner({
   const selectionDim = anyNodeSelected && !isConnectedToSelected;
   const propSignal = epochState ? epochState.propagationSignal : 0;
   const propBoost = propSignal * 0.5;
+  // Cascade "FIRE" pulse — peaks at the activation epoch and decays
+  // over a few epochs. 0 outside the window or when replay isn't
+  // active. Added to opacity and used to grow the particle so the
+  // moment-of-firing reads as a clear punctuation in the cascade,
+  // not just a continuation of the steady propSignal flow that's
+  // been there since PR #258. Ablated / severed edges suppress the
+  // pulse — those are post-cut analysis states where firing would
+  // misrepresent what just happened to the topology.
+  const fireIntensity =
+    replayActive &&
+    fireActivationEpoch !== undefined &&
+    currentEpoch !== undefined &&
+    !isAblated &&
+    !isSevered
+      ? edgeFireIntensity(fireActivationEpoch, currentEpoch)
+      : 0;
   const baseOpacity = isAblated ? 0.15
     : isSevered ? 0.45
     : isDimmed ? 0.15
     : isHighlighted ? 0.9
     : hovered ? 0.8
     : isConsequenceEdge ? 0.85
-    : (0.5 + propBoost);
+    : (0.5 + propBoost + fireIntensity * 0.4);
   const lineOpacity = selectionDim ? 0.05
     : isConnectedToSelected ? 1.0
     : Math.min(1, baseOpacity);
 
-  // Should the particle flow animate?
+  // Should the particle flow animate? Fire pulse counts as a reason
+  // to animate too — at very low propSignal the steady-flow path
+  // wouldn't kick in, but the fire moment still needs to render
+  // a particle whoosh.
   const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
-    (isTemporalFlow || propSignal > 0.3);
-  const animSpeed = isTemporalFlow ? 0.4 : 0.3 + propSignal * 0.5;
+    (isTemporalFlow || propSignal > 0.3 || fireIntensity > 0.05);
+  // Boost the animation speed during the fire pulse so the particle
+  // visibly accelerates at firing time — matches the human read of
+  // "signal arriving fast" vs "signal continuously flowing."
+  const animSpeed = isTemporalFlow
+    ? 0.4 + fireIntensity * 0.6
+    : 0.3 + propSignal * 0.5 + fireIntensity * 0.8;
 
   // Animate particle along curve for temporal/causal edges.
   // Reads from the pre-cached curvePoints array (allocated once per
@@ -201,6 +251,14 @@ function DAGEdge3DInner({
     const i = Math.min(samples - 1, Math.floor(particleT.current * samples));
     const [x, y, z] = curvePoints[i];
     particleRef.current.position.set(x, y, z);
+    // Keep the halo in lockstep with the particle so the pulse reads
+    // as a coherent glow around its core, not a separate object
+    // floating along an offset path. The halo mesh is conditionally
+    // rendered (only during fireIntensity > 0.05), so the ref is null
+    // outside that window — the guard below handles that.
+    if (haloRef.current) {
+      haloRef.current.position.set(x, y, z);
+    }
   });
 
   return (
@@ -288,7 +346,15 @@ function DAGEdge3DInner({
       {/* Animated flowing particle for temporal/causal edges —
           small glowing sphere that travels source → target along the curve */}
       {shouldAnimate && (
-        <mesh ref={particleRef}>
+        <mesh
+          ref={particleRef}
+          // Scale up during the fire pulse so the moment of activation
+          // reads as a punctuation — particle grows from 1× → 2.6× at
+          // the activation epoch and decays back over the window. The
+          // base radius stays 0.25 so steady-flow edges look identical
+          // to before; the boost only shows up while `fireIntensity > 0`.
+          scale={1 + fireIntensity * 1.6}
+        >
           {/* 6×6 segments = 36 triangles, indistinguishable from 8×8
               (64 tri) at this radius (0.25). Saves vertex work
               proportional to active orb count. */}
@@ -296,7 +362,32 @@ function DAGEdge3DInner({
           <meshBasicMaterial
             color={color}
             transparent
-            opacity={lineOpacity * 0.9}
+            // Boost particle opacity during the fire pulse to keep it
+            // visible even when the line itself stays near baseline.
+            // Combined with the scale boost above, the eye reads the
+            // activation moment clearly without needing a color shift.
+            opacity={Math.min(1, lineOpacity * 0.9 + fireIntensity * 0.4)}
+          />
+        </mesh>
+      )}
+      {/* FIRE-pulse halo — a second translucent sphere co-located with
+          the particle, twice the size, that only renders during the
+          activation window. The double-render is cheap (6×6 segments
+          ≈ 36 triangles × ≤ 192 edges firing simultaneously, but in
+          practice ≤ ~20 edges are within the 3-epoch window at any
+          given time) and gives the pulse a visible "glow" around the
+          core particle without needing a shader. */}
+      {fireIntensity > 0.05 && shouldAnimate && (
+        <mesh
+          ref={haloRef}
+          scale={(1 + fireIntensity * 1.6) * 2.2}
+        >
+          <sphereGeometry args={[0.25, 6, 6]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={fireIntensity * 0.35}
+            depthWrite={false}
           />
         </mesh>
       )}
@@ -376,6 +467,15 @@ function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
     if (!pe || !ne) return false;
     if (pe.propagationSignal !== ne.propagationSignal) return false;
   }
+  // Cascade-firing inputs. `replayActive` flips infrequently, but
+  // `currentEpoch` advances every replay tick and `fireActivationEpoch`
+  // is stable per (edge, cascade-run). Skipping these here would make
+  // the memo stale during replay — the fire pulse wouldn't render
+  // because the parent's reseat-the-edge-list re-render would be
+  // short-circuited.
+  if (prev.fireActivationEpoch !== next.fireActivationEpoch) return false;
+  if (prev.currentEpoch !== next.currentEpoch) return false;
+  if (prev.replayActive !== next.replayActive) return false;
   // Intentionally not comparing onScissorsClick / onAblationClick / onEdgeClick.
   return true;
 }

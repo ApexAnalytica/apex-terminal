@@ -81,6 +81,17 @@ const colorMap: Record<string, { text: string; border: string; bg: string }> = {
   orange: { text: "text-accent-orange", border: "border-accent-orange/30", bg: "bg-accent-orange" },
 };
 
+// COPILOT — conversational control surface bullets. Sits in its own
+// section between THE ENGINES and CONFIGURABILITY on /product so the
+// "engines as substrate, chat as control" narrative reads top-down.
+const COPILOT_FEATURES = [
+  "Hands-free voice mode — barge-in interrupts the agent mid-response",
+  "Every action emits a replay-able trace for audit",
+  "Bulk-ablate TARSKI-restricted nodes with one command",
+  "Tool registry — engines exposed as callable functions",
+  "Model picker per session — Gemini default; Claude or local Ollama on demand",
+] as const;
+
 export default function ProductPage() {
   return (
     <>
@@ -203,6 +214,48 @@ export default function ProductPage() {
         </div>
       </Section>
 
+      {/* COPILOT — conversational control surface on top of the
+          engines. Same engines and same scored graph; chat or voice
+          drives ablations / counterfactuals / cascade walks. */}
+      <Section className="py-10 md:py-14 border-t border-border">
+        <TerminalHeader
+          label="// COPILOT"
+          path="manifold.control"
+          right="CHAT · VOICE · TRACEABLE"
+          color="cyan"
+        />
+        <div className="bg-surface-elevated border border-accent-cyan/30 rounded-lg p-6 md:p-8">
+          <div className="grid gap-6 md:grid-cols-[1.1fr_1fr] md:items-start">
+            <div className="space-y-4">
+              <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] text-accent-cyan/90">
+                // DRIVE THE GRAPH BY CONVERSATION
+              </div>
+              <h3 className="font-[family-name:var(--font-michroma)] text-xl md:text-2xl tracking-[0.04em] text-foreground leading-[1.25]">
+                Engines as tools. Conversation as control.
+              </h3>
+              <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
+                Every engine exposes itself to a conversational layer on
+                top of the terminal. Operators run ablations, build
+                counterfactuals, and chase cascade chains in natural
+                language — by typing or speaking — and the engines
+                execute against the same scored graph.
+              </p>
+            </div>
+            <ul className="space-y-2">
+              {COPILOT_FEATURES.map((f) => (
+                <li
+                  key={f}
+                  className="flex items-start gap-2.5 text-[12px] font-mono text-foreground/85 leading-relaxed"
+                >
+                  <span className="mt-2 h-px w-2.5 bg-accent-cyan opacity-70 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </Section>
+
       {/* Configurability */}
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
@@ -272,7 +325,7 @@ export default function ProductPage() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/contact" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>

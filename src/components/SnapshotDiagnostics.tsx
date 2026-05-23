@@ -201,6 +201,12 @@ export default function SnapshotDiagnostics() {
 
   // Tail Depth — empirical α-CVaR over the per-node ΩF composite
   // distribution of the live filtered graph. α = 0.9 standard.
+  //
+  // The expanded view now renders a histogram of `samples` with the
+  // α-VaR threshold marked and the tail bins shaded, so the analyst
+  // can see the *shape* of the distribution that CVaR-W₁ summarises
+  // — not just a scalar. Carries `samples` through here for the
+  // expansion render.
   const tail = useMemo(() => {
     const samples = graph.nodes
       .map((n) => n.omegaFragility?.composite)
@@ -215,6 +221,7 @@ export default function SnapshotDiagnostics() {
       ok: true as const,
       alpha,
       n: samples.length,
+      samples,
       varEmpirical: r.varEmpirical,
       empirical: r.empirical,
       robust: r.robust,
@@ -225,11 +232,19 @@ export default function SnapshotDiagnostics() {
 
   // Topology — χ★ on the live filtered graph (severed edges
   // excluded so user-driven cuts are reflected immediately).
+  //
+  // Carries `besRanking` (top-K) and `bridgeIds` through so the
+  // expansion can render a ranked list ("which specific edges are
+  // load-bearing"), not just the count. Same data feeds the canvas
+  // violet diamond markers from PR #329 — surfacing it as a list
+  // here means the analyst can name the bridges without having to
+  // hover-pick them on the 3D canvas.
   const topo = useMemo(() => {
     const liveEdges = graph.edges.filter((e) => !e.isSevered);
     if (liveEdges.length === 0) return { ok: false as const, edgeCount: 0 };
     const obd = omegaBridgeDensity({ ...graph, edges: liveEdges });
     const top = obd.chiStar.besRanking[0];
+    const bridgeIds = new Set(obd.chiStar.bridges);
     return {
       ok: true as const,
       edgeCount: liveEdges.length,
@@ -238,6 +253,8 @@ export default function SnapshotDiagnostics() {
       density: obd.density,
       bridgeFraction: obd.bridgeFraction,
       topBes: top,
+      besRanking: obd.chiStar.besRanking,
+      bridgeIds,
       band: topologyBand(obd.density),
     };
   }, [graph]);
@@ -420,6 +437,16 @@ export default function SnapshotDiagnostics() {
             the live filtered graph. α = {tail.alpha}, so CVaR_α is the
             expected ΩF in the worst {((1 - tail.alpha) * 100).toFixed(0)}% tail.
           </div>
+          {/* ΩF distribution histogram with the α-tail shaded. Lets
+              the analyst see the SHAPE that CVaR is summarising — a
+              long-tailed distribution vs a tight cluster around the
+              same VaR threshold tell very different stories about
+              tail risk, even when their CVaR_α reads the same. */}
+          <CvarHistogram
+            samples={tail.samples}
+            varThreshold={tail.varEmpirical}
+            tailColor={tail.band.color}
+          />
           <div className="font-mono text-[9px] text-foreground tabular-nums">
             α-VaR = {tail.varEmpirical.toFixed(3)} · empirical CVaR ={" "}
             {tail.empirical.toFixed(3)} · robust CVaR ={" "}
@@ -446,18 +473,55 @@ export default function SnapshotDiagnostics() {
           </div>
           <div className="font-mono text-[9px] text-foreground tabular-nums">
             density = {topo.density.toFixed(3)} · bridge-fraction ={" "}
-            {topo.bridgeFraction.toFixed(3)} · top BES ={" "}
-            {topo.topBes ? topo.topBes.bes.toFixed(3) : "—"}
-            {topo.topBes && (
-              <>
-                {" "}on <span className="text-text-muted">{topo.topBes.edgeId}</span>
-              </>
-            )}
+            {topo.bridgeFraction.toFixed(3)}
           </div>
+          {/* Top-5 ranked bridges with their BES values. Surfaces the
+              actual edges driving the χ★ summary so the analyst can
+              name them ("FAB_TW → GRID_USA is the load-bearing
+              connection") instead of just seeing a count. Matches the
+              same data the canvas violet diamond markers (PR #329)
+              render — surfacing it here means an analyst can read the
+              ranked list without hover-picking on 3D. */}
+          {topo.besRanking.length > 0 && (
+            <div className="space-y-0.5 pt-1">
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                TOP {Math.min(5, topo.besRanking.length)} BY BES
+              </div>
+              {topo.besRanking.slice(0, 5).map((entry) => {
+                const isBridge = topo.bridgeIds.has(entry.edgeId);
+                return (
+                  <div
+                    key={entry.edgeId}
+                    className="font-mono text-[9px] text-foreground tabular-nums flex items-center gap-2"
+                  >
+                    <span
+                      className="text-[7px] px-1 rounded shrink-0"
+                      style={{
+                        color: "#7B68EE",
+                        backgroundColor: isBridge
+                          ? "rgba(123,104,238,0.18)"
+                          : "rgba(123,104,238,0.08)",
+                        border: `1px solid rgba(123,104,238,${isBridge ? 0.5 : 0.25})`,
+                      }}
+                    >
+                      {isBridge ? "BRIDGE" : "TOP-BES"}
+                    </span>
+                    <span className="text-text-muted truncate flex-1 min-w-0">
+                      {entry.edgeId}
+                    </span>
+                    <span className="text-foreground shrink-0">
+                      {entry.bes.toFixed(3)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="text-[8px] font-mono text-text-muted/70 leading-relaxed">
-            χ★ edges render with a violet halo on the 3D / 2D canvas.
-            Source: Ghauri 2025 (D.Eng., Ch. 5–8 — IDS substrate +
-            topology-aware replay).
+            χ★ edges render as violet diamond markers on the 3D / 2D /
+            Map canvas. Click any of them to drill into the
+            EdgeInspector. Source: Ghauri 2025 (D.Eng., Ch. 5–8 — IDS
+            substrate + topology-aware replay).
           </div>
         </div>
       )}
@@ -567,6 +631,156 @@ export default function SnapshotDiagnostics() {
             </div>
           </div>
         )}
+    </div>
+  );
+}
+
+/**
+ * Small SVG histogram of the ΩF composite distribution. Bins above
+ * the α-VaR threshold are shaded with the band color (the same tier
+ * color used in the headline tile) so the "tail that CVaR averages"
+ * reads as a visually distinct region. Below-threshold bins use a
+ * muted slate so they're visible but don't compete.
+ *
+ * The histogram is the answer to "what does CVaR-W₁ collapse?". A
+ * tight cluster around 7.5 with a single 9.9 outlier and a spread
+ * cluster from 4 to 9 can both yield CVaR_α ≈ 9.0; only the
+ * histogram tells the analyst which world they're in.
+ *
+ * Implementation notes:
+ *  - Bin count adapts to sample size (clamped to [10, 24]) so small
+ *    samples don't degenerate into a saw-tooth and large ones don't
+ *    smear into a near-continuous gradient.
+ *  - Drawn as inline SVG <rect>s — no chart library, no dependency.
+ *  - The threshold line is dashed so it's distinguishable from bin
+ *    boundaries even when it lands close to one.
+ */
+function CvarHistogram({
+  samples,
+  varThreshold,
+  tailColor,
+}: {
+  samples: ReadonlyArray<number>;
+  varThreshold: number;
+  tailColor: string;
+}) {
+  const W = 280;
+  const H = 60;
+  const PAD_X = 4;
+  const PAD_Y = 4;
+  const chartW = W - PAD_X * 2;
+  const chartH = H - PAD_Y * 2;
+
+  const { bins, max, lo, hi, thresholdX } = useMemo(() => {
+    if (samples.length === 0) {
+      return { bins: [] as number[], max: 0, lo: 0, hi: 1, thresholdX: 0 };
+    }
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const v of samples) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi - lo < 1e-9) {
+      // Degenerate: all samples equal. Render one tall bin.
+      return {
+        bins: [samples.length],
+        max: samples.length,
+        lo,
+        hi: lo + 1,
+        thresholdX: 0,
+      };
+    }
+    // Adaptive bin count: Sturges-ish for small n, capped for large.
+    const binCount = Math.max(10, Math.min(24, Math.ceil(Math.log2(samples.length) + 4)));
+    const bins = new Array<number>(binCount).fill(0);
+    for (const v of samples) {
+      const u = (v - lo) / (hi - lo);
+      const idx = Math.min(binCount - 1, Math.max(0, Math.floor(u * binCount)));
+      bins[idx]++;
+    }
+    let max = 0;
+    for (const c of bins) if (c > max) max = c;
+    const tx =
+      PAD_X +
+      ((Math.max(lo, Math.min(hi, varThreshold)) - lo) / (hi - lo)) * chartW;
+    return { bins, max, lo, hi, thresholdX: tx };
+  }, [samples, varThreshold, chartW]);
+
+  if (bins.length === 0 || max === 0) return null;
+
+  const binW = chartW / bins.length;
+
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between">
+        <div className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+          ΩF DISTRIBUTION · n={samples.length}
+        </div>
+        <div className="text-[7px] font-mono text-text-muted/70 tabular-nums">
+          {lo.toFixed(1)} – {hi.toFixed(1)}
+        </div>
+      </div>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="block"
+        role="img"
+        aria-label={`ΩF composite distribution with α-tail shaded above ${varThreshold.toFixed(2)}`}
+      >
+        {/* Tail-region background tint to anchor the eye on the
+            distribution region above the VaR threshold. Drawn before
+            the bars so the bars sit on top. */}
+        {thresholdX < PAD_X + chartW && (
+          <rect
+            x={thresholdX}
+            y={PAD_Y}
+            width={PAD_X + chartW - thresholdX}
+            height={chartH}
+            fill={tailColor}
+            opacity={0.07}
+          />
+        )}
+        {bins.map((c, i) => {
+          if (c === 0) return null;
+          const x = PAD_X + i * binW;
+          const h = (c / max) * chartH;
+          const y = PAD_Y + chartH - h;
+          // Bin center value to decide tail vs body coloring. The
+          // boundary case (exactly at threshold) goes into the tail
+          // bucket — matches CVaR's "≥ VaR" semantics.
+          const binCenter = lo + ((i + 0.5) / bins.length) * (hi - lo);
+          const isTail = binCenter >= varThreshold;
+          return (
+            <rect
+              key={i}
+              x={x + 0.5}
+              y={y}
+              width={Math.max(0.5, binW - 1)}
+              height={h}
+              fill={isTail ? tailColor : "#5a5e72"}
+              opacity={isTail ? 0.85 : 0.55}
+            />
+          );
+        })}
+        {/* α-VaR threshold marker — dashed vertical so it's
+            distinguishable from a bin boundary. */}
+        <line
+          x1={thresholdX}
+          x2={thresholdX}
+          y1={PAD_Y}
+          y2={PAD_Y + chartH}
+          stroke={tailColor}
+          strokeWidth={1}
+          strokeDasharray="2 2"
+          opacity={0.9}
+        />
+      </svg>
+      <div className="text-[7px] font-mono text-text-muted/70 leading-tight">
+        Bins ≥ α-VaR={varThreshold.toFixed(2)} are shaded — that's
+        the worst-tail mass CVaR_α averages.
+      </div>
     </div>
   );
 }

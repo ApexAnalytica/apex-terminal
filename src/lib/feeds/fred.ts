@@ -76,6 +76,16 @@ export const FRED_SERIES: FredSeriesConfig[] = [
   // 2026-04 = 302.87. Capacity 350 = "elevated regime" threshold (PPI
   // typically peaks around 320-350 in fertilizer supply shocks like 2022).
   { id: "PCU3253132531", label: "Fertilizer Manufacturing PPI", labelPatterns: ["fertilizer price index"], unit: "", capacity: 350, mockValue: 302 },
+  // Cass Freight Expenditures Index — wires `sc_shipping_cost_index`
+  // (Supply Chain Food Security domain). FRGEXPUSM649NCIS is the
+  // dollars-spent dimension of the Cass Freight Index (vs FRGSHPUSM649NCIS
+  // for shipment volume only). Captures both rate and volume, making it
+  // the best single-number freight cost proxy on FRED. Monthly cadence,
+  // current to 2026-04 = 3.382. The canonical container-shipping indices
+  // (Drewry, Shanghai SCFI) for the Red Sea/Suez dimension referenced by
+  // the graph node's mechanism comment are not publicly available, so
+  // Cass is the closest free alternative.
+  { id: "FRGEXPUSM649NCIS", label: "Cass Freight Expenditures Index", labelPatterns: ["shipping cost index"], unit: "", capacity: 4, mockValue: 3.4 },
   { id: "T5YIE", label: "5-Year Breakeven Inflation Rate", labelPatterns: ["5y breakeven inflation rate"], unit: "%", capacity: 4, mockValue: 2.5 },
   { id: "CSUSHPISA", label: "Case-Shiller Home Price Index YoY", labelPatterns: ["case-shiller home price index"], unit: "%", capacity: 12, units: "pc1", mockValue: 4.8 },
   // FRED expansion (Phase 4): more macro/financial nodes from graph-data.ts

@@ -100,6 +100,74 @@ function sanitizeToolCalls(input: unknown): ToolCallShape[] | null {
   return out;
 }
 
+// ─── client_meta sanitization ───────────────────────────────────
+//
+// `client_meta` is the extension point on the traces row — the schema
+// declares it as `jsonb` so we can add new tracked signals without a
+// migration. We pass through unknown keys (so a future client field
+// lands in the row even if this server hasn't been redeployed yet) but
+// hard-cap the size and validate the structure of recognized keys.
+
+const MAX_FAILED_ATTEMPTS = 50;
+const MAX_ATTEMPT_RAW_LEN = 500;
+
+interface FailedAttemptShape {
+  raw: string;
+  name: string;
+  reason: string;
+}
+
+function sanitizeFailedAttempts(input: unknown): FailedAttemptShape[] | null {
+  if (!isArray(input)) return null;
+  if (input.length > MAX_FAILED_ATTEMPTS) return null;
+  const out: FailedAttemptShape[] = [];
+  for (const item of input) {
+    if (typeof item !== "object" || item === null) continue;
+    const t = item as Record<string, unknown>;
+    const raw = clampString(t.raw, MAX_ATTEMPT_RAW_LEN);
+    const name = clampString(t.name, 200);
+    const reason = clampString(t.reason, 50);
+    if (raw === null || name === null || reason === null) continue;
+    out.push({ raw, name, reason });
+  }
+  return out;
+}
+
+function sanitizeClientMeta(input: unknown): Record<string, unknown> {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return {};
+  }
+  const raw = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  // Recognized keys get structural validation. Unknown keys are
+  // passed through with a JSON-size guard so an older server still
+  // captures forward-rolling client signals.
+  if ("failed_action_attempts" in raw) {
+    const cleaned = sanitizeFailedAttempts(raw.failed_action_attempts);
+    if (cleaned !== null) out.failed_action_attempts = cleaned;
+  }
+
+  for (const key of Object.keys(raw)) {
+    if (key === "failed_action_attempts") continue;
+    // Skip prototype-pollution shapes and over-long keys.
+    if (key.length > 100 || key === "__proto__" || key === "constructor") continue;
+    out[key] = raw[key];
+  }
+
+  // Hard cap the serialized size so a misbehaving client can't fill
+  // the column. 64KB is generous for metadata; well above any
+  // reasonable trace.
+  try {
+    const json = JSON.stringify(out);
+    if (json.length > 64_000) return {};
+  } catch {
+    return {};
+  }
+
+  return out;
+}
+
 // ─── Handler ────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -148,10 +216,7 @@ export async function POST(request: NextRequest) {
     active_module: clampString(body.active_module, 50),
     selected_node: clampString(body.selected_node, 200),
     active_shock_count: isInt(body.active_shock_count) ? body.active_shock_count : null,
-    client_meta:
-      typeof body.client_meta === "object" && body.client_meta !== null && !Array.isArray(body.client_meta)
-        ? (body.client_meta as Record<string, unknown>)
-        : {},
+    client_meta: sanitizeClientMeta(body.client_meta),
   };
 
   const { error } = await getSupabaseAdmin().from("copilot_traces").insert(row);

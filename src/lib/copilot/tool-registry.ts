@@ -117,6 +117,15 @@ export function getAllTools(): Tool<ParamShape>[] {
   return Array.from(REGISTRY.values());
 }
 
+/**
+ * Snapshot of registered tool names. Used by `findFailedActionAttempts`
+ * to classify a triple-angle-bracket tag with an unrecognized name as
+ * "near miss" rather than treating it as proper syntax.
+ */
+export function getRegisteredToolNames(): Set<string> {
+  return new Set(REGISTRY.keys());
+}
+
 /** Test-only: clear the registry. Production code should never call this. */
 export function __resetRegistryForTests(): void {
   REGISTRY.clear();
@@ -151,6 +160,118 @@ export function parseActionTags(text: string): ParsedActionTag[] {
 
 export function stripActionTags(text: string): string {
   return text.replace(ACTION_REGEX, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// ─── Failed-action detection ────────────────────────────────────
+//
+// The LLM sometimes writes action-shaped text that doesn't actually
+// fire a tool — the most common case is square brackets like
+// `[ACTION:add_shock:TAIWAN_BLOCKADE]`, which mimics the prose-header
+// pattern (`[ANALYSIS]`, `[RISK]`) the prompt teaches, but isn't the
+// triple-angle syntax the parser recognizes. Mining these "near
+// misses" is a continuous feedback signal:
+//   1. Which prompt clarifications still aren't landing (bracket
+//      confusion was Bug A in the trace audit that motivated #400).
+//   2. Which platform features users naturally ask for that aren't
+//      exposed as tools yet (`<<<ACTION:unknown_tool:...>>>` is the
+//      copilot telling us "I want this capability").
+//
+// The detector classifies into three failure modes; see
+// `FailedActionReason` below for the wire-stable enum.
+
+/** Why an action-shaped string didn't fire a tool. */
+export type FailedActionReason =
+  /** `[ACTION:name:payload]` — square brackets, parser ignored it. */
+  | "square_brackets"
+  /** Any angle-count other than triple (`<ACTION:>`, `<<...>>`, etc.). */
+  | "wrong_angle_count"
+  /** `<<<ACTION:name:payload>>>` with a `name` not in the registry. */
+  | "unknown_tool";
+
+export interface FailedActionAttempt {
+  /** Substring captured from the assistant message — verbatim. */
+  raw: string;
+  /** Tool name the LLM tried to invoke (may not be a registered tool). */
+  name: string;
+  /** Classification of the failure mode. */
+  reason: FailedActionReason;
+}
+
+// Matches the square-bracket failure form. Stops at `]` or newline so
+// we don't slurp across paragraphs if the LLM forgot the closer.
+const SQUARE_ACTION_REGEX = /\[ACTION:(\w+):?([^\]\n]*)\]/g;
+
+// Matches ANY angle-bracket count: `<ACTION:>`, `<<...>>`, `<<<...>>>`,
+// `<<<<...>>>>`. Classified post-match by counting the open/close
+// runs — triple-on-both-sides is the legitimate form and is skipped.
+const ANGLE_ACTION_REGEX = /(<+)ACTION:(\w+):?([^>\n]*?)(>+)/g;
+
+/**
+ * Scan an assistant message for action-shaped substrings that didn't
+ * actually fire a tool. Three failure modes are captured:
+ *
+ *   1. `[ACTION:foo:bar]`     → square_brackets
+ *      (parser doesn't see these — they look like prose headers)
+ *   2. `<ACTION:foo>`, `<<...>>`, `<<<<...>>>>`, mismatched counts
+ *                              → wrong_angle_count
+ *      (only `<<<...>>>` exactly is the wire format)
+ *   3. `<<<ACTION:foo:bar>>>` with foo NOT in `registeredToolNames`
+ *                              → unknown_tool
+ *      (proper syntax, but no tool wrapper exists — signals a
+ *      capability gap users are asking for)
+ *
+ * Triple-bracket tags with a *registered* name are NOT returned here —
+ * those are handled by `executeActionsWithTrace` and surface in
+ * `tool_calls[]` with their own success/error state. We only return
+ * near misses that the normal trace pipeline would otherwise drop.
+ *
+ * Returned attempts are de-duplicated by `raw` text so an LLM that
+ * repeats the same broken tag (e.g. across a long response) doesn't
+ * inflate the trace.
+ */
+export function findFailedActionAttempts(
+  text: string,
+  registeredToolNames: ReadonlySet<string>,
+): FailedActionAttempt[] {
+  const seen = new Set<string>();
+  const out: FailedActionAttempt[] = [];
+
+  function push(attempt: FailedActionAttempt) {
+    if (seen.has(attempt.raw)) return;
+    seen.add(attempt.raw);
+    out.push(attempt);
+  }
+
+  // 1. Square-bracket form — always a miss.
+  SQUARE_ACTION_REGEX.lastIndex = 0;
+  let sqMatch: RegExpExecArray | null;
+  while ((sqMatch = SQUARE_ACTION_REGEX.exec(text)) !== null) {
+    push({ raw: sqMatch[0], name: sqMatch[1], reason: "square_brackets" });
+  }
+
+  // 2 + 3. Angle-bracket forms — classify by open/close count and
+  // (when triple) by registry membership.
+  ANGLE_ACTION_REGEX.lastIndex = 0;
+  let angMatch: RegExpExecArray | null;
+  while ((angMatch = ANGLE_ACTION_REGEX.exec(text)) !== null) {
+    const opens = angMatch[1].length;
+    const closes = angMatch[4].length;
+    const name = angMatch[2];
+    const raw = angMatch[0];
+
+    if (opens === 3 && closes === 3) {
+      // Proper syntax. Only a "failure" if the tool name is unknown —
+      // a registered name means executeActionsWithTrace already
+      // captured the call in tool_calls[].
+      if (!registeredToolNames.has(name)) {
+        push({ raw, name, reason: "unknown_tool" });
+      }
+      continue;
+    }
+    push({ raw, name, reason: "wrong_angle_count" });
+  }
+
+  return out;
 }
 
 /**
@@ -285,6 +406,13 @@ export interface ToolCallTrace {
 export interface TracedExecutionResult extends ExecutionResult {
   /** One entry per parsed action tag, in source order. */
   toolCalls: ToolCallTrace[];
+  /**
+   * Action-shaped strings the LLM wrote but that didn't fire a tool —
+   * square-bracket form, wrong angle count, or unknown tool name. Used
+   * as a continuous feedback signal in `client_meta.failed_action_attempts`.
+   * Empty array on a clean turn.
+   */
+  failedAttempts: FailedActionAttempt[];
 }
 
 /**
@@ -308,6 +436,14 @@ export async function executeActions(
   return { displayText, toolResults };
 }
 
+// Snapshot of registered tool names taken at the start of each
+// `executeActionsWithTrace` call so `findFailedActionAttempts` agrees
+// with the same registry the executor used. Hoisting it avoids a
+// re-scan per turn inside the helper.
+function snapshotRegisteredNames(): Set<string> {
+  return getRegisteredToolNames();
+}
+
 /**
  * Same as `executeActions`, but also returns structured per-call trace
  * data (params, result, error, latency_ms) for each tag. SystemCopilot
@@ -327,13 +463,24 @@ export async function executeActionsWithTrace(
   const toolResults: string[] = [];
   const toolCalls: ToolCallTrace[] = [];
 
+  // Snapshot registered names ONCE for both the executor path and the
+  // failed-attempt detector so they agree even if a HMR re-register
+  // races with this turn.
+  const registered = snapshotRegisteredNames();
+
   for (const tag of tags) {
     const traced = await executeTagWithTrace(tag, ctx);
     toolResults.push(traced.result);
     toolCalls.push(traced);
   }
 
-  return { displayText, toolResults, toolCalls };
+  // Detect "near misses" — square-bracket form, wrong angle count, or
+  // proper syntax pointing at an unregistered tool name. These don't
+  // show up in toolCalls[] (the parser drops the broken-syntax forms
+  // entirely) so we surface them here as a separate feedback signal.
+  const failedAttempts = findFailedActionAttempts(text, registered);
+
+  return { displayText, toolResults, toolCalls, failedAttempts };
 }
 
 /** Execute a single parsed action tag. Exported for tests. */

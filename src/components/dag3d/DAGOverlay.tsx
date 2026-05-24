@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";

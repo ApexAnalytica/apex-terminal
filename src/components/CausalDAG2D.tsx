@@ -25,7 +25,7 @@ import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+import { getCategoryColor, getDomainColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
 import { chiStar } from "@/lib/estimators/chi-star";
 import DAGOverlay from "./dag3d/DAGOverlay";

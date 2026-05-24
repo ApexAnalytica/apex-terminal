@@ -11,7 +11,6 @@ import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import TimeDial from "@/components/TimeDial";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import TimeSeriesOverlay from "@/components/TimeSeriesOverlay";
 
 // SystemCopilot pulls a heavy dep tree on its static-import chain:
 // copilot-actions → tools.ts → tarski-data (891 LOC) + (lazy-imported
@@ -48,6 +47,16 @@ const ImportModal = dynamic(
 );
 const SpotlightTour = dynamic(
   () => import("@/components/SpotlightTour"),
+  { ssr: false }
+);
+
+// TimeSeriesOverlay is ~1000 LOC and renders null when no node is
+// pinned. The initial paint never has pinned series, so we defer the
+// chunk and only mount the component after the user pins something.
+// Once mounted the gate keeps it alive across unpin → repin cycles so
+// we don't pay the import cost twice.
+const TimeSeriesOverlay = dynamic(
+  () => import("@/components/TimeSeriesOverlay"),
   { ssr: false }
 );
 
@@ -134,6 +143,7 @@ const CausalDAGRelief = dynamic(() => import("@/components/CausalDAGRelief"), {
 
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
+  const hasPinnedSeries = useApexStore((s) => s.pinnedTimeSeriesNodes.length > 0);
 
   // Live-data feed registry — single hook that polls every registered
   // provider on its declared cadence. Add a new provider in
@@ -235,8 +245,11 @@ export default function Home() {
           {/* Risk Propagation Flow */}
           <RiskPropagationFlow />
 
-          {/* Pinned time series comparison overlay */}
-          <TimeSeriesOverlay />
+          {/* Pinned time series comparison overlay — deferred until
+              the user pins a series. The overlay returns null when
+              empty anyway, so gating on length here saves the
+              ~1000 LOC chunk on first paint. */}
+          {hasPinnedSeries && <TimeSeriesOverlay />}
 
           {/* Time Dial — persistent timeline scrubber */}
           <TimeDial />

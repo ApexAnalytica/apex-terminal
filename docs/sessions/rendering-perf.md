@@ -30,6 +30,12 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
+**2026-05-24 round (load-time round 2)**
+
+| PR | What |
+|---|---|
+| TBD | `perf(bundle)`: split `graph-data.ts` (3413 LOC) — extract `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH` into a new lightweight `graph-color.ts`; rewire 13 consumers (including the always-eager `useApexStore`) so the 3000-line dataset no longer rides into the critical-path bundle. `TimeSeriesOverlay` (987 LOC) now dynamic-imported and gated on `pinnedTimeSeriesNodes.length > 0` — first paint never has pins so the chunk defers until the user pins a series. |
+
 **2026-05-22 round (load-time + Map placement + criticality response)**
 
 | PR | What |
@@ -68,13 +74,32 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 - **Flow edge type + edge-type visibility toggles.** _Infrastructure shipped — 2026-05-22._ `"flow"` edge type wired across all four canvas surfaces with teal-green solid + animated arrow visual; per-type visibility chip strip in DAGOverlay (CAUSAL / TEMP / CONF / FLOW) hides/shows each type instantly. Open: data-team alignment on what `"flow"` means semantically + which existing edges should be re-tagged (no edge in the loaded datasets carries `type: "flow"` yet).
 - **Time-dial range-selector collapsible (NEW).** The 1H / 1Y / 5Y / ALL preset row at the bottom of the dial currently takes a fixed slice of horizontal space. User wants it collapsible so the dial itself can take the full width when the user isn't picking a range.
 - **Distance measures on dial scrub — round 2 shipped — 2026-05-22.** Traced end-to-end: wiring was correct (temporal graph → filtered graph → both contraction paths), the gap was stress magnitude. Synthetic temporal data drifts within ±0.5 of base, so typical historical omegas sit in the 5-7 band — and the old `(omega-5)/5` / `(omega-5)/4` stress curves produced stress 0.1-0.3 → pull 3-14 % of distance, invisible. Bumped 2D CONTRACTION 0.35 → 0.55 and stress curves on both surfaces (4 → 8 instead of 5 → 10) so typical omegas land in stress 0.25-0.75 → pull 14-41 %. Production verification still needed: confirm the dial-scrub now reads as cluster-pinching motion.
-- **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432: lazy SystemCopilot + lazy heavy copilot-tool deps)._ Remaining candidates: split `graph-data.ts` (3413 LOC) into a tiny `graph-color.ts` (just `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`) and a separate heavy data file — ~13 consumers only need the helpers but currently pull the whole module; lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (same pattern as `tools.ts` but harder since the helpers are sync); audit `TimeSeriesOverlay` (987 LOC) + `TimeDial` (1179 LOC) for dynamic-loadability; `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
+- **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432); Round 2 shipped — 2026-05-24 (graph-data.ts split + TimeSeriesOverlay lazy)._ Remaining candidates: lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (lower priority — SystemCopilot + TarskiPanel are both already lazy, so AXIOM_LIBRARY is off the initial-paint bundle; only shrinks the copilot chunk further); audit `TimeDial` (1207 LOC) for dynamic-loadability (it's visible on first paint though — would need a static placeholder); `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
 - **Time-dial-driven positional response (round 1).** _Shipped — 2026-05-22 (PR #427)._ 2D contraction now handles both cascade replay AND dial-scrub (historical-omega fallback); CONTRACTION 0.18 → 0.35 for visibility. 3D already had the historical-fallback path. Map relies on omega-scaled radius. Production verification queued above.
 - **TOPO compute-shader port for real-time scrub perf.** Deferred since PR #303 (4σ truncation) covered the headline cost. Only worth doing if real-time scrub still drops frames in production.
 
 ---
 
 ## Session log
+
+### 2026-05-24 — Shipped: load-time round 2 — graph-data split + TimeSeriesOverlay deferred
+
+**PR:** TBD — `perf(bundle)`: split `graph-data.ts` (3413 → 3357 LOC) into a lightweight `graph-color.ts` for the four color/empty-graph helpers; lazy-load `TimeSeriesOverlay` (987 LOC) gated on pinned-series presence.
+
+**Trigger.** Round 1 of the load-time deep-dive (PR #432) lazy-loaded the SystemCopilot column and the heavy copilot-tool deps. The next leverage point: `src/lib/graph-data.ts` is a 3413-line file (mostly the NODES / EDGES arrays) but 13 of its 17 consumers only import tiny helpers like `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`. They were each dragging the whole dataset into their chunks. `useApexStore` was a critical-path importer (every page imports the store) and was using just `EMPTY_GRAPH`.
+
+**Fix.**
+- New `src/lib/graph-color.ts` houses `getCategoryColor`, `getCategoryLabel`, `getDomainColor`, and `EMPTY_GRAPH` (a tiny pure-constant CausalGraph placeholder). `graph-data.ts` still re-exports these for any straggler import paths but no longer defines them.
+- Rewired 12 color-only consumers (`useApexStore`, `CausalDAG2D`, `CausalDAGMap`, `NodeInspector`, `TarskiPanel`, `ParetoPanel`, `DcdGraph`, `PcmciGraph`, `FciGraph`, `DAGOverlay`, `DAGNode3D`, `TimeSeriesOverlay`, `ClientHeaderBar`) to import from `graph-color` directly.
+- `RiskPropagationFlow` split its mixed import (`getDomainColor` → `graph-color`; `buildRiskCards` stays in `graph-data` since it lives next to the dataset).
+- `CausalDAG3D` (`getNodeDomainMap` needs NODES) and `app/client/page.tsx` + `build-domain-graph.ts` (use `MAIN_GRAPH`) keep importing from `graph-data`. All three were already on lazy paths.
+- `TimeSeriesOverlay` (987 LOC, returns `null` when `pinnedTimeSeriesNodes` is empty) is now `dynamic(() => import("@/components/TimeSeriesOverlay"), { ssr: false })` and the render site is gated on `pinnedTimeSeriesNodes.length > 0`. Initial paint never has pins (store inits to `[]`), so the chunk is deferred until the user explicitly pins a series.
+
+**Why this matters.** Critical-path bundle drops the `graph-data.ts` dataset and the `TimeSeriesOverlay` body. `useApexStore` is imported by every page surface; carving its `EMPTY_GRAPH` dependency over to a 75-LOC file means the 3000-line dataset only loads when something actually needs `MAIN_GRAPH` (`/client` route, `build-domain-graph`, or `CausalDAG3D` — all lazy).
+
+**Verification.** `tsc --noEmit` clean on all touched files (only pre-existing errors in unrelated `*.test.ts` fixtures and missing `ai`/`@ai-sdk/*` modules remain). Vitest 1524/1524 pass. `next build` not runnable in this sandbox (no Google Fonts fetch + missing ai SDK packages) so production verification is deferred.
+
+**Out of scope.** AXIOM_LIBRARY in `copilot-engine.ts` / `copilot-context.ts` would be the next obvious lazy-load, but SystemCopilot is already a `dynamic` chunk (PR #432) and TarskiPanel is a `dynamic` chunk (PR #406), so AXIOM_LIBRARY is already off the initial-paint bundle. Further deferral inside the copilot chunk is lower priority.
 
 ### 2026-05-02 — Issue #2 fix shipped: temporalData invariant on graph swap
 

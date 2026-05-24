@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
+import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-color";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";

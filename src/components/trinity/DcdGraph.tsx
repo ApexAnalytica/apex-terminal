@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getCategoryColor, getDomainColor } from "@/lib/graph-data";
+import { getCategoryColor, getDomainColor } from "@/lib/graph-color";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { CausalNode, CausalEdge } from "@/lib/types";

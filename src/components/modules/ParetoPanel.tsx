@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getEngineProvider } from "@/lib/engines";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
 import { resolveDomainProfile, type EstimatorId } from "@/lib/domain-profiles";
 import { getEstimatorMeta } from "@/lib/criticality-registry";
 import { moransI } from "@/lib/estimators/moran";

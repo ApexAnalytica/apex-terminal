@@ -50,7 +50,16 @@ export const DATASET_COLORS = [
 ];
 import { mergeGraphs } from "@/lib/import/merge";
 import { EMPTY_GRAPH } from "@/lib/graph-color";
-import { simulateCascade, simulateCascadeAsync } from "@/lib/cascade-simulator";
+// `cascade-simulator` is a 446-LOC module only used by the three replay-
+// related actions below (`replayWithIntervention`, `startReplay`,
+// `branchReplay`). All three are fire-and-forget — they kick off the
+// async sim and write results back into the store via `.then()`. So we
+// import the module dynamically at the call sites; the eager-bundle
+// pays nothing on initial paint.
+async function loadSimulateCascadeAsync() {
+  const mod = await import("@/lib/cascade-simulator");
+  return mod.simulateCascadeAsync;
+}
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
 import type { TrainingTrace } from "@/lib/discovery/training-trace-types";
@@ -706,10 +715,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
       replayBranchEpoch: null,
     });
 
-    void simulateCascadeAsync(ablatedGraph, shocks, severedEdges).then((epochs) => {
-      if (!get().replayActive) return;
-      set({ interventionEpochs: epochs, replayPlaying: true });
-    });
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(ablatedGraph, shocks, severedEdges).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ interventionEpochs: epochs, replayPlaying: true });
+      })
+    );
   },
 
   // Tarski axiom filter
@@ -1026,10 +1037,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     // Phase 2: chunked simulation across idle frames (keeps the UI thread
     // unblocked); flip to playing when results land. Bail if the user
     // stopped the replay mid-flight.
-    void simulateCascadeAsync(graphData, shocks, severedEdges).then((epochs) => {
-      if (!get().replayActive) return;
-      set({ baselineEpochs: epochs, replayPlaying: true });
-    });
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(graphData, shocks, severedEdges).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ baselineEpochs: epochs, replayPlaying: true });
+      })
+    );
   },
 
   stopReplay: () =>
@@ -1092,17 +1105,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
       replayPlaying: false,
     });
 
-    void simulateCascadeAsync(
-      graphData,
-      shocks,
-      severedEdges,
-      undefined,
-      undefined,
-      initialStates,
-    ).then((epochs) => {
-      if (!get().replayActive) return;
-      set({ interventionEpochs: epochs, replayPlaying: true });
-    });
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(
+        graphData,
+        shocks,
+        severedEdges,
+        undefined,
+        undefined,
+        initialStates,
+      ).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ interventionEpochs: epochs, replayPlaying: true });
+      })
+    );
   },
 
   // Timeline / Time Dial

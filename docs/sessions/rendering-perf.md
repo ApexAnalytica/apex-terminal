@@ -34,6 +34,7 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
+| TBD | `perf(bundle)`: dynamic-import `cascade-simulator` (446 LOC) inside `useApexStore`'s three fire-and-forget replay handlers — replay is opt-in (user clicks REPLAY), so the simulator stays off the initial-paint bundle; also drops a dead-import (`simulateCascade` was unused). Extract pure `buildRiskCards` from `graph-data.ts` into its own 27-LOC file so `RiskPropagationFlow` (on critical path) stops transitively pulling the 3000-line dataset. Bypass the `@/lib/estimators` barrel in `StructuralMetrics` (also on critical path) — direct-import the 76-LOC `omega-bridge-density` leaf instead of the index which re-exports ~2500 LOC. |
 | TBD | `perf(bundle)`: dynamic-import the feed registry chain (~38KB across 10 providers) inside `useFeedRegistry`'s effect — polling can't start until a graph is loaded anyway, so the providers stay off the initial-paint bundle until then |
 | TBD | `perf(bundle)`: split `graph-data.ts` (3413 LOC) — extract `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH` into a new lightweight `graph-color.ts`; rewire 13 consumers (including the always-eager `useApexStore`) so the 3000-line dataset no longer rides into the critical-path bundle. `TimeSeriesOverlay` (987 LOC) now dynamic-imported and gated on `pinnedTimeSeriesNodes.length > 0` — first paint never has pins so the chunk defers until the user pins a series. |
 
@@ -82,6 +83,21 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-24 — Shipped: cascade-simulator dynamic + buildRiskCards extracted + estimators barrel bypass
+
+**PR:** TBD — three small bundle-shape wins on the critical path.
+
+**Trigger.** After the graph-color split + TimeSeriesOverlay lazy + useFeedRegistry lazy (commits above), `useApexStore` and the two eager components `RiskPropagationFlow` / `StructuralMetrics` were the remaining suspects on the critical path. A targeted import audit found three more leverage points:
+
+**Fix.**
+- **`cascade-simulator` lazy in the store.** `useApexStore` eagerly imported `simulateCascade` (sync — unused dead import) and `simulateCascadeAsync` (used in three fire-and-forget replay actions). Removed the dead import; added a `loadSimulateCascadeAsync()` helper at the top of the store that dynamic-imports the module; rewrote the three call sites to `void loadSimulateCascadeAsync().then((sim) => sim(…).then(epochs => …))`. Net: 446 LOC of cascade-sim code is deferred until the user clicks REPLAY.
+- **`buildRiskCards` extracted to its own file.** The function is pure (takes a graph + shocks, returns top-6 risk cards) but lived in `graph-data.ts`, which transitively dragged the 3000-line dataset into `RiskPropagationFlow` (on the critical path). Created `src/lib/risk-cards.ts` (27 LOC) housing just the function; `RiskPropagationFlow` now imports from there. `graph-data.ts` no longer needs the `CausalShock` / `RiskPropagationCard` type imports either.
+- **Estimators barrel bypass in `StructuralMetrics`.** `import { omegaBridgeDensity } from "@/lib/estimators"` was hitting the index file, which re-exports from 9 estimator modules (~2500 LOC of math: bocpd, chi-star, cvar-w1, lppls-fit, moran, nlme, ph-fit, transfer-entropy, persistent-homology). Webpack's barrel-file tree-shaking is unreliable when modules have side effects, so the safe fix is the direct path: `import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density"` (76 LOC leaf).
+
+**Verification.** vitest 1524/1524 pass. `tsc --noEmit` clean across all five touched files (the pre-existing 71 "Cannot find module 'react'" + missing-`ai`-SDK errors are sandbox env issues, unchanged by this round).
+
+**Why this matters.** `useApexStore` is imported by every page surface. Shedding the cascade-sim chunk from its eager-import graph means the simulator never loads for users who don't click REPLAY. `RiskPropagationFlow` and `StructuralMetrics` are both eagerly visible on first paint; bypassing the indirect dataset / barrel imports keeps them on tiny dep graphs.
 
 ### 2026-05-24 — Shipped: feed-registry chain dynamic-imported inside useFeedRegistry
 

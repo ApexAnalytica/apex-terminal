@@ -2,8 +2,6 @@ import {
   CausalGraph,
   CausalNode,
   CausalEdge,
-  CausalShock,
-  RiskPropagationCard,
   GraphMetadata,
   OmegaFragilityProfile,
 } from "./types";
@@ -3325,29 +3323,6 @@ export const FCI_EDGES: CausalEdge[] = EDGES.filter(
     (FCI_NODES.some((n) => n.id === e.source) &&
       FCI_NODES.some((n) => n.id === e.target))
 );
-
-// ─── Risk Cards Builder ──────────────────────────────────────────
-export function buildRiskCards(
-  graph: CausalGraph,
-  shocks: CausalShock[]
-): RiskPropagationCard[] {
-  const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
-  const shockMultiplier = Math.min(1, totalSeverity);
-
-  return graph.nodes
-    .map((node) => ({
-      nodeId: node.id,
-      label: node.label,
-      category: node.category,
-      omegaScore: parseFloat(
-        (node.omegaFragility.composite * (1 + shockMultiplier * 0.05)).toFixed(1)
-      ),
-      domain: node.domain,
-      globalConcentration: node.globalConcentration,
-    }))
-    .sort((a, b) => b.omegaScore - a.omegaScore)
-    .slice(0, 6);
-}
 
 // ─── Node Domain Map (for cross-domain edge detection) ───────────
 export function getNodeDomainMap(): Record<string, string> {

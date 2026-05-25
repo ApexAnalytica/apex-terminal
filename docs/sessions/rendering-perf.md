@@ -34,6 +34,7 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
+| TBD | `perf(bundle)`: dynamic-import the feed registry chain (~38KB across 10 providers) inside `useFeedRegistry`'s effect — polling can't start until a graph is loaded anyway, so the providers stay off the initial-paint bundle until then |
 | TBD | `perf(bundle)`: split `graph-data.ts` (3413 LOC) — extract `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH` into a new lightweight `graph-color.ts`; rewire 13 consumers (including the always-eager `useApexStore`) so the 3000-line dataset no longer rides into the critical-path bundle. `TimeSeriesOverlay` (987 LOC) now dynamic-imported and gated on `pinnedTimeSeriesNodes.length > 0` — first paint never has pins so the chunk defers until the user pins a series. |
 
 **2026-05-22 round (load-time + Map placement + criticality response)**
@@ -81,6 +82,22 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-24 — Shipped: feed-registry chain dynamic-imported inside useFeedRegistry
+
+**PR:** TBD — `perf(bundle)`: dynamic-import `@/lib/feeds/registry` from inside the `useFeedRegistry` effect, so the 10-provider chain (~38KB) stays off the initial-paint bundle until a graph is loaded.
+
+**Trigger.** `useFeedRegistry()` is called in `app/page.tsx`'s `Home` component — top of the critical path. The hook already gated on `hasGraph` (no polling until a workspace is launched) so the providers themselves were dormant on first paint, but the static `import { FEED_PROVIDERS } from "@/lib/feeds/registry"` still pulled all 10 provider modules (clinical-trials, derivations, eia-hormuz, eia-saudi-crude, fred, noaa-storms, ofac-sdn, openfda, world-bank, types) into the eager bundle. Roughly 38KB pre-minification.
+
+**Fix.** Moved the registry import into a dynamic `import("@/lib/feeds/registry").then(({ FEED_PROVIDERS }) => …)` inside the effect, after the `hasGraph` gate. The effect cleanup now tracks both:
+- `cancelled` flag — set in cleanup, checked after the dynamic import resolves, so we don't start polling a stale registry copy after a fast unmount/remount.
+- `cleanupFns` array — built up inside the `.then()` callback, drained on cleanup.
+
+The empty-graph case (first paint, no workspace) never triggers the dynamic import at all, so the chunk only loads after the user picks domains and clicks LAUNCH WORKSPACE.
+
+**Why this matters.** Combined with the round-2 splits above, the feed providers were the last large eager block in the critical-path bundle. After this, the only eagerly-loaded heavy-ish modules left are `useApexStore` itself (~1290 LOC) and the four eager UI components that mount on first paint (HeaderBar 167, RiskPropagationFlow 594, ModulePanel 842, TimeDial 1207, plus StructuralMetrics 90 and FeedbackWidget 148). Everything else is either dynamic, gated, or lazy.
+
+**Out of scope.** `useApexStore` itself still eagerly imports a long list of helpers (`omega-pillar-wiring`, `cross-domain-bridging`, `tarski-data`'s validation entry points, `temporal-data`, `real-timeseries`, `cascade-simulator`, `snapshots/tarski-validator`). Splitting any of these would require routing them through async-action paths in the store, which is invasive. Punt to a future round once we have real bundle-analyzer numbers.
 
 ### 2026-05-24 — Shipped: load-time round 2 — graph-data split + TimeSeriesOverlay deferred
 

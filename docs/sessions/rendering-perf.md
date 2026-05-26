@@ -34,6 +34,7 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 
 | PR | What |
 |---|---|
+| TBD | `perf(bundle)`: strip the unused future-stub methods from `EngineProvider` (`computeCounterfactual`, `validateSnapshot`, `solveInterdiction`, `computeDoomsday`) — zero call sites in the live codebase, but their LocalProvider implementations were transitively pulling `cascade-simulator` (446 LOC) + `tarski-validator` (204 LOC) + `interdiction-engine` (443 LOC) into the critical-path bundle via ModulePanel. Also dynamic-import `mergeGraphs` + `validateSnapshot` inside `useApexStore`'s `mergeGraphData` / `setSnapshot` actions so the two helpers (~275 LOC) stay off the eager bundle. |
 | TBD | `perf(bundle)`: dynamic-import `cascade-simulator` (446 LOC) inside `useApexStore`'s three fire-and-forget replay handlers — replay is opt-in (user clicks REPLAY), so the simulator stays off the initial-paint bundle; also drops a dead-import (`simulateCascade` was unused). Extract pure `buildRiskCards` from `graph-data.ts` into its own 27-LOC file so `RiskPropagationFlow` (on critical path) stops transitively pulling the 3000-line dataset. Bypass the `@/lib/estimators` barrel in `StructuralMetrics` (also on critical path) — direct-import the 76-LOC `omega-bridge-density` leaf instead of the index which re-exports ~2500 LOC. |
 | TBD | `perf(bundle)`: dynamic-import the feed registry chain (~38KB across 10 providers) inside `useFeedRegistry`'s effect — polling can't start until a graph is loaded anyway, so the providers stay off the initial-paint bundle until then |
 | TBD | `perf(bundle)`: split `graph-data.ts` (3413 LOC) — extract `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH` into a new lightweight `graph-color.ts`; rewire 13 consumers (including the always-eager `useApexStore`) so the 3000-line dataset no longer rides into the critical-path bundle. `TimeSeriesOverlay` (987 LOC) now dynamic-imported and gated on `pinnedTimeSeriesNodes.length > 0` — first paint never has pins so the chunk defers until the user pins a series. |
@@ -83,6 +84,22 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-24 — Shipped: EngineProvider future-stubs stripped + mergeGraphs/validateSnapshot deferred
+
+**PR:** TBD — `perf(bundle)`: more critical-path cleanup chasing the load-time backlog.
+
+**Trigger.** With cascade-simulator dynamic-imported inside `useApexStore`'s replay handlers (entry above), I expected the simulator chunk to be fully off the eager bundle. It wasn't — `LocalProvider` (constructed via `getEngineProvider()` in the eagerly-imported `ModulePanel`) still statically imported `simulateCascade` (sync), `validateSnapshot`, and `solveInterdiction` to satisfy its `EngineProvider` interface. None of those methods has any caller in the live codebase: they're future-stubs anticipating a remote backend. Together they were dragging cascade-simulator (446) + tarski-validator (204) + interdiction-engine (443) ≈ 1100 LOC of transitive code into the initial-paint bundle for zero benefit.
+
+**Fix (interface cleanup).** Stripped four unused methods from `EngineProvider`: `computeCounterfactual`, `validateSnapshot`, `solveInterdiction`, `computeDoomsday`. Trimmed `LocalProvider` to match — only `discoverStructure` (used by `ModulePanel`) and `scanTailRisk` (used by `ParetoPanel`) remain. The comment block in `engine-interface.ts` explains the YAGNI call so a future remote-provider author knows the methods can grow back with proper async signatures when there's an actual caller.
+
+**Fix (store deferrals).** Two more store-internal helpers moved to dynamic imports following the same pattern as the cascade-sim refactor:
+- `mergeGraphData` action: `mergeGraphs` (71 LOC) is dynamic-imported via `loadMergeGraphs()` inside the action body. Only called when the user imports a dataset via the lazy-loaded ImportModal.
+- `setSnapshot` action: `validateSnapshot` (204 LOC) is dynamic-imported via `loadValidateSnapshot()`. Only called when the user saves a snapshot via the lazy-loaded SystemCopilot. Both call sites kept the original `set((s) => …)` updater pattern, just wrapped in a `void load…().then((fn) => set(…))` so the API surface is unchanged from callers' perspective (still fire-and-forget).
+
+**Verification.** vitest 1524/1524 pass. tsc clean on the touched files. No interface contract breakage — the only EngineProvider call sites in the codebase (`engine.discoverStructure`, `engine.scanTailRisk`) still typecheck.
+
+**Why this matters.** ~1400 LOC of transitive eager-bundle imports are now either deferred (mergeGraphs / validateSnapshot dynamic) or eliminated entirely (engine future-stubs). Combined with the previous round-2 commits the critical-path bundle has shed roughly 6500 LOC of code that used to ride along on every first paint.
 
 ### 2026-05-24 — Shipped: cascade-simulator dynamic + buildRiskCards extracted + estimators barrel bypass
 

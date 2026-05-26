@@ -18,7 +18,6 @@ import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
-import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
 import {
   runTarskiValidation,
   applyTarskiFlags,
@@ -48,7 +47,6 @@ export const DATASET_COLORS = [
   "#448aff", // blue
   "#76ff03", // lime
 ];
-import { mergeGraphs } from "@/lib/import/merge";
 import { EMPTY_GRAPH } from "@/lib/graph-color";
 // `cascade-simulator` is a 446-LOC module only used by the three replay-
 // related actions below (`replayWithIntervention`, `startReplay`,
@@ -59,6 +57,22 @@ import { EMPTY_GRAPH } from "@/lib/graph-color";
 async function loadSimulateCascadeAsync() {
   const mod = await import("@/lib/cascade-simulator");
   return mod.simulateCascadeAsync;
+}
+
+// `import/merge` (mergeGraphs) is only called when the user clicks IMPORT
+// in the lazy-loaded ImportModal. `snapshots/tarski-validator`
+// (validateSnapshot) is only called when the user saves a snapshot via
+// the lazy-loaded SystemCopilot. Both action handlers are
+// fire-and-forget (callers don't await), so we dynamic-import the heavy
+// helper inside each action and call `set` from within the resolved
+// promise. Keeps the modules out of the initial-paint bundle.
+async function loadMergeGraphs() {
+  const mod = await import("@/lib/import/merge");
+  return mod.mergeGraphs;
+}
+async function loadValidateSnapshot() {
+  const mod = await import("@/lib/snapshots/tarski-validator");
+  return mod.validateSnapshot;
 }
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
@@ -881,19 +895,21 @@ export const useApexStore = create<ApexState>((set, get) => ({
   importModalOpen: false,
   setImportModalOpen: (open) => set({ importModalOpen: open }),
   mergeGraphData: (nodes, edges, datasetColor) => {
-    set((s) => {
-      const coloredNodes = datasetColor
-        ? nodes.map((n) => ({ ...n, datasetColor }))
-        : nodes;
-      const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
-      return {
-        graphData: graph,
-        initialGraph: graph,
-        temporalData: null,
-        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
-      };
+    void loadMergeGraphs().then((mergeGraphs) => {
+      set((s) => {
+        const coloredNodes = datasetColor
+          ? nodes.map((n) => ({ ...n, datasetColor }))
+          : nodes;
+        const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
+        return {
+          graphData: graph,
+          initialGraph: graph,
+          temporalData: null,
+          pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
+        };
+      });
+      get().initTemporalData();
     });
-    get().initTemporalData();
   },
 
   // Imported dataset tracking
@@ -974,33 +990,36 @@ export const useApexStore = create<ApexState>((set, get) => ({
   currentSnapshot: null,
   snapshotHistory: [],
   isComputeLoading: false,
-  setSnapshot: (snapshot) =>
-    set((s) => {
-      // Validate against the FULL 32-axiom library by passing the live
-      // graph + currently-enabled axioms. Without the liveGraph, the
-      // validator falls back to a thin 5-axiom degraded path; we always
-      // have it on hand here so we always get the full coverage.
-      const validated = validateSnapshot(snapshot, {
-        liveGraph: s.graphData,
-        enabledAxioms: s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+  setSnapshot: (snapshot) => {
+    void loadValidateSnapshot().then((validateSnapshot) => {
+      set((s) => {
+        // Validate against the FULL 32-axiom library by passing the live
+        // graph + currently-enabled axioms. Without the liveGraph, the
+        // validator falls back to a thin 5-axiom degraded path; we always
+        // have it on hand here so we always get the full coverage.
+        const validated = validateSnapshot(snapshot, {
+          liveGraph: s.graphData,
+          enabledAxioms: s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        });
+        const snapshotWithValidation = {
+          ...snapshot,
+          tarskiValidation: validated,
+        };
+        if (validated.status === "VIOLATIONS_FOUND") {
+          // Log but still store — violations are informational in v2
+          console.warn(
+            "[Tarski] Snapshot has violations:",
+            validated.violations
+          );
+        }
+        const history = [...s.snapshotHistory, snapshotWithValidation];
+        return {
+          currentSnapshot: snapshotWithValidation,
+          snapshotHistory: history.slice(-50), // cap at 50
+        };
       });
-      const snapshotWithValidation = {
-        ...snapshot,
-        tarskiValidation: validated,
-      };
-      if (validated.status === "VIOLATIONS_FOUND") {
-        // Log but still store — violations are informational in v2
-        console.warn(
-          "[Tarski] Snapshot has violations:",
-          validated.violations
-        );
-      }
-      const history = [...s.snapshotHistory, snapshotWithValidation];
-      return {
-        currentSnapshot: snapshotWithValidation,
-        snapshotHistory: history.slice(-50), // cap at 50
-      };
-    }),
+    });
+  },
   setIsComputeLoading: (loading) => set({ isComputeLoading: loading }),
 
   // Replay / Cascade

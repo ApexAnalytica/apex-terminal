@@ -9,8 +9,6 @@ import { summarizeDiscoveryUncertainty } from "@/lib/discovery-uncertainty";
 import dynamic from "next/dynamic";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
-import NewsInterpreterPanel from "./NewsInterpreterPanel";
-import NodeInspector from "./NodeInspector";
 
 // Tab-gated sub-panels lazy-loaded so the default Spirtes tab doesn't
 // pull their JS on first paint. The first wave (added PR #300) covered
@@ -30,6 +28,20 @@ const PANEL_LOADER = (
 const TissueCohortView = dynamic(
   () => import("./scientist/TissueCohortView"),
   { ssr: false, loading: () => PANEL_LOADER },
+);
+// NewsInterpreterPanel (~350 LOC) only renders on the Pareto tab, which
+// isn't the default. Defer the chunk until the tab is opened.
+const NewsInterpreterPanel = dynamic(
+  () => import("./NewsInterpreterPanel"),
+  { ssr: false, loading: () => PANEL_LOADER },
+);
+// NodeInspector (~630 LOC, pulls chi-star + framer-motion) renders null
+// inside its AnimatePresence wrapper when no node is selected. Initial
+// paint never has a selection — gate the entire dynamic import on
+// `selectedNode != null` so the chunk only loads after the first click.
+const NodeInspector = dynamic(
+  () => import("./NodeInspector"),
+  { ssr: false },
 );
 const MonteCarloForecast = dynamic(
   () => import("./MonteCarloForecast"),
@@ -75,6 +87,10 @@ export default function ModulePanel() {
   const activeModule = useApexStore((s) => s.activeModule);
   const setActiveModule = useApexStore((s) => s.setActiveModule);
   const setInterventionMode = useApexStore((s) => s.setInterventionMode);
+  // Used only to gate the dynamic-imported NodeInspector below — the
+  // component renders null without a selection, so deferring the chunk
+  // costs nothing on first paint.
+  const selectedNode = useApexStore((s) => s.selectedNode);
   // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
   // domain is loaded, so it doesn't pollute non-life-sciences flows.
   const selectedDomainsForView = useApexStore((s) => s.selectedDomains);
@@ -127,8 +143,9 @@ export default function ModulePanel() {
         </div>
       </div>
 
-      {/* Node Inspector (persistent across modules) */}
-      <NodeInspector />
+      {/* Node Inspector (persistent across modules; lazy-loaded — only
+          mounts once a node is selected since it renders null otherwise) */}
+      {selectedNode && <NodeInspector />}
 
       {/* Module Content — pb-16 reserves space for the fixed FEEDBACK button
           so the bottom of the last panel never sits under it at full scroll. */}

@@ -18,12 +18,17 @@ import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
+// `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
+// type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
+// stays in `tarski-data.ts` next to the 891-LOC AXIOM_LIBRARY +
+// 800-LOC validation engine and is dynamic-imported below — verified
+// mode is opt-in (user clicks the truth filter), so the heavy chunk
+// only loads once per session at the first verified-mode trigger.
 import {
-  runTarskiValidation,
   applyTarskiFlags,
   clearTarskiFlags,
   type TarskiValidationReport,
-} from "@/lib/tarski-data";
+} from "@/lib/tarski-flags";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
 import { applyCrossDomainBridges, AUTO_BRIDGE_ID_PREFIX } from "@/lib/cross-domain-bridging";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
@@ -120,6 +125,16 @@ async function loadGenerateTemporalData() {
 async function loadLoadRealTemporalData() {
   const mod = await import("@/lib/real-timeseries");
   return mod.loadRealTemporalData;
+}
+
+// `runTarskiValidation` (and the AXIOM_LIBRARY it depends on) live in
+// `tarski-data.ts` — ~1700 LOC total. Verified mode is opt-in (user
+// clicks the truth filter), so the chunk is dynamic-imported the first
+// time it's actually needed. Subsequent calls hit the resolved-cache
+// (ES module import caching) and are sync-fast.
+async function loadRunTarskiValidation() {
+  const mod = await import("@/lib/tarski-data");
+  return mod.runTarskiValidation;
 }
 
 // Drop pinned time-series ids that no longer exist in the graph. Returns the
@@ -481,20 +496,26 @@ export const useApexStore = create<ApexState>((set, get) => ({
   tarskiReport: null,
   enabledAxioms: new Set<string>(),
   setEnabledAxioms: (axioms) => set({ enabledAxioms: axioms }),
-  runTarskiWithAxioms: () =>
-    set((s) => {
-      // Clear previous flags first
-      const cleanGraph = clearTarskiFlags(s.graphData);
-      const profileId = resolveDomainProfile(s.selectedDomains).id;
-      const report = runTarskiValidation(
-        cleanGraph,
-        s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
-        profileId,
-      );
-      const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-      return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
-    }),
-  applyFeedBatch: (batch) =>
+  runTarskiWithAxioms: () => {
+    void loadRunTarskiValidation().then((runTarskiValidation) => {
+      set((s) => {
+        // Clear previous flags first
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
+      });
+    });
+  },
+  applyFeedBatch: (batch) => {
+    // Phase 1: apply feed mutation + omega adjustments synchronously. The
+    // non-verified path is complete here. Verified mode trails phase 2.
+    let needsTarskiRevalidation = false;
     set((s) => {
       const { signalKinds, updates, event, providerId } = batch;
       // Stamp the providerId onto each emitted point so cleanup later
@@ -556,8 +577,23 @@ export const useApexStore = create<ApexState>((set, get) => ({
         : null;
 
       const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
-      if (s.truthFilter === "verified") {
-        const cleanGraph = clearTarskiFlags(nextGraph);
+      // ΩF pillar wiring: refresh live deltas after the feed mutation
+      // (sanctions / centrality may have shifted).
+      const adjusted = applyOmegaLiveAdjustments(nextGraph);
+      // Verified mode needs a tarski revalidation after the mutation; that
+      // step runs in phase 2 (async dynamic-import) so the tarski-data
+      // chunk doesn't ride into the eager bundle. Verified is opt-in, so
+      // the user has already triggered the load via setTruthFilter — the
+      // import call below resolves from the ES-module cache.
+      needsTarskiRevalidation = s.truthFilter === "verified";
+      return { ...base, graphData: adjusted };
+    });
+
+    if (!needsTarskiRevalidation) return;
+    void loadRunTarskiValidation().then((runTarskiValidation) => {
+      set((s) => {
+        if (s.truthFilter !== "verified") return s; // bailed mid-flight
+        const cleanGraph = clearTarskiFlags(s.graphData);
         const profileId = resolveDomainProfile(s.selectedDomains).id;
         const report = runTarskiValidation(
           cleanGraph,
@@ -565,20 +601,25 @@ export const useApexStore = create<ApexState>((set, get) => ({
           profileId,
         );
         const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-        // ΩF pillar wiring: refresh live deltas after the feed mutation
-        // (sanctions / centrality may have shifted).
         const adjusted = applyOmegaLiveAdjustments(flaggedGraph);
-        return { ...base, graphData: adjusted, tarskiReport: report };
-      }
-      // Same wiring on the non-verified path so the overlay stays current
-      // whether or not Tarski validation is being recomputed.
-      const adjusted = applyOmegaLiveAdjustments(nextGraph);
-      return { ...base, graphData: adjusted };
-    }),
-  setTruthFilter: (f) =>
-    set((s) => {
-      if (f === "verified") {
-        // Dynamically run Tarski validation against the live graph
+        return { graphData: adjusted, tarskiReport: report };
+      });
+    });
+  },
+  setTruthFilter: (f) => {
+    if (f !== "verified") {
+      // Clear-flags path is sync — no AXIOM_LIBRARY needed.
+      set((s) => {
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        return { truthFilter: f, graphData: cleanGraph, tarskiReport: null };
+      });
+      return;
+    }
+    // Verified path dynamic-imports the validation engine; subsequent
+    // verified-mode operations (applyFeedBatch, severEdge) hit the
+    // ES-module cache.
+    void loadRunTarskiValidation().then((runTarskiValidation) => {
+      set((s) => {
         const profileId = resolveDomainProfile(s.selectedDomains).id;
         const report = runTarskiValidation(
           s.graphData,
@@ -587,12 +628,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
         );
         const flaggedGraph = applyTarskiFlags(s.graphData, report);
         return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
-      } else {
-        // Clear all flags when switching back to RAW
-        const cleanGraph = clearTarskiFlags(s.graphData);
-        return { truthFilter: f, graphData: cleanGraph, tarskiReport: null };
-      }
-    }),
+      });
+    });
+  },
 
   // Selected node
   selectedNode: null,
@@ -611,7 +649,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Selected edge
   selectedEdgeId: null,
   setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
-  promoteAutoBridge: (edgeId) =>
+  promoteAutoBridge: (edgeId) => {
+    let needsTarskiRevalidation = false;
     set((s) => {
       const idx = s.graphData.edges.findIndex((e) => e.id === edgeId);
       if (idx === -1) return s;
@@ -632,20 +671,29 @@ export const useApexStore = create<ApexState>((set, get) => ({
       newEdges[idx] = promoted;
       const newGraph: CausalGraph = { ...s.graphData, edges: newEdges };
 
-      if (s.truthFilter !== "verified") return { graphData: newGraph };
+      needsTarskiRevalidation = s.truthFilter === "verified";
+      return { graphData: newGraph };
+    });
 
-      // VERIFIED mode: refresh the Tarski report so the previously-
-      // FLAGGED R-04 violation on this edge clears.
-      const cleanGraph = clearTarskiFlags(newGraph);
-      const profileId = resolveDomainProfile(s.selectedDomains).id;
-      const report = runTarskiValidation(
-        cleanGraph,
-        s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
-        profileId,
-      );
-      const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-      return { graphData: flaggedGraph, tarskiReport: report };
-    }),
+    if (!needsTarskiRevalidation) return;
+    // VERIFIED mode: refresh the Tarski report so the previously-
+    // FLAGGED R-04 violation on this edge clears. Dynamic-imported so
+    // the AXIOM_LIBRARY stays off the eager bundle.
+    void loadRunTarskiValidation().then((runTarskiValidation) => {
+      set((s) => {
+        if (s.truthFilter !== "verified") return s; // bailed mid-flight
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { graphData: flaggedGraph, tarskiReport: report };
+      });
+    });
+  },
 
   // Multi-selection
   selectedNodes: [],

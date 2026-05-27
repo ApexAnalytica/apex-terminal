@@ -9,6 +9,12 @@
 // that already need them (DomainSelector, copilot-actions, etc.).
 
 import type { DomainIconName } from "@/components/DomainIcon";
+// DOMAIN_MAP lives in its own lightweight file so `useFilteredGraph`
+// (critical-path) can import the lookup without dragging the full
+// DOMAIN_GROUPS dataset. Re-exported here so existing callers keep
+// working; new code should import from `domain-map` directly.
+import { DOMAIN_MAP } from "./domain-map";
+export { DOMAIN_MAP };
 
 export interface DomainCard {
   id: string;
@@ -266,37 +272,6 @@ export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
  *
  * `useFilteredGraph` re-exports this so existing callers keep working.
  */
-export const DOMAIN_MAP: Record<string, string[]> = {
-  "energy-systems": ["Saudi Aramco Energy", "QatarEnergy LNG"],
-  "manufacturing": ["QAFCO Fertilizer", "Ma'aden Phosphate"],
-  "financial-contagion": ["Financial Contagion"],
-  "sovereign-risk": ["Sovereign Risk"],
-  "supply-chain": ["Supply Chain Food Security"],
-  "infrastructure": ["Undersea Cable Infrastructure"],
-  "macro-labor": ["Macro Impact: Labor, Growth & Housing"],
-  "macro-inflation": ["Macro Impact: Inflation & Policy"],
-  "defense-isr": [
-    "Drone Swarms",
-    "SATCOM",
-    "ISR Fusion",
-    "Chip Embargo",
-    "Secure Compute",
-    "Kill Chain",
-  ],
-  "frontier-science": ["Frontier Science"],
-  "t1d-beta-cell": [
-    "T1D Autoimmune",
-    "T1D β-cell Biology",
-    "T1D Metabolic",
-    "T1D Intervention",
-    "T1D Complications",
-  ],
-  "t1d-vx880": ["T1D VX-880"],
-  // AI Safety / IDS — continual-learning intrusion detection substrate
-  // from Ghauri 2025 D.Eng. dissertation. 17 nodes (3 datasets, 9 attack
-  // classes, 5 IDS components) all carry domain "AI Safety / IDS".
-  "ai-safety-ids": ["AI Safety / IDS"],
-};
 
 /**
  * Reverse lookup: raw `n.domain` string → the DomainCard whose mapped

@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 6)**
+**2026-05-27 round (load-time round 7)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: pull the 1311-LOC `node-timeseries-map.ts` + 145-LOC `generateTemporalData` synthetic generator off the eager bundle. `RiskPropagationFlow` (critical path) dynamic-loads `getNodeDataDescription` via effect+state — the 6px data-label badges briefly absent on first paint, then appear when the chunk lands. New `temporal-state-helpers.ts` (~130 LOC) houses the lightweight readers (`getNodeStateAt` / `getEdgeStateAt` / `getEventsInRange` / `getVisibleNodesAt` + types) so `useTemporalGraph` (used by RiskPropagationFlow, ModulePanel, etc.) stops transitively pulling the synthetic-data generator. `temporal-data.ts` re-exports for backward compat. |
+| TBD | `perf(bundle)`: split `DOMAIN_MAP` (~30 LOC lookup table) out of `domains.ts` (333 LOC) into a new `domain-map.ts`. `useFilteredGraph` (used by every critical-path component that renders a filtered graph view: RiskPropagationFlow, StructuralMetrics, NodeInspector, all four canvas surfaces) now imports from the lightweight file. `domains.ts` re-exports for backward compat. Net: ~300 LOC of DOMAIN_GROUPS catalog data dropped from the useFilteredGraph transitive chain. |
+
+**2026-05-27 round (load-time round 6) — _merged as #448_**
+
+| PR | What |
+|---|---|
+| #448 | `perf(bundle)`: pull the 1311-LOC `node-timeseries-map.ts` + 145-LOC `generateTemporalData` synthetic generator off the eager bundle. `RiskPropagationFlow` (critical path) dynamic-loads `getNodeDataDescription` via effect+state — the 6px data-label badges briefly absent on first paint, then appear when the chunk lands. New `temporal-state-helpers.ts` (~130 LOC) houses the lightweight readers (`getNodeStateAt` / `getEdgeStateAt` / `getEventsInRange` / `getVisibleNodesAt` + types) so `useTemporalGraph` (used by RiskPropagationFlow, ModulePanel, etc.) stops transitively pulling the synthetic-data generator. `temporal-data.ts` re-exports for backward compat. |
 
 **2026-05-27 round (load-time round 5) — _merged as #447_**
 
@@ -108,6 +114,16 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: DOMAIN_MAP split out of domains.ts
+
+**PR:** TBD — round 7, single-file targeted win.
+
+**Trigger.** Audit after #448 showed `useFilteredGraph` (which is called from EVERY critical-path component with a filtered-graph view — RiskPropagationFlow, StructuralMetrics, NodeInspector, ModulePanel, CausalDAG2D/3D/Map/Relief) imported `DOMAIN_MAP` from `@/lib/domains` — a 333-LOC file. The hook only needs the ~30-LOC lookup table itself; the rest is `DOMAIN_GROUPS` (170 LOC of card metadata + descriptions + icon names) and the `DOMAIN_TO_CARD` reverse-lookup.
+
+**Fix.** New `src/lib/domain-map.ts` (~40 LOC) houses just the `DOMAIN_MAP` constant. `domains.ts` re-imports it and re-exports for backward compat. `useFilteredGraph` now imports from the lightweight file directly.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
 
 ### 2026-05-27 — Shipped: node-timeseries-map + synthetic generator off eager bundle
 

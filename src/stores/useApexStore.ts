@@ -31,7 +31,12 @@ import {
 } from "@/lib/tarski-flags";
 import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
 import { applyCrossDomainBridges, AUTO_BRIDGE_ID_PREFIX } from "@/lib/cross-domain-bridging";
-import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
+// `resolveDomainProfile` lives in `domain-profiles.ts` (480 LOC of profile
+// data: three big profile objects + pillar labels + estimator configs).
+// The store's four use sites are all inside the deferred Tarski `.then()`
+// blocks below — combine the imports so the heavy profile data only
+// loads when tarski validation is actually needed.
+import type { PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
   id: string;
@@ -127,14 +132,20 @@ async function loadLoadRealTemporalData() {
   return mod.loadRealTemporalData;
 }
 
-// `runTarskiValidation` (and the AXIOM_LIBRARY it depends on) live in
-// `tarski-data.ts` — ~1700 LOC total. Verified mode is opt-in (user
-// clicks the truth filter), so the chunk is dynamic-imported the first
-// time it's actually needed. Subsequent calls hit the resolved-cache
-// (ES module import caching) and are sync-fast.
-async function loadRunTarskiValidation() {
-  const mod = await import("@/lib/tarski-data");
-  return mod.runTarskiValidation;
+// `runTarskiValidation` (AXIOM_LIBRARY + validation engine, ~1700 LOC)
+// and `resolveDomainProfile` (480 LOC of profile data) are both only
+// needed when the user enables verified mode. Co-load them so both
+// chunks defer until first use. Parallel `Promise.all` keeps the
+// first-load latency to a single network round-trip.
+async function loadTarskiHelpers() {
+  const [tarski, profiles] = await Promise.all([
+    import("@/lib/tarski-data"),
+    import("@/lib/domain-profiles"),
+  ]);
+  return {
+    runTarskiValidation: tarski.runTarskiValidation,
+    resolveDomainProfile: profiles.resolveDomainProfile,
+  };
 }
 
 // Drop pinned time-series ids that no longer exist in the graph. Returns the
@@ -497,7 +508,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
   enabledAxioms: new Set<string>(),
   setEnabledAxioms: (axioms) => set({ enabledAxioms: axioms }),
   runTarskiWithAxioms: () => {
-    void loadRunTarskiValidation().then((runTarskiValidation) => {
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
       set((s) => {
         // Clear previous flags first
         const cleanGraph = clearTarskiFlags(s.graphData);
@@ -590,7 +601,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
     });
 
     if (!needsTarskiRevalidation) return;
-    void loadRunTarskiValidation().then((runTarskiValidation) => {
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
       set((s) => {
         if (s.truthFilter !== "verified") return s; // bailed mid-flight
         const cleanGraph = clearTarskiFlags(s.graphData);
@@ -618,7 +629,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
     // Verified path dynamic-imports the validation engine; subsequent
     // verified-mode operations (applyFeedBatch, severEdge) hit the
     // ES-module cache.
-    void loadRunTarskiValidation().then((runTarskiValidation) => {
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
       set((s) => {
         const profileId = resolveDomainProfile(s.selectedDomains).id;
         const report = runTarskiValidation(
@@ -679,7 +690,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
     // VERIFIED mode: refresh the Tarski report so the previously-
     // FLAGGED R-04 violation on this edge clears. Dynamic-imported so
     // the AXIOM_LIBRARY stays off the eager bundle.
-    void loadRunTarskiValidation().then((runTarskiValidation) => {
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
       set((s) => {
         if (s.truthFilter !== "verified") return s; // bailed mid-flight
         const cleanGraph = clearTarskiFlags(s.graphData);

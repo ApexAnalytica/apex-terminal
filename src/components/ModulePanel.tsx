@@ -3,7 +3,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getEngineProvider } from "@/lib/engines";
-import { resolveDomainProfile } from "@/lib/domain-profiles";
 import { detectCommunities } from "@/lib/community-detection";
 import { summarizeDiscoveryUncertainty } from "@/lib/discovery-uncertainty";
 import dynamic from "next/dynamic";
@@ -93,9 +92,13 @@ export default function ModulePanel() {
   const selectedNode = useApexStore((s) => s.selectedNode);
   // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
   // domain is loaded, so it doesn't pollute non-life-sciences flows.
+  // Direct prefix check rather than `resolveDomainProfile(...).id === "t1d"`
+  // so we don't pull the 480-LOC domain-profiles data into the critical-
+  // path bundle — the only thing ModulePanel needs here is "is any t1d-*
+  // domain selected?" and `t1d-` is the documented prefix for those.
   const selectedDomainsForView = useApexStore((s) => s.selectedDomains);
   const isT1DDomain = useMemo(
-    () => resolveDomainProfile(selectedDomainsForView).id === "t1d",
+    () => selectedDomainsForView.some((id) => id.startsWith("t1d-")),
     [selectedDomainsForView],
   );
   const [expandedChart, setExpandedChart] = useState<string | null>(null);

@@ -8,6 +8,11 @@
 // without forking the codebase.
 
 import type { ManifoldModule } from "./types";
+// GEOPOLITICAL_MODULES used to be defined inline here; HeaderBar (on the
+// critical-path bundle) was pulling all 480 LOC of profile data just to
+// render the four tab labels. The constant now lives in `module-tabs.ts`
+// (~40 LOC) and HeaderBar imports from there directly.
+import { MODULE_TABS as GEOPOLITICAL_MODULES } from "./module-tabs";
 
 export type EstimatorId =
   // Criticality engines (graph-derived)
@@ -79,44 +84,6 @@ export interface DomainProfile {
 
 // ─── Geopolitical / financial (current default) ─────────────────────
 
-const GEOPOLITICAL_MODULES: ManifoldModule[] = [
-  {
-    id: "spirtes",
-    name: "SPIRTES",
-    subtitle: "Structure Discovery",
-    description: "Causal DAG learning from observational data",
-    icon: "\u25C7",
-    color: "var(--accent-cyan)",
-    status: "ACTIVE",
-  },
-  {
-    id: "tarski",
-    name: "TARSKI",
-    subtitle: "Truth Verification",
-    description: "Physical constraint validation \u2014 reject hallucinations",
-    icon: "\u22A2",
-    color: "var(--accent-green)",
-    status: "ACTIVE",
-  },
-  {
-    id: "pearl",
-    name: "PEARL",
-    subtitle: "Counterfactual Engine",
-    description: "do-calculus reasoning \u2014 interventional queries",
-    icon: "\u27D0",
-    color: "var(--accent-amber)",
-    status: "STANDBY",
-  },
-  {
-    id: "pareto",
-    name: "PARETO",
-    subtitle: "Criticality Warning",
-    description: "Strategic risk & \u03A9-fragility assessment",
-    icon: "\u26A0",
-    color: "var(--accent-red)",
-    status: "ALERT",
-  },
-];
 
 const GEOPOLITICAL_PILLARS: PillarLabels = {
   composite: "\u03A9-FRAGILITY",

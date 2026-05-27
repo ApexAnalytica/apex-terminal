@@ -11,12 +11,12 @@ import TextSizeToggle from "./TextSizeToggle";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import DomainIcon from "./DomainIcon";
-import { GEOPOLITICAL_PROFILE } from "@/lib/domain-profiles";
+import { MODULE_TABS as GEOPOLITICAL_TABS } from "@/lib/module-tabs";
 
 // Top-bar tabs are pinned to the four canonical labels regardless of active
 // domain profile. Profile-scoped vocabulary lives in the right panel / pillar
 // bars / methodology popup only.
-const MODULE_TABS = GEOPOLITICAL_PROFILE.modules.map((m) => ({
+const MODULE_TABS = GEOPOLITICAL_TABS.map((m) => ({
   id: m.id as ModuleId,
   label: m.name,
   icon: m.icon,

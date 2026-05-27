@@ -4,7 +4,6 @@ import { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useApexStore } from "@/stores/useApexStore";
 import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
-import { createClient } from "@/lib/supabase/client";
 import CDOmegaMonitor from "./CDOmegaMonitor";
 import ImportButton from "./import/ImportButton";
 import TextSizeToggle from "./TextSizeToggle";
@@ -47,6 +46,11 @@ export default function HeaderBar() {
   const alertLevel = useMemo(() => computeAlertLevel(state.status, doomsday), [state.status, doomsday]);
   const router = useRouter();
   const handleSignOut = useCallback(async () => {
+    // Lazy-import supabase client so the @supabase/ssr chunk stays off
+    // the eager bundle. The only place HeaderBar uses it is this
+    // sign-out callback — an explicit user click that can afford the
+    // extra microtask.
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");

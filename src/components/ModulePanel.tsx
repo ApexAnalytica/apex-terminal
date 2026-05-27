@@ -545,6 +545,35 @@ function CascadeHeader() {
           tone: "amber",
         });
       }
+      // Auto-bridge lifecycle — count unpromoted (still flagged by R-04)
+      // vs promoted (curator-confirmed). Single pass so the bridge state
+      // is summarised at the top of the panel without scrolling.
+      let unpromotedBridges = 0;
+      let promotedBridges = 0;
+      for (const e of deferredGraphData.edges) {
+        if (!e.id.startsWith("auto-bridge")) continue;
+        if (e.physicalMechanism?.startsWith("promoted bridge:")) {
+          promotedBridges += 1;
+        } else {
+          unpromotedBridges += 1;
+        }
+      }
+      if (unpromotedBridges > 0) {
+        out.push({
+          label: "Bridges",
+          value: `${unpromotedBridges} auto`,
+          detail: "needs review — click to promote",
+          tone: "amber",
+        });
+      }
+      if (promotedBridges > 0) {
+        out.push({
+          label: "Bridges",
+          value: `${promotedBridges} promoted`,
+          detail: "curator-confirmed",
+          tone: "green",
+        });
+      }
       if (netMetrics.crossDomainCommunityCount > 0) {
         out.push({
           label: "Cross-domain",

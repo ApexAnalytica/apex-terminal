@@ -30,7 +30,13 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-24 round (load-time round 2)**
+**2026-05-27 round (load-time round 3)**
+
+| PR | What |
+|---|---|
+| TBD | `perf(bundle)`: dynamic-import `temporal-data` (334 LOC, `generateTemporalData`) and `real-timeseries` (426 LOC, `loadRealTemporalData`) inside the store's `initTemporalData` action — both only fire after a workspace is loaded, so the ~760 LOC chunk defers until then. Lazy-load `NewsInterpreterPanel` (~350 LOC) — only renders on the non-default Pareto tab. Lazy-load `NodeInspector` (~630 LOC) gated on `selectedNode != null` — initial paint never has a selection so the chunk only loads after the first click. |
+
+**2026-05-24 round (load-time round 2) — _merged as #444_**
 
 | PR | What |
 |---|---|
@@ -84,6 +90,26 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: temporal-data lazy + NewsInterpreterPanel lazy + NodeInspector lazy
+
+**PR:** TBD — three more bundle-shape wins after #444 (load-time round 2) merged.
+
+**Trigger.** With round 2 merged, the next set of high-leverage candidates were:
+1. `useApexStore` still eagerly imported `generateTemporalData` (334 LOC, synthetic timeline fallback) and `loadRealTemporalData` (426 LOC, network fetcher) for `initTemporalData`. Both only fire after a workspace is loaded.
+2. `ModulePanel` still statically imported `NewsInterpreterPanel` (~350 LOC) and `NodeInspector` (~630 LOC). Pareto is a non-default tab so NewsInterpreterPanel never renders on first paint. NodeInspector renders `null` inside `<AnimatePresence>` when no node is selected — also never visible on first paint.
+
+**Fix.**
+- Added `loadGenerateTemporalData()` and `loadLoadRealTemporalData()` helpers at the top of `useApexStore` (same pattern as the previous round's `loadSimulateCascadeAsync` / `loadMergeGraphs` / `loadValidateSnapshot`). `initTemporalData` now wraps both calls in `void load…().then((fn) => …)` chains. The early-out check (`if (state.temporalData) return`) was duplicated inside the synthetic-data `.then()` so a concurrent call during the chunk load doesn't double-set state.
+- `NewsInterpreterPanel` → `dynamic(() => import("./NewsInterpreterPanel"), { ssr: false, loading: PANEL_LOADER })`. Renders behind the Pareto tab.
+- `NodeInspector` → `dynamic(() => import("./NodeInspector"), { ssr: false })` plus `{selectedNode && <NodeInspector />}` gate at the render site. The component itself already returned `null` when `selectedNode` was empty via its internal `<AnimatePresence>{node && (<motion.div>...)}</AnimatePresence>`, so the parent gate is behaviour-preserving on first paint and only adds a ~50-100ms chunk load on the first node click. Subsequent clicks hit the chunk cache.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
+
+**Out of scope / next round.**
+- `tarski-data.ts` (891 LOC of AXIOM_LIBRARY + 800 LOC of validation logic) is still eagerly imported by `useApexStore`. It's used in 5 store action paths but conditionally — only when `truthFilter === "verified"`. Converting to dynamic-import would require restructuring the sync `set((s) => …)` updaters into `loadTarski().then((helpers) => set(…))` chains for all 5. Doable but invasive; the `applyFeedBatch` case in particular currently combines tarski work with omega-pillar work in a single atomic update, so the refactor would break that atomicity (the user might see a brief flicker of unflagged graph before the tarski flags land).
+- `applyOmegaLiveAdjustments` (220 LOC) and `applyCrossDomainBridges` (305 LOC) are hot-path — every graph mutation calls them. Same fire-and-forget refactor would degrade UX visibly. Leave eager.
+- `domain-profiles.ts` (480 LOC) is mostly profile-data constants used everywhere. Splitting wouldn't help.
 
 ### 2026-05-24 — Shipped: EngineProvider future-stubs stripped + mergeGraphs/validateSnapshot deferred
 

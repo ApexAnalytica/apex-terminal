@@ -77,7 +77,6 @@ async function loadValidateSnapshot() {
 import type { LLMProvider } from "@/lib/llm-providers";
 import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
 import type { TrainingTrace } from "@/lib/discovery/training-trace-types";
-import { generateTemporalData } from "@/lib/temporal-data";
 
 /** Cap on how many feed-emitted events we retain in temporalData.events.
  *  Events are de-duped by id, so monthly/weekly upstream cadences mean this
@@ -107,7 +106,21 @@ function appendFeedEvent(
   const rangeStart = eventMs < current.rangeStart.getTime() ? event.date : current.rangeStart;
   return { ...current, events: trimmed, rangeStart, rangeEnd };
 }
-import { loadRealTemporalData } from "@/lib/real-timeseries";
+
+// `temporal-data` (334 LOC, `generateTemporalData` — synthetic timeline
+// fallback) and `real-timeseries` (426 LOC, `loadRealTemporalData` —
+// network fetcher + per-node history hydration) are only used by
+// `initTemporalData` below, which fires once after the user lands on a
+// workspace (graph mutation triggers the call). Lazy-import both so they
+// don't ride along on the initial-paint bundle.
+async function loadGenerateTemporalData() {
+  const mod = await import("@/lib/temporal-data");
+  return mod.generateTemporalData;
+}
+async function loadLoadRealTemporalData() {
+  const mod = await import("@/lib/real-timeseries");
+  return mod.loadRealTemporalData;
+}
 
 // Drop pinned time-series ids that no longer exist in the graph. Returns the
 // same array when nothing changes so Zustand subscribers don't re-render.
@@ -1267,15 +1280,27 @@ export const useApexStore = create<ApexState>((set, get) => ({
   initTemporalData: () => {
     const state = get();
     if (state.temporalData) return;
-    // Set synthetic data immediately as fallback while real data loads
-    const syntheticData = generateTemporalData(state.graphData.nodes, state.graphData.edges, 60);
-    set({
-      temporalData: syntheticData,
-      timelineRange: {
-        start: syntheticData.rangeStart.getTime(),
-        end: syntheticData.rangeEnd.getTime(),
-      },
-      timelinePosition: syntheticData.rangeEnd.getTime(),
+    // Set synthetic data immediately as fallback while real data loads.
+    // Both helpers are dynamic-imported — they total ~760 LOC and are
+    // never needed before a workspace is loaded.
+    void loadGenerateTemporalData().then((generateTemporalData) => {
+      const current = get();
+      // Re-check the early-out: another call may have populated the
+      // store while the synthetic helper chunk was loading.
+      if (current.temporalData) return;
+      const syntheticData = generateTemporalData(
+        current.graphData.nodes,
+        current.graphData.edges,
+        60,
+      );
+      set({
+        temporalData: syntheticData,
+        timelineRange: {
+          start: syntheticData.rangeStart.getTime(),
+          end: syntheticData.rangeEnd.getTime(),
+        },
+        timelinePosition: syntheticData.rangeEnd.getTime(),
+      });
     });
     // Load real analyst-collected data asynchronously, then replace synthetic.
     // Retry until graphData is populated (it may be empty on first mount).
@@ -1286,7 +1311,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
         setTimeout(doLoad, 500);
         return;
       }
-      loadRealTemporalData(nodes, edges)
+      void loadLoadRealTemporalData()
+        .then((loadRealTemporalData) => loadRealTemporalData(nodes, edges))
         .then((realData) => {
           if (realData.nodes.size > 0) {
             set({

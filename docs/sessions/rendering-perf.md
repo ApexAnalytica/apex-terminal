@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 8)**
+**2026-05-27 round (load-time round 9)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: lazy-load `RiskPropagationFlow` (594 LOC) gated on `hasGraph` — empty workspace splash just rendered a collapsed toggle bar anyway. Lazy-load `ModulePanel` (842 LOC + DiscoveryRunsPanel 523 + community-detection 209 + discovery-uncertainty 106 + omega-engine 180 in transitive chain) with a column-shaped placeholder. After this round, the only static-imported page-level components are HeaderBar (167), StructuralMetrics (90), and FeedbackWidget (148). |
+| TBD | `perf(bundle)`: defer the `@supabase/ssr` chunk off the eager bundle. Both `HeaderBar` and `FeedbackWidget` (the only two critical-path components that pulled `supabase/client`) now dynamic-import `createClient` inside their respective callbacks — HeaderBar's `handleSignOut` (explicit user click) and FeedbackWidget's mount-time email lookup (effect with cancellation guard). |
+
+**2026-05-27 round (load-time round 8) — _merged as #450_**
+
+| PR | What |
+|---|---|
+| #450 | `perf(bundle)`: lazy-load `RiskPropagationFlow` (594 LOC) gated on `hasGraph` — empty workspace splash just rendered a collapsed toggle bar anyway. Lazy-load `ModulePanel` (842 LOC + DiscoveryRunsPanel 523 + community-detection 209 + discovery-uncertainty 106 + omega-engine 180 in transitive chain) with a column-shaped placeholder. After this round, the only static-imported page-level components are HeaderBar (167), StructuralMetrics (90), and FeedbackWidget (148). |
 
 **2026-05-27 round (load-time round 7) — _merged as #449_**
 
@@ -120,6 +126,20 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: @supabase/ssr deferred from HeaderBar + FeedbackWidget
+
+**PR:** TBD — round 9, deferring the supabase auth chunk.
+
+**Trigger.** After round 8, the only remaining eager critical-path components were `HeaderBar` (167 LOC) and `FeedbackWidget` (148 LOC). Both small in their own right but both eagerly pulled `@/lib/supabase/client` — which transitively imports `@supabase/ssr` (auth + cookie handling + browser/server client logic, several hundred KB unminified).
+
+**Fix.**
+- **HeaderBar.handleSignOut**: lazy-import `createClient` inside the callback. The sign-out flow is an explicit user click, so the extra microtask to dynamic-import the auth client is invisible.
+- **FeedbackWidget mount effect**: lazy-import inside the existing `useEffect`. The email-lookup that populates the feedback form's "from" field happens once after mount; the cancellation guard handles fast unmount during the dynamic import. Submit-time fetch is unchanged (uses the `/api/feedback` endpoint, no client-side auth needed there).
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
+
+**Final eager critical path.** `page.tsx` static imports: `useApexStore`, `protectGraphData` (95 LOC), `useFeedRegistry` (registry lazy-loads providers inside effect), `HeaderBar` (167), `StructuralMetrics` (90), `FeedbackWidget` (148). Everything else — including the 3000-LOC graph dataset, 1700-LOC tarski-data, 1311-LOC node-timeseries-map, 1207-LOC TimeDial, 987-LOC TimeSeriesOverlay, 842-LOC ModulePanel + transitive subpanels, 633-LOC NodeInspector, 594-LOC RiskPropagationFlow, 480-LOC domain-profiles, 446-LOC cascade-simulator, ~38KB feed-registry chain, and the `@supabase/ssr` chunk — loads on-demand behind a real user gate.
 
 ### 2026-05-27 — Shipped: RiskPropagationFlow + ModulePanel lazy
 

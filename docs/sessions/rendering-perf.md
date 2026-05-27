@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 5)**
+**2026-05-27 round (load-time round 6)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: `domain-profiles.ts` (480 LOC of three profile definitions + pillar labels + estimator configs) fully off the eager bundle. Extracted `GEOPOLITICAL_MODULES` (the four tab labels) into a new `module-tabs.ts` (~40 LOC); `HeaderBar` now imports from there directly instead of pulling the full profile data. `ModulePanel`'s `isT1DDomain` check replaced with a direct `selectedDomains.some(id => id.startsWith("t1d-"))` prefix test (functionally equivalent for that use case, no profile resolution needed). `useApexStore`'s four `resolveDomainProfile` call sites are all inside the deferred Tarski `.then()` blocks already, so the import is now co-loaded with `runTarskiValidation` via a parallel `Promise.all` in `loadTarskiHelpers()`. Net: ~480 LOC dropped from initial paint; only zero-cost `import type { PillarKey }` references remain. |
+| TBD | `perf(bundle)`: pull the 1311-LOC `node-timeseries-map.ts` + 145-LOC `generateTemporalData` synthetic generator off the eager bundle. `RiskPropagationFlow` (critical path) dynamic-loads `getNodeDataDescription` via effect+state — the 6px data-label badges briefly absent on first paint, then appear when the chunk lands. New `temporal-state-helpers.ts` (~130 LOC) houses the lightweight readers (`getNodeStateAt` / `getEdgeStateAt` / `getEventsInRange` / `getVisibleNodesAt` + types) so `useTemporalGraph` (used by RiskPropagationFlow, ModulePanel, etc.) stops transitively pulling the synthetic-data generator. `temporal-data.ts` re-exports for backward compat. |
+
+**2026-05-27 round (load-time round 5) — _merged as #447_**
+
+| PR | What |
+|---|---|
+| #447 | `perf(bundle)`: `domain-profiles.ts` (480 LOC of three profile definitions + pillar labels + estimator configs) fully off the eager bundle. Extracted `GEOPOLITICAL_MODULES` (the four tab labels) into a new `module-tabs.ts` (~40 LOC); `HeaderBar` now imports from there directly instead of pulling the full profile data. `ModulePanel`'s `isT1DDomain` check replaced with a direct `selectedDomains.some(id => id.startsWith("t1d-"))` prefix test (functionally equivalent for that use case, no profile resolution needed). `useApexStore`'s four `resolveDomainProfile` call sites are all inside the deferred Tarski `.then()` blocks already, so the import is now co-loaded with `runTarskiValidation` via a parallel `Promise.all` in `loadTarskiHelpers()`. Net: ~480 LOC dropped from initial paint; only zero-cost `import type { PillarKey }` references remain. |
 
 **2026-05-27 round (load-time round 4) — _merged as #446_**
 
@@ -102,6 +108,20 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: node-timeseries-map + synthetic generator off eager bundle
+
+**PR:** TBD — round 6 critical-path cleanup.
+
+**Trigger.** Audit after #447 found two more transitive eager pulls hidden behind innocuous-looking imports:
+1. `RiskPropagationFlow` (critical-path component) imports `getNodeDataDescription` from `@/lib/real-timeseries`. That helper just reads a constant map. But `real-timeseries.ts` (426 LOC) eagerly imports `NODE_TIMESERIES_MAP` from `node-timeseries-map.ts` — a 1311-LOC constant of timeseries source definitions. Net: ~1700 LOC of timeseries data rode into the critical-path bundle so RiskPropagationFlow could render the tiny 6px data-label badges.
+2. `useTemporalGraph` (used by RiskPropagationFlow, ModulePanel, TimeDial — everywhere with a timeline cursor) imported `getNodeStateAt` / `getEdgeStateAt` / `getEventsInRange` from `@/lib/temporal-data`. Those are pure readers (~70 LOC total) but the file also contained `generateTemporalData` (~145 LOC of synthetic-data generation + 50 LOC of event templates). The eager bundle paid for the generator even though it's only invoked once per session inside the dynamic-loaded `initTemporalData`.
+
+**Fix.**
+- **RiskPropagationFlow lazy data-description.** Replaced the static `import { getNodeDataDescription }` with an effect-loaded state pattern: `useEffect(() => import("@/lib/real-timeseries").then((mod) => setGetNodeDataDescription(() => mod.getNodeDataDescription)), [])`. The render site uses `getNodeDataDescription?.(card.nodeId)` so the badges are absent until the chunk lands (~50-100ms). Visual impact is negligible — these are 6px caption badges between the domain name and the omega bar.
+- **`temporal-state-helpers.ts` extracted.** New 130-LOC file housing the four reader functions plus the seven shared types (`TimeGranularity`, `TemporalEvent`, `NodeTemporalState`, `TemporalNodeData`, `EdgeTemporalState`, `TemporalEdgeData`, `TemporalDataset`). `temporal-data.ts` imports the types + the one helper it uses (`getNodeStateAt`) and re-exports the rest for backward compat. `useTemporalGraph` now imports from the lightweight file directly, so the eager bundle no longer pulls the synthetic generator.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
 
 ### 2026-05-27 — Shipped: domain-profiles fully off eager bundle (module-tabs split + lazy resolveDomainProfile)
 

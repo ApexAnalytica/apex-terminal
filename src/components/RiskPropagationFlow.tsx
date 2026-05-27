@@ -8,7 +8,17 @@ import { getDomainColor } from "@/lib/graph-color";
 import { buildRiskCards } from "@/lib/risk-cards";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
-import { getNodeDataDescription } from "@/lib/real-timeseries";
+// `getNodeDataDescription` lives in `real-timeseries.ts`, which transitively
+// pulls the 1311-LOC `node-timeseries-map.ts` constant. RiskPropagationFlow
+// is on the critical path; the data-label badges it renders from this
+// helper are tiny (6px) and absent for ~100ms wouldn't break the layout.
+// Dynamic-load via effect + state so the heavy map stays off first paint.
+type NodeDescFn = (nodeId: string) => {
+  description: string;
+  label: string;
+  unit: string;
+  source: string;
+} | null;
 import {
   feedDotClass,
   feedModeFromSource,
@@ -147,6 +157,22 @@ export default function RiskPropagationFlow() {
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
   const [collapsed, setCollapsed] = useState(false);
+
+  // Lazy-loaded data-description lookup. See the type definition above
+  // for why this is deferred. Initial render shows risk cards without
+  // the tiny data-label badge; once the chunk lands (one effect tick)
+  // the badges appear. Visual delta is negligible — the badge is a
+  // 6px caption between the domain name and the omega bar.
+  const [getNodeDataDescription, setGetNodeDataDescription] = useState<NodeDescFn | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("@/lib/real-timeseries").then((mod) => {
+      if (!cancelled) setGetNodeDataDescription(() => mod.getNodeDataDescription);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Ensure temporal data is initialized (may not be if TimeDial hasn't mounted yet)
   useEffect(() => {
@@ -463,7 +489,8 @@ export default function RiskPropagationFlow() {
                         {card.domain}
                       </div>
                       {(() => {
-                        const desc = getNodeDataDescription(card.nodeId);
+                        // null until the lazy real-timeseries chunk lands
+                        const desc = getNodeDataDescription?.(card.nodeId);
                         if (desc) {
                           return (
                             <div className="text-[6px] font-mono text-accent-cyan/60 truncate max-w-[120px]" title={`${desc.label} (${desc.unit})`}>

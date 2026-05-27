@@ -1,8 +1,15 @@
 import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getNodeStateAt, getEdgeStateAt, getEventsInRange } from "@/lib/temporal-data";
+// Lightweight readers — see `temporal-state-helpers.ts` for why this is
+// a separate file from `temporal-data.ts` (avoids pulling the synthetic-
+// data generator into hot consumers like this hook).
+import {
+  getNodeStateAt,
+  getEdgeStateAt,
+  getEventsInRange,
+  type TemporalEvent,
+} from "@/lib/temporal-state-helpers";
 import type { CausalGraph, CausalNode, CausalEdge } from "@/lib/types";
-import type { TemporalEvent } from "@/lib/temporal-data";
 
 export interface TemporalGraphSnapshot {
   /** The graph filtered/transformed to the selected time */

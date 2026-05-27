@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { useTemporalGraph } from "./useTemporalGraph";
 import type { CausalGraph } from "@/lib/types";
-import { DOMAIN_MAP } from "@/lib/domains";
+// DOMAIN_MAP lives in its own lightweight file so this hook (used by
+// every critical-path component with a filtered-graph view) doesn't
+// drag the full 333-LOC `domains.ts` catalog into the eager bundle.
+import { DOMAIN_MAP } from "@/lib/domain-map";
 
-// DOMAIN_MAP now lives next to DOMAIN_CARDS / DOMAIN_GROUPS in
-// `@/lib/domains`. Re-exported here so existing callers (DAGOverlay,
-// dataset tests, etc.) don't break.
+// Re-exported so existing callers (DAGOverlay, dataset tests, etc.)
+// don't break.
 export { DOMAIN_MAP };
 
 /**

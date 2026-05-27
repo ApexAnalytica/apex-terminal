@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 4)**
+**2026-05-27 round (load-time round 5)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: extract `applyTarskiFlags` + `clearTarskiFlags` + the `TarskiValidationReport` type into a new lightweight `tarski-flags.ts`; dynamic-import `runTarskiValidation` (which carries the 891-LOC AXIOM_LIBRARY + 800-LOC validation engine) inside the four store actions that need it (`runTarskiWithAxioms`, `setTruthFilter`, `applyFeedBatch`, `promoteAutoBridge`). Verified mode is opt-in — the heavy chunk only loads once per session at the first verified-mode trigger. Also lazy-loads `TimeDial` (1207 LOC) from `app/page.tsx` with a placeholder matching the dial's geometry — biggest single static-imported component finally moved off the eager bundle. |
+| TBD | `perf(bundle)`: `domain-profiles.ts` (480 LOC of three profile definitions + pillar labels + estimator configs) fully off the eager bundle. Extracted `GEOPOLITICAL_MODULES` (the four tab labels) into a new `module-tabs.ts` (~40 LOC); `HeaderBar` now imports from there directly instead of pulling the full profile data. `ModulePanel`'s `isT1DDomain` check replaced with a direct `selectedDomains.some(id => id.startsWith("t1d-"))` prefix test (functionally equivalent for that use case, no profile resolution needed). `useApexStore`'s four `resolveDomainProfile` call sites are all inside the deferred Tarski `.then()` blocks already, so the import is now co-loaded with `runTarskiValidation` via a parallel `Promise.all` in `loadTarskiHelpers()`. Net: ~480 LOC dropped from initial paint; only zero-cost `import type { PillarKey }` references remain. |
+
+**2026-05-27 round (load-time round 4) — _merged as #446_**
+
+| PR | What |
+|---|---|
+| #446 | `perf(bundle)`: extract `applyTarskiFlags` + `clearTarskiFlags` + the `TarskiValidationReport` type into a new lightweight `tarski-flags.ts`; dynamic-import `runTarskiValidation` (which carries the 891-LOC AXIOM_LIBRARY + 800-LOC validation engine) inside the four store actions that need it (`runTarskiWithAxioms`, `setTruthFilter`, `applyFeedBatch`, `promoteAutoBridge`). Verified mode is opt-in — the heavy chunk only loads once per session at the first verified-mode trigger. Also lazy-loads `TimeDial` (1207 LOC) from `app/page.tsx` with a placeholder matching the dial's geometry — biggest single static-imported component finally moved off the eager bundle. |
 
 **2026-05-27 round (load-time round 3) — _merged as #445_**
 
@@ -96,6 +102,21 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: domain-profiles fully off eager bundle (module-tabs split + lazy resolveDomainProfile)
+
+**PR:** TBD — final cleanup pass on the store + critical-path components.
+
+**Trigger.** After round 4 (#446) the only meaningful eager dep left in `useApexStore` was `resolveDomainProfile` from `domain-profiles.ts` (480 LOC). `HeaderBar` and `ModulePanel` were also pulling the full file for tiny needs.
+
+**Fix.**
+- **`module-tabs.ts` extraction.** `HeaderBar` was importing `GEOPOLITICAL_PROFILE` from domain-profiles just to map four module-tab labels (the SPIRTES / TARSKI / PEARL / PARETO chips). Moved the 4-entry `ManifoldModule[]` array into a new `src/lib/module-tabs.ts` (~50 LOC) with no profile data. `domain-profiles.ts` re-imports the array as `GEOPOLITICAL_MODULES` so the GEOPOLITICAL_PROFILE.modules field stays in sync. HeaderBar now pulls only the lightweight constant.
+- **`ModulePanel` t1d check.** Replaced `resolveDomainProfile(selectedDomains).id === "t1d"` (which required the full profile data) with `selectedDomains.some(id => id.startsWith("t1d-"))` — functionally equivalent for the "should we mount TissueCohortView?" gate, no profile resolution needed.
+- **`useApexStore` co-load.** The store's four `resolveDomainProfile` call sites were all inside the deferred `loadRunTarskiValidation().then(...)` blocks from round 4. Replaced the standalone `loadRunTarskiValidation` helper with `loadTarskiHelpers()` that parallel-imports both `tarski-data` and `domain-profiles` via `Promise.all`. Single network round-trip, both modules cached after first verified-mode trigger. The eager `import { resolveDomainProfile }` is replaced with a zero-cost `import type { PillarKey }`.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
+
+**State after round 5.** The eager `useApexStore` import graph is now: zustand, tarski-flags (lightweight), omega-pillar-wiring (hot path), cross-domain-bridging (hot path), graph-color, and types. All the heavy modules (tarski-data, domain-profiles, temporal-data, real-timeseries, cascade-simulator, mergeGraphs, validateSnapshot, snapshots/tarski-validator) load on-demand.
 
 ### 2026-05-27 — Shipped: tarski-data 891-LOC AXIOM_LIBRARY off eager bundle + TimeDial lazy
 

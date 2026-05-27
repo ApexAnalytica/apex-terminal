@@ -31,3 +31,32 @@ When you start a new session:
 - If a request straddles two sessions, the receiving session flags the boundary and asks to route — it does not absorb the work.
 - Don't duplicate code locations across scope docs. If something genuinely lives at a boundary, name it once and cross-reference.
 - Shared substrates (e.g. `useApexStore`, `DomainProfile` seam) are referenced from any session that touches them, but only one session is the canonical owner of changes — call that out in the scope doc.
+
+## Multi-device continuity (Mac / phone / travel)
+
+All session state lives in this repo. To pick up work from a different device:
+
+### MacBook (full Claude Code session)
+
+```bash
+git clone https://github.com/ApexAnalytica/apex-terminal.git
+cd apex-terminal
+npm install
+# Install Claude Code if needed: https://claude.ai/code
+claude
+```
+
+Then in the session, tell the agent which scope doc to read first — e.g. *"Read `docs/sessions/spirtes.md` and continue."* The scope doc is the single source of truth for what's in flight, recently merged, and pending.
+
+### Phone (read / approve only)
+
+- **GitHub mobile app** — review/approve open PRs, browse session docs (`docs/sessions/*.md`) directly in the repo, comment on issues.
+- **Working Copy (iOS)** — clone the repo locally, read MD files offline, edit and push small changes.
+- **claude.ai/code in mobile browser** — full Claude Code session from the phone if you need to drive code changes.
+
+### Keeping continuity across devices
+
+- **Always commit + push before switching devices.** If a session ends mid-task, push a WIP commit (`wip: <note>`) on the active branch so the next device sees it.
+- **The active branch is the canonical state.** Currently: `claude/spirtes-tarski-engines-tbQHn`. When that branch is fully merged, the next session opens a new one.
+- **Scope docs are the handoff.** After each significant change, the owning session doc gets updated — so a fresh device + fresh agent can read the doc and know exactly where things stand without conversation history.
+- **Open PRs are the to-do list.** `gh pr list` (or GitHub mobile) shows what's pending review across devices.

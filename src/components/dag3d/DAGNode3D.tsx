@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalNode, NodeEpochState } from "@/lib/types";
-import { getCategoryColor } from "@/lib/graph-data";
+import { getCategoryColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
 import { NodeMetrics } from "@/lib/graph-layout";
 import { useApexStore } from "@/stores/useApexStore";

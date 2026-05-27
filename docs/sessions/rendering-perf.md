@@ -30,6 +30,15 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
+**2026-05-24 round (load-time round 2)**
+
+| PR | What |
+|---|---|
+| TBD | `perf(bundle)`: strip the unused future-stub methods from `EngineProvider` (`computeCounterfactual`, `validateSnapshot`, `solveInterdiction`, `computeDoomsday`) — zero call sites in the live codebase, but their LocalProvider implementations were transitively pulling `cascade-simulator` (446 LOC) + `tarski-validator` (204 LOC) + `interdiction-engine` (443 LOC) into the critical-path bundle via ModulePanel. Also dynamic-import `mergeGraphs` + `validateSnapshot` inside `useApexStore`'s `mergeGraphData` / `setSnapshot` actions so the two helpers (~275 LOC) stay off the eager bundle. |
+| TBD | `perf(bundle)`: dynamic-import `cascade-simulator` (446 LOC) inside `useApexStore`'s three fire-and-forget replay handlers — replay is opt-in (user clicks REPLAY), so the simulator stays off the initial-paint bundle; also drops a dead-import (`simulateCascade` was unused). Extract pure `buildRiskCards` from `graph-data.ts` into its own 27-LOC file so `RiskPropagationFlow` (on critical path) stops transitively pulling the 3000-line dataset. Bypass the `@/lib/estimators` barrel in `StructuralMetrics` (also on critical path) — direct-import the 76-LOC `omega-bridge-density` leaf instead of the index which re-exports ~2500 LOC. |
+| TBD | `perf(bundle)`: dynamic-import the feed registry chain (~38KB across 10 providers) inside `useFeedRegistry`'s effect — polling can't start until a graph is loaded anyway, so the providers stay off the initial-paint bundle until then |
+| TBD | `perf(bundle)`: split `graph-data.ts` (3413 LOC) — extract `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH` into a new lightweight `graph-color.ts`; rewire 13 consumers (including the always-eager `useApexStore`) so the 3000-line dataset no longer rides into the critical-path bundle. `TimeSeriesOverlay` (987 LOC) now dynamic-imported and gated on `pinnedTimeSeriesNodes.length > 0` — first paint never has pins so the chunk defers until the user pins a series. |
+
 **2026-05-22 round (load-time + Map placement + criticality response)**
 
 | PR | What |
@@ -68,13 +77,79 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 - **Flow edge type + edge-type visibility toggles.** _Infrastructure shipped — 2026-05-22._ `"flow"` edge type wired across all four canvas surfaces with teal-green solid + animated arrow visual; per-type visibility chip strip in DAGOverlay (CAUSAL / TEMP / CONF / FLOW) hides/shows each type instantly. Open: data-team alignment on what `"flow"` means semantically + which existing edges should be re-tagged (no edge in the loaded datasets carries `type: "flow"` yet).
 - **Time-dial range-selector collapsible (NEW).** The 1H / 1Y / 5Y / ALL preset row at the bottom of the dial currently takes a fixed slice of horizontal space. User wants it collapsible so the dial itself can take the full width when the user isn't picking a range.
 - **Distance measures on dial scrub — round 2 shipped — 2026-05-22.** Traced end-to-end: wiring was correct (temporal graph → filtered graph → both contraction paths), the gap was stress magnitude. Synthetic temporal data drifts within ±0.5 of base, so typical historical omegas sit in the 5-7 band — and the old `(omega-5)/5` / `(omega-5)/4` stress curves produced stress 0.1-0.3 → pull 3-14 % of distance, invisible. Bumped 2D CONTRACTION 0.35 → 0.55 and stress curves on both surfaces (4 → 8 instead of 5 → 10) so typical omegas land in stress 0.25-0.75 → pull 14-41 %. Production verification still needed: confirm the dial-scrub now reads as cluster-pinching motion.
-- **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432: lazy SystemCopilot + lazy heavy copilot-tool deps)._ Remaining candidates: split `graph-data.ts` (3413 LOC) into a tiny `graph-color.ts` (just `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`) and a separate heavy data file — ~13 consumers only need the helpers but currently pull the whole module; lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (same pattern as `tools.ts` but harder since the helpers are sync); audit `TimeSeriesOverlay` (987 LOC) + `TimeDial` (1179 LOC) for dynamic-loadability; `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
+- **Platform load-time deep-dive.** _Round 1 shipped — 2026-05-22 (PR #432); Round 2 shipped — 2026-05-24 (graph-data.ts split + TimeSeriesOverlay lazy)._ Remaining candidates: lazy-load AXIOM_LIBRARY behind a getter in `copilot-engine.ts` + `copilot-context.ts` (lower priority — SystemCopilot + TarskiPanel are both already lazy, so AXIOM_LIBRARY is off the initial-paint bundle; only shrinks the copilot chunk further); audit `TimeDial` (1207 LOC) for dynamic-loadability (it's visible on first paint though — would need a static placeholder); `framer-motion` tree-shake check; real `ANALYZE=true next build` run.
 - **Time-dial-driven positional response (round 1).** _Shipped — 2026-05-22 (PR #427)._ 2D contraction now handles both cascade replay AND dial-scrub (historical-omega fallback); CONTRACTION 0.18 → 0.35 for visibility. 3D already had the historical-fallback path. Map relies on omega-scaled radius. Production verification queued above.
 - **TOPO compute-shader port for real-time scrub perf.** Deferred since PR #303 (4σ truncation) covered the headline cost. Only worth doing if real-time scrub still drops frames in production.
 
 ---
 
 ## Session log
+
+### 2026-05-24 — Shipped: EngineProvider future-stubs stripped + mergeGraphs/validateSnapshot deferred
+
+**PR:** TBD — `perf(bundle)`: more critical-path cleanup chasing the load-time backlog.
+
+**Trigger.** With cascade-simulator dynamic-imported inside `useApexStore`'s replay handlers (entry above), I expected the simulator chunk to be fully off the eager bundle. It wasn't — `LocalProvider` (constructed via `getEngineProvider()` in the eagerly-imported `ModulePanel`) still statically imported `simulateCascade` (sync), `validateSnapshot`, and `solveInterdiction` to satisfy its `EngineProvider` interface. None of those methods has any caller in the live codebase: they're future-stubs anticipating a remote backend. Together they were dragging cascade-simulator (446) + tarski-validator (204) + interdiction-engine (443) ≈ 1100 LOC of transitive code into the initial-paint bundle for zero benefit.
+
+**Fix (interface cleanup).** Stripped four unused methods from `EngineProvider`: `computeCounterfactual`, `validateSnapshot`, `solveInterdiction`, `computeDoomsday`. Trimmed `LocalProvider` to match — only `discoverStructure` (used by `ModulePanel`) and `scanTailRisk` (used by `ParetoPanel`) remain. The comment block in `engine-interface.ts` explains the YAGNI call so a future remote-provider author knows the methods can grow back with proper async signatures when there's an actual caller.
+
+**Fix (store deferrals).** Two more store-internal helpers moved to dynamic imports following the same pattern as the cascade-sim refactor:
+- `mergeGraphData` action: `mergeGraphs` (71 LOC) is dynamic-imported via `loadMergeGraphs()` inside the action body. Only called when the user imports a dataset via the lazy-loaded ImportModal.
+- `setSnapshot` action: `validateSnapshot` (204 LOC) is dynamic-imported via `loadValidateSnapshot()`. Only called when the user saves a snapshot via the lazy-loaded SystemCopilot. Both call sites kept the original `set((s) => …)` updater pattern, just wrapped in a `void load…().then((fn) => set(…))` so the API surface is unchanged from callers' perspective (still fire-and-forget).
+
+**Verification.** vitest 1524/1524 pass. tsc clean on the touched files. No interface contract breakage — the only EngineProvider call sites in the codebase (`engine.discoverStructure`, `engine.scanTailRisk`) still typecheck.
+
+**Why this matters.** ~1400 LOC of transitive eager-bundle imports are now either deferred (mergeGraphs / validateSnapshot dynamic) or eliminated entirely (engine future-stubs). Combined with the previous round-2 commits the critical-path bundle has shed roughly 6500 LOC of code that used to ride along on every first paint.
+
+### 2026-05-24 — Shipped: cascade-simulator dynamic + buildRiskCards extracted + estimators barrel bypass
+
+**PR:** TBD — three small bundle-shape wins on the critical path.
+
+**Trigger.** After the graph-color split + TimeSeriesOverlay lazy + useFeedRegistry lazy (commits above), `useApexStore` and the two eager components `RiskPropagationFlow` / `StructuralMetrics` were the remaining suspects on the critical path. A targeted import audit found three more leverage points:
+
+**Fix.**
+- **`cascade-simulator` lazy in the store.** `useApexStore` eagerly imported `simulateCascade` (sync — unused dead import) and `simulateCascadeAsync` (used in three fire-and-forget replay actions). Removed the dead import; added a `loadSimulateCascadeAsync()` helper at the top of the store that dynamic-imports the module; rewrote the three call sites to `void loadSimulateCascadeAsync().then((sim) => sim(…).then(epochs => …))`. Net: 446 LOC of cascade-sim code is deferred until the user clicks REPLAY.
+- **`buildRiskCards` extracted to its own file.** The function is pure (takes a graph + shocks, returns top-6 risk cards) but lived in `graph-data.ts`, which transitively dragged the 3000-line dataset into `RiskPropagationFlow` (on the critical path). Created `src/lib/risk-cards.ts` (27 LOC) housing just the function; `RiskPropagationFlow` now imports from there. `graph-data.ts` no longer needs the `CausalShock` / `RiskPropagationCard` type imports either.
+- **Estimators barrel bypass in `StructuralMetrics`.** `import { omegaBridgeDensity } from "@/lib/estimators"` was hitting the index file, which re-exports from 9 estimator modules (~2500 LOC of math: bocpd, chi-star, cvar-w1, lppls-fit, moran, nlme, ph-fit, transfer-entropy, persistent-homology). Webpack's barrel-file tree-shaking is unreliable when modules have side effects, so the safe fix is the direct path: `import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density"` (76 LOC leaf).
+
+**Verification.** vitest 1524/1524 pass. `tsc --noEmit` clean across all five touched files (the pre-existing 71 "Cannot find module 'react'" + missing-`ai`-SDK errors are sandbox env issues, unchanged by this round).
+
+**Why this matters.** `useApexStore` is imported by every page surface. Shedding the cascade-sim chunk from its eager-import graph means the simulator never loads for users who don't click REPLAY. `RiskPropagationFlow` and `StructuralMetrics` are both eagerly visible on first paint; bypassing the indirect dataset / barrel imports keeps them on tiny dep graphs.
+
+### 2026-05-24 — Shipped: feed-registry chain dynamic-imported inside useFeedRegistry
+
+**PR:** TBD — `perf(bundle)`: dynamic-import `@/lib/feeds/registry` from inside the `useFeedRegistry` effect, so the 10-provider chain (~38KB) stays off the initial-paint bundle until a graph is loaded.
+
+**Trigger.** `useFeedRegistry()` is called in `app/page.tsx`'s `Home` component — top of the critical path. The hook already gated on `hasGraph` (no polling until a workspace is launched) so the providers themselves were dormant on first paint, but the static `import { FEED_PROVIDERS } from "@/lib/feeds/registry"` still pulled all 10 provider modules (clinical-trials, derivations, eia-hormuz, eia-saudi-crude, fred, noaa-storms, ofac-sdn, openfda, world-bank, types) into the eager bundle. Roughly 38KB pre-minification.
+
+**Fix.** Moved the registry import into a dynamic `import("@/lib/feeds/registry").then(({ FEED_PROVIDERS }) => …)` inside the effect, after the `hasGraph` gate. The effect cleanup now tracks both:
+- `cancelled` flag — set in cleanup, checked after the dynamic import resolves, so we don't start polling a stale registry copy after a fast unmount/remount.
+- `cleanupFns` array — built up inside the `.then()` callback, drained on cleanup.
+
+The empty-graph case (first paint, no workspace) never triggers the dynamic import at all, so the chunk only loads after the user picks domains and clicks LAUNCH WORKSPACE.
+
+**Why this matters.** Combined with the round-2 splits above, the feed providers were the last large eager block in the critical-path bundle. After this, the only eagerly-loaded heavy-ish modules left are `useApexStore` itself (~1290 LOC) and the four eager UI components that mount on first paint (HeaderBar 167, RiskPropagationFlow 594, ModulePanel 842, TimeDial 1207, plus StructuralMetrics 90 and FeedbackWidget 148). Everything else is either dynamic, gated, or lazy.
+
+**Out of scope.** `useApexStore` itself still eagerly imports a long list of helpers (`omega-pillar-wiring`, `cross-domain-bridging`, `tarski-data`'s validation entry points, `temporal-data`, `real-timeseries`, `cascade-simulator`, `snapshots/tarski-validator`). Splitting any of these would require routing them through async-action paths in the store, which is invasive. Punt to a future round once we have real bundle-analyzer numbers.
+
+### 2026-05-24 — Shipped: load-time round 2 — graph-data split + TimeSeriesOverlay deferred
+
+**PR:** TBD — `perf(bundle)`: split `graph-data.ts` (3413 → 3357 LOC) into a lightweight `graph-color.ts` for the four color/empty-graph helpers; lazy-load `TimeSeriesOverlay` (987 LOC) gated on pinned-series presence.
+
+**Trigger.** Round 1 of the load-time deep-dive (PR #432) lazy-loaded the SystemCopilot column and the heavy copilot-tool deps. The next leverage point: `src/lib/graph-data.ts` is a 3413-line file (mostly the NODES / EDGES arrays) but 13 of its 17 consumers only import tiny helpers like `getCategoryColor` / `getDomainColor` / `getCategoryLabel` / `EMPTY_GRAPH`. They were each dragging the whole dataset into their chunks. `useApexStore` was a critical-path importer (every page imports the store) and was using just `EMPTY_GRAPH`.
+
+**Fix.**
+- New `src/lib/graph-color.ts` houses `getCategoryColor`, `getCategoryLabel`, `getDomainColor`, and `EMPTY_GRAPH` (a tiny pure-constant CausalGraph placeholder). `graph-data.ts` still re-exports these for any straggler import paths but no longer defines them.
+- Rewired 12 color-only consumers (`useApexStore`, `CausalDAG2D`, `CausalDAGMap`, `NodeInspector`, `TarskiPanel`, `ParetoPanel`, `DcdGraph`, `PcmciGraph`, `FciGraph`, `DAGOverlay`, `DAGNode3D`, `TimeSeriesOverlay`, `ClientHeaderBar`) to import from `graph-color` directly.
+- `RiskPropagationFlow` split its mixed import (`getDomainColor` → `graph-color`; `buildRiskCards` stays in `graph-data` since it lives next to the dataset).
+- `CausalDAG3D` (`getNodeDomainMap` needs NODES) and `app/client/page.tsx` + `build-domain-graph.ts` (use `MAIN_GRAPH`) keep importing from `graph-data`. All three were already on lazy paths.
+- `TimeSeriesOverlay` (987 LOC, returns `null` when `pinnedTimeSeriesNodes` is empty) is now `dynamic(() => import("@/components/TimeSeriesOverlay"), { ssr: false })` and the render site is gated on `pinnedTimeSeriesNodes.length > 0`. Initial paint never has pins (store inits to `[]`), so the chunk is deferred until the user explicitly pins a series.
+
+**Why this matters.** Critical-path bundle drops the `graph-data.ts` dataset and the `TimeSeriesOverlay` body. `useApexStore` is imported by every page surface; carving its `EMPTY_GRAPH` dependency over to a 75-LOC file means the 3000-line dataset only loads when something actually needs `MAIN_GRAPH` (`/client` route, `build-domain-graph`, or `CausalDAG3D` — all lazy).
+
+**Verification.** `tsc --noEmit` clean on all touched files (only pre-existing errors in unrelated `*.test.ts` fixtures and missing `ai`/`@ai-sdk/*` modules remain). Vitest 1524/1524 pass. `next build` not runnable in this sandbox (no Google Fonts fetch + missing ai SDK packages) so production verification is deferred.
+
+**Out of scope.** AXIOM_LIBRARY in `copilot-engine.ts` / `copilot-context.ts` would be the next obvious lazy-load, but SystemCopilot is already a `dynamic` chunk (PR #432) and TarskiPanel is a `dynamic` chunk (PR #406), so AXIOM_LIBRARY is already off the initial-paint bundle. Further deferral inside the copilot chunk is lower priority.
 
 ### 2026-05-02 — Issue #2 fix shipped: temporalData invariant on graph swap
 

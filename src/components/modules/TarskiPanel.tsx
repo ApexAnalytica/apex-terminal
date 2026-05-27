@@ -7,7 +7,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
 import { resolveDomainProfile } from "@/lib/domain-profiles";
 

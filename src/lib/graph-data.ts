@@ -2,11 +2,19 @@ import {
   CausalGraph,
   CausalNode,
   CausalEdge,
-  CausalShock,
-  RiskPropagationCard,
   GraphMetadata,
   OmegaFragilityProfile,
 } from "./types";
+
+// Re-export lightweight helpers from graph-color so existing callers keep
+// working. New code should import directly from "@/lib/graph-color" to
+// avoid pulling this 3000-line dataset into the bundle.
+export {
+  EMPTY_GRAPH,
+  getCategoryColor,
+  getCategoryLabel,
+  getDomainColor,
+} from "./graph-color";
 
 // ─── Helper ─────────────────────────────────────────────────────
 // Pillars: I=Irreplaceability, R=Restoration Latency, J=Jurisdictional Hazard,
@@ -3271,20 +3279,6 @@ export const MAIN_GRAPH: CausalGraph = {
   metadata: METADATA,
 };
 
-export const EMPTY_GRAPH: CausalGraph = {
-  nodes: [],
-  edges: [],
-  metadata: {
-    density: 0,
-    constraintType: "none",
-    verificationStatus: "UNVERIFIED",
-    totalNodes: 0,
-    totalEdges: 0,
-    inconsistentEdges: 0,
-    restrictedNodes: 0,
-  },
-};
-
 // ─── DCD Sub-Graph (for Trinity Panel) ───────────────────────────
 export const DCD_NODES: CausalNode[] = NODES.filter(
   (n) => n.discoverySource === "DCD" || n.discoverySource === "merged"
@@ -3329,81 +3323,6 @@ export const FCI_EDGES: CausalEdge[] = EDGES.filter(
     (FCI_NODES.some((n) => n.id === e.source) &&
       FCI_NODES.some((n) => n.id === e.target))
 );
-
-// ─── Risk Cards Builder ──────────────────────────────────────────
-export function buildRiskCards(
-  graph: CausalGraph,
-  shocks: CausalShock[]
-): RiskPropagationCard[] {
-  const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
-  const shockMultiplier = Math.min(1, totalSeverity);
-
-  return graph.nodes
-    .map((node) => ({
-      nodeId: node.id,
-      label: node.label,
-      category: node.category,
-      omegaScore: parseFloat(
-        (node.omegaFragility.composite * (1 + shockMultiplier * 0.05)).toFixed(1)
-      ),
-      domain: node.domain,
-      globalConcentration: node.globalConcentration,
-    }))
-    .sort((a, b) => b.omegaScore - a.omegaScore)
-    .slice(0, 6);
-}
-
-// ─── Category Colors ─────────────────────────────────────────────
-export function getCategoryColor(category: string): string {
-  switch (category) {
-    case "manufacturing": return "#00e5ff";
-    case "infrastructure": return "#7c4dff";
-    case "economic": return "#ffab00";
-    case "finance": return "#ff6d00";
-    case "energy": return "#00e676";
-    case "geopolitical": return "#ff1744";
-    case "communications": return "#448aff";
-    case "agriculture": return "#76ff03";
-    case "science": return "#e040fb";
-    default: return "#5a5e72";
-  }
-}
-
-export function getCategoryLabel(category: string): string {
-  return category.toUpperCase();
-}
-
-// ─── Domain Colors ───────────────────────────────────────────────
-export function getDomainColor(domain: string): string {
-  switch (domain) {
-    case "Saudi Aramco Energy": return "#00e676";
-    case "QatarEnergy LNG": return "#00e5ff";
-    case "QAFCO Fertilizer": return "#76ff03";
-    case "Ma'aden Phosphate": return "#ffab00";
-    case "Financial Contagion": return "#ff6d00";
-    case "Sovereign Risk": return "#ffab00";
-    case "Supply Chain Food Security": return "#00e5ff";
-    case "Undersea Cable Infrastructure": return "#7c4dff";
-    case "Macro Impact: Labor, Growth & Housing": return "#40c4ff";
-    case "Macro Impact: Inflation & Policy": return "#ff80ab";
-    // Defense & ISR (ATHENA) domains
-    case "Drone Swarms": return "#ff4081";       // pink
-    case "SATCOM": return "#448aff";             // blue
-    case "ISR Fusion": return "#ea80fc";         // purple-pink
-    case "Chip Embargo": return "#ff9100";       // deep orange
-    case "Secure Compute": return "#69f0ae";     // mint green
-    case "Kill Chain": return "#ff1744";         // red
-    // Life sciences (T1D β-cell) domains
-    case "T1D Autoimmune": return "#ff80ab";     // soft pink
-    case "T1D \u03B2-cell Biology": return "#40c4ff"; // T1D brand cyan
-    case "T1D Metabolic": return "#69f0ae";      // mint green
-    case "T1D Intervention": return "#ffab00";   // amber
-    case "T1D Complications": return "#ff6d00";  // deep orange
-    // AI Safety / endogenous catastrophe (Ghauri 2025 D.Eng.)
-    case "AI Safety / IDS": return "#7B68EE";    // medium slate violet
-    default: return "#5a5e72";
-  }
-}
 
 // ─── Node Domain Map (for cross-domain edge detection) ───────────
 export function getNodeDomainMap(): Record<string, string> {

@@ -7,7 +7,7 @@ import type { FeatureCollection, Point, LineString, Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { chiStar } from "@/lib/estimators/chi-star";

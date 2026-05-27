@@ -4,7 +4,7 @@ import { useDeferredValue, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { computeOmegaState, computeDoomsdayState } from "@/lib/omega-engine";
-import { omegaBridgeDensity } from "@/lib/estimators";
+import { omegaBridgeDensity } from "@/lib/estimators/omega-bridge-density";
 import { bridgeDensityBand } from "@/lib/omega-bridge-density-display";
 
 export default function StructuralMetrics() {

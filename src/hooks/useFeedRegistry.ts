@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useApexStore } from "@/stores/useApexStore";
-import { FEED_PROVIDERS } from "@/lib/feeds/registry";
 
 /**
  * Polls every registered live-data provider on its declared cadence and
@@ -22,6 +21,11 @@ import { FEED_PROVIDERS } from "@/lib/feeds/registry";
  * every node mutation — the tick reads the latest graph via
  * `useApexStore.getState()` at fetch time so it stays current without
  * thrashing the timers.
+ *
+ * Lazy registry import: the registry pulls ~10 provider modules (~38KB
+ * uncompressed). Until `hasGraph` is true we have no work to do, so the
+ * registry is dynamic-imported inside the effect — this keeps the entire
+ * feeds chain off the initial-paint bundle.
  */
 export function useFeedRegistry() {
   const applyFeedBatch = useApexStore((s) => s.applyFeedBatch);
@@ -29,39 +33,46 @@ export function useFeedRegistry() {
 
   useEffect(() => {
     if (!hasGraph) return;
-    const cleanups: Array<() => void> = [];
+    let cleanupFns: Array<() => void> = [];
+    let cancelled = false;
 
-    for (const provider of FEED_PROVIDERS) {
-      const controller = new AbortController();
+    import("@/lib/feeds/registry").then(({ FEED_PROVIDERS }) => {
+      if (cancelled) return;
 
-      const tick = async () => {
-        try {
-          const res = await fetch(provider.endpoint, { signal: controller.signal });
-          if (!res.ok) return;
-          const payload = await res.json();
-          if (controller.signal.aborted) return;
-          // Read CURRENT nodes at tick time so the matcher sees the latest
-          // graph without forcing the effect to re-run on every mutation.
-          const currentNodes = useApexStore.getState().graphData.nodes;
-          const batch = provider.matchPayload(payload, currentNodes);
-          // Even an empty `updates` array is dispatched, so the store can
-          // run its stale-signal cleanup pass for `signalKinds`.
-          applyFeedBatch(batch);
-        } catch {
-          // Silent — feeds are non-critical; next tick will retry.
-        }
-      };
+      for (const provider of FEED_PROVIDERS) {
+        const controller = new AbortController();
 
-      tick();
-      const interval = setInterval(tick, provider.pollIntervalMs);
-      cleanups.push(() => {
-        clearInterval(interval);
-        controller.abort();
-      });
-    }
+        const tick = async () => {
+          try {
+            const res = await fetch(provider.endpoint, { signal: controller.signal });
+            if (!res.ok) return;
+            const payload = await res.json();
+            if (controller.signal.aborted) return;
+            // Read CURRENT nodes at tick time so the matcher sees the latest
+            // graph without forcing the effect to re-run on every mutation.
+            const currentNodes = useApexStore.getState().graphData.nodes;
+            const batch = provider.matchPayload(payload, currentNodes);
+            // Even an empty `updates` array is dispatched, so the store can
+            // run its stale-signal cleanup pass for `signalKinds`.
+            applyFeedBatch(batch);
+          } catch {
+            // Silent — feeds are non-critical; next tick will retry.
+          }
+        };
+
+        tick();
+        const interval = setInterval(tick, provider.pollIntervalMs);
+        cleanupFns.push(() => {
+          clearInterval(interval);
+          controller.abort();
+        });
+      }
+    });
 
     return () => {
-      for (const fn of cleanups) fn();
+      cancelled = true;
+      for (const fn of cleanupFns) fn();
+      cleanupFns = [];
     };
   }, [hasGraph, applyFeedBatch]);
 }

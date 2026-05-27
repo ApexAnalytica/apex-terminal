@@ -9,7 +9,6 @@ import HeaderBar from "@/components/HeaderBar";
 import RiskPropagationFlow from "@/components/RiskPropagationFlow";
 import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
-import TimeDial from "@/components/TimeDial";
 import FeedbackWidget from "@/components/FeedbackWidget";
 
 // SystemCopilot pulls a heavy dep tree on its static-import chain:
@@ -59,6 +58,23 @@ const TimeSeriesOverlay = dynamic(
   () => import("@/components/TimeSeriesOverlay"),
   { ssr: false }
 );
+
+// TimeDial is the largest single static-imported component on the
+// critical path (1207 LOC). It IS visible on first paint (timeline
+// scrubber at the bottom) but the canvas above is the user's focus,
+// and the dial can land ~50-100ms later without breaking flow. A
+// static placeholder matches the dial's geometry so the layout
+// doesn't jump when the real chunk lands.
+const TimeDial = dynamic(() => import("@/components/TimeDial"), {
+  ssr: false,
+  loading: () => (
+    <div className="relative flex items-center gap-3 px-4 py-2 border-t border-border bg-surface-elevated/90 backdrop-blur-sm h-[72px]">
+      <div className="text-[8px] font-mono text-text-muted/60 animate-pulse">
+        LOADING TIMELINE…
+      </div>
+    </div>
+  ),
+});
 
 // DomainSelector + DemoFlowPlayerHost both transitively pull the
 // four large graph-data modules (~3000 lines combined) via

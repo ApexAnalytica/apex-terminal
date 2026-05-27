@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 3)**
+**2026-05-27 round (load-time round 4)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: dynamic-import `temporal-data` (334 LOC, `generateTemporalData`) and `real-timeseries` (426 LOC, `loadRealTemporalData`) inside the store's `initTemporalData` action — both only fire after a workspace is loaded, so the ~760 LOC chunk defers until then. Lazy-load `NewsInterpreterPanel` (~350 LOC) — only renders on the non-default Pareto tab. Lazy-load `NodeInspector` (~630 LOC) gated on `selectedNode != null` — initial paint never has a selection so the chunk only loads after the first click. |
+| TBD | `perf(bundle)`: extract `applyTarskiFlags` + `clearTarskiFlags` + the `TarskiValidationReport` type into a new lightweight `tarski-flags.ts`; dynamic-import `runTarskiValidation` (which carries the 891-LOC AXIOM_LIBRARY + 800-LOC validation engine) inside the four store actions that need it (`runTarskiWithAxioms`, `setTruthFilter`, `applyFeedBatch`, `promoteAutoBridge`). Verified mode is opt-in — the heavy chunk only loads once per session at the first verified-mode trigger. Also lazy-loads `TimeDial` (1207 LOC) from `app/page.tsx` with a placeholder matching the dial's geometry — biggest single static-imported component finally moved off the eager bundle. |
+
+**2026-05-27 round (load-time round 3) — _merged as #445_**
+
+| PR | What |
+|---|---|
+| #445 | `perf(bundle)`: dynamic-import `temporal-data` (334 LOC, `generateTemporalData`) and `real-timeseries` (426 LOC, `loadRealTemporalData`) inside the store's `initTemporalData` action — both only fire after a workspace is loaded, so the ~760 LOC chunk defers until then. Lazy-load `NewsInterpreterPanel` (~350 LOC) — only renders on the non-default Pareto tab. Lazy-load `NodeInspector` (~630 LOC) gated on `selectedNode != null` — initial paint never has a selection so the chunk only loads after the first click. |
 
 **2026-05-24 round (load-time round 2) — _merged as #444_**
 
@@ -90,6 +96,26 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: tarski-data 891-LOC AXIOM_LIBRARY off eager bundle + TimeDial lazy
+
+**PR:** TBD — the big one. Extracts the heaviest remaining critical-path imports.
+
+**Trigger.** After rounds 2 + 3 (#444, #445), the two largest remaining single-import deps on the eager bundle were:
+1. `tarski-data.ts` (1727 LOC: 891-LOC AXIOM_LIBRARY + 800-LOC validation engine + helpers) — eagerly imported by `useApexStore` for `runTarskiValidation` + `applyTarskiFlags` + `clearTarskiFlags`.
+2. `TimeDial` (1207 LOC) — eagerly imported by `app/page.tsx`; the largest single component on the critical path.
+
+**Fix (tarski-data split).** Created `src/lib/tarski-flags.ts` housing the two pure graph transforms (`applyTarskiFlags`, `clearTarskiFlags`) and the `TarskiValidationReport` type — total 76 LOC, no AXIOM_LIBRARY reference. `tarski-data.ts` now re-exports these for any straggler import paths but no longer defines them locally. `useApexStore` imports the lightweight trio from `tarski-flags` eagerly, and dynamic-imports `runTarskiValidation` via a new `loadRunTarskiValidation()` helper. The four call sites (`runTarskiWithAxioms`, `setTruthFilter`, `applyFeedBatch`, `promoteAutoBridge`) were rewritten:
+- `runTarskiWithAxioms` + `setTruthFilter("verified")` paths: simple `void load…().then((fn) => set(…))` wrapping — these are explicit user clicks, so the first-load ~50-100ms delay is acceptable.
+- `applyFeedBatch` + `promoteAutoBridge`: split into two phases — phase 1 applies the mutation + omega adjustments synchronously (atomic non-tarski state update), phase 2 trails the tarski revalidation only if `truthFilter === "verified"`. Each phase-2 block checks `s.truthFilter` again at fire-time so a mid-flight toggle to "raw" doesn't apply stale flags. The verified-mode user has already triggered the load via `setTruthFilter` so the dynamic-import resolves from the ES-module cache (microtask hop only).
+
+**Fix (TimeDial lazy).** Converted `TimeDial` to `dynamic(() => import("@/components/TimeDial"), { ssr: false, loading: <placeholder /> })`. The placeholder matches the dial's actual height (72px) and border style so the layout doesn't jump when the chunk lands. The dial is briefly unscrubbable (~50-100ms) but the canvas above is the user's first-paint focus and the dial sits at the bottom.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
+
+**Why this matters.** This was the single biggest remaining win — the tarski-data chunk alone is ~1700 LOC, the largest eager block left after rounds 2-3. Combined with TimeDial (1207 LOC) this round shaves ~2900 LOC off the initial-paint bundle. After this, the only eagerly-imported heavy components on `page.tsx` are HeaderBar (167), RiskPropagationFlow (594), ModulePanel (842 host + dynamic subpanels), StructuralMetrics (90), FeedbackWidget (148). The store's remaining eager deps are `applyOmegaLiveAdjustments` (220), `applyCrossDomainBridges` (305), `resolveDomainProfile` (480) — all hot-path, can't defer without UX cost.
+
+**Trade-off.** verified-mode feed events now show one render of un-flagged graph state before the tarski validation lands (one microtask hop). For most users this is imperceptible; only power-users in verified mode + watching feed events closely would see it. Mitigated by the cached ES-module fast-path on second+ verified-mode trigger.
 
 ### 2026-05-27 — Shipped: temporal-data lazy + NewsInterpreterPanel lazy + NodeInspector lazy
 

@@ -1,4 +1,17 @@
 import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode, getLiveSignal } from "./types";
+import type { TarskiValidationReport } from "./tarski-flags";
+
+// `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
+// type live in the lightweight `tarski-flags.ts` so consumers that only
+// need to flag/clear a graph (or carry the type signature) don't pull the
+// 891-LOC AXIOM_LIBRARY + 800-LOC validation engine below. Re-exported
+// here to keep existing callers working — new code should import from
+// `tarski-flags` directly to stay off the heavy chunk.
+export {
+  applyTarskiFlags,
+  clearTarskiFlags,
+  type TarskiValidationReport,
+} from "./tarski-flags";
 
 // ─── Axiom Library (Domain-Specific: Middle East Energy & Petrochemical) ──
 
@@ -462,13 +475,6 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
 // ─── Dynamic Tarski Validation Engine ─────────────────────────────
 // Runs axiom checks against real graph data and returns flagged edges/nodes
 
-export interface TarskiValidationReport {
-  inconsistentEdgeIds: Set<string>;
-  restrictedNodeIds: Set<string>;
-  proofTraces: ProofTrace[];
-  totalViolations: number;
-}
-
 export function runTarskiValidation(
   graph: CausalGraph,
   enabledAxiomIds?: Set<string>,
@@ -816,66 +822,6 @@ export function runTarskiValidation(
     totalViolations: inconsistentEdgeIds.size + restrictedNodeIds.size,
   };
 }
-
-// ─── Apply Validation to Graph ────────────────────────────────────
-// Returns a new graph with isInconsistent/isRestricted flags set
-
-export function applyTarskiFlags(
-  graph: CausalGraph,
-  report: TarskiValidationReport
-): CausalGraph {
-  const nodes = graph.nodes.map((n) => ({
-    ...n,
-    isRestricted: report.restrictedNodeIds.has(n.id),
-  }));
-
-  const edges = graph.edges.map((e) => ({
-    ...e,
-    isInconsistent: report.inconsistentEdgeIds.has(e.id),
-  }));
-
-  const inconsistentEdges = edges.filter((e) => e.isInconsistent).length;
-  const restrictedNodes = nodes.filter((n) => n.isRestricted).length;
-
-  return {
-    nodes,
-    edges,
-    metadata: {
-      ...graph.metadata,
-      inconsistentEdges,
-      restrictedNodes,
-      verificationStatus: inconsistentEdges > 0 || restrictedNodes > 0
-        ? "INCONSISTENCIES_FOUND"
-        : "VERIFIED",
-    },
-  };
-}
-
-// ─── Clear Tarski Flags (reset to RAW) ────────────────────────────
-
-export function clearTarskiFlags(graph: CausalGraph): CausalGraph {
-  const nodes = graph.nodes.map((n) => ({
-    ...n,
-    isRestricted: false,
-  }));
-
-  const edges = graph.edges.map((e) => ({
-    ...e,
-    isInconsistent: false,
-  }));
-
-  return {
-    nodes,
-    edges,
-    metadata: {
-      ...graph.metadata,
-      inconsistentEdges: 0,
-      restrictedNodes: 0,
-      verificationStatus: "UNVERIFIED" as const,
-    },
-  };
-}
-
 // ─── Legacy Proof Traces (kept for backward compat) ───────────────
 // These are now generated dynamically by runTarskiValidation()
 export const PROOF_TRACES: ProofTrace[] = [];

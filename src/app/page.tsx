@@ -6,8 +6,6 @@ import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
 import { useFeedRegistry } from "@/hooks/useFeedRegistry";
 import HeaderBar from "@/components/HeaderBar";
-import RiskPropagationFlow from "@/components/RiskPropagationFlow";
-import ModulePanel from "@/components/ModulePanel";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import FeedbackWidget from "@/components/FeedbackWidget";
 
@@ -58,6 +56,34 @@ const TimeSeriesOverlay = dynamic(
   () => import("@/components/TimeSeriesOverlay"),
   { ssr: false }
 );
+
+// RiskPropagationFlow (594 LOC + framer-motion) shows risk cards below
+// the canvas. On the empty-graph splash it just renders a collapsed
+// toggle bar with no cards — so we defer the chunk until the user has
+// loaded a workspace (`hasGraph`). The placeholder is the natural empty
+// state: nothing.
+const RiskPropagationFlow = dynamic(
+  () => import("@/components/RiskPropagationFlow"),
+  { ssr: false },
+);
+
+// ModulePanel (842 LOC + DiscoveryRunsPanel 523 + community-detection
+// 209 + discovery-uncertainty 106 + omega-engine 180 in transitive
+// chain) is the right pane. Visible on first paint but mostly empty
+// while the user is still in the DomainSelector modal — defer the
+// chunk with a placeholder matching the panel's fixed-width column.
+const ModulePanel = dynamic(() => import("@/components/ModulePanel"), {
+  ssr: false,
+  loading: () => (
+    <aside className="flex flex-col border-l border-border bg-surface h-full overflow-hidden" style={{ width: 320, minWidth: 320 }}>
+      <div className="px-4 py-3 border-b border-border bg-surface-elevated">
+        <div className="text-[10px] font-mono text-text-muted/60 animate-pulse">
+          LOADING MODULES…
+        </div>
+      </div>
+    </aside>
+  ),
+});
 
 // TimeDial is the largest single static-imported component on the
 // critical path (1207 LOC). It IS visible on first paint (timeline
@@ -160,6 +186,10 @@ const CausalDAGRelief = dynamic(() => import("@/components/CausalDAGRelief"), {
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
   const hasPinnedSeries = useApexStore((s) => s.pinnedTimeSeriesNodes.length > 0);
+  // Gate to defer the 594-LOC RiskPropagationFlow chunk until a graph
+  // is loaded. Empty graph means risk cards are empty anyway — the
+  // collapsible toggle bar at the bottom would render an empty strip.
+  const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
 
   // Live-data feed registry — single hook that polls every registered
   // provider on its declared cadence. Add a new provider in
@@ -258,8 +288,11 @@ export default function Home() {
                 what shape) is a UX decision we'll revisit separately. */}
           </div>
 
-          {/* Risk Propagation Flow */}
-          <RiskPropagationFlow />
+          {/* Risk Propagation Flow — lazy + gated on workspace load.
+              Empty graph renders no cards (just a collapsed toggle bar),
+              so deferring the chunk until hasGraph is true costs nothing
+              on first paint. */}
+          {hasGraph && <RiskPropagationFlow />}
 
           {/* Pinned time series comparison overlay — deferred until
               the user pins a series. The overlay returns null when

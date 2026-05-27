@@ -30,11 +30,17 @@ This is the running log for the Rendering & Perf session. Every change pushed fr
 
 A bottom-up read of the full log still works, but for a fresh session this is the fastest way to see the current state. Newest first.
 
-**2026-05-27 round (load-time round 7)**
+**2026-05-27 round (load-time round 8)**
 
 | PR | What |
 |---|---|
-| TBD | `perf(bundle)`: split `DOMAIN_MAP` (~30 LOC lookup table) out of `domains.ts` (333 LOC) into a new `domain-map.ts`. `useFilteredGraph` (used by every critical-path component that renders a filtered graph view: RiskPropagationFlow, StructuralMetrics, NodeInspector, all four canvas surfaces) now imports from the lightweight file. `domains.ts` re-exports for backward compat. Net: ~300 LOC of DOMAIN_GROUPS catalog data dropped from the useFilteredGraph transitive chain. |
+| TBD | `perf(bundle)`: lazy-load `RiskPropagationFlow` (594 LOC) gated on `hasGraph` — empty workspace splash just rendered a collapsed toggle bar anyway. Lazy-load `ModulePanel` (842 LOC + DiscoveryRunsPanel 523 + community-detection 209 + discovery-uncertainty 106 + omega-engine 180 in transitive chain) with a column-shaped placeholder. After this round, the only static-imported page-level components are HeaderBar (167), StructuralMetrics (90), and FeedbackWidget (148). |
+
+**2026-05-27 round (load-time round 7) — _merged as #449_**
+
+| PR | What |
+|---|---|
+| #449 | `perf(bundle)`: split `DOMAIN_MAP` (~30 LOC lookup table) out of `domains.ts` (333 LOC) into a new `domain-map.ts`. `useFilteredGraph` (used by every critical-path component that renders a filtered graph view: RiskPropagationFlow, StructuralMetrics, NodeInspector, all four canvas surfaces) now imports from the lightweight file. `domains.ts` re-exports for backward compat. Net: ~300 LOC of DOMAIN_GROUPS catalog data dropped from the useFilteredGraph transitive chain. |
 
 **2026-05-27 round (load-time round 6) — _merged as #448_**
 
@@ -114,6 +120,20 @@ A bottom-up read of the full log still works, but for a fresh session this is th
 ---
 
 ## Session log
+
+### 2026-05-27 — Shipped: RiskPropagationFlow + ModulePanel lazy
+
+**PR:** TBD — round 8, deferring the two largest remaining eager components in `app/page.tsx`.
+
+**Trigger.** After rounds 2-7 the eager-bundle had been cut substantially, but `RiskPropagationFlow` (594 LOC + framer-motion + the entire useFilteredGraph chain) and `ModulePanel` (842 LOC + DiscoveryRunsPanel 523 + community-detection 209 + discovery-uncertainty 106 + omega-engine 180 in the transitive chain) were still static-imported. Both render their main content only after a workspace is loaded:
+- RiskPropagationFlow's risk cards strip is empty on an empty graph (the toggle bar shows but it's a collapsed-default thin row).
+- ModulePanel's right pane sits behind the DomainSelector modal during workspace selection — the user can't even see it.
+
+**Fix.** Both converted to `next/dynamic`. RiskPropagationFlow is gated on `hasGraph` in the render site (so the chunk only loads after the workspace launches). ModulePanel gets a column-shaped placeholder (320px wide, "LOADING MODULES…" header) so the layout doesn't jump when the chunk lands.
+
+**Verification.** vitest 1524/1524 pass. tsc clean.
+
+**State after round 8.** The only static-imported page-level components in `app/page.tsx` are `HeaderBar` (167), `StructuralMetrics` (90), and `FeedbackWidget` (148). Everything else is dynamic + gated on the right user trigger.
 
 ### 2026-05-27 — Shipped: DOMAIN_MAP split out of domains.ts
 

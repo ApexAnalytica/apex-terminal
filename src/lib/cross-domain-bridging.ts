@@ -128,10 +128,8 @@ function labelTokens(label: string): Set<string> {
   );
 }
 
-/** Jaccard similarity between two label token sets. */
-function labelTokenJaccard(labelA: string, labelB: string): number {
-  const a = labelTokens(labelA);
-  const b = labelTokens(labelB);
+/** Jaccard similarity between two pre-tokenized label sets. */
+function tokenJaccard(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 || b.size === 0) return 0;
   let intersection = 0;
   for (const t of a) if (b.has(t)) intersection += 1;
@@ -140,21 +138,31 @@ function labelTokenJaccard(labelA: string, labelB: string): number {
 }
 
 /** Combined bridge score: 0.5·category + 0.3·labelOverlap + 0.2·Ω-anchor. */
-function scoreBridge(a: CausalNode, b: CausalNode): number {
+function scoreBridge(
+  a: CausalNode,
+  b: CausalNode,
+  tokensA: Set<string>,
+  tokensB: Set<string>,
+): number {
   const cat = categoryAffinity(a.category, b.category);
-  const lbl = labelTokenJaccard(a.label, b.label);
+  const lbl = tokenJaccard(tokensA, tokensB);
   const omegaAvg = (a.omegaFragility.composite + b.omegaFragility.composite) / 2;
   const omegaWeight = Math.min(1, omegaAvg / 10);
   return 0.5 * cat + 0.3 * lbl + 0.2 * omegaWeight;
 }
 
-function rationaleFor(a: CausalNode, b: CausalNode): string {
+function rationaleFor(
+  a: CausalNode,
+  b: CausalNode,
+  tokensA: Set<string>,
+  tokensB: Set<string>,
+): string {
   const parts: string[] = [];
   if (a.category === b.category) parts.push(`same category (${a.category})`);
   else if (categoryAffinity(a.category, b.category) > 0) {
     parts.push(`related categories (${a.category}↔${b.category})`);
   }
-  if (labelTokenJaccard(a.label, b.label) > 0.2) parts.push("label overlap");
+  if (tokenJaccard(tokensA, tokensB) > 0.2) parts.push("label overlap");
   parts.push(
     `Ω ${a.omegaFragility.composite.toFixed(1)}×${b.omegaFragility.composite.toFixed(1)}`,
   );
@@ -183,6 +191,17 @@ export function proposeCrossDomainBridges(
   const nodeById = new Map<string, CausalNode>();
   for (const node of graph.nodes) nodeById.set(node.id, node);
 
+  // Pre-tokenize labels once. The (i, j, A, B) cross-product below used
+  // to re-run `label.toLowerCase().split(...)` for both endpoints on
+  // every score AND every rationale — for a 2-component / ~350-node
+  // graph each label was tokenized on the order of 175 times. Cache
+  // the token sets here and the inner loop becomes O(1) per pair for
+  // the label-overlap component of the score.
+  const tokensById = new Map<string, Set<string>>();
+  for (const node of graph.nodes) {
+    tokensById.set(node.id, labelTokens(node.label));
+  }
+
   const candidates: BridgeCandidate[] = [];
   for (let i = 0; i < components.length; i++) {
     for (let j = i + 1; j < components.length; j++) {
@@ -193,13 +212,15 @@ export function proposeCrossDomainBridges(
           const b = nodeById.get(idB);
           if (!a || !b) continue;
           if (a.domain === b.domain) continue; // not a cross-domain bridge
-          const score = scoreBridge(a, b);
+          const tokensA = tokensById.get(idA)!;
+          const tokensB = tokensById.get(idB)!;
+          const score = scoreBridge(a, b, tokensA, tokensB);
           if (score < opts.minScore) continue;
           pairScores.push({
             sourceId: a.id,
             targetId: b.id,
             score,
-            rationale: rationaleFor(a, b),
+            rationale: rationaleFor(a, b, tokensA, tokensB),
             componentA: i,
             componentB: j,
           });

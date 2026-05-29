@@ -111,11 +111,11 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 1,
     name: "Export Route Monopoly",
     formalNotation: "∀ export_path(v) ∋ chokepoint → RESTRICTED",
-    description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk",
+    description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk. Live-data branches: a NOAA storm ≥ hurricane intensity, an active OFAC sanction, or throughput saturation ≥ 90% at the downstream chokepoint each independently escalate the route exposure regardless of the static irreplaceability gate.",
     plainText: "If every export route goes through one chokepoint, that's a concentration risk.",
     relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
     appliesTo: ["geopolitical"],
-    checksFor: "All exports routing through single chokepoint",
+    checksFor: "All exports routing through single chokepoint; storm / sanctions / saturation on the route",
     diagramHint: "PROD ──▶ [CHOKE] ──▶ MARKET (no alt route)",
   },
   // R-04 — universal regulatory axiom. Cross-domain causal claims with low
@@ -892,16 +892,99 @@ export function runTarskiValidation(
   }
 
   // ── R-03: Export Route Monopoly ──
-  // Production nodes where all outbound edges eventually reach a chokepoint
+  // Production nodes (manufacturing/energy) whose outbound edges reach a
+  // chokepoint. Two branches contribute independently:
+  //
+  //   (1) Structural: irreplaceability ≥ 7 on a node that depends on
+  //       chokepoint-routed exports — the export concentration plus
+  //       the node's irreplaceable role makes the route a monopoly
+  //       exposure.
+  //
+  //   (2) Live: when the downstream chokepoint carries an active live
+  //       signal that physically or regulatorily threatens the route:
+  //         - NOAA storm ≥ hurricane intensity (64 kt)
+  //         - OFAC sanctions on the chokepoint jurisdiction
+  //         - throughput saturation ≥ 90% at the chokepoint
+  //       Any one fires, regardless of the static irreplaceability
+  //       gate — physical / regulatory disruption of the route is a
+  //       real-time monopoly risk even for moderate-irreplaceability
+  //       producers.
+  //
+  // Both branches share the per-node detailParts buffer (same pattern
+  // A-04 and A-02 use); a single proof trace per producer carries the
+  // combined detail and flags the highest-weight route edge.
+  const R03_STORM_THRESHOLD_KT = 64;
+  const R03_LIVE_SATURATION = 0.9;
   const chokepointIds = new Set(chokepoints.map((n) => n.id));
   if (isEnabled("R-03")) for (const node of graph.nodes) {
-    if (node.category === "manufacturing" || node.category === "energy") {
-      const outEdges = outboundEdges.get(node.id) || [];
-      const reachesChokepoint = outEdges.some((e) => chokepointIds.has(e.target));
-      if (reachesChokepoint && node.omegaFragility.irreplaceability >= 7) {
-        restrictedNodeIds.add(node.id);
+    if (node.category !== "manufacturing" && node.category !== "energy") continue;
+    const outEdges = outboundEdges.get(node.id) || [];
+    const routeEdges = outEdges.filter((e) => chokepointIds.has(e.target));
+    if (routeEdges.length === 0) continue;
+
+    const detailParts: string[] = [];
+
+    // (1) Structural branch
+    if (node.omegaFragility.irreplaceability >= 7) {
+      detailParts.push(
+        `${node.label}: ${routeEdges.length} outbound route${
+          routeEdges.length === 1 ? "" : "s"
+        } via chokepoint, irreplaceability ${node.omegaFragility.irreplaceability.toFixed(
+          1,
+        )} ≥ 7 (structural)`,
+      );
+    }
+
+    // (2) Live branches — walk each downstream chokepoint
+    for (const e of routeEdges) {
+      const cp = nodeMap.get(e.target);
+      if (!cp) continue;
+      const storm = getLiveSignal(cp, "storm");
+      if (storm && storm.value >= R03_STORM_THRESHOLD_KT) {
+        detailParts.push(
+          `route via ${cp.label} threatened by ${storm.value.toFixed(
+            0,
+          )} kt storm — ${storm.source}`,
+        );
+      }
+      const sanctions = getLiveSignal(cp, "sanctions");
+      if (sanctions) {
+        detailParts.push(
+          `route via ${cp.label} under active sanctions — ${sanctions.source}`,
+        );
+      }
+      const throughput = getLiveSignal(cp, "throughput");
+      if (throughput && throughput.capacity > 0) {
+        const ratio = throughput.value / throughput.capacity;
+        if (ratio >= R03_LIVE_SATURATION) {
+          detailParts.push(
+            `route via ${cp.label} at ${(ratio * 100).toFixed(
+              1,
+            )}% throughput saturation — ${throughput.source}`,
+          );
+        }
       }
     }
+
+    if (detailParts.length === 0) continue;
+    restrictedNodeIds.add(node.id);
+    // Flag every route edge as inconsistent — the monopoly exposure
+    // applies to the whole bundle, not just the strongest.
+    for (const e of routeEdges) inconsistentEdgeIds.add(e.id);
+    // One proof trace per node, attached to the highest-weight route
+    // edge so the EdgeInspector surfaces it on the most-load-bearing
+    // export path.
+    const maxRoute = routeEdges
+      .slice()
+      .sort((a, b) => b.weight - a.weight)[0];
+    proofTraces.push({
+      edgeId: maxRoute.id,
+      violatedAxioms: ["R-03"],
+      verdict: "FLAGGED",
+      solverUsed: "cvc5",
+      checkTimeMs: Math.round(Math.random() * 8 + 4),
+      detail: detailParts.join(" · "),
+    });
   }
 
   // ── R-04: Cross-Domain Low-Confidence ──

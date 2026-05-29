@@ -14,6 +14,7 @@ import { useApexStore } from "@/stores/useApexStore";
 export const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
   "lag-correlation": "live",
   "pcmci-linear": "live",
+  "pcmci-plus": "live",
   "fci": "live",
   "notears": "live",
   "notears-mlp": "live",

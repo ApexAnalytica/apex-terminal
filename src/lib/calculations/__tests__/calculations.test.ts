@@ -136,6 +136,45 @@ describe("hhiCalculation", () => {
       ),
     ).toBe(false); // only 1 live inbound after filtering severed
   });
+
+  it("toSnapshot maps a scalar result to a calc:supply-hhi LiveDataPoint", () => {
+    const t = makeNode({ id: "t" });
+    const s1 = makeNode({ id: "s1" });
+    const s2 = makeNode({ id: "s2" });
+    const c = ctx({
+      graph: {
+        nodes: [t, s1, s2],
+        edges: [
+          makeEdge({ id: "e1", source: "s1", target: "t", weight: 0.6 }),
+          makeEdge({ id: "e2", source: "s2", target: "t", weight: 0.4 }),
+        ],
+      },
+      selectedNode: "t",
+    });
+    const result = hhiCalculation.compute(c)!;
+    const snap = hhiCalculation.toSnapshot!(result, c)!;
+    expect(snap.nodeId).toBe("t");
+    expect(snap.point.kind).toBe("calc:supply-hhi");
+    expect(snap.point.providerId).toBe("calc:supply-hhi");
+    expect(snap.point.capacity).toBe(10_000);
+    expect(snap.point.unit).toBe("HHI");
+    if (result.value.kind === "scalar") {
+      expect(snap.point.value).toBe(result.value.value);
+    }
+    expect(snap.point.source).toContain("Supply HHI");
+  });
+
+  it("toSnapshot returns null without a selected node", () => {
+    const noSel = ctx({ selectedNode: null });
+    expect(
+      hhiCalculation.toSnapshot!(
+        {
+          value: { kind: "scalar", value: 1000 },
+        },
+        noSel,
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("crossDomainEdgesCalculation", () => {

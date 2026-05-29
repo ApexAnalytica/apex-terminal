@@ -8,7 +8,7 @@
 // supply-chain concentration variants, etc. can plug in as
 // individual functions without engine-level changes.
 
-import type { CausalNode, CausalEdge } from "../types";
+import type { CausalNode, CausalEdge, LiveDataPoint } from "../types";
 
 export interface CalculationContext {
   graph: { nodes: CausalNode[]; edges: CausalEdge[] };
@@ -28,6 +28,14 @@ export interface CalculationResult {
   tone?: CalculationTone;
 }
 
+/** Result of mapping a Calculation to a TimeDial snapshot. */
+export interface CalculationSnapshot {
+  /** Node to attach the snapshot to. */
+  nodeId: string;
+  /** LiveDataPoint to upsert onto the node — `kind` typically `"calc:<id>"`. */
+  point: LiveDataPoint;
+}
+
 export interface Calculation {
   id: string;
   /** Short label rendered in the menu row */
@@ -41,4 +49,14 @@ export interface Calculation {
    *  predicate passed but the data still doesn't support a value (e.g.
    *  selected node has no inbound edges for a supply HHI). */
   compute: (ctx: CalculationContext) => CalculationResult | null;
+  /** Optional: convert a computed result into a TimeDial snapshot.
+   *  Calcs that implement this gain a "→ DIAL" affordance in the UI;
+   *  clicking it appends the snapshot to the target node's `liveData[]`,
+   *  where the existing temporal infrastructure accumulates history and
+   *  renders sparklines. Calcs without a stable node target (graph-wide
+   *  aggregates) leave this undefined. */
+  toSnapshot?: (
+    result: CalculationResult,
+    ctx: CalculationContext,
+  ) => CalculationSnapshot | null;
 }

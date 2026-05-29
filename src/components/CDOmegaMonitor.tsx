@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { OmegaState, DoomsdayState, AlertLevel, CausalGraph } from "@/lib/types";
 import { getStatusColor } from "@/lib/omega-engine";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
@@ -187,24 +186,19 @@ export default function CDOmegaMonitor({
                 : i < segments * 0.35
                   ? "var(--accent-amber)"
                   : "var(--accent-green)";
+            const isCritical =
+              filled && derivedStatus.status === "CRITICAL";
             return (
-              <motion.div
+              <div
                 key={i}
                 className="h-4 w-[6px] rounded-[1px] hidden sm:block"
                 style={{
                   backgroundColor: filled ? segColor : "var(--border)",
                   opacity: filled ? 1 : 0.3,
+                  animation: isCritical
+                    ? "omega-segment-critical 0.5s ease-in-out infinite"
+                    : undefined,
                 }}
-                animate={
-                  filled && derivedStatus.status === "CRITICAL"
-                    ? { opacity: [1, 0.3, 1] }
-                    : {}
-                }
-                transition={
-                  derivedStatus.status === "CRITICAL"
-                    ? { duration: 0.5, repeat: Infinity }
-                    : {}
-                }
               />
             );
           })}
@@ -225,23 +219,21 @@ export default function CDOmegaMonitor({
         </div>
       </div>
 
-      {/* Status Badge — always visible */}
-      <motion.div
+      {/* Status Badge — always visible. CSS keyframe replaces a
+          framer-motion animate prop; `--alert-color` lets the keyframe
+          flash between displayColor and transparent without the JS
+          animation runtime. */}
+      <div
         className="flex items-center gap-2 rounded border px-2 lg:px-3 py-1.5 shrink-0"
         style={{
           borderColor: displayColor,
           backgroundColor: `color-mix(in srgb, ${displayColor} 8%, transparent)`,
+          ["--alert-color" as string]: displayColor,
+          animation:
+            derivedStatus.status === "CRITICAL"
+              ? "omega-badge-critical 1s ease-in-out infinite"
+              : undefined,
         }}
-        animate={
-          derivedStatus.status === "CRITICAL"
-            ? { borderColor: [displayColor, "transparent", displayColor] }
-            : {}
-        }
-        transition={
-          derivedStatus.status === "CRITICAL"
-            ? { duration: 1, repeat: Infinity }
-            : {}
-        }
       >
         <div
           className="h-2 w-2 rounded-full shrink-0"
@@ -253,7 +245,7 @@ export default function CDOmegaMonitor({
         >
           {derivedStatus.status}
         </span>
-      </motion.div>
+      </div>
 
       {/* Shock Count — hidden below sm */}
       <div className="hidden sm:flex flex-col items-center shrink-0">

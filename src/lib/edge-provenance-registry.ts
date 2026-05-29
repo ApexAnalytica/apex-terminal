@@ -24,8 +24,11 @@
  * domain is the first audited (DCCT/EDIC, TrialNet TN-10, FORWARD-101,
  * TIR↔HbA1c consensus); every entry is a real, verifiable publication, all
  * DOIs cross-checked against the repo's own vetted source-of-truth in
- * research/scripts/build_t1d_timeseries.py. Other domains (geopolitical
- * energy, AI-safety, the VX-880 companion graph) land in later passes.
+ * research/scripts/build_t1d_timeseries.py. The `vx880` companion graph is the
+ * second audited domain (Edmonton/Shapiro, CIT-07, Ryan 5-yr, HLA-DR matching),
+ * and it also showcases cross-domain reuse — its dose→engraftment and TIR→HbA1c
+ * edges reference `t1d`-domain entries by global id rather than re-citing them.
+ * Other domains (geopolitical energy, AI-safety) land in later passes.
  *
  * Honesty note: a `literature` entry asserts that the *relationship* (sign +
  * approximate magnitude) of an edge is grounded in the cited source. The
@@ -128,9 +131,10 @@ const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {
       citation:
         "Reichman et al. N Engl J Med 2025. doi:10.1056/NEJMoa2506549",
       note:
-        "Vertex FORWARD-101 (zimislecel, full-dose cohort n=12): stem-cell-derived islet " +
-        "engraftment restored endogenous insulin, with 83% insulin-independent at 1 year. " +
-        "Early-phase, small n — hence the edge's deliberately low confidence.",
+        "Vertex FORWARD-101 (zimislecel): single intraportal infusion of stem-cell-derived " +
+        "islets; full-dose cohort (n=12) reached 83% insulin-independence at 1 year, half-dose " +
+        "(part A) markedly less. The dose-response + engraftment evidence base. Early-phase, " +
+        "small n. (Shared by the t1d SC-β edge and the vx880 dose→engraftment edge.)",
     },
     {
       // TIR↔HbA1c published relationship + international consensus. Grounds the
@@ -144,7 +148,70 @@ const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {
         "consensus: Battelino T et al. Diabetes Care 2019;42(8):1593-1603. doi:10.2337/dci19-0028",
       note:
         "Published TIR↔HbA1c relationship — a near-mathematical coupling via time-averaged " +
-        "glucose. Grounds the high confidence on the real-world-TIR → population-HbA1c edge.",
+        "glucose (r²≈0.80). Grounds the high confidence on real-world TIR → HbA1c edges " +
+        "(shared by the t1d and vx880 graphs).",
+    },
+  ],
+  vx880: [
+    {
+      // Edmonton Protocol — the steroid-free immunosuppression regimen that
+      // made clinical islet transplantation reproducible. Grounds the
+      // immunosuppression → alloimmune-rejection (graft-protection) weight.
+      id: "shapiro-edmonton-2000",
+      domain: "vx880",
+      kind: "literature",
+      citation:
+        "Shapiro AMJ et al. N Engl J Med 2000;343(4):230-238. doi:10.1056/NEJM200007273430401",
+      note:
+        "The Edmonton Protocol: 7/7 recipients achieved insulin independence under a " +
+        "glucocorticoid-free sirolimus/tacrolimus/daclizumab regimen. Grounds the SIGN and " +
+        "approximate strength of the immunosuppression → alloimmune-rejection edge (more " +
+        "effective IS ⇒ less graft loss); the edge weight is an author calibration to [-1,1].",
+    },
+    {
+      // CIT-07 — the phase-3 multicentre trial that confirmed the Edmonton
+      // approach at scale. Grounds CONFIDENCE on the immunosuppression edge
+      // (intentionally a different source from the weight, to show the
+      // registry's weight-vs-confidence separation across two citations).
+      id: "hering-cit07-2016",
+      domain: "vx880",
+      kind: "literature",
+      citation:
+        "Hering BJ et al. Diabetes Care 2016;39(7):1230-1240. PMID:27208344 (CIT-07)",
+      note:
+        "CIT-07 phase-3 (n=48): 87.5% reached HbA1c <7.0% with no severe hypoglycemia at 1 " +
+        "year, establishing reproducibility of the regimen across centres. Used to ground the " +
+        "CONFIDENCE of the immunosuppression edge (the weight is grounded by Edmonton/Shapiro " +
+        "— two sources deliberately split across the weight/confidence axes).",
+    },
+    {
+      // Ryan 5-year follow-up — established the durability picture and the
+      // stimulated-C-peptide ('Ryan criteria') link to lasting independence.
+      // Grounds the MMTT-AUC C-peptide → insulin-independence edge.
+      id: "ryan-2005",
+      domain: "vx880",
+      kind: "literature",
+      citation:
+        "Ryan EA et al. Diabetes 2005;54(7):2060-2069. doi:10.2337/diabetes.54.7.2060",
+      note:
+        "Five-year follow-up of the Edmonton cohort: graft function (stimulated C-peptide) " +
+        "tracked durable insulin independence — the basis for using MMTT-stimulated C-peptide " +
+        "AUC as the functional-mass readout. Grounds the sign/approximate magnitude of the " +
+        "C-peptide → insulin-independence edge; weight is calibrated.",
+    },
+    {
+      // HLA-DR matching and islet-transplant outcomes. Replaces a vague prior
+      // attribution with a specific, verifiable source. Grounds the HLA-risk →
+      // autoimmune-recurrence edge.
+      id: "hla-dr-islet-2023",
+      domain: "vx880",
+      kind: "literature",
+      citation:
+        "Front Immunol 2023;14:1110544. doi:10.3389/fimmu.2023.1110544",
+      note:
+        "HLA-DR matching (notably excluding DR3/DR4 mismatch) associated with better islet-" +
+        "graft survival and insulin independence — the basis for the recipient HLA-risk → " +
+        "autoimmune-recurrence edge. Grounds direction/approximate strength; weight is calibrated.",
     },
   ],
 };

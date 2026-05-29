@@ -158,9 +158,54 @@ describe("live registry — t1d audit", () => {
 
   it("only the audited domains populate the live index", () => {
     // allEdgeProvenanceEntries flattens every populated domain. Today that's
-    // t1d only; un-audited domains resolve to an empty catalog.
-    expect(allEdgeProvenanceEntries().length).toBe(6);
+    // t1d (6) + vx880 (4) = 10; un-audited domains resolve to an empty catalog.
+    expect(allEdgeProvenanceEntries().length).toBe(10);
     expect(getEdgeProvenanceCatalog("geopolitical")).toEqual([]);
+  });
+});
+
+describe("live registry — vx880 audit", () => {
+  // The four vx880-OWNED entries. The vx880 graph additionally reuses two
+  // t1d-domain ids cross-domain (reichman-nejm-2025, vigersky-2019) — those
+  // are asserted by the cross-domain reuse test below, not counted here.
+  const VX880_IDS = [
+    "shapiro-edmonton-2000",
+    "hering-cit07-2016",
+    "ryan-2005",
+    "hla-dr-islet-2023",
+  ];
+
+  it("exposes the audited vx880 catalog as 4 cited literature entries", () => {
+    const catalog = getEdgeProvenanceCatalog("vx880");
+    expect(catalog.length).toBe(4);
+    expect(catalog.map((e) => e.id).sort()).toEqual([...VX880_IDS].sort());
+    for (const entry of catalog) {
+      expect(entry.domain).toBe("vx880");
+      expect(entry.kind).toBe("literature");
+      expect(entry.citation).toBeTruthy();
+    }
+  });
+
+  it("resolves each audited vx880 id to its entry", () => {
+    for (const id of VX880_IDS) {
+      expect(getEdgeProvenanceEntry(id)?.id).toBe(id);
+    }
+  });
+
+  it("the vx880 graph reuses t1d-domain entries cross-domain by global id", () => {
+    // The registry's headline feature: an edge in one domain references a
+    // citation authored in another. These two ids live under domain "t1d" yet
+    // are tagged on vx880 edges (e6 → reichman, e19 → vigersky).
+    for (const id of ["reichman-nejm-2025", "vigersky-2019"]) {
+      expect(getEdgeProvenanceEntry(id)?.domain).toBe("t1d");
+    }
+    const vx880Refs = new Set(
+      VX880_GRAPH.edges
+        .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
+        .filter((r): r is string => Boolean(r)),
+    );
+    expect(vx880Refs.has("reichman-nejm-2025")).toBe(true);
+    expect(vx880Refs.has("vigersky-2019")).toBe(true);
   });
 });
 
@@ -191,5 +236,16 @@ describe("real graph data ref integrity", () => {
       .filter((r): r is string => Boolean(r));
     expect(t1dRefs.length).toBe(16);
     expect(validateEdgeProvenanceRefs(t1dRefs)).toEqual([]);
+  });
+
+  it("the vx880 audit tagged real edges (guard is non-vacuous)", () => {
+    // The vx880 audit tagged 5 edges, each carrying both a weight + confidence
+    // ref → 10 ref slots. Note e11 deliberately splits the two across separate
+    // sources (weight ← shapiro-edmonton-2000, confidence ← hering-cit07-2016).
+    const vx880Refs = VX880_GRAPH.edges
+      .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
+      .filter((r): r is string => Boolean(r));
+    expect(vx880Refs.length).toBe(10);
+    expect(validateEdgeProvenanceRefs(vx880Refs)).toEqual([]);
   });
 });

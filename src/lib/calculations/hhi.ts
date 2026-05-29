@@ -55,4 +55,20 @@ export const hhiCalculation: Calculation = {
       tone,
     };
   },
+  toSnapshot: (result, ctx) => {
+    if (!ctx.selectedNode) return null;
+    if (result.value.kind !== "scalar") return null;
+    return {
+      nodeId: ctx.selectedNode,
+      point: {
+        kind: "calc:supply-hhi",
+        providerId: "calc:supply-hhi",
+        value: result.value.value,
+        capacity: 10_000,
+        unit: "HHI",
+        observedAt: new Date().toISOString(),
+        source: "Calculation · Supply HHI (manual snapshot)",
+      },
+    };
+  },
 };

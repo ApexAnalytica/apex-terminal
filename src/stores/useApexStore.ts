@@ -12,6 +12,7 @@ import {
   CausalGraph,
   EpochSnapshot,
   TimelineId,
+  LiveDataPoint,
   upsertLiveSignal,
 } from "@/lib/types";
 import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
@@ -203,6 +204,17 @@ export interface ApexState {
    *  - Re-runs Tarski validation when `truthFilter === "verified"`.
    */
   applyFeedBatch: (batch: FeedDispatchBatch) => void;
+
+  /**
+   * Push a calculation result onto a node's `liveData[]` as a TimeDial
+   * snapshot. Drives the "→ DIAL" affordance in the CALCULATIONS panel:
+   * each press appends to the node's history via `upsertLiveSignal`,
+   * making the calculation scrubbable on the TimeDial and renderable
+   * in the time-series cards. Unlike `applyFeedBatch`, this is purely
+   * additive — no kind-cleanup, so manual snapshots from different
+   * nodes don't clobber each other.
+   */
+  pushCalculationSnapshot: (nodeId: string, point: LiveDataPoint) => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -640,6 +652,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
         const flaggedGraph = applyTarskiFlags(s.graphData, report);
         return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
       });
+    });
+  },
+
+  pushCalculationSnapshot: (nodeId, point) => {
+    set((s) => {
+      const nextNodes = s.graphData.nodes.map((n) =>
+        n.id !== nodeId
+          ? n
+          : { ...n, liveData: upsertLiveSignal(n.liveData, point) },
+      );
+      return {
+        graphData: { ...s.graphData, nodes: nextNodes },
+      };
     });
   },
 

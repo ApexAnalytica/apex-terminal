@@ -38,6 +38,9 @@ export default function CalculationsPanel() {
   const graphData = useApexStore((s) => s.graphData);
   const selectedNode = useApexStore((s) => s.selectedNode);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const pushCalculationSnapshot = useApexStore(
+    (s) => s.pushCalculationSnapshot,
+  );
 
   const ctx: CalculationContext = useMemo(
     () => ({
@@ -53,7 +56,8 @@ export default function CalculationsPanel() {
       .map((calc) => {
         const result = calc.compute(ctx);
         if (!result) return null;
-        return { calc, result };
+        const snapshot = calc.toSnapshot?.(result, ctx) ?? null;
+        return { calc, result, snapshot };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
   }, [ctx]);
@@ -71,7 +75,7 @@ export default function CalculationsPanel() {
         </div>
       </div>
       <div className="space-y-1 mt-1">
-        {rows.map(({ calc, result }) => (
+        {rows.map(({ calc, result, snapshot }) => (
           <div
             key={calc.id}
             className="text-[9px] font-mono leading-tight flex items-baseline gap-1.5"
@@ -94,9 +98,20 @@ export default function CalculationsPanel() {
                 : result.value.value}
             </span>
             {result.detail && (
-              <span className="text-text-muted/70 truncate">
+              <span className="text-text-muted/70 truncate flex-1 min-w-0">
                 — {result.detail}
               </span>
+            )}
+            {snapshot && (
+              <button
+                onClick={() =>
+                  pushCalculationSnapshot(snapshot.nodeId, snapshot.point)
+                }
+                className="ml-auto flex-shrink-0 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border border-accent-cyan/30 text-accent-cyan/80 hover:text-accent-cyan hover:border-accent-cyan/60 transition-colors"
+                title={`Push current ${calc.name} value to the selected node's TimeDial history. Each press appends a snapshot — scrub the dial to see the trajectory.`}
+              >
+                → DIAL
+              </button>
             )}
           </div>
         ))}

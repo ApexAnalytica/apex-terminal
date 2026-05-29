@@ -49,14 +49,24 @@ export interface Calculation {
    *  predicate passed but the data still doesn't support a value (e.g.
    *  selected node has no inbound edges for a supply HHI). */
   compute: (ctx: CalculationContext) => CalculationResult | null;
-  /** Optional: convert a computed result into a TimeDial snapshot.
-   *  Calcs that implement this gain a "→ DIAL" affordance in the UI;
+  /** Optional: convert a computed result into a TimeDial snapshot for a
+   *  specific node. Calcs that implement this gain a "→ DIAL" affordance;
    *  clicking it appends the snapshot to the target node's `liveData[]`,
    *  where the existing temporal infrastructure accumulates history and
-   *  renders sparklines. Calcs without a stable node target (graph-wide
-   *  aggregates) leave this undefined. */
+   *  renders sparklines on the time-series cards. Mutually exclusive
+   *  with `toGraphSnapshot` — a calc is either node-scoped or
+   *  graph-wide. */
   toSnapshot?: (
     result: CalculationResult,
     ctx: CalculationContext,
   ) => CalculationSnapshot | null;
+  /** Optional: convert a computed result into a graph-wide snapshot for
+   *  calcs that don't attach to a single node (mean ΩF across the
+   *  graph, cross-domain edge count, etc.). Snapshots land in
+   *  `graphCalcHistory[calc.id]` in the store and render as a tiny
+   *  inline sparkline next to the calc's current value. */
+  toGraphSnapshot?: (
+    result: CalculationResult,
+    ctx: CalculationContext,
+  ) => { value: number } | null;
 }

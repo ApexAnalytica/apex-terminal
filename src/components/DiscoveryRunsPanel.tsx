@@ -115,14 +115,20 @@ export default function DiscoveryRunsPanel() {
 
   return (
     <div className="p-4 space-y-3">
-      <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-        Edges and calibration runs computed on real observational
-        cohorts, separate from the curated CausalGraph above. Two public
-        substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
-        Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). Tab
-        labels carry the cohort prefix; same algorithm across cohorts
-        is how cross-substrate generalisation gets tested.
-      </div>
+      {/* Descriptive header is itself T1D-flavored (it names the D1NAMO /
+          Hall cohorts). Only render it when those cohorts are actually
+          in scope — otherwise it's the same out-of-context noise the
+          OutOfScopeTile was added to replace. */}
+      {state.kind !== "out-of-scope" && (
+        <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
+          Edges and calibration runs computed on real observational
+          cohorts, separate from the curated CausalGraph above. Two public
+          substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
+          Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). Tab
+          labels carry the cohort prefix; same algorithm across cohorts
+          is how cross-substrate generalisation gets tested.
+        </div>
+      )}
 
       {state.kind === "loading" && <LoadingTile />}
       {state.kind === "error" && <ErrorTile message={state.message} />}

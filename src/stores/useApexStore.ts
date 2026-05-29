@@ -20,6 +20,10 @@ import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
+import {
+  loadGraphCalcHistory,
+  saveGraphCalcHistory,
+} from "@/lib/calc-history-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
 // stays in `tarski-data.ts` next to the 891-LOC AXIOM_LIBRARY +
@@ -224,8 +228,15 @@ export interface ApexState {
    * pushed. Capped at LIVE_HISTORY_MAX entries per calc.
    */
   graphCalcHistory: Record<string, { value: number; observedAt: string }[]>;
-  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX. */
+  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX.
+   *  Persists the updated history to localStorage (best-effort). */
   pushGraphCalcSnapshot: (calcId: string, value: number) => void;
+  /** Hydrate graphCalcHistory from localStorage. Called from a client
+   *  effect after mount (not at store-create time) to avoid an SSR
+   *  hydration mismatch — the server renders with {}, the client merges
+   *  persisted history in post-hydration. Merge is non-destructive:
+   *  any in-memory entries pushed before hydration are preserved. */
+  hydrateGraphCalcHistory: () => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -694,9 +705,25 @@ export const useApexStore = create<ApexState>((set, get) => ({
         next.length > LIVE_HISTORY_MAX
           ? next.slice(-LIVE_HISTORY_MAX)
           : next;
-      return {
-        graphCalcHistory: { ...s.graphCalcHistory, [calcId]: trimmed },
-      };
+      const updated = { ...s.graphCalcHistory, [calcId]: trimmed };
+      // Persist (best-effort; SSR-safe + swallows quota errors).
+      saveGraphCalcHistory(updated);
+      return { graphCalcHistory: updated };
+    });
+  },
+  hydrateGraphCalcHistory: () => {
+    const persisted = loadGraphCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory entries pushed before hydration
+      // win on key collision (they're newer than what's on disk). Most
+      // of the time the in-memory side is empty at mount so this is just
+      // the persisted data.
+      const merged: typeof s.graphCalcHistory = { ...persisted };
+      for (const [calcId, entries] of Object.entries(s.graphCalcHistory)) {
+        if (entries.length > 0) merged[calcId] = entries;
+      }
+      return { graphCalcHistory: merged };
     });
   },
 

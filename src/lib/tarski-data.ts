@@ -363,12 +363,41 @@ export interface ScoredAxiom {
 }
 
 /**
- * Score and rank axioms by relevance to the provided graph.
- * Considers: which domains are present, graph structure (chokepoints, hubs, cross-domain edges).
- * `activeProfileId` filters out axioms whose `appliesTo` excludes the current profile;
- * omit it to get all axioms regardless of profile.
+ * Selection passed to `scoreAxiomRelevance` to drive selection-aware
+ * boosts. Pass either the single-focus `selectedNode` (most common),
+ * the multi-select `selectedNodes` array, or both — they union into
+ * a single Set<string> internally.
  */
-export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string): ScoredAxiom[] {
+export interface AxiomRelevanceSelection {
+  selectedNode?: string | null;
+  selectedNodes?: readonly string[];
+}
+
+const SELECTION_BOOST = 0.25;
+
+/**
+ * Score and rank axioms by relevance to the provided graph.
+ *
+ * Three signal layers, all additive:
+ *   1. Universal-axiom base (0.45) + L0 base (0.15) — applies to every
+ *      graph regardless of content.
+ *   2. Graph-wide structural features (existing): chokepoints, cross-
+ *      domain edges, high-Ω nodes, cascade hubs, single-supplier nodes,
+ *      high-J nodes anywhere. Adds 0.3 to the matching axiom.
+ *   3. Selection-aware features (new): when `selection` is provided
+ *      and non-empty, adds 0.25 per matching axiom AND overrides the
+ *      `reason` with selection-specific language ("Selected node is
+ *      a chokepoint" rather than "Chokepoint nodes detected").
+ *      Stacks on top of the structural bonus when both fire.
+ *
+ * `activeProfileId` filters out axioms whose `appliesTo` excludes the
+ * current profile; omit it to get all axioms regardless of profile.
+ */
+export function scoreAxiomRelevance(
+  graph: CausalGraph,
+  activeProfileId?: string,
+  selection?: AxiomRelevanceSelection,
+): ScoredAxiom[] {
   // Gather active domains from graph nodes
   const activeDomains = new Set(graph.nodes.map((n) => n.domain));
 
@@ -392,6 +421,67 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
     const outDegree = graph.edges.filter((e) => e.source === n.id).length;
     return n.omegaFragility.cascadeLoad >= 7 && outDegree >= 3;
   });
+
+  // ─── Selection-aware feature extraction ──────────────────────────
+  // Normalise the (single, multi) selection into one Set<string>; an
+  // empty set short-circuits the selection-aware logic so callers
+  // passing `undefined` or `{ selectedNode: null }` get today's
+  // behaviour unchanged.
+  const selectedIds = new Set<string>();
+  if (selection?.selectedNode) selectedIds.add(selection.selectedNode);
+  for (const id of selection?.selectedNodes ?? []) selectedIds.add(id);
+  const selectedNodes = graph.nodes.filter((n) => selectedIds.has(n.id));
+  const hasSelection = selectedNodes.length > 0;
+
+  // Precompute selection features once (avoid per-axiom re-walks).
+  const selChokepoint = hasSelection && selectedNodes.some(
+    (n) =>
+      n.label.toLowerCase().includes("strait") ||
+      n.label.toLowerCase().includes("chokepoint"),
+  );
+  const selHasCrossDomainIncident = hasSelection && (() => {
+    for (const n of selectedNodes) {
+      for (const e of graph.edges) {
+        if (e.source !== n.id && e.target !== n.id) continue;
+        const other = graph.nodes.find(
+          (x) => x.id === (e.source === n.id ? e.target : e.source),
+        );
+        if (other && other.domain !== n.domain) return true;
+      }
+    }
+    return false;
+  })();
+  const selHighOmega = hasSelection && selectedNodes.some(
+    (n) => n.omegaFragility.composite > 7,
+  );
+  const selHighCascadeHub = hasSelection && selectedNodes.some((n) => {
+    const outDeg = graph.edges.filter((e) => e.source === n.id).length;
+    return n.omegaFragility.cascadeLoad >= 7 && outDeg >= 3;
+  });
+  const selSingleSource = hasSelection && selectedNodes.some((n) => {
+    const inDeg = graph.edges.filter((e) => e.target === n.id).length;
+    return inDeg === 1 && n.omegaFragility.cascadeLoad >= 5;
+  });
+  const selHighJ = hasSelection && selectedNodes.some(
+    (n) => n.omegaFragility.jurisdictionalHazard >= 6,
+  );
+  const selLiveSaturation = hasSelection && selectedNodes.some((n) => {
+    const live =
+      n.liveData?.find((p) => p.kind === "production") ??
+      n.liveData?.find((p) => p.kind === "throughput");
+    return !!live && live.capacity > 0 && live.value / live.capacity >= 0.9;
+  });
+
+  // Helper: when a selection-aware feature fires for a single
+  // selected-node case, prefix the reason with the node's label for
+  // immediate transparency ("Selected: Strait of Hormuz is a
+  // chokepoint"). When >1 nodes are selected, use a count.
+  const selPrefix = (): string => {
+    if (selectedNodes.length === 1) {
+      return `Selected: ${selectedNodes[0].label}`;
+    }
+    return `Selection (${selectedNodes.length} nodes)`;
+  };
 
   return inScope.map((axiom) => {
     let score = 0;
@@ -453,6 +543,66 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
           reason = "High jurisdictional hazard nodes present";
         }
         break;
+    }
+
+    // ─── Selection-aware bonus ──────────────────────────────────
+    // Stacks on top of the structural bonus; when it fires, replaces
+    // the generic reason with selection-specific language so the user
+    // sees WHY their click moved this axiom up the list.
+    if (hasSelection) {
+      switch (axiom.id) {
+        case "A-04":
+        case "R-03":
+          if (selChokepoint) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is a chokepoint`;
+          } else if (selLiveSaturation) {
+            // Live saturation on the selected node also implicates A-04
+            // (chokepoint capacity) — the live-data branch we shipped
+            // earlier. Weaker reason than direct chokepoint label, but
+            // still selection-driven so the user sees the link.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} carries live saturation ≥ 90%`;
+          }
+          break;
+        case "A-02": // Flow Conservation — live branch lights up on saturation
+          if (selLiveSaturation) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} at capacity saturation — A-02 live branch fires`;
+          }
+          break;
+        case "R-04":
+          if (selHasCrossDomainIncident) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has cross-domain incident edges`;
+          }
+          break;
+        case "H-01":
+          if (selHighOmega) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has ΩF > 7`;
+          }
+          break;
+        case "H-02":
+          if (selHighCascadeHub) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is a high-cascade hub`;
+          }
+          break;
+        case "A-05":
+          if (selSingleSource) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is single-supplier with high cascade load`;
+          }
+          break;
+        case "R-01":
+        case "R-02":
+          if (selHighJ) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} sits in a high-J jurisdiction`;
+          }
+          break;
+      }
     }
 
     // L0 axioms always get a base boost — they're physical laws

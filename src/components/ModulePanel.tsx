@@ -8,6 +8,7 @@ import { summarizeDiscoveryUncertainty } from "@/lib/discovery-uncertainty";
 import dynamic from "next/dynamic";
 import TrinityPanel from "./TrinityPanel";
 import DiscoveryRunsPanel from "./DiscoveryRunsPanel";
+import CalculationsPanel from "./CalculationsPanel";
 
 // Tab-gated sub-panels lazy-loaded so the default Spirtes tab doesn't
 // pull their JS on first paint. The first wave (added PR #300) covered
@@ -650,6 +651,13 @@ function CascadeHeader() {
           </div>
         </div>
       )}
+
+      {/* CALCULATIONS — pure-function readouts that run against the
+          current graph + selection. Pluggable registry; new entries
+          (Greeks, T1D scores, supply-chain variants) plug in by
+          appending to CALCULATION_REGISTRY. Renders nothing when no
+          calc applies, so empty graphs don't paint dead chrome. */}
+      <CalculationsPanel />
 
       {/* Scoped indicator */}
       {netMetrics.isScoped && (

@@ -170,6 +170,14 @@ This session does **not** care about graph data, engines, canvas rendering, or p
 - Panel that lets users paste an article URL or text and turns it into graph interventions
 - The data flow is engine-side; the panel UX (URL fetch button, paste affordance, loading states, error display) is ours
 
+### Right-rail context column
+- Three stacked blocks at the top of `ModulePanel` (the right panel) that give the user immediate situational awareness:
+  - **AT A GLANCE** (`relevantNowCallouts` in `ModulePanel.tsx`) — top 3 context signals; selection-aware (centrality, cascade, auto-bridges incident on selected node) or graph-wide (stability, components, bridge lifecycle counts, uncertainty)
+  - **REVIEW** (`NodeInspector.tsx`, only when a node is selected) — synthesised verb-led recommendations (`buildContextualReview` in `src/lib/contextual-review.ts`): Tarski axiom hits on incident edges, ΩF velocity, unpromoted bridges, cascade saturation, confounder, χ★ membership
+  - **CALCULATIONS** (`CalculationsPanel.tsx`) — pure-function readouts from `src/lib/calculations/` registry (HHI, cross-domain edges, mean ΩF). New entries (Greeks, T1D scores, supply-chain variants) plug in by appending to `CALCULATION_REGISTRY`
+- All three render only when at least one entry fires — empty/healthy graphs don't paint dead chrome
+- Tone-coloured dots (red/amber/green/neutral) keep the visual language consistent across the three blocks
+
 ## Scope summary (in)
 
 - Tour content + step targeting + auto-launch logic + cutout/highlight/arrow behavior

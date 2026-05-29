@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -873,6 +873,11 @@ function CausalDAG2DInner() {
     () => graphSignature(graphData.nodes, graphData.edges),
     [graphData.nodes, graphData.edges],
   );
+  // Deferred topology fingerprint for the chiStar memo below (round 16).
+  // Switches the chiStar memo from `[graphData]` (re-fires on every feed
+  // tick) to a topology-stable key, AND lets the launch commit paint
+  // before the ~120K-op Brandes pass lands.
+  const deferredSig = useDeferredValue(sig);
   // Layout + network-metrics both come from the layout Web Worker
   // (`requestLayout2D`). Both used to be synchronous useMemos that
   // ran d3-force-2d + Brandes' centrality on the main thread, which
@@ -1090,8 +1095,10 @@ function CausalDAG2DInner() {
   // χ★ result on the live filtered graph. Powers (a) the violet halo
   // behind χ★ edges in EmphasizedEdge below, and (b) the per-edge
   // BES + bridge-vs-top-k context surfaced by the EdgeInspector.
-  // Brandes' BES is O(V·E); memoised on graphData so it runs only
-  // when the graph changes, not on selection / hover.
+  // Brandes' BES is O(V·E). Keyed on `deferredSig` (round 16): a
+  // topology-stable fingerprint so feed-tick liveData mutations don't
+  // re-run the pass, AND deferred so the launch commit paints before
+  // the bridge/chi-star tier styling lands.
   const chiStarInfo = useMemo(() => {
     if (graphData.edges.length === 0) {
       return {
@@ -1114,7 +1121,8 @@ function CausalDAG2DInner() {
       bes: r.bes,
       rank,
     };
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
 
   // Edges carry only structural / replay / truth-filter state. Hover and
   // single-select emphasis are computed inside `EmphasizedEdge` itself, so

@@ -234,7 +234,7 @@ const REAL_EVENTS: Omit<TemporalEvent, "id">[] = [
     date: new Date("2019-09-14"),
     label: "Abqaiq-Khurais Attack",
     description: "Drone/missile strike on Abqaiq and Khurais oil facilities temporarily halved Saudi crude output (~5.7 mb/d)",
-    affectedNodeIds: ["sa_abqaiq_plants", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
+    affectedNodeIds: ["si_abqaiq_throughput", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
     severity: 0.95,
   },
   {

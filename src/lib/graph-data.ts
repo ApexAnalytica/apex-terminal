@@ -77,20 +77,6 @@ const NODES: CausalNode[] = [
     isRestricted: false,
   },
   {
-    id: "sa_abqaiq_plants",
-    label: "Abqaiq Plants",
-    shortLabel: "ABP",
-    category: "manufacturing",
-    omegaFragility: omega(7.8, 9.0, 7.0, 7.5, 7.9, 7.0),
-    globalConcentration: "100% Saudi Arabia",
-    replacementTime: "2-5 years",
-    physicalConstraint: "Critical single-node processing hub; high-value target; aging but heavily digitized facility",
-    domain: "Saudi Aramco Energy",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
     id: "sa_master_gas_system_mgs",
     label: "Master Gas System (MGS)",
     shortLabel: "MGS",
@@ -556,19 +542,6 @@ const NODES: CausalNode[] = [
     isRestricted: false,
   },
   {
-    id: "qf_strait_of_hormuz",
-    label: "Strait of Hormuz",
-    shortLabel: "SOH",
-    category: "infrastructure",
-    omegaFragility: omega(7.2, 8.5, 5.5, 9.0, 6.2, 7.5),
-    globalConcentration: "Global",
-    replacementTime: "3-5 years",
-    domain: "QAFCO Fertilizer",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
     id: "qf_india_fertilizer_market",
     label: "India fertilizer import market",
     shortLabel: "IFI",
@@ -895,20 +868,6 @@ const NODES: CausalNode[] = [
     globalConcentration: "100% Multiple",
     replacementTime: "3-7 years",
     physicalConstraint: "FX weakness + fertilizer prices amplify food insecurity",
-    domain: "Ma'aden Phosphate",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
-    id: "mn_strait_of_hormuz",
-    label: "Strait of Hormuz",
-    shortLabel: "SOH",
-    category: "infrastructure",
-    omegaFragility: omega(8.1, 8.5, 5.5, 8.0, 10, 7.5),
-    globalConcentration: "100% Oman / Iran",
-    replacementTime: "3-7 years",
-    physicalConstraint: "Conflict, insurance spikes, closure risk",
     domain: "Ma'aden Phosphate",
     discoverySource: "DCD",
     isConfounded: false,
@@ -2793,8 +2752,8 @@ const NODES: CausalNode[] = [
   // isn't one variable — it's a cluster of variables (throughput, capacity,
   // war-risk premium, etc.) that each have their own data sources and
   // downstream effects. Pearl-style causal logic requires nodes that
-  // represent ONE intervenable variable; the previous `qf_strait_of_hormuz`
-  // + `mn_strait_of_hormuz` per-domain copies conflated all dimensions into
+  // represent ONE intervenable variable; the previous `si_hormuz_throughput` (formerly qf_strait_of_hormuz)
+  // + `si_hormuz_throughput` (formerly mn_strait_of_hormuz) per-domain copies conflated all dimensions into
   // a single node and duplicated state across two domains.
   //
   // This block introduces the canonical facets in a new "Shared
@@ -2866,7 +2825,7 @@ const NODES: CausalNode[] = [
   //    production. Same shape as Hormuz: throughput is a flow that's
   //    bounded by capacity, war-risk premium captures disruption
   //    probability (proven real by the 2019 drone strike). The legacy
-  //    `sa_abqaiq_plants` node will be deprecated in the follow-up
+  //    `si_abqaiq_throughput` (formerly sa_abqaiq_plants) node will be deprecated in the follow-up
   //    cleanup PR; for now it's preserved as a downstream consumer of
   //    the throughput facet (cross-domain edge below).
   //
@@ -2928,8 +2887,8 @@ const EDGES: CausalEdge[] = [
   // ─── Middle East Playbook Edges (69) ────────────────────────
   // ── Saudi Aramco ──
   { id: "sa_east_west_pipeline__sa_yanbu_refinery", source: "sa_east_west_pipeline", target: "sa_yanbu_refinery", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Enables crude transfer toward west-coast refining/logistics." },
-  { id: "sa_abqaiq_plants__sa_ras_tanura_terminal", source: "sa_abqaiq_plants", target: "sa_ras_tanura_terminal", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes/stabilizes crude that moves to east-coast export terminals." },
-  { id: "sa_abqaiq_plants__sa_east_west_pipeline", source: "sa_abqaiq_plants", target: "sa_east_west_pipeline", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Abqaiq sits in the eastern production-processing system that can pump crude westward." },
+  { id: "si_abqaiq_throughput__sa_ras_tanura_terminal", source: "si_abqaiq_throughput", target: "sa_ras_tanura_terminal", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes/stabilizes crude that moves to east-coast export terminals." },
+  { id: "si_abqaiq_throughput__sa_east_west_pipeline", source: "si_abqaiq_throughput", target: "sa_east_west_pipeline", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Abqaiq sits in the eastern production-processing system that can pump crude westward." },
   { id: "sa_fadhili_gas_plant__sa_master_gas_system_mgs", source: "sa_fadhili_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Gas plant sends sales gas into the national gas backbone." },
   { id: "sa_wasit_gas_plant__sa_master_gas_system_mgs", source: "sa_wasit_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Wasit is explicitly described as part of the MGS." },
   { id: "sa_hawiyah_gas_plant__sa_master_gas_system_mgs", source: "sa_hawiyah_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Major gas-processing node in the Saudi system." },
@@ -2958,7 +2917,7 @@ const EDGES: CausalEdge[] = [
   // ── QAFCO ──
   { id: "qf_qatar_energy_feedstock__qf_qafco_complex", source: "qf_qatar_energy_feedstock", target: "qf_qafco_complex", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is the primary input for ammonia production, which is then converted to urea." },
   { id: "qf_qafco_complex__qf_qafco7_blue_ammonia", source: "qf_qafco_complex", target: "qf_qafco7_blue_ammonia", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Blue ammonia project expands ammonia capacity and reduces CO2 via CCS." },
-  { id: "qf_qafco_complex__qf_strait_of_hormuz", source: "qf_qafco_complex", target: "qf_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Bulk exports from Persian Gulf generally transit the Strait of Hormuz." },
+  { id: "qf_qafco_complex__si_hormuz_throughput", source: "qf_qafco_complex", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Bulk exports from Persian Gulf generally transit the Strait of Hormuz." },
   { id: "qf_qafco_complex__qf_global_food_prices", source: "qf_qafco_complex", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Urea supply influences farm input costs and yields; disruptions raise food inflation and political r" },
   { id: "qf_north_field_gas__qf_qatar_energy_feedstock", source: "qf_north_field_gas", target: "qf_qatar_energy_feedstock", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "North Field underpins QatarEnergy feedstock availability to domestic gas-based industries." },
   { id: "qf_qatar_energy_feedstock__qf_qafco_ammonia_product", source: "qf_qatar_energy_feedstock", target: "qf_qafco_ammonia_product", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is reformed to produce hydrogen for ammonia synthesis." },
@@ -2967,12 +2926,12 @@ const EDGES: CausalEdge[] = [
   { id: "qf_qafco_urea_product__qf_qatar_melamine_company", source: "qf_qafco_urea_product", target: "qf_qatar_melamine_company", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Part of the urea stream is thermally decomposed into melamine via the QMC downstream chain." },
   { id: "qf_qafco_complex__qf_mesaieed_industrial_city", source: "qf_qafco_complex", target: "qf_mesaieed_industrial_city", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO operates inside the Mesaieed industrial cluster." },
   { id: "qf_qafco_complex__qf_mesaieed_port", source: "qf_qafco_complex", target: "qf_mesaieed_port", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Physical fertilizer exports move through the Mesaieed port/logistics system." },
-  { id: "qf_mesaieed_port__qf_strait_of_hormuz", source: "qf_mesaieed_port", target: "qf_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Most Gulf exports must transit Hormuz to reach global markets." },
+  { id: "qf_mesaieed_port__si_hormuz_throughput", source: "qf_mesaieed_port", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Most Gulf exports must transit Hormuz to reach global markets." },
   { id: "qf_qafco_urea_product__qf_india_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_india_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "India is a major import market in the global fertilizer system and is named among QAFCO customer geo" },
   { id: "qf_qafco_urea_product__qf_brazil_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_brazil_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Brazil is a large fertilizer importer and exposed to QAFCO-linked nitrogen supply and price conditio" },
   { id: "qf_qafco_urea_product__qf_australia_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_australia_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Australia is explicitly named among QAFCO customer demand geographies." },
   { id: "qf_qafco_urea_product__qf_usa_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_usa_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "USA is explicitly named among QAFCO customer demand geographies." },
-  { id: "qf_strait_of_hormuz__qf_qafco_urea_product", source: "qf_strait_of_hormuz", target: "qf_qafco_urea_product", weight: 0.7, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Any partial closure, insecurity, or insurance spike in Hormuz can constrain QAFCO cargo flows." },
+  { id: "si_hormuz_throughput__qf_qafco_urea_product", source: "si_hormuz_throughput", target: "qf_qafco_urea_product", weight: 0.7, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Any partial closure, insecurity, or insurance spike in Hormuz can constrain QAFCO cargo flows." },
   { id: "qf_qafco_urea_product__qf_global_food_prices", source: "qf_qafco_urea_product", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Nitrogen fertilizer shortages or price spikes raise farm input costs and can reduce yields, feeding " },
   { id: "qf_qafco7_blue_ammonia__qf_qafco_ammonia_product", source: "qf_qafco7_blue_ammonia", target: "qf_qafco_ammonia_product", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO-7 adds new low-carbon ammonia capacity, increasing system redundancy and export potential." },
   { id: "qf_qafco7_blue_ammonia__qf_global_food_prices", source: "qf_qafco7_blue_ammonia", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Additional ammonia capacity can support future urea expansion and moderate supply tightness over tim" },
@@ -2993,11 +2952,11 @@ const EDGES: CausalEdge[] = [
   { id: "mn_ras_al_khair_ammonia_units__mn_ras_al_khair_dap_plant", source: "mn_ras_al_khair_ammonia_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ammonia is a key input into DAP/phosphate fertilizer output." },
   { id: "mn_sulfuric_acid_units__mn_phosphoric_acid_units", source: "mn_sulfuric_acid_units", target: "mn_phosphoric_acid_units", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Sulfuric acid is part of phosphate fertilizer chemistry chain." },
   { id: "mn_phosphoric_acid_units__mn_ras_al_khair_dap_plant", source: "mn_phosphoric_acid_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Phosphoric acid is a direct DAP intermediate." },
-  { id: "mn_ras_al_khair_phosphate_hub__mn_strait_of_hormuz", source: "mn_ras_al_khair_phosphate_hub", target: "mn_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Arabian Gulf fertilizer exports depend on Gulf shipping lanes." },
-  { id: "mn_strait_of_hormuz__mn_bangladesh_agricultural_development_corp", source: "mn_strait_of_hormuz", target: "mn_bangladesh_agricultural_development_corp", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Shipping disruption can delay contracted fertilizer deliveries." },
-  { id: "mn_strait_of_hormuz__mn_india_fertilizer_market", source: "mn_strait_of_hormuz", target: "mn_india_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Gulf route disruption raises freight cost and delivery time to India." },
-  { id: "mn_strait_of_hormuz__mn_brazil_fertilizer_market", source: "mn_strait_of_hormuz", target: "mn_brazil_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Long-haul fertilizer exports still depend on Gulf maritime access." },
-  { id: "mn_strait_of_hormuz__mn_african_import_dependent_markets", source: "mn_strait_of_hormuz", target: "mn_african_import_dependent_markets", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Insurance and freight spikes increase landed fertilizer prices." },
+  { id: "mn_ras_al_khair_phosphate_hub__si_hormuz_throughput", source: "mn_ras_al_khair_phosphate_hub", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Arabian Gulf fertilizer exports depend on Gulf shipping lanes." },
+  { id: "si_hormuz_throughput__mn_bangladesh_agricultural_development_corp", source: "si_hormuz_throughput", target: "mn_bangladesh_agricultural_development_corp", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Shipping disruption can delay contracted fertilizer deliveries." },
+  { id: "si_hormuz_throughput__mn_india_fertilizer_market", source: "si_hormuz_throughput", target: "mn_india_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Gulf route disruption raises freight cost and delivery time to India." },
+  { id: "si_hormuz_throughput__mn_brazil_fertilizer_market", source: "si_hormuz_throughput", target: "mn_brazil_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Long-haul fertilizer exports still depend on Gulf maritime access." },
+  { id: "si_hormuz_throughput__mn_african_import_dependent_markets", source: "si_hormuz_throughput", target: "mn_african_import_dependent_markets", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Insurance and freight spikes increase landed fertilizer prices." },
   { id: "mn_ras_al_khair_dap_plant__mn_bangladesh_agricultural_development_corp", source: "mn_ras_al_khair_dap_plant", target: "mn_bangladesh_agricultural_development_corp", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden renewed a 600,000-ton fertilizer supply agreement with BADC." },
   { id: "mn_bangladesh_agricultural_development_corp__mn_ma_aden_phosphate_business", source: "mn_bangladesh_agricultural_development_corp", target: "mn_ma_aden_phosphate_business", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden supplies about 42% of Bangladesh's estimated DAP requirement." },
   { id: "mn_ma_aden_phosphate_business__mn_india_fertilizer_market", source: "mn_ma_aden_phosphate_business", target: "mn_india_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "India is a major import market for Gulf phosphate fertilizers." },
@@ -3012,7 +2971,7 @@ const EDGES: CausalEdge[] = [
   { id: "mn_phosphate_3_mega_project__mn_ma_aden_phosphate_business", source: "mn_phosphate_3_mega_project", target: "mn_ma_aden_phosphate_business", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Project increases phosphate fertilizer production by 50% to 9 Mtpa." },
   { id: "mn_ras_al_khair_dap_plant__mn_global_food_price_stress", source: "mn_ras_al_khair_dap_plant", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large Gulf fertilizer outages can tighten international supply." },
   { id: "mn_phosphate_3_mega_project__mn_global_food_price_stress", source: "mn_phosphate_3_mega_project", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Expansion is intended to add resilient supply and ease tightness over time." },
-  { id: "mn_strait_of_hormuz__mn_global_food_price_stress", source: "mn_strait_of_hormuz", target: "mn_global_food_price_stress", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Fertilizer export blockages can transmit into crop-input inflation worldwide." },
+  { id: "si_hormuz_throughput__mn_global_food_price_stress", source: "si_hormuz_throughput", target: "mn_global_food_price_stress", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Fertilizer export blockages can transmit into crop-input inflation worldwide." },
   { id: "mn_bangladesh_agricultural_development_corp__mn_global_food_price_stress", source: "mn_bangladesh_agricultural_development_corp", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large fertilizer procurement shocks can affect national crop economics and import bills." },
 
   // ─── Financial Contagion Edges (25) ──────────────────────────
@@ -3144,8 +3103,7 @@ const EDGES: CausalEdge[] = [
 
   // ── Ma'aden ↔ other domains cross-domain ──
   { id: "mn_ras_al_khair_dap_plant__sc_fertilizer_price_index", source: "mn_ras_al_khair_dap_plant", target: "sc_fertilizer_price_index", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden DAP production is ~6 Mtpa — outages tighten global phosphate supply and drive fertilizer price spikes." },
-  { id: "mn_strait_of_hormuz__sc_shipping_cost_index", source: "mn_strait_of_hormuz", target: "sc_shipping_cost_index", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Hormuz closure risk drives shipping insurance premiums and rerouting costs for all Gulf-origin cargo." },
-  { id: "mn_strait_of_hormuz__qf_strait_of_hormuz", source: "mn_strait_of_hormuz", target: "qf_strait_of_hormuz", weight: 0.9, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Same physical chokepoint — any disruption affecting Ma'aden exports simultaneously affects QAFCO exports." },
+  { id: "si_hormuz_throughput__sc_shipping_cost_index", source: "si_hormuz_throughput", target: "sc_shipping_cost_index", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Hormuz closure risk drives shipping insurance premiums and rerouting costs for all Gulf-origin cargo." },
   { id: "mn_global_food_price_stress__fc_fx_pressure", source: "mn_global_food_price_stress", target: "fc_fx_pressure", weight: 0.55, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Phosphate-driven food price stress depletes FX reserves in net food-importing EMs through higher import bills." },
   { id: "mn_global_food_price_stress__sr_brazil_gdp", source: "mn_global_food_price_stress", target: "sr_brazil_gdp", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Food price inflation raises farm input costs for Brazilian agribusiness, reducing export competitiveness and GDP contribution." },
   { id: "mn_ras_al_khair_ammonia_units__qf_qafco_ammonia_product", source: "mn_ras_al_khair_ammonia_units", target: "qf_qafco_ammonia_product", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Ma'aden and QAFCO ammonia compete in global nitrogen markets — capacity changes at either affect pricing for both." },
@@ -3160,12 +3118,12 @@ const EDGES: CausalEdge[] = [
 
   // ── Infrastructure ↔ Sovereign Risk / Financial cross-domain ──
   { id: "ic_latency_risk__sr_china_gdp", source: "ic_latency_risk", target: "sr_china_gdp", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Sustained latency spikes disrupt China-Europe digital trade, cloud services, and financial settlement, dragging tech-dependent GDP growth." },
-  { id: "ic_red_sea_exposure__qf_strait_of_hormuz", source: "ic_red_sea_exposure", target: "qf_strait_of_hormuz", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat extends to Strait of Hormuz — same Houthi/Iran threat vector affects both cable and maritime chokepoints." },
+  { id: "ic_red_sea_exposure__si_hormuz_throughput", source: "ic_red_sea_exposure", target: "si_hormuz_throughput", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat extends to Strait of Hormuz — same Houthi/Iran threat vector affects both cable and maritime chokepoints." },
   { id: "ic_telecom_egypt__fc_sovereign_default", source: "ic_telecom_egypt", target: "fc_sovereign_default", weight: 0.4, lag: 3, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Telecom Egypt generates transit fees from 15+ cables; Egypt sovereign stress threatens state-owned operator and global data transit continuity." },
 
   // ── Saudi Aramco ↔ QAFCO / Financial cross-domain ──
   { id: "sa_yanbu_refinery__ic_red_sea_exposure", source: "sa_yanbu_refinery", target: "ic_red_sea_exposure", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Yanbu refinery exports via Red Sea — shared exposure corridor with undersea cables and shipping." },
-  { id: "sa_abqaiq_plants__fc_fx_pressure", source: "sa_abqaiq_plants", target: "fc_fx_pressure", weight: 0.5, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Abqaiq processes 7 Mbbl/d — disruption (as in 2019 drone attack) spikes oil prices, raising EM energy import bills and FX pressure." },
+  { id: "si_abqaiq_throughput__fc_fx_pressure", source: "si_abqaiq_throughput", target: "fc_fx_pressure", weight: 0.5, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Abqaiq processes 7 Mbbl/d — disruption (as in 2019 drone attack) spikes oil prices, raising EM energy import bills and FX pressure." },
   { id: "sa_juaymah_lpg_terminal__qf_qatar_energy_feedstock", source: "sa_juaymah_lpg_terminal", target: "qf_qatar_energy_feedstock", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Saudi LPG exports compete with Qatar gas liquids in Asian markets — pricing pressure transmits to feedstock allocation decisions." },
 
   // ── Supply Chain ↔ Infrastructure cross-domain ──
@@ -3237,8 +3195,7 @@ const EDGES: CausalEdge[] = [
   { id: "ic_latency_risk__fc_em_fx_reserves", source: "ic_latency_risk", target: "fc_em_fx_reserves", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Sustained latency erodes EM digital trade and remittance throughput, reducing FX inflows and gradually drawing down central bank reserves." },
 
   // Inbound cross-domain pressure on the cable cluster
-  { id: "mn_strait_of_hormuz__ic_red_sea_exposure", source: "mn_strait_of_hormuz", target: "ic_red_sea_exposure", weight: 0.55, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Hormuz tensions and Red Sea cable threats are coupled by the same Iran/Houthi axis — escalation in one chokepoint correlates with attacks on the other." },
-  { id: "qf_strait_of_hormuz__ic_red_sea_exposure", source: "qf_strait_of_hormuz", target: "ic_red_sea_exposure", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Joint maritime threat vector: Strait of Hormuz instability historically precedes Bab el-Mandeb / Red Sea cable attacks within the same conflict cycle." },
+  { id: "si_hormuz_throughput__ic_red_sea_exposure", source: "si_hormuz_throughput", target: "ic_red_sea_exposure", weight: 0.55, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Hormuz tensions and Red Sea cable threats are coupled by the same Iran/Houthi axis — escalation in one chokepoint correlates with attacks on the other." },
   { id: "fc_sovereign_default__ic_telecom_egypt", source: "fc_sovereign_default", target: "ic_telecom_egypt", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Egyptian sovereign distress tightens FX availability for Telecom Egypt's cable maintenance and capacity upgrades, degrading the global cable backbone." },
   { id: "sr_china_gdp__ic_latency_risk", source: "sr_china_gdp", target: "ic_latency_risk", weight: 0.35, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Chinese economic activity sets backbone traffic volume — surges and slumps modulate congestion-driven latency on shared trans-Eurasian routes." },
 
@@ -3314,8 +3271,8 @@ const EDGES: CausalEdge[] = [
 
   // ── P1: Energy → Inflation (channel: Brent → IMF Fuel Energy, β=0.918 [0.84, 1.00], n=303) ──
   { id: "sa_ras_tanura_terminal__ip_cpi_energy", source: "sa_ras_tanura_terminal", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Ras Tanura handles ~6.5 Mbbl/d Saudi crude (~7% global). Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.07 source share." },
-  { id: "sa_abqaiq_plants__ip_cpi_energy", source: "sa_abqaiq_plants", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d (~7% global). 2019 drone attack drove +23% abnormal cumulative Brent return (t=2.26, 90d post-window) — consistent with the 0.918 channel elasticity applied to a 57.6% peak disruption." },
-  { id: "qf_strait_of_hormuz__ip_cpi_energy", source: "qf_strait_of_hormuz", target: "ip_cpi_energy", weight: 0.184, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Hormuz carries ~20% of global oil transit. Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.20 transit share." },
+  { id: "si_abqaiq_throughput__ip_cpi_energy", source: "si_abqaiq_throughput", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d (~7% global). 2019 drone attack drove +23% abnormal cumulative Brent return (t=2.26, 90d post-window) — consistent with the 0.918 channel elasticity applied to a 57.6% peak disruption." },
+  { id: "si_hormuz_throughput__ip_cpi_energy", source: "si_hormuz_throughput", target: "ip_cpi_energy", weight: 0.184, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Hormuz carries ~20% of global oil transit. Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.20 transit share." },
   { id: "qe_north_field_gas_field__ip_cpi_energy", source: "qe_north_field_gas_field", target: "ip_cpi_energy", weight: 0.092, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "North Field is ~25% of global LNG capacity. Empirical channel: Brent → IMF Fuel Energy elasticity 0.918, scaled by 0.10 (CPI energy is mostly oil; partial gas pass-through)." },
   { id: "qe_ras_laffan_port__ip_ppi_energy", source: "qe_ras_laffan_port", target: "ip_ppi_energy", weight: 0.011, lag: 1, type: "directed", confidence: 0.82, isInconsistent: false, physicalMechanism: "Ras Laffan loads ~77 MTPA LNG. Empirical channel: Henry Hub natgas → IMF Fuel Energy refit, scaled by 0.10 source share." },
 
@@ -3397,7 +3354,7 @@ const EDGES: CausalEdge[] = [
 
   // ─── Shared Infrastructure → Domain cross-domain edges (Phase 16) ──
   // The new canonical facet nodes (si_hormuz_*) feed the existing
-  // per-domain Hormuz copies (qf_/mn_strait_of_hormuz) which keep their
+  // per-domain Hormuz copies (si_hormuz_throughput (formerly qf_/mn_strait_of_hormuz)) which keep their
   // downstream edges intact. This is the additive-pilot pattern: the
   // facets get live data, the per-domain nodes continue propagating
   // cascade into their domain's downstream operations. A follow-up PR
@@ -3415,8 +3372,6 @@ const EDGES: CausalEdge[] = [
   // Facet → per-domain Hormuz copies. Higher-confidence cross-domain
   // edges because the per-domain nodes are CURRENTLY the only consumers
   // of the throughput signal (will be eliminated in the follow-up PR).
-  { id: "si_hormuz_throughput__qf_strait_of_hormuz", source: "si_hormuz_throughput", target: "qf_strait_of_hormuz", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Per-domain QAFCO Hormuz copy reflects the canonical throughput signal — same physical strait, same flow measurement. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream QAFCO operations are wired directly to si_hormuz_throughput." },
-  { id: "si_hormuz_throughput__mn_strait_of_hormuz", source: "si_hormuz_throughput", target: "mn_strait_of_hormuz", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Per-domain Ma'aden Hormuz copy reflects the canonical throughput signal — same physical strait, same flow measurement. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream Ma'aden operations are wired directly to si_hormuz_throughput." },
 
   // Cross-domain bridges: war-risk premium directly affects Financial
   // Contagion (insurance / OAS pricing) and Supply Chain (food shipping
@@ -3431,7 +3386,6 @@ const EDGES: CausalEdge[] = [
   { id: "si_abqaiq_war_risk_premium__si_abqaiq_throughput", source: "si_abqaiq_war_risk_premium", target: "si_abqaiq_throughput", weight: 0.6, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Elevated war-risk premium triggers preemptive throughput reduction (planned maintenance, dispersal of inventory) and forces post-incident shutdowns. 2019 drone strike took 5.7 mb/d offline immediately and ~3 mb/d for the following 2 weeks — the canonical realized impact path." },
 
   // Facet → legacy per-domain copy (backward compat during transition)
-  { id: "si_abqaiq_throughput__sa_abqaiq_plants", source: "si_abqaiq_throughput", target: "sa_abqaiq_plants", weight: 0.95, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Legacy `sa_abqaiq_plants` node (Saudi Aramco Energy domain) reflects the canonical throughput signal — same physical facility, same processed volume. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream Aramco edges are wired directly to si_abqaiq_throughput." },
 
   // Cross-domain bridge: Abqaiq war-risk premium spills into Financial
   // Contagion via high-yield OAS pricing (oil-shock proxy) and the

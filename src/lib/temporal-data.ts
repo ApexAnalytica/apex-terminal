@@ -45,13 +45,13 @@ const EVENT_TEMPLATES: Omit<TemporalEvent, "id" | "date">[] = [
   {
     label: "Abqaiq Processing Disruption",
     description: "Drone strike on Abqaiq processing facility disrupts 5.7M bpd capacity",
-    affectedNodeIds: ["sa_abqaiq_plants", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
+    affectedNodeIds: ["si_abqaiq_throughput", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
     severity: 0.85,
   },
   {
     label: "Strait of Hormuz Tensions",
     description: "Naval incident in Strait of Hormuz raises shipping insurance premiums",
-    affectedNodeIds: ["qf_strait_of_hormuz", "mn_strait_of_hormuz", "qe_ras_laffan_port"],
+    affectedNodeIds: ["si_hormuz_throughput", "qe_ras_laffan_port"],
     severity: 0.8,
   },
   {

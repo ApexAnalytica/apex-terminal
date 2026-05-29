@@ -421,6 +421,18 @@ number *is* the asset number.
   registered in `registry.ts`. 12 tests.
 - **+2 nodes** to live coverage.
 
+### Applied: EIA Saudi crude → Ras Tanura export terminal (#484)
+
+Extended the *existing* `eia-saudi-crude` provider (no new module) to also
+match `sa_ras_tanura_terminal` — the world's largest crude export
+terminal. Consistent with the provider already driving the Juaymah crude
+terminal: the graph's own `sa_ras_tanura_terminal →
+sa_juaymah_crude_terminal` edge calls the two "an integrated eastern
+export complex". The matcher pattern is the **specific** substring
+`"ras tanura terminal"`, not bare `"ras tanura"`, so the co-located "Ras
+Tanura Refinery" (a downstream crude *consumer*) doesn't get the
+production signal — no negative exclusion needed. **+1 node.**
+
 ### The recipe (repeatable for the rest of the moat)
 
 When a physical-asset node is the dominant component of a national
@@ -439,21 +451,36 @@ aggregate that EIA International publishes:
 4. API route is boilerplate (copy saudi-crude/route.ts).
 5. Register, test, live-validate the fetch+parse with the prod key.
 
-### Next aggregate-proxy candidates
+### Aggregate-proxy technique is now exhausted (verified 2026-05-29)
 
-- **Iran / Iraq / UAE / Kuwait crude** (EIA International, productId=53,
-  activity=1) — each is the dominant national producer behind several
-  domain nodes; same shape as Saudi crude. Watch for sanction-data
-  caveats on Iran (the published figure may understate actual flow).
-- **US / Qatar LNG exports** (EIA natural-gas trade series) — would drive
-  the export-train + Ras Laffan port nodes with a *flow* signal distinct
-  from the upstream production signal this PR adds.
-- **Algeria / Nigeria gas** (productId=26) — drive their respective
-  feedstock/export nodes if/when those domains gain graph presence.
+After #479 + #484, I audited the graph for the other producers a naive
+reading would target next — and **they have no target nodes**:
 
-The hard limit remains: this only works where one asset ≈ the national
-aggregate. Multi-asset countries (e.g. US refineries) need per-asset
-data that doesn't exist publicly, so they stay in the moat.
+- **Iran / Iraq / UAE / Kuwait crude** — grepped the full node list for
+  UAE / Abu Dhabi / ADNOC / Iraq / Basra / Kuwait / KOC / Iran / NIOC /
+  Kharg / Rumaila. The *only* hit was "Dolphin Pipeline (gas exports to
+  UAE/Oman)", a Qatar→UAE gas pipeline — not a crude-producer asset
+  node. There is nothing to wire an Iran/Iraq/UAE/Kuwait production
+  proxy *to*. (The `eia-hormuz` provider already sums these six
+  producers for the chokepoint-throughput signal; that's the only place
+  they appear.)
+- **US / Qatar LNG export *flow*** — would be a genuinely distinct
+  signal (flow vs. the upstream production signal #479 adds) and the
+  Ras Laffan / export-train nodes exist, but it needs the EIA
+  natural-gas *trade* series, not `international/data`. Deferred as a
+  real-but-separate build, not a clone of the existing providers.
+- **Algeria / Nigeria gas** — those domains have no graph presence at
+  all yet.
+
+**Net: the two producers with rich asset clusters in the graph (Saudi
+Aramco, QatarEnergy) are now both covered by their national-aggregate
+proxies.** The technique's precondition — one asset ≈ the whole national
+aggregate AND a graph node exists for it — is satisfied nowhere else
+today. The remaining ~50 physical-asset-moat nodes (per-refinery,
+per-cable, per-mine, per-gas-plant) genuinely have no free per-asset
+source. A future session should NOT keep cloning EIA providers expecting
+more wins here; the next live-data gains require either new graph nodes
+(new domain cards) or the LNG-trade-flow build above.
 
 ## Likely upcoming themes
 

@@ -36,7 +36,7 @@ Owns the copilot as the **primary linguistic interface to the platform**. Long-t
 src/lib/copilot/
   tool-registry.ts        defineTool / schemas / parsers / coercion / prompt rendering / JSON Schema export
   tools.ts                every built-in tool (~21 of them as of #264)
-  system-prompt.ts        COPILOT_SYSTEM_PROMPT — shared between route + eval (extracted in #302)
+  system-prompt.ts        buildCopilotSystemPrompt(profileId) + COPILOT_SYSTEM_PROMPT — shared between route + eval. Profile-aware: domain-scope clause and example tool-syntax node ids swap on "geopolitical" vs "t1d". Default is "geopolitical" for backwards compat; the named constant equals the geopolitical variant so the eval harness keeps reproducible scores.
   trace-logger.ts         logTurnTrace + hashPrompt + newConversationId + resolveActiveDataset (#310)
   conversation-window.ts  pruneConversation(messages, limit=12) — sliding window (#331)
   analytics.ts            summarize(rows) — pure aggregator (#332)

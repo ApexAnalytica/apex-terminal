@@ -665,6 +665,19 @@ export default function SystemCopilot() {
           snapshotContext += serializeTimeWindowContext(timelineSel, tempData, graphData);
         }
 
+        // Profile derivation — same `t1d-` prefix check ModulePanel /
+        // DiscoveryRunsPanel / ScenarioInput use to avoid pulling the
+        // 480-LOC domain-profiles module into the critical-path bundle.
+        // Pulled via getState so a domain switch mid-conversation is
+        // picked up on the next send without re-render coupling.
+        const activeDomains =
+          useApexStore.getState().selectedDomains;
+        const profileId: "geopolitical" | "t1d" = activeDomains.some(
+          (id) => id.startsWith("t1d-"),
+        )
+          ? "t1d"
+          : "geopolitical";
+
         const stream = await streamLlmQuery({
           copilotMessages: allMessages,
           graph: graphData,
@@ -682,6 +695,7 @@ export default function SystemCopilot() {
           snapshotContext,
           tarskiReport,
           ollamaUrl: copilotProvider === "ollama" ? ollamaUrl : undefined,
+          profileId,
         });
 
         const reader = stream.getReader();

@@ -30,14 +30,31 @@
 // the message still lands in the store and the user can open the copilot
 // drawer to see it.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useApexStore } from "@/stores/useApexStore";
 
-const PLACEHOLDER =
+// Domain-aware example prose. The placeholder previously hardcoded a
+// Hormuz scenario, which surfaced geopolitical framing inside T1D
+// sessions even when the active graph was entirely β-cell / CGM
+// nodes. We pick a profile-appropriate example so the user's first
+// hint is in the right vocabulary. Same `t1d-` prefix check ModulePanel
+// uses to avoid pulling domain-profiles into the critical-path bundle.
+const PLACEHOLDER_GEOPOLITICAL =
   "e.g. “What happens if Hormuz transit drops 50% for 30 days?”\nThe copilot interprets the scenario, injects appropriate shocks, and proposes the cheapest defensive cuts.";
+const PLACEHOLDER_T1D =
+  "e.g. “Which edges should be cut to keep insulin-independence above 50% at 12 months?”\nThe copilot interprets the scenario, injects appropriate shocks, and proposes the cheapest defensive cuts.";
 
 export default function ScenarioInput() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const placeholder = useMemo(
+    () =>
+      selectedDomains.some((id) => id.startsWith("t1d-"))
+        ? PLACEHOLDER_T1D
+        : PLACEHOLDER_GEOPOLITICAL,
+    [selectedDomains],
+  );
 
   const submit = useCallback(() => {
     const trimmed = text.trim();
@@ -83,7 +100,7 @@ export default function ScenarioInput() {
             submit();
           }
         }}
-        placeholder={PLACEHOLDER}
+        placeholder={placeholder}
         rows={3}
         className="w-full text-[9px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-foreground leading-relaxed resize-none focus:outline-none focus:border-accent-amber/60"
       />

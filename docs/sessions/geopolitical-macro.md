@@ -277,13 +277,117 @@ The pattern: each PR addressed a real bug introduced by the previous. The first 
 
 User feedback after each PR was the unblocker. Listening for "still doing it" / "stretched to a line" / "1D didn't restore" surfaced the trap that wouldn't have shown up in unit tests.
 
+## Shared-Infrastructure Pattern (Phase 16)
+
+Architectural shift from **single conflated nodes** to **canonical facet nodes in a Shared Infrastructure domain**, applied to multi-domain physical infrastructure. Piloted on Strait of Hormuz (PR #440) and Abqaiq Plants (PR #456), cleaned up in PR #461. The pattern is now ready to be applied to the next batch of physical-asset moat targets.
+
+### Why this exists
+
+A chokepoint like the Strait of Hormuz isn't *one* variable — it's a *cluster* of variables, each with its own data source and its own downstream effects:
+
+- **Throughput** — observed flow (mb/d). Live signal from EIA.
+- **Capacity** — physical/structural ceiling. Static, published.
+- **War-risk premium** — disruption probability. No free public source; architectural seat for future Lloyd's / VIX-correlation / naval-activity wiring.
+- (Future facets: tanker AIS density, alternative-route capacity, etc.)
+
+Before Phase 16, all of these were conflated into a single `qf_strait_of_hormuz` / `mn_strait_of_hormuz` node (and similarly `sa_abqaiq_plants`). Three concrete problems:
+
+1. **Pearl intervention semantics were ambiguous.** "Intervene on Hormuz" meant *which variable*? An EIA value collapses to a single `value` field with no way to model "throughput drops by 50% but capacity unchanged."
+2. **Tarski A-04 axiom's `value > capacity` was incoherent.** Both fields belonged to the same conflated node — you can't compare a thing to itself.
+3. **Cross-domain duplication.** Same physical chokepoint was represented twice (QAFCO copy + Ma'aden copy). Bug-prone — any signal had to be replicated.
+
+### The pattern
+
+1. **Add a new domain string** for the shared-infrastructure tier:
+   ```ts
+   domain: "Shared Infrastructure",
+   ```
+   No domain-profile registration needed — `node.domain` is free-form. Domains without explicit profiles render correctly with default behavior.
+
+2. **Replace the single conflated node with N facet nodes**, one per intervenable variable. Use a consistent ID convention:
+   ```ts
+   { id: "si_<concept>_<facet>", label: "<Concept> — <Facet>", ... }
+   ```
+   - `si_` prefix marks shared-infrastructure
+   - `<concept>` is the physical thing (hormuz, abqaiq, ras_laffan, 2africa)
+   - `<facet>` is the intervenable variable (throughput, capacity, war_risk_premium, latency, etc.)
+
+3. **Add intra-facet edges** to express the structural relationships:
+   ```
+   si_X_capacity → si_X_throughput    // capacity bounds throughput
+   si_X_war_risk → si_X_throughput    // elevated risk reduces effective flow
+   ```
+
+4. **Add cross-domain edges** from each facet to the operational nodes it affects. This is where the *new analytical clarity* shows up — channels that were invisible in the single-node design get assigned to the facet they semantically belong to:
+   - Hormuz example: `si_hormuz_war_risk_premium → sc_shipping_cost_index` (risk drives shipping cost independently of realized throughput)
+   - Abqaiq example: `si_abqaiq_war_risk_premium → fc_sovereign_default` (2019 strike triggered measurable +40bp HY OAS spike)
+
+5. **Update the provider matcher** with negative exclusions:
+   ```ts
+   if (l.includes("capacity") || l.includes("war-risk")) return false;
+   return l.includes("<concept-substring>");
+   ```
+   Each facet shares the concept substring (e.g. "Strait of Hormuz") in its label, so the matcher needs explicit guards against routing the throughput signal to capacity or war-risk facets.
+
+### Mechanical migration steps (additive → cleanup pattern)
+
+The Hormuz + Abqaiq pilots split the work into two PRs each — this kept the radius small and made rollback possible at any point.
+
+**Phase A (additive — one PR):**
+1. Add the new facet nodes in a new "Shared Infrastructure" section of graph-data.ts
+2. Add intra-facet edges + cross-domain edges from facets to downstream consumers
+3. Add backward-compat edges from facets → existing legacy nodes so cascade still flows
+4. Update the provider matcher with negative exclusions
+5. Tests + add regression test asserting non-throughput facets aren't matched
+
+**Phase B (cleanup — one PR):**
+1. Re-target all existing edges from legacy node IDs to facet IDs (use Python script for atomicity — sed alone is dangerous because edge IDs encode source/target names)
+2. Delete duplicate edges that result from migration (e.g. when two legacy nodes both pointed at the same target, you'll have a duplicate — keep the higher-weight one)
+3. Delete self-loops that result from migration (the backward-compat edges become self-loops after the legacy node disappears — delete them)
+4. Delete the legacy node definitions
+5. Update geo-coordinates.ts (delete legacy entries, add facet entries at same physical location)
+6. Update event templates in temporal-data.ts + real-timeseries.ts
+7. Update demo-flows.ts highlights (dedupe within arrays — qf + mn both becoming si_hormuz_throughput should collapse to a single entry)
+8. Update athena-graph-data.ts cross-dataset bridges
+9. Update tests
+10. Clean up matcher comments (legacy paths no longer needed)
+
+### Applied examples
+
+| Concept | Legacy node(s) | Facets | PR (additive) | PR (cleanup) |
+|---|---|---|---|---|
+| Strait of Hormuz | `qf_strait_of_hormuz` (QAFCO), `mn_strait_of_hormuz` (Ma'aden) | throughput / capacity / war_risk_premium | #440 | #461 |
+| Abqaiq Plants | `sa_abqaiq_plants` (Saudi Aramco) | throughput / capacity / war_risk_premium | #456 | #461 |
+
+Both were cleaned up in the single #461 sweep — one cleanup PR is much cleaner than two separate ones.
+
+### When to apply the pattern (criteria)
+
+Apply shared-infrastructure decomposition when:
+
+1. **The node has multiple intervenable variables.** The "intervene on X by reducing throughput" question must be answerable independently of "intervene on X by changing capacity" or "intervene on X by changing risk premium." If the answer is the same (or undefined), the concept is a single variable and doesn't need decomposition.
+2. **The node is multi-domain.** Same physical thing referenced from two or more domains. The current workaround is per-domain copies (`qf_X` + `mn_X`); decomposition gives you one canonical node with cross-domain edges.
+3. **Future facets are foreseeable.** If the only variable you can think of is throughput, capacity + war-risk are speculative seats — the pattern is overkill. Add them only when you have a concrete data source or analytical use case for the second facet.
+
+### Likely next targets
+
+- **`qe_ras_laffan_port`** (Qatar LNG hub) — same shape as Hormuz/Abqaiq. Facets: throughput (LNG cargoes/month), capacity (berth + storage), war-risk premium. Currently single-conflated in the QatarEnergy LNG domain.
+- **`ic_2africa`** (undersea cable system) — facets: capacity (Tbps), realized utilization, repair-vessel availability, war-risk premium. Different shape (data-flow rather than commodity-flow) but the same pattern of multiple-intervenable-variables-per-physical-asset applies.
+- **`sa_ras_tanura_terminal`** (Saudi crude export terminal) — same shape as Abqaiq. Facets: throughput, capacity, war-risk premium.
+- **`qf_north_field_gas`** + **`qe_north_field_gas_field`** — currently duplicated across QAFCO and QatarEnergy domains. Decomposition consolidates to one canonical node.
+
+### Coordination with other sessions
+
+- **Tarski session** — A-04 chokepoint axiom currently reads the single conflated node's `value` and `capacity` fields. After Phase 16 cleanup these now refer to nothing (legacy nodes deleted). A coordinated Tarski-session PR is needed to update A-04 to read `si_<concept>_throughput.value > si_<concept>_capacity.value` directly.
+- **UX / Onboarding session** — domain-profiles.ts may eventually want an explicit "Shared Infrastructure" profile entry (for sidebar grouping, persona mapping, etc.). For now, untyped string domains render correctly with default behavior; no UX coordination required for the pilot.
+
 ## Likely upcoming themes
 
 - New domain cards as customer pilots demand them.
 - Real-world coordinate coverage for MAP-view domains.
 - Sanction / export-control axiom expansion (TARSKI co-auth).
 - Time-series coverage for currently sparse nodes.
-- TODO: fill in.
+- Roll out the shared-infrastructure pattern to Ras Laffan, 2Africa, Ras Tanura, North Field.
 
 ## How to start a task
 

@@ -30,7 +30,6 @@ const NODE_COORDINATES: Record<string, LngLat> = {
   sa_east_west_pipeline: [42.5, 24.5],
   sa_ras_tanura_refinery: [50.17, 26.64],
   sa_yanbu_refinery: [38.06, 24.09],
-  sa_abqaiq_plants: [49.66, 25.94],
   sa_master_gas_system_mgs: [48.5, 25.3],
   sa_fadhili_gas_plant: [49.5, 26.5],
   sa_wasit_gas_plant: [50.1, 26.2],
@@ -69,7 +68,6 @@ const NODE_COORDINATES: Record<string, LngLat> = {
   qf_aqueous_ammonia_facility: [51.52, 25.0],
   qf_qafco_1_4_site: [51.51, 24.97],
   qf_qafco_5_6_site: [51.50, 24.96],
-  qf_strait_of_hormuz: [56.3, 26.6],
   qf_india_fertilizer_market: [78.0, 22.0],
   qf_brazil_fertilizer_market: [-47.9, -15.8],
   qf_australia_fertilizer_market: [133.8, -25.3],
@@ -96,7 +94,6 @@ const NODE_COORDINATES: Record<string, LngLat> = {
   mn_india_fertilizer_market: [78.0, 20.6],
   mn_brazil_fertilizer_market: [-49.3, -16.7],
   mn_african_import_dependent_markets: [20.0, 0.0],
-  mn_strait_of_hormuz: [56.5, 26.5],
   mn_global_food_price_stress: [14.4, 40.8],
 
   // Financial Contagion — financial centres + EM hubs
@@ -297,6 +294,8 @@ const NODE_COORDINATES: Record<string, LngLat> = {
   fs_hubble_tension: [-67.78, -22.96],      // ALMA Atacama Chile
   fs_neutrino_mass_hierarchy: [-88.27, 41.83], // Fermilab Batavia IL (DUNE)
   fs_proton_decay_search: [137.31, 36.43],  // Super-Kamiokande Japan
+  si_hormuz_throughput: [56.3, 26.55],  // Strait of Hormuz centroid (was qf_/mn_strait_of_hormuz)
+  si_abqaiq_throughput: [49.66, 25.94],  // Abqaiq Plants location (was sa_abqaiq_plants),
 };
 
 // ─── US hubs (replaces the single Kansas centroid) ───────────────

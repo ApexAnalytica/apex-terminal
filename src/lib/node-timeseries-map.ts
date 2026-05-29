@@ -49,14 +49,6 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     unit: "mb/d",
     label: "Liquid Fuels Production",
   },
-  sa_abqaiq_plants: {
-    source: "saudi_aramco",
-    description: "Abqaiq processing facility — world's largest crude oil stabilization plant, processing ~7mb/d. Tracked via total crude oil production",
-    metricFilter: { metric_name: "total_crude_oil_production" },
-    valueKey: "metric_value",
-    unit: "mb/d",
-    label: "Total Crude Production",
-  },
   sa_master_gas_system_mgs: {
     source: "saudi_aramco",
     description: "Master Gas System — Saudi Arabia's nationwide gas gathering/processing network. Tracked via dry natural gas production",
@@ -333,14 +325,6 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     unit: "mt",
     label: "Production",
   },
-  qf_strait_of_hormuz: {
-    source: "qatarenergy",
-    description: "Strait of Hormuz chokepoint — all Qatar LNG/petrochemical exports transit here. Tracked via total LNG exports",
-    metricFilter: { metric_name: "lng_exports_total" },
-    valueKey: "metric_value",
-    unit: "Tcf",
-    label: "LNG Transit Volume",
-  },
   qf_india_fertilizer_market: {
     source: "qatarenergy",
     description: "India fertilizer market — key destination for QAFCO exports. Tracked via Qatar gas exports to India",
@@ -495,14 +479,6 @@ export const NODE_TIMESERIES_MAP: Record<string, TimeseriesMapping> = {
     valueKey: "global_wheat_price_usd_per_ton",
     unit: "USD/ton",
     label: "Global Wheat Price",
-  },
-  mn_strait_of_hormuz: {
-    source: "qatarenergy",
-    description: "Strait of Hormuz — shipping chokepoint for Ma'aden phosphate/DAP exports",
-    metricFilter: { metric_name: "lng_exports_total" },
-    valueKey: "metric_value",
-    unit: "Tcf",
-    label: "Hormuz Transit Volume",
   },
   mn_bangladesh_agricultural_development_corp: {
     source: "maaden_operations",

@@ -14,7 +14,7 @@ const inBox = (
 
 describe("getNodeCoordinates — exact match", () => {
   it("returns pinned coords for known node ids", () => {
-    expect(getNodeCoordinates("sa_abqaiq_plants", "", "Saudi Aramco Energy"))
+    expect(getNodeCoordinates("si_abqaiq_throughput", "", "Saudi Aramco Energy"))
       .toEqual([49.66, 25.94]);
     expect(getNodeCoordinates("vx880_dose", "", "T1D VX-880"))
       .toEqual([-71.04, 42.35]);

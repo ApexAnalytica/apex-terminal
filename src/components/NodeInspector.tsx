@@ -9,6 +9,7 @@ import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { buildContextualReview } from "@/lib/contextual-review";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -238,6 +239,23 @@ export default function NodeInspector() {
     return data?.history ?? [];
   }, [selectedNode, temporalData]);
 
+  // Smart contextual review — synthesises 1-3 verb-led recommendations
+  // about the selected node (axiom hits on incident edges, ΩF velocity,
+  // unpromoted bridges, cascade saturation, confounder, χ★ membership).
+  // Pure function in `lib/contextual-review.ts` so it's testable in
+  // isolation from the JSX rendering layer.
+  const tarskiReport = useApexStore((s) => s.tarskiReport);
+  const reviewRecommendations = useMemo(() => {
+    if (!node) return [];
+    return buildContextualReview({
+      node,
+      graph: graphData,
+      tarskiReport,
+      history: nodeHistory,
+      chiStarSet,
+    });
+  }, [node, graphData, tarskiReport, nodeHistory, chiStarSet]);
+
   const axes: { key: PillarKey; label: string; value: number }[] = node
     ? [
         { key: "irreplaceability", label: pillarDetails.irreplaceability.label, value: node.omegaFragility.irreplaceability },
@@ -295,6 +313,52 @@ export default function NodeInspector() {
                 &times;
               </button>
             </div>
+
+            {/* REVIEW — smart contextual recommendations specific to the
+                selected node. Renders only when at least one signal fires
+                (axiom hits, cascade saturation, ΩF velocity, etc.) so
+                we don't paint dead chrome on healthy nodes. Tone-coloured
+                dot · bold verb-led title · supporting clause. */}
+            {reviewRecommendations.length > 0 && (
+              <div className="px-2 py-2 rounded border border-border bg-surface-elevated/50">
+                <div className="flex items-baseline justify-between mb-1">
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-secondary">
+                    REVIEW
+                  </div>
+                  <div className="text-[7px] font-mono text-text-muted/60">
+                    what to look at
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {reviewRecommendations.map((r, i) => (
+                    <div
+                      key={`${r.title}-${i}`}
+                      className="text-[9px] font-mono leading-snug flex items-baseline gap-1.5"
+                    >
+                      <span
+                        style={{
+                          color:
+                            r.tone === "red"
+                              ? "#ff1744"
+                              : r.tone === "green"
+                              ? "#00e676"
+                              : "#ffab00",
+                        }}
+                        className="text-[8px] leading-none flex-shrink-0"
+                      >
+                        ●
+                      </span>
+                      <span className="min-w-0">
+                        <span className="text-foreground font-semibold">
+                          {r.title}
+                        </span>
+                        <span className="text-text-muted/70"> — {r.detail}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Data Explainer — collapsible panel explaining what data this node represents */}
             <div className="rounded border border-border/50 overflow-hidden">

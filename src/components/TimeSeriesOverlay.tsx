@@ -114,6 +114,11 @@ export default function TimeSeriesOverlay() {
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
   const timelineDragging = useApexStore((s) => s.timelineDragging);
+  // Watchlist discovery inputs — the consolidated dock surfaces "suggested"
+  // series to pin (selected → live-fed → top-Ω) directly in the left rail,
+  // folding in what the old standalone risk-card row used to do.
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [hoverX, setHoverX] = useState<number | null>(null);
   // X-axis zoom mode.
@@ -285,6 +290,73 @@ export default function TimeSeriesOverlay() {
       })
       .filter(Boolean) as { nodeId: string; label: string; domain: string }[];
   }, [pinnedNodes, curves, temporalData, graphData]);
+
+  // Watchlist rows for the left rail — one per pinned node, in pin order.
+  // Prefer the rich curve data (color + current value + unit); fall back to
+  // a bare label for pinned nodes that carry no plottable history yet so the
+  // user can still see and unpin them.
+  const pinnedRows = useMemo(() => {
+    const curveById = new Map(curves.map((c) => [c.nodeId, c]));
+    return pinnedNodes
+      .map((id) => {
+        const curve = curveById.get(id);
+        if (curve) {
+          return {
+            nodeId: id,
+            label: curve.label,
+            color: curve.color,
+            omega: curve.currentOmega,
+            unit: curve.sourceUnit,
+            hasData: true,
+          };
+        }
+        const node = graphData.nodes.find((n) => n.id === id);
+        if (!node) return null;
+        return {
+          nodeId: id,
+          label: node.label,
+          color: getDomainColor(node.domain),
+          omega: node.omegaFragility.composite,
+          unit: null as string | null,
+          hasData: false,
+        };
+      })
+      .filter(Boolean) as {
+      nodeId: string;
+      label: string;
+      color: string;
+      omega: number;
+      unit: string | null;
+      hasData: boolean;
+    }[];
+  }, [pinnedNodes, curves, graphData]);
+
+  // Suggested series to pin: explicit selection first, then live-fed nodes,
+  // then the highest-Ω nodes — minus anything already pinned. Capped so the
+  // rail stays scannable. This is the discovery path that used to live in
+  // the separate risk-card strip.
+  const suggestions = useMemo(() => {
+    const seen = new Set(pinnedNodes);
+    const out: { nodeId: string; label: string; color: string; omega: number }[] = [];
+    const push = (id: string) => {
+      if (seen.has(id)) return;
+      const n = graphData.nodes.find((x) => x.id === id);
+      if (!n) return;
+      seen.add(id);
+      out.push({
+        nodeId: n.id,
+        label: n.label,
+        color: getDomainColor(n.domain),
+        omega: n.omegaFragility.composite,
+      });
+    };
+    for (const id of [selectedNode, ...selectedNodes]) if (id) push(id);
+    for (const n of graphData.nodes) if (n.liveData && n.liveData.length > 0) push(n.id);
+    [...graphData.nodes]
+      .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
+      .forEach((n) => push(n.id));
+    return out.slice(0, 6);
+  }, [graphData, pinnedNodes, selectedNode, selectedNodes]);
 
   // Per-curve scale: each pinned curve normalizes to its OWN min/max so
   // curves with mismatched units (Ω 0-10, %, mb/d, USD/ton, programs)
@@ -529,19 +601,133 @@ export default function TimeSeriesOverlay() {
     [plotInset],
   );
 
-  if (pinnedNodes.length === 0) return null;
+  // Render nothing only when there's genuinely nothing to show — no pinned
+  // series and no candidates to suggest (e.g. empty workspace). Page-level
+  // gating on `hasGraph` is the primary guard; this is the safety net.
+  if (pinnedRows.length === 0 && suggestions.length === 0) return null;
+
+  const hasPinned = pinnedRows.length > 0;
+  const liveCount = curves.filter((c) => c.sourceLabel?.startsWith("LIVE")).length;
 
   return (
-    <div ref={containerRef} className="border-t border-border bg-surface-elevated">
+    <div
+      ref={containerRef}
+      className="border-t border-border bg-surface-elevated flex items-stretch"
+      data-tour="risk-flow"
+    >
+      {/* LEFT: watchlist rail — pinned series + suggestions. Doubles as the
+          chart legend (each pinned row is a curve) and the discovery surface
+          (suggested rows pin with one click). Replaces the old standalone
+          risk-card strip and the chart's bottom legend chips. */}
+      <div className="w-56 flex-shrink-0 border-r border-border flex flex-col">
+        <div className="flex items-center justify-between px-3 py-1 border-b border-border">
+          <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+            WATCHLIST
+          </span>
+          <div className="flex items-center gap-2">
+            {liveCount > 0 && (
+              <span className="flex items-center gap-1 text-[7px] font-mono text-accent-green">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
+                {liveCount} LIVE
+              </span>
+            )}
+            {hasPinned && (
+              <button
+                onClick={clearPinned}
+                className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
+                title="Unpin all series"
+              >
+                CLEAR
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5 max-h-[180px]">
+          {hasPinned && (
+            <div className="text-[7px] font-mono text-text-muted/50 px-1 pb-0.5 tracking-wider">
+              PINNED · {pinnedRows.length}
+            </div>
+          )}
+          {pinnedRows.map((row) => (
+            <button
+              key={row.nodeId}
+              onClick={() => togglePinned(row.nodeId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${row.label} — click to unpin`}
+            >
+              <span className="text-[9px] leading-none text-accent-cyan group-hover:text-accent-red transition-colors flex-shrink-0">
+                ◉
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: row.color, opacity: row.hasData ? 1 : 0.4 }}
+              />
+              <span className="text-[9px] font-mono text-foreground truncate flex-1">
+                {row.label}
+              </span>
+              {row.hasData ? (
+                <span
+                  className="text-[9px] font-mono font-bold tabular-nums flex-shrink-0"
+                  style={{ color: getLineColor(row.omega) }}
+                >
+                  {row.omega.toFixed(1)}
+                </span>
+              ) : (
+                <span className="text-[6px] font-mono text-text-muted/40 flex-shrink-0">
+                  NO DATA
+                </span>
+              )}
+            </button>
+          ))}
+          {suggestions.length > 0 && (
+            <div className="text-[7px] font-mono text-text-muted/50 px-1 pt-1.5 pb-0.5 tracking-wider">
+              SUGGESTED
+            </div>
+          )}
+          {suggestions.map((s) => (
+            <button
+              key={s.nodeId}
+              onClick={() => togglePinned(s.nodeId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${s.label} — click to pin to chart`}
+            >
+              <span className="text-[9px] leading-none text-text-muted/50 group-hover:text-accent-cyan transition-colors flex-shrink-0">
+                ○
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: s.color }}
+              />
+              <span className="text-[9px] font-mono text-text-muted group-hover:text-foreground transition-colors truncate flex-1">
+                {s.label}
+              </span>
+              <span
+                className="text-[9px] font-mono tabular-nums flex-shrink-0"
+                style={{ color: getLineColor(s.omega) }}
+              >
+                {s.omega.toFixed(1)}
+              </span>
+            </button>
+          ))}
+          {!hasPinned && (
+            <div className="text-[7px] font-mono text-text-muted/40 px-1 pt-1.5 leading-relaxed">
+              Click ○ to add a series, or select a node on the canvas.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* RIGHT: header + comparison chart */}
+      <div className="flex-1 min-w-0 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-1">
-        <div className="min-w-[72px] flex-shrink-0 flex items-center justify-center">
+        <div className="hidden">
           <span className="text-[9px] font-mono text-accent-cyan">
             {"\u2261"}
           </span>
         </div>
         <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted flex-1">
-          {"\u03A9"}F COMPARISON — {curves.length} CURVE{curves.length !== 1 ? "S" : ""}
+          {"\u03A9"}F TIME SERIES
           {xAxisMode === "data" && (
             <span className="ml-2 text-accent-cyan/80">
               {"·"} ZOOMED {new Date(xStart).getFullYear()}{"–"}{new Date(xEnd).getFullYear()}
@@ -562,19 +748,13 @@ export default function TimeSeriesOverlay() {
             }`}
             title={
               xAxisMode === "data"
-                ? "Showing data span. Click to return to dial-aligned x-axis (matches TimeDial scrubber below)."
-                : "Some curves have history older than the dial window. Click to zoom out and show their full span (chart cursor will decouple from TimeDial)."
+                ? "Showing each series' full history. Click to snap the x-axis back to the timeline scrubber below."
+                : "Some series have history older than the timeline window. Click to zoom out and show their full span."
             }
           >
-            FIT: {xAxisMode === "data" ? "DATA" : "DIAL"}
+            {xAxisMode === "data" ? "SYNC TO TIMELINE" : "FIT TO DATA"}
           </button>
         )}
-        <button
-          onClick={clearPinned}
-          className="text-[8px] font-mono text-text-muted hover:text-accent-red transition-colors px-1.5 py-0.5 rounded border border-border hover:border-accent-red/30"
-        >
-          CLEAR ALL
-        </button>
       </div>
 
       {/* Chart area */}
@@ -591,14 +771,17 @@ export default function TimeSeriesOverlay() {
                 units share an axis without one dominating the others. */}
             <div className="min-w-[72px] flex-shrink-0 flex flex-col justify-between py-1">
               <span className="text-[7px] font-mono text-text-muted/60">100%</span>
-              {gridLines.map((v) => (
+              {/* Grid labels render top→bottom, so sort descending to read
+                  100 / 75 / 50 / 25 / 0 down the axis (previously printed
+                  in ascending order, giving the nonsensical 100/25/50/75/0). */}
+              {[...gridLines].sort((a, b) => b - a).map((v) => (
                 <span key={v} className="text-[7px] font-mono text-text-muted/60">
                   {Math.round(v * 100)}%
                 </span>
               ))}
               <span className="text-[7px] font-mono text-text-muted/60">0%</span>
               <span className="text-[6px] font-mono text-text-muted/40 tracking-wider mt-0.5">
-                NORM
+                % OF RANGE
               </span>
             </div>
 
@@ -869,8 +1052,13 @@ export default function TimeSeriesOverlay() {
             </div>
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-2 px-4 pb-2 flex-wrap">
+          {/* Legend retired — the left WATCHLIST rail now serves as the
+              chart legend (one row per pinned curve, with its colour swatch
+              and current value). Kept rendered-but-hidden to preserve the
+              per-curve range/sparsity tooltips without a larger refactor;
+              `false &&` strips it from the tree entirely. */}
+          {false && (
+          <div className="hidden">
             <div className="min-w-[72px] flex-shrink-0" />
             {curves.map((curve) => {
               const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
@@ -980,8 +1168,10 @@ export default function TimeSeriesOverlay() {
               </button>
             ))}
           </div>
+          )}
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -4,8 +4,11 @@ import {
   availableCalculations,
 } from "@/lib/calculations/registry";
 import { hhiCalculation } from "@/lib/calculations/hhi";
+import { outdegreeHhiCalculation } from "@/lib/calculations/outdegree-hhi";
 import { crossDomainEdgesCalculation } from "@/lib/calculations/cross-domain-edges";
+import { bridgeRatioCalculation } from "@/lib/calculations/bridge-ratio";
 import { meanOmegaCalculation } from "@/lib/calculations/mean-omega";
+import { meanJurisdictionalHazardCalculation } from "@/lib/calculations/mean-jurisdictional-hazard";
 import type { CalculationContext } from "@/lib/calculations/types";
 import { makeNode, makeEdge } from "../../__tests__/fixtures/graph-fixtures";
 
@@ -335,5 +338,203 @@ describe("crossDomainEdgesCalculation — toGraphSnapshot", () => {
     const r = crossDomainEdgesCalculation.compute(c)!;
     const snap = crossDomainEdgesCalculation.toGraphSnapshot!(r, c)!;
     expect(snap.value).toBe(1);
+  });
+});
+
+describe("bridgeRatioCalculation", () => {
+  it("does not apply on an empty graph", () => {
+    expect(bridgeRatioCalculation.appliesWhen(ctx())).toBe(false);
+  });
+
+  it("returns 100% for a line graph (every edge is a strict bridge)", () => {
+    // A → B → C → D — every edge disconnects the graph if removed.
+    const nodes = [
+      makeNode({ id: "a" }),
+      makeNode({ id: "b" }),
+      makeNode({ id: "c" }),
+      makeNode({ id: "d" }),
+    ];
+    const edges = [
+      makeEdge({ id: "e1", source: "a", target: "b" }),
+      makeEdge({ id: "e2", source: "b", target: "c" }),
+      makeEdge({ id: "e3", source: "c", target: "d" }),
+    ];
+    const r = bridgeRatioCalculation.compute(ctx({ graph: { nodes, edges } }))!;
+    if (r.value.kind === "scalar") {
+      expect(r.value.value).toBe(100);
+    }
+    expect(r.tone).toBe("red");
+  });
+
+  it("toGraphSnapshot returns the scalar percentage", () => {
+    const nodes = [
+      makeNode({ id: "a" }),
+      makeNode({ id: "b" }),
+      makeNode({ id: "c" }),
+    ];
+    const edges = [
+      makeEdge({ id: "e1", source: "a", target: "b" }),
+      makeEdge({ id: "e2", source: "b", target: "c" }),
+    ];
+    const c = ctx({ graph: { nodes, edges } });
+    const r = bridgeRatioCalculation.compute(c)!;
+    const snap = bridgeRatioCalculation.toGraphSnapshot!(r, c)!;
+    if (r.value.kind === "scalar") {
+      expect(snap.value).toBe(r.value.value);
+    }
+  });
+});
+
+describe("meanJurisdictionalHazardCalculation", () => {
+  it("does not apply on an empty graph", () => {
+    expect(meanJurisdictionalHazardCalculation.appliesWhen(ctx())).toBe(false);
+  });
+
+  it("returns the mean J pillar (independent of composite)", () => {
+    // Composite is 5 on both nodes, but J pillar is 8 and 4 — mean = 6.
+    const nodes = [
+      makeNode({
+        id: "a",
+        omegaFragility: {
+          composite: 5,
+          irreplaceability: 0,
+          restorationLatency: 0,
+          jurisdictionalHazard: 8,
+          cascadeLoad: 0,
+          tailDepth: 0,
+        },
+      }),
+      makeNode({
+        id: "b",
+        omegaFragility: {
+          composite: 5,
+          irreplaceability: 0,
+          restorationLatency: 0,
+          jurisdictionalHazard: 4,
+          cascadeLoad: 0,
+          tailDepth: 0,
+        },
+      }),
+    ];
+    const r = meanJurisdictionalHazardCalculation.compute(
+      ctx({ graph: { nodes, edges: [] } }),
+    )!;
+    if (r.value.kind === "scalar") {
+      expect(r.value.value).toBe(6);
+    }
+    expect(r.tone).toBe("green"); // 6 < 7
+  });
+
+  it("flags red at mean J ≥ 9", () => {
+    const nodes = [
+      makeNode({
+        id: "a",
+        omegaFragility: {
+          composite: 5,
+          irreplaceability: 0,
+          restorationLatency: 0,
+          jurisdictionalHazard: 9.4,
+          cascadeLoad: 0,
+          tailDepth: 0,
+        },
+      }),
+    ];
+    const r = meanJurisdictionalHazardCalculation.compute(
+      ctx({ graph: { nodes, edges: [] } }),
+    )!;
+    expect(r.tone).toBe("red");
+  });
+});
+
+describe("outdegreeHhiCalculation", () => {
+  it("does not apply without a selected node", () => {
+    expect(outdegreeHhiCalculation.appliesWhen(ctx())).toBe(false);
+  });
+
+  it("does not apply with only 1 outbound edge", () => {
+    const src = makeNode({ id: "s" });
+    const tgt = makeNode({ id: "t" });
+    expect(
+      outdegreeHhiCalculation.appliesWhen(
+        ctx({
+          graph: {
+            nodes: [src, tgt],
+            edges: [makeEdge({ id: "e1", source: "s", target: "t" })],
+          },
+          selectedNode: "s",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("flags red when one buyer dominates", () => {
+    const src = makeNode({ id: "s" });
+    const b1 = makeNode({ id: "b1" });
+    const b2 = makeNode({ id: "b2" });
+    const r = outdegreeHhiCalculation.compute(
+      ctx({
+        graph: {
+          nodes: [src, b1, b2],
+          edges: [
+            makeEdge({ id: "e1", source: "s", target: "b1", weight: 0.99 }),
+            makeEdge({ id: "e2", source: "s", target: "b2", weight: 0.01 }),
+          ],
+        },
+        selectedNode: "s",
+      }),
+    )!;
+    if (r.value.kind === "scalar") {
+      expect(r.value.value).toBeGreaterThan(9000);
+    }
+    expect(r.tone).toBe("red");
+  });
+
+  it("ignores severed outbound edges", () => {
+    const src = makeNode({ id: "s" });
+    const b1 = makeNode({ id: "b1" });
+    const b2 = makeNode({ id: "b2" });
+    expect(
+      outdegreeHhiCalculation.appliesWhen(
+        ctx({
+          graph: {
+            nodes: [src, b1, b2],
+            edges: [
+              makeEdge({
+                id: "e1",
+                source: "s",
+                target: "b1",
+                isSevered: true,
+              }),
+              makeEdge({ id: "e2", source: "s", target: "b2" }),
+            ],
+          },
+          selectedNode: "s",
+        }),
+      ),
+    ).toBe(false); // only 1 live outbound after filtering severed
+  });
+
+  it("toSnapshot maps to calc:buyer-hhi LiveDataPoint", () => {
+    const src = makeNode({ id: "s" });
+    const b1 = makeNode({ id: "b1" });
+    const b2 = makeNode({ id: "b2" });
+    const c = ctx({
+      graph: {
+        nodes: [src, b1, b2],
+        edges: [
+          makeEdge({ id: "e1", source: "s", target: "b1", weight: 0.6 }),
+          makeEdge({ id: "e2", source: "s", target: "b2", weight: 0.4 }),
+        ],
+      },
+      selectedNode: "s",
+    });
+    const result = outdegreeHhiCalculation.compute(c)!;
+    const snap = outdegreeHhiCalculation.toSnapshot!(result, c)!;
+    expect(snap.nodeId).toBe("s");
+    expect(snap.point.kind).toBe("calc:buyer-hhi");
+    expect(snap.point.providerId).toBe("calc:buyer-hhi");
+    expect(snap.point.capacity).toBe(10_000);
+    expect(snap.point.unit).toBe("HHI");
+    expect(snap.point.source).toContain("Buyer HHI");
   });
 });

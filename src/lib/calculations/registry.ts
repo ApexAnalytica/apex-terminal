@@ -13,13 +13,23 @@
 
 import type { Calculation, CalculationContext } from "./types";
 import { hhiCalculation } from "./hhi";
+import { outdegreeHhiCalculation } from "./outdegree-hhi";
 import { crossDomainEdgesCalculation } from "./cross-domain-edges";
+import { bridgeRatioCalculation } from "./bridge-ratio";
 import { meanOmegaCalculation } from "./mean-omega";
+import { meanJurisdictionalHazardCalculation } from "./mean-jurisdictional-hazard";
 
 export const CALCULATION_REGISTRY: Calculation[] = [
+  // Node-scoped concentration measures — surface first when a node is
+  // selected so they're paired in the visual scan.
   hhiCalculation,
+  outdegreeHhiCalculation,
+  // Graph-wide structural measures.
   crossDomainEdgesCalculation,
+  bridgeRatioCalculation,
+  // Graph-wide scores (composite + isolated pillar).
   meanOmegaCalculation,
+  meanJurisdictionalHazardCalculation,
 ];
 
 /** Filter the registry to entries whose `appliesWhen` predicate

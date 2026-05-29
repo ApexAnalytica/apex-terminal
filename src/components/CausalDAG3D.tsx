@@ -9,6 +9,7 @@ import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import type { NodePosition, NodeMetrics } from "@/lib/graph-layout";
 import { requestLayout3D, type LayoutResult } from "@/lib/workers/layout3d-client";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
@@ -577,11 +578,16 @@ export default function CausalDAG3D() {
   // Stable topology key — only recompute layout when nodes/edges are added/removed,
   // NOT when omega scores or other properties change during temporal scrubbing.
   // This prevents the force simulation from re-running on every dial tick.
-  const topologyKey = useMemo(() => {
-    const nk = graphData.nodes.map((n) => n.id).sort().join(",");
-    const ek = graphData.edges.map((e) => `${e.source}>${e.target}`).sort().join(",");
-    return nk + "|" + ek;
-  }, [graphData]);
+  //
+  // Delegates to graphSignature (same helper used by 2D / Map / Relief /
+  // NodeInspector since round 16). graphSignature carries the round-18
+  // fingerprint cache, so on feed ticks — where graphData.nodes is
+  // rebuilt via .map but ids haven't moved — this is an O(1) lookup
+  // instead of the prior ~5 ms inline sort+join of ~700 entries.
+  const topologyKey = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
 
   // Keep a ref to current graphData so layout computation can access current nodes/edges
   const graphDataForLayoutRef = useRef(graphData);

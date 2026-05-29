@@ -3,55 +3,60 @@
 // HONEST FRAMING — READ FIRST
 // ----------------------------
 // Extends `pcmci-linear.ts` with PCMCI+ (Runge 2020): contemporaneous
-// edges between time-series variables at the same time step, with a
-// principled orientation step.
+// edges between time-series variables at the same time step, with
+// principled orientation via Meek-rule propagation from v-structures
+// discovered during a contemporaneous PC-stable phase.
 //
-// What this DOES:
+// What this DOES (v0.2):
 //
 //   1. Phase 1 — Reuses the existing lagged PCMCI to find X[t-k] → Y[t]
 //      with k > 0 (no duplication; the lagged backbone is identical).
 //
-//   2. Phase 2 — Contemporaneous skeleton. For each unordered pair
-//      (i, j), test partial correlation of X_i[t] ↔ X_j[t] conditional
-//      on the UNION of lagged parents of both variables (derived from
-//      Phase 1's edge list). Survivors after BH-FDR become candidate
-//      contemporaneous edges.
+//   2. Phase 2 — Contemporaneous PC-stable. Starts from the complete
+//      contemporaneous graph, then iteratively removes edges (i, j)
+//      whose partial correlation falls below contempAlpha when
+//      conditioning on a subset of size condDim drawn from
+//      adj[i] \ {j} OR adj[j] \ {i} (plus the union of lagged parents
+//      of both endpoints in every test). Conditioning size grows
+//      0 → maxCondsDim. "Stable" means each level uses a snapshot of
+//      the skeleton taken at the start of that level — removal order
+//      doesn't affect which subsets are tried. The separating set
+//      sep(X, Y) that first showed independence is stored per pair.
 //
-//   3. Phase 3 — Lagged-parent-imbalance orientation. A contemporaneous
-//      edge i — j is oriented i → j when i has a lagged parent that is
-//      NOT also a lagged parent of j (asymmetric exogenous information
-//      flow into i pins the direction). When both sides have unique
-//      lagged parents or neither does, the edge remains undirected and
-//      is emitted with `endpointMarks: { sourceMark: "circle",
-//      targetMark: "circle" }` — same convention FCI uses for uncertain
-//      orientation.
+//   3. Phase 3 — V-structure detection. For each unshielded triple
+//      X — Z — Y (X and Y not adjacent in the surviving skeleton),
+//      orient as X → Z ← Y when Z ∉ sep(X, Y). This is the
+//      colliders-from-separation step that PC and PCMCI+ share.
 //
-// What this does NOT do (vs the full PCMCI+ in Runge 2020):
+//   4. Phase 4 — Meek rule propagation. Iteratively applies:
+//      - R1: a → b — c with a, c not adjacent → orient b → c (would
+//        otherwise create a new v-structure inconsistent with sep sets)
+//      - R2: a → b → c with a — c → orient a → c (would otherwise
+//        create a cycle a → b → c → a)
+//      - R3: a — b, a — c, a — d, c → b, d → b, c not adj d →
+//        orient a → b (only orientation consistent with the existing
+//        colliders at b)
+//      Fixpoint iteration until no rule fires. Edges that remain
+//      unoriented after Meek emit with `endpointMarks: {circle, circle}`
+//      per FCI convention.
 //
-//   - No contemporaneous PC-stable with separating-set tracking. The
-//     skeleton phase tests one conditioning set per pair (the union of
-//     lagged parents), not a hierarchy of subsets. This is conservative
-//     — we may keep edges that full PCMCI+ would prune via a stricter
-//     contemporaneous-only conditioning set.
-//   - No v-structure detection from separating sets (since we don't
-//     track them).
-//   - No Meek-rule propagation. Orientation is per-edge, decided once
-//     from lagged-parent imbalance.
+// What this still does NOT do (vs full PCMCI+ in Runge 2020):
+//
 //   - No nonparametric CI tests (CMI-knn, GP-DC). Linear/Gaussian only.
+//   - No special handling for contemporaneous self-loops (which
+//     don't exist by construction — same-time-step self-influence
+//     is collapsed into the noise term).
+//   - The lagged phase still runs WITHOUT conditioning on
+//     contemporaneous parents — so spurious lagged edges through a
+//     contemporaneous chain (W[t-k] → X[t] → Y[t] inflating W[t-k] vs
+//     Y[t] partial correlation) can survive into parentsByY. This
+//     dilutes the conditioning set in Phase 2 but doesn't compromise
+//     the contemporaneous skeleton's CI test logic.
 //
-// Practical implication of the orientation rule in v0.1:
-//
-//   The lagged-parent-imbalance rule fires strict directed orientation
-//   only when ONE endpoint has at least one lagged parent the other
-//   doesn't. In real time series with contemporaneous coupling X[t] →
-//   Y[t], a lagged ancestor W[t-k] of X also predicts Y[t] through the
-//   chain W[t-k] → X[t] → Y[t]. Without a contemporaneous PC-stable
-//   phase to condition on X[t], the lagged phase typically marks W
-//   as a parent of BOTH X and Y. Result: most contemporaneous edges
-//   in realistic data emit as undirected (circle/circle). The rule
-//   produces strict directed output only when one side has truly no
-//   lagged ancestry path to the other — uncommon but informative
-//   when it happens.
+// Compared to v0.1 (lagged-parent-imbalance heuristic): v0.2 produces
+// strictly more oriented contemporaneous edges in realistic data, and
+// the orientations are now backed by Pearl/Meek's separation-set
+// logic rather than an ad-hoc imbalance check.
 //
 // Why we ship this anyway: the lagged-parent imbalance rule captures
 // the strongest signal that pins contemporaneous orientation in real
@@ -142,22 +147,6 @@ function alignSource(
   return x;
 }
 
-function bhAdjust(ps: number[]): number[] {
-  const n = ps.length;
-  const order = Array.from({ length: n }, (_, i) => i).sort(
-    (a, b) => ps[a] - ps[b],
-  );
-  const adj = new Array<number>(n);
-  let prev = 1;
-  for (let i = n - 1; i >= 0; i--) {
-    const orig = order[i];
-    const rank = i + 1;
-    adj[orig] = Math.min(prev, (ps[orig] * n) / rank);
-    prev = adj[orig];
-  }
-  return adj;
-}
-
 function combinedContempCITest(
   subjectGrids: Float64Array[][],
   yIdx: number,
@@ -183,18 +172,45 @@ function combinedContempCITest(
 
 // ─── PCMCI+ ───────────────────────────────────────────────────────────
 
+// ─── Subset enumeration ──────────────────────────────────────────────
+//
+// Yields every k-sized subset of `arr` once, in a deterministic order.
+// k=0 yields the empty subset (one iteration). Used by the PC-stable
+// loop to enumerate candidate conditioning sets.
+
+function* combinations<T>(arr: T[], k: number): Generator<T[]> {
+  if (k < 0 || k > arr.length) return;
+  if (k === 0) {
+    yield [];
+    return;
+  }
+  const n = arr.length;
+  const idx = Array.from({ length: k }, (_, i) => i);
+  while (true) {
+    yield idx.map((i) => arr[i]);
+    let i = k - 1;
+    while (i >= 0 && idx[i] === n - k + i) i--;
+    if (i < 0) return;
+    idx[i] += 1;
+    for (let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1;
+  }
+}
+
+// ─── PCMCI+ ───────────────────────────────────────────────────────────
+
 export const pcmciPlusAlgorithm: DiscoveryAlgorithm<PcmciPlusParams> = {
   id: "pcmci-plus",
-  version: "0.1.0",
+  version: "0.2.0",
   description:
     "PCMCI+ (Runge 2020) restricted to linear-Gaussian CI. Reuses the " +
-    "existing lagged PCMCI for X[t-k] → Y[t] edges, then adds a " +
-    "contemporaneous skeleton phase (partial correlation conditioned on " +
-    "the union of lagged parents of both endpoints) and orients via " +
-    "lagged-parent imbalance. Unoriented contemporaneous edges emit " +
-    "with circle/circle endpoint marks. Honest about what subset of " +
-    "full PCMCI+ this is (no contemporaneous PC-stable, no v-structure " +
-    "detection from separating sets, no Meek propagation).",
+    "existing lagged PCMCI for X[t-k] → Y[t] edges, then runs a " +
+    "contemporaneous PC-stable phase (with separating-set tracking) " +
+    "and orients via v-structures from separating sets + Meek-rule " +
+    "propagation (R1/R2/R3). Edges that survive Meek without an " +
+    "orientation emit with circle/circle endpoint marks. Honest about " +
+    "remaining limitations (no nonparametric CI tests; lagged phase " +
+    "doesn't condition on contemporaneous parents so chain-inflated " +
+    "lagged edges can dilute Phase-2 conditioning).",
   defaultParams: DEFAULT_PARAMS,
 
   run(cohort: Cohort, params?: Partial<PcmciPlusParams>): DiscoveryResult {
@@ -267,115 +283,305 @@ export const pcmciPlusAlgorithm: DiscoveryAlgorithm<PcmciPlusParams> = {
       1,
       Math.floor(p.maxLagSeconds / p.gridSeconds),
     );
+    const V = varIds.length;
 
-    interface ContempCand {
-      i: number;
-      j: number;
-      meanR: number;
-      p: number;
-      condCount: number;
+    // ── Phase 2: Contemporaneous PC-stable ───────────────────────────
+    //
+    // adj[i] tracks i's current contemporaneous neighbors as edges are
+    // removed. Start complete (every pair adjacent). Each level k
+    // attempts to find a separating subset of size k drawn from either
+    // adj[i] \ {j} or adj[j] \ {i}, plus the union of lagged parents
+    // of both endpoints in every test.
+    //
+    // The "stable" property: at the start of each level we snapshot
+    // adj, then enumerate subsets from the snapshot — not from the
+    // mutating live adj. So removal order within a level doesn't
+    // change which subsets get tried, and the algorithm is
+    // deterministic in subset enumeration order.
+    const adj: Set<number>[] = Array.from({ length: V }, () => new Set());
+    for (let i = 0; i < V; i++) {
+      for (let j = 0; j < V; j++) if (i !== j) adj[i].add(j);
     }
-    const contempCandidates: ContempCand[] = [];
-    for (let i = 0; i < varIds.length; i++) {
-      for (let j = i + 1; j < varIds.length; j++) {
-        // Conditioning set: union of lagged parents of both endpoints
-        // (excluding any self-loop on i or j at lag 0, which doesn't exist
-        // since lagged parents have k ≥ 1 anyway).
-        const condKeys = new Set<string>();
-        const conds: LaggedVar[] = [];
-        const add = (lv: LaggedVar) => {
-          const key = `${lv.vIndex}@${lv.lagSteps}`;
-          if (condKeys.has(key)) return;
-          condKeys.add(key);
-          conds.push(lv);
-        };
-        for (const lv of parentsByY.get(i) ?? []) add(lv);
-        for (const lv of parentsByY.get(j) ?? []) add(lv);
 
-        const result = combinedContempCITest(
-          subjectGrids,
-          i,
-          j,
-          conds,
-          maxLagSteps,
-        );
-        if (result === null) continue;
-        contempCandidates.push({
-          i,
-          j,
-          meanR: result.meanR,
-          p: result.p,
-          condCount: conds.length,
-        });
+    // Final-test result cache per surviving pair → strength + pValue
+    // for edge emission. Updated on every test that DOESN'T separate
+    // the pair (so the last surviving test wins).
+    const pairKey = (a: number, b: number): string =>
+      a < b ? `${a}_${b}` : `${b}_${a}`;
+    const lastSurvivingTest = new Map<
+      string,
+      { meanR: number; p: number; condCount: number }
+    >();
+    const sepSet = new Map<string, Set<number>>();
+
+    // Lagged parents as conditioning fixtures, deduped by (vIdx, lag).
+    const buildLaggedConds = (i: number, j: number): LaggedVar[] => {
+      const seen = new Set<string>();
+      const out: LaggedVar[] = [];
+      const add = (lv: LaggedVar) => {
+        const key = `${lv.vIndex}@${lv.lagSteps}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(lv);
+      };
+      for (const lv of parentsByY.get(i) ?? []) add(lv);
+      for (const lv of parentsByY.get(j) ?? []) add(lv);
+      return out;
+    };
+
+    let totalCITests = 0;
+    let totalSeparations = 0;
+    for (let condDim = 0; condDim <= p.maxCondsDim; condDim++) {
+      // Snapshot for stability — subset enumeration reads this, not
+      // the mutating adj.
+      const snapshot: Set<number>[] = adj.map((s) => new Set(s));
+      const toRemove: Array<[number, number, Set<number>]> = [];
+      let anyEligible = false;
+
+      for (let i = 0; i < V; i++) {
+        for (const j of adj[i]) {
+          if (j <= i) continue;
+          // PC-stable: condition on subsets of snapshotAdj[i] \ {j}
+          // (then snapshotAdj[j] \ {i} if first side didn't separate).
+          const candI = [...snapshot[i]].filter((x) => x !== j);
+          const candJ = [...snapshot[j]].filter((x) => x !== i);
+          if (candI.length < condDim && candJ.length < condDim) continue;
+          anyEligible = true;
+
+          const laggedConds = buildLaggedConds(i, j);
+          let separated: Set<number> | null = null;
+
+          // First side: subsets from candI
+          if (candI.length >= condDim) {
+            for (const subset of combinations(candI, condDim)) {
+              const contempConds: LaggedVar[] = subset.map((v) => ({
+                vIndex: v,
+                lagSteps: 0,
+              }));
+              const conds = [...contempConds, ...laggedConds];
+              const test = combinedContempCITest(
+                subjectGrids,
+                j,
+                i,
+                conds,
+                maxLagSteps,
+              );
+              totalCITests += 1;
+              if (test === null) continue;
+              if (test.p > p.contempAlpha) {
+                separated = new Set(subset);
+                break;
+              }
+              // Track for later strength/pValue emission.
+              lastSurvivingTest.set(pairKey(i, j), {
+                meanR: test.meanR,
+                p: test.p,
+                condCount: conds.length,
+              });
+            }
+          }
+
+          // Second side: subsets from candJ (only if first didn't separate)
+          if (separated === null && candJ.length >= condDim) {
+            for (const subset of combinations(candJ, condDim)) {
+              const contempConds: LaggedVar[] = subset.map((v) => ({
+                vIndex: v,
+                lagSteps: 0,
+              }));
+              const conds = [...contempConds, ...laggedConds];
+              const test = combinedContempCITest(
+                subjectGrids,
+                i,
+                j,
+                conds,
+                maxLagSteps,
+              );
+              totalCITests += 1;
+              if (test === null) continue;
+              if (test.p > p.contempAlpha) {
+                separated = new Set(subset);
+                break;
+              }
+              lastSurvivingTest.set(pairKey(i, j), {
+                meanR: test.meanR,
+                p: test.p,
+                condCount: conds.length,
+              });
+            }
+          }
+
+          if (separated !== null) {
+            toRemove.push([i, j, separated]);
+          }
+        }
+      }
+
+      // Apply removals after the level finishes (preserves stability).
+      for (const [i, j, sep] of toRemove) {
+        adj[i].delete(j);
+        adj[j].delete(i);
+        sepSet.set(pairKey(i, j), sep);
+        totalSeparations += 1;
+      }
+
+      if (!anyEligible) break;
+    }
+
+    // ── Phase 3: V-structure detection ───────────────────────────────
+    //
+    // For each unshielded triple (i, k, j) — i and j both adjacent to
+    // k in the surviving skeleton, but i and j NOT adjacent — orient
+    // i → k ← j when k is NOT in sep(i, j). This is the canonical
+    // collider-from-separation step that lets observational data
+    // distinguish chains from colliders.
+    //
+    // `orient.get(pairKey(a, b))` returns { from, to } when oriented;
+    // missing key means the (still-skeleton) edge is undirected.
+    const orient = new Map<string, { from: number; to: number }>();
+    const setOrient = (from: number, to: number): void => {
+      orient.set(pairKey(from, to), { from, to });
+    };
+
+    let vStructuresFound = 0;
+    for (let k = 0; k < V; k++) {
+      const nbrs = [...adj[k]];
+      for (let a = 0; a < nbrs.length; a++) {
+        for (let b = a + 1; b < nbrs.length; b++) {
+          const i = nbrs[a];
+          const j = nbrs[b];
+          if (adj[i].has(j)) continue; // shielded — skip
+          const sep = sepSet.get(pairKey(i, j));
+          if (!sep) continue; // pair was never separated → can't decide
+          if (sep.has(k)) continue; // k in sep → chain, not collider
+          // V-structure: i → k ← j. Note this can conflict with an
+          // existing orientation (rare; would mean the sep sets are
+          // inconsistent). Last write wins — Meek will then propagate
+          // from whatever orientations are in place.
+          setOrient(i, k);
+          setOrient(j, k);
+          vStructuresFound += 1;
+        }
       }
     }
 
-    // BH-FDR over contemporaneous candidates only (independent of lagged
-    // tests; mixing the two would dilute power on whichever side is
-    // smaller).
-    const adjusted = bhAdjust(contempCandidates.map((c) => c.p));
-    const survivors = contempCandidates
-      .map((c, idx) => ({ ...c, pAdj: adjusted[idx] }))
-      .filter((c) => c.pAdj <= p.contempAlpha);
+    // ── Phase 4: Meek rule propagation ───────────────────────────────
+    //
+    // Iterate R1/R2/R3 until no rule fires. Each iteration is O(V³)
+    // worst-case; the loop terminates because every iteration that
+    // changes anything strictly grows the set of oriented edges.
+    const isDirected = (a: number, b: number): boolean => {
+      const o = orient.get(pairKey(a, b));
+      return !!o && o.from === a && o.to === b;
+    };
+    const isUndirected = (a: number, b: number): boolean =>
+      adj[a].has(b) && !orient.has(pairKey(a, b));
 
-    // ── Phase 3: lagged-parent-imbalance orientation ─────────────────
-    const parentSetByY = new Map<number, Set<string>>();
-    for (const [yIdx, ps] of parentsByY.entries()) {
-      parentSetByY.set(
-        yIdx,
-        new Set(ps.map((lv) => `${lv.vIndex}@${lv.lagSteps}`)),
-      );
-    }
-    function uniqueLaggedParents(a: number, b: number): boolean {
-      const aSet = parentSetByY.get(a) ?? new Set();
-      const bSet = parentSetByY.get(b) ?? new Set();
-      for (const k of aSet) if (!bSet.has(k)) return true;
-      return false;
+    let meekIterations = 0;
+    let r1Fires = 0;
+    let r2Fires = 0;
+    let r3Fires = 0;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      meekIterations += 1;
+      // R1: a → b — c with a, c not adjacent → orient b → c
+      for (let a = 0; a < V; a++) {
+        for (const b of adj[a]) {
+          if (!isDirected(a, b)) continue;
+          for (const c of adj[b]) {
+            if (c === a) continue;
+            if (!isUndirected(b, c)) continue;
+            if (adj[a].has(c)) continue;
+            setOrient(b, c);
+            r1Fires += 1;
+            changed = true;
+          }
+        }
+      }
+      // R2: a → b → c and a — c → orient a → c
+      for (let a = 0; a < V; a++) {
+        for (const c of adj[a]) {
+          if (!isUndirected(a, c)) continue;
+          let fired = false;
+          for (const b of adj[a]) {
+            if (b === c) continue;
+            if (isDirected(a, b) && isDirected(b, c)) {
+              setOrient(a, c);
+              r2Fires += 1;
+              changed = true;
+              fired = true;
+              break;
+            }
+          }
+          if (fired) continue;
+        }
+      }
+      // R3: a — b, a — c, a — d, c → b, d → b, c not adj d → orient a → b
+      for (let a = 0; a < V; a++) {
+        for (const b of adj[a]) {
+          if (!isUndirected(a, b)) continue;
+          const nbrsA = [...adj[a]];
+          let fired = false;
+          for (let i = 0; i < nbrsA.length && !fired; i++) {
+            const c = nbrsA[i];
+            if (c === b || !isUndirected(a, c) || !isDirected(c, b)) continue;
+            for (let j = i + 1; j < nbrsA.length && !fired; j++) {
+              const d = nbrsA[j];
+              if (d === b || !isUndirected(a, d) || !isDirected(d, b)) continue;
+              if (adj[c].has(d)) continue;
+              setOrient(a, b);
+              r3Fires += 1;
+              changed = true;
+              fired = true;
+            }
+          }
+        }
+      }
+      // Safety bound: Meek converges in O(V²) iterations on any
+      // well-formed input, but cap to avoid infinite loops on
+      // pathologies. 100 is comfortably above any realistic graph.
+      if (meekIterations > 100) break;
     }
 
+    // ── Emit edges ───────────────────────────────────────────────────
     const contempEdges: DiscoveredEdge[] = [];
-    for (const c of survivors) {
-      const iUnique = uniqueLaggedParents(c.i, c.j);
-      const jUnique = uniqueLaggedParents(c.j, c.i);
-      // Strict orientation: orient ONLY when exactly one side has unique
-      // lagged parents. Otherwise emit as undirected (circle/circle).
-      if (iUnique && !jUnique) {
-        contempEdges.push({
-          source: varIds[c.i],
-          target: varIds[c.j],
-          // lag intentionally omitted → contemporaneous
-          strength: c.meanR,
-          pValue: c.p,
-          evidence: `Contemporaneous |r|=${Math.abs(c.meanR).toFixed(
-            3,
-          )} after conditioning on ${c.condCount} lagged parents; oriented ${
-            varIds[c.i]
-          } → ${varIds[c.j]} by lagged-parent imbalance (source has unique lagged exogenous drivers).`,
-        });
-      } else if (jUnique && !iUnique) {
-        contempEdges.push({
-          source: varIds[c.j],
-          target: varIds[c.i],
-          strength: c.meanR,
-          pValue: c.p,
-          evidence: `Contemporaneous |r|=${Math.abs(c.meanR).toFixed(
-            3,
-          )} after conditioning on ${c.condCount} lagged parents; oriented ${
-            varIds[c.j]
-          } → ${varIds[c.i]} by lagged-parent imbalance (source has unique lagged exogenous drivers).`,
-        });
-      } else {
-        // Undirected — circle on both ends per FCI convention.
-        contempEdges.push({
-          source: varIds[c.i],
-          target: varIds[c.j],
-          strength: c.meanR,
-          pValue: c.p,
-          evidence: `Contemporaneous |r|=${Math.abs(c.meanR).toFixed(
-            3,
-          )} after conditioning on ${c.condCount} lagged parents; orientation ambiguous (neither endpoint has unique lagged parents).`,
-          endpointMarks: { sourceMark: "circle", targetMark: "circle" },
-        });
+    for (let i = 0; i < V; i++) {
+      for (const j of adj[i]) {
+        if (j <= i) continue;
+        const pk = pairKey(i, j);
+        const stats = lastSurvivingTest.get(pk);
+        // Fall back to NaN if no test ever survived (shouldn't happen
+        // for edges still in adj, but be defensive).
+        const meanR = stats?.meanR ?? Number.NaN;
+        const pValue = stats?.p ?? Number.NaN;
+        const condCount = stats?.condCount ?? 0;
+
+        const o = orient.get(pk);
+        if (o) {
+          contempEdges.push({
+            source: varIds[o.from],
+            target: varIds[o.to],
+            strength: meanR,
+            pValue,
+            evidence: `Contemporaneous |r|=${Math.abs(meanR).toFixed(
+              3,
+            )} after conditioning on ${condCount} covariates; oriented ${
+              varIds[o.from]
+            } → ${varIds[o.to]} via v-structure detection + Meek propagation.`,
+            endpointMarks: { sourceMark: "tail", targetMark: "arrow" },
+          });
+        } else {
+          contempEdges.push({
+            source: varIds[i],
+            target: varIds[j],
+            strength: meanR,
+            pValue,
+            evidence: `Contemporaneous |r|=${Math.abs(meanR).toFixed(
+              3,
+            )} after conditioning on ${condCount} covariates; orientation undetermined after Meek (no v-structure pinned the direction).`,
+            endpointMarks: { sourceMark: "circle", targetMark: "circle" },
+          });
+        }
       }
     }
 
@@ -385,12 +591,20 @@ export const pcmciPlusAlgorithm: DiscoveryAlgorithm<PcmciPlusParams> = {
       diagnostics: {
         ...laggedResult.diagnostics,
         contemporaneousPhase: {
-          candidatesTested: contempCandidates.length,
-          survivorsAfterFdr: survivors.length,
-          orientedDirected: contempEdges.filter((e) => !e.endpointMarks)
-            .length,
-          orientedUndirected: contempEdges.filter((e) => e.endpointMarks)
-            .length,
+          ciTests: totalCITests,
+          edgesRemoved: totalSeparations,
+          vStructuresFound,
+          meekIterations,
+          meekR1Fires: r1Fires,
+          meekR2Fires: r2Fires,
+          meekR3Fires: r3Fires,
+          edgesEmitted: contempEdges.length,
+          edgesDirected: contempEdges.filter(
+            (e) => e.endpointMarks?.targetMark === "arrow",
+          ).length,
+          edgesUndirected: contempEdges.filter(
+            (e) => e.endpointMarks?.sourceMark === "circle",
+          ).length,
         },
       },
     };

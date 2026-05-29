@@ -167,14 +167,16 @@ describe("pcmci-plus", () => {
         (e.lag === undefined || e.lag === 0),
     );
     expect(contemp.length).toBeGreaterThan(0);
-    // Should NOT be strictly directed — endpoint marks present.
+    // Two-variable ambiguous case: no v-structure possible (need a
+    // third node as a candidate collider), no Meek propagation either,
+    // so the edge stays undirected with circle/circle marks.
     const undirected = contemp.filter(
       (e) =>
         e.endpointMarks?.sourceMark === "circle" &&
         e.endpointMarks?.targetMark === "circle",
     );
     expect(undirected.length).toBe(1);
-    expect(undirected[0].evidence).toContain("ambiguous");
+    expect(undirected[0].evidence).toContain("undetermined after Meek");
   });
 
   it("includes the contemporaneous phase diagnostics", () => {
@@ -187,12 +189,26 @@ describe("pcmci-plus", () => {
     expect(result.diagnostics).toBeDefined();
     expect(result.diagnostics!.contemporaneousPhase).toBeDefined();
     const phase = result.diagnostics!.contemporaneousPhase as {
-      candidatesTested: number;
-      survivorsAfterFdr: number;
-      orientedDirected: number;
-      orientedUndirected: number;
+      ciTests: number;
+      edgesRemoved: number;
+      vStructuresFound: number;
+      meekIterations: number;
+      meekR1Fires: number;
+      meekR2Fires: number;
+      meekR3Fires: number;
+      edgesEmitted: number;
+      edgesDirected: number;
+      edgesUndirected: number;
     };
-    expect(phase.candidatesTested).toBeGreaterThan(0);
+    // PC-stable must have run some tests.
+    expect(phase.ciTests).toBeGreaterThan(0);
+    // Meek loop runs at least once (the initial pass that exits when
+    // nothing changes still counts).
+    expect(phase.meekIterations).toBeGreaterThanOrEqual(1);
+    // Edge accounting consistent.
+    expect(phase.edgesEmitted).toBe(
+      phase.edgesDirected + phase.edgesUndirected,
+    );
   });
 
   it("forwards the lagged PCMCI bail-out when too few subjects have grid points", () => {
@@ -224,5 +240,183 @@ describe("pcmci-plus", () => {
     const result = pcmciPlusAlgorithm.run(tinyCohort);
     expect(result.edges).toEqual([]);
     expect(result.diagnostics?.reason).toBeDefined();
+  });
+});
+
+// ─── V-structure cohort: X → Z ← Y (collider) ─────────────────────────
+//
+// Three contemporaneous variables. X and Y are independent noise; Z is
+// a sum of both. Marginal correlations X-Z and Y-Z are non-zero; X-Y
+// is zero (independent inputs). The PC-stable phase should find:
+//   - X — Z and Y — Z survive (no separating set kills them)
+//   - X — Y separated at condDim=0 (unconditional independence) →
+//     sep(X, Y) = ∅
+// V-structure detection then sees the unshielded triple X — Z — Y and
+// Z ∉ sep(X, Y) (which is ∅), so orients X → Z ← Y.
+function colliderCohort(opts: {
+  nSubjects: number;
+  nSteps: number;
+  seed: number;
+}): Cohort {
+  const { nSubjects, nSteps, seed } = opts;
+  const rand = lcg(seed);
+  const subjects = Array.from({ length: nSubjects }, (_, si) => {
+    const x = new Array<number>(nSteps);
+    const y = new Array<number>(nSteps);
+    const z = new Array<number>(nSteps);
+    for (let i = 0; i < nSteps; i++) {
+      x[i] = rand();
+      y[i] = rand();
+      z[i] = 0.7 * x[i] + 0.7 * y[i] + 0.4 * rand();
+    }
+    const measurements: Cohort["subjects"][number]["measurements"] = [];
+    for (let i = 0; i < nSteps; i++) {
+      measurements.push({ variableId: "x", t: i * 300, value: x[i] });
+      measurements.push({ variableId: "y", t: i * 300, value: y[i] });
+      measurements.push({ variableId: "z", t: i * 300, value: z[i] });
+    }
+    return { id: `s-${si}`, measurements };
+  });
+  return {
+    id: "collider",
+    label: "collider X → Z ← Y",
+    source: {
+      adapter: "test",
+      adapterVersion: "0",
+      ingestedAt: "2026-04-29T00:00:00Z",
+      containsPHI: false,
+    },
+    variables: [
+      { id: "x", label: "X", kind: "continuous", cadenceSeconds: 300 },
+      { id: "y", label: "Y", kind: "continuous", cadenceSeconds: 300 },
+      { id: "z", label: "Z", kind: "continuous", cadenceSeconds: 300 },
+    ],
+    subjects,
+    timeAxis: { zeroConvention: "session-start", displayUnit: "seconds" },
+    metadata: { description: "test", accessTier: "public" },
+  };
+}
+
+describe("pcmci-plus — v-structure detection", () => {
+  it("orients X → Z ← Y on the canonical collider cohort", () => {
+    const cohort = colliderCohort({ nSubjects: 8, nSteps: 400, seed: 41 });
+    const result = pcmciPlusAlgorithm.run(cohort);
+    // Two oriented edges into Z, both with target=z and tail/arrow marks.
+    const intoZ = result.edges.filter(
+      (e) =>
+        e.target === "z" &&
+        (e.lag === undefined || e.lag === 0) &&
+        e.endpointMarks?.targetMark === "arrow",
+    );
+    expect(intoZ.length).toBe(2);
+    const sources = new Set(intoZ.map((e) => e.source));
+    expect(sources.has("x")).toBe(true);
+    expect(sources.has("y")).toBe(true);
+    // No contemporaneous X — Y edge should survive (X ⊥ Y).
+    const xy = result.edges.filter(
+      (e) =>
+        ((e.source === "x" && e.target === "y") ||
+          (e.source === "y" && e.target === "x")) &&
+        (e.lag === undefined || e.lag === 0),
+    );
+    expect(xy.length).toBe(0);
+
+    // Diagnostics should record at least one v-structure.
+    const phase = result.diagnostics!.contemporaneousPhase as {
+      vStructuresFound: number;
+    };
+    expect(phase.vStructuresFound).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── Meek-R1 chain cohort: collider at Z + extra W — Y edge ───────────
+//
+// X → Z ← Y, plus an undirected W — Y edge where W is not adjacent
+// to anything else. Before Meek: X → Z, Y → Z (from v-structure),
+// W — Y (undirected), no W — X or W — Z edges. After Meek-R1: Y → W
+// is NOT forced (W — Y has nothing pointing AT Y). After Meek-R1 from
+// Y → Z perspective: Z is a collider neighbor; doesn't trigger R1 (R1
+// needs a → b — c with a, c not adjacent and a → b directed). So this
+// is mostly a no-op test for R1 — instead we use a chain cohort where
+// R1 actually fires.
+//
+// Better cohort for R1: X → Y — Z with X, Z not adjacent. Then R1
+// orients Y → Z.
+function r1ChainCohort(opts: {
+  nSubjects: number;
+  nSteps: number;
+  seed: number;
+}): Cohort {
+  const { nSubjects, nSteps, seed } = opts;
+  const rand = lcg(seed);
+  // Build: X → Y (oriented by v-structure with a hidden W), Y — Z
+  // contemporaneous with no third-variable separator → Y — Z stays
+  // in skeleton, R1 fires to orient Y → Z.
+  // To force X → Y as a v-structure: introduce a W where W → Y ← X.
+  // Then add Y — Z (collider triple at Y from X side will already
+  // orient X → Y).
+  // Structure: X, W independent noise; Y = 0.6*X + 0.6*W + noise;
+  //            Z = 0.6*Y + noise (so Y — Z stays, Z separates from
+  //            X|Y and W|Y).
+  const subjects = Array.from({ length: nSubjects }, (_, si) => {
+    const x = new Array<number>(nSteps);
+    const w = new Array<number>(nSteps);
+    const y = new Array<number>(nSteps);
+    const z = new Array<number>(nSteps);
+    for (let i = 0; i < nSteps; i++) {
+      x[i] = rand();
+      w[i] = rand();
+      y[i] = 0.7 * x[i] + 0.7 * w[i] + 0.4 * rand();
+      z[i] = 0.7 * y[i] + 0.4 * rand();
+    }
+    const measurements: Cohort["subjects"][number]["measurements"] = [];
+    for (let i = 0; i < nSteps; i++) {
+      measurements.push({ variableId: "x", t: i * 300, value: x[i] });
+      measurements.push({ variableId: "w", t: i * 300, value: w[i] });
+      measurements.push({ variableId: "y", t: i * 300, value: y[i] });
+      measurements.push({ variableId: "z", t: i * 300, value: z[i] });
+    }
+    return { id: `s-${si}`, measurements };
+  });
+  return {
+    id: "r1-chain",
+    label: "X → Y ← W; Y → Z (R1 propagates Y → Z)",
+    source: {
+      adapter: "test",
+      adapterVersion: "0",
+      ingestedAt: "2026-04-29T00:00:00Z",
+      containsPHI: false,
+    },
+    variables: [
+      { id: "x", label: "X", kind: "continuous", cadenceSeconds: 300 },
+      { id: "w", label: "W", kind: "continuous", cadenceSeconds: 300 },
+      { id: "y", label: "Y", kind: "continuous", cadenceSeconds: 300 },
+      { id: "z", label: "Z", kind: "continuous", cadenceSeconds: 300 },
+    ],
+    subjects,
+    timeAxis: { zeroConvention: "session-start", displayUnit: "seconds" },
+    metadata: { description: "test", accessTier: "public" },
+  };
+}
+
+describe("pcmci-plus — Meek-rule propagation", () => {
+  it("R1 propagates orientation through a collider+chain cohort", () => {
+    const cohort = r1ChainCohort({ nSubjects: 10, nSteps: 500, seed: 53 });
+    const result = pcmciPlusAlgorithm.run(cohort);
+    // After v-structure: X → Y, W → Y. After Meek-R1 (Y → Z fires
+    // because X, Z not adjacent and X → Y — Z): Y → Z directed.
+    const yToZ = result.edges.find(
+      (e) =>
+        e.source === "y" &&
+        e.target === "z" &&
+        (e.lag === undefined || e.lag === 0) &&
+        e.endpointMarks?.targetMark === "arrow",
+    );
+    expect(yToZ).toBeDefined();
+    // Diagnostics should record at least one R1 fire.
+    const phase = result.diagnostics!.contemporaneousPhase as {
+      meekR1Fires: number;
+    };
+    expect(phase.meekR1Fires).toBeGreaterThanOrEqual(1);
   });
 });

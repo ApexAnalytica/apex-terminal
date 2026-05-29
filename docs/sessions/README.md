@@ -54,6 +54,18 @@ Then in the session, tell the agent which scope doc to read first — e.g. *"Rea
 - **Working Copy (iOS)** — clone the repo locally, read MD files offline, edit and push small changes.
 - **claude.ai/code in mobile browser** — full Claude Code session from the phone if you need to drive code changes.
 
+#### One-file offline bundle
+
+For reading on a plane or anywhere without per-file navigation, every scope doc is concatenated into [`docs/sessions.bundle.md`](../sessions.bundle.md) — a single ~300 KB markdown file with a generated TOC. Open it in any markdown viewer (GitHub mobile renders it directly).
+
+Regenerate after editing any scope doc:
+
+```bash
+npm run export:sessions
+```
+
+The bundle is committed alongside the source files so the latest pushed version is always browsable from the phone without running the script.
+
 ### Keeping continuity across devices
 
 - **Always commit + push before switching devices.** If a session ends mid-task, push a WIP commit (`wip: <note>`) on the active branch so the next device sees it.

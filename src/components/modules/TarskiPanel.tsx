@@ -198,13 +198,24 @@ function TarskiPanel() {
   const levelLabels: Record<number, string> = { 0: "PHYSICAL LAW", 1: "REGULATORY", 2: "HEURISTIC" };
   const levelIcons: Record<number, string> = { 0: "\u26A0", 1: "\u2696", 2: "\u26A1" };
 
-  const renderAxiomCard = (sa: ScoredAxiom) => {
+  const renderAxiomCard = (sa: ScoredAxiom, showReason = false) => {
     const { axiom, relevanceScore, reason, matchedDomains } = sa;
     const isActive = activeAxiomIds.has(axiom.id);
     const violationCount = axiomViolationCounts[axiom.id] || 0;
     const hasViolations = truthFilter === "verified" && violationCount > 0;
     const levelColor = levelColors[axiom.level];
     const isExpanded = expandedAxiom === axiom.id;
+    // Reason rendering: only show on recommended cards (showReason=true),
+    // skip generic fallbacks ("Low relevance to current selection",
+    // pure universal-axiom restatement, empty), and highlight selection-
+    // driven reasons in cyan so the user sees that clicking a node moved
+    // this axiom up the list.
+    const reasonIsSelectionDriven = reason.startsWith("Selected") || reason.startsWith("Selection");
+    const reasonIsMeaningful =
+      showReason &&
+      !!reason &&
+      reason !== "Low relevance to current selection" &&
+      reason !== "Universal axiom — applies to all profiles";
 
     return (
       <div
@@ -249,6 +260,23 @@ function TarskiPanel() {
             <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-snug line-clamp-1">
               {axiom.plainText}
             </div>
+            {/* Why-recommended caption — surfaces the scorer's `reason`
+                string. Highlighted in cyan when selection-driven so the
+                user immediately sees that clicking a node moved this
+                axiom up the list (otherwise the recommender's response
+                to selection is invisible — the only effect was reorder). */}
+            {reasonIsMeaningful && (
+              <div
+                className={`text-[7px] font-mono mt-0.5 leading-snug line-clamp-1 ${
+                  reasonIsSelectionDriven
+                    ? "text-accent-cyan/85"
+                    : "text-text-muted/70"
+                }`}
+                title={reason}
+              >
+                why · {reason}
+              </div>
+            )}
           </div>
 
           {/* Right side: toggle + status */}
@@ -403,7 +431,7 @@ function TarskiPanel() {
             </div>
           </div>
           <div className="space-y-1">
-            {recommended.map(renderAxiomCard)}
+            {recommended.map((sa) => renderAxiomCard(sa, true))}
           </div>
         </div>
       )}
@@ -415,7 +443,7 @@ function TarskiPanel() {
             OTHER CONSTRAINTS ({other.length})
           </summary>
           <div className="space-y-1">
-            {other.map(renderAxiomCard)}
+            {other.map((sa) => renderAxiomCard(sa, false))}
           </div>
         </details>
       )}

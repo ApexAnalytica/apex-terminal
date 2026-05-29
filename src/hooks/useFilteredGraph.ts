@@ -38,18 +38,25 @@ export function useFilteredGraph(): CausalGraph {
         if (mapped) mapped.forEach((d) => allowedDomains.add(d));
       }
 
-      // Always include cross-domain connectors (Geopolitical, Energy Grid)
-      // if any of their upstream/downstream domains are selected
+      // Cross-domain connector inclusion used to do `nodes.find()` twice
+      // for every edge inside a 2-iteration outer loop, i.e. O(C·E·N) per
+      // call. With ~350 nodes / ~350 edges and 13+ consumers calling this
+      // hook on first render, that landed several million ops squarely on
+      // the LAUNCH WORKSPACE frame. Build an id→domain map once and the
+      // whole block drops to O(N + C·E).
+      const domainById = new Map<string, string>();
+      for (const n of nodes) domainById.set(n.id, n.domain);
+
       const crossDomainNodes = ["Geopolitical", "Energy Grid"];
       for (const cd of crossDomainNodes) {
         if (!allowedDomains.has(cd)) {
           const hasCrossEdge = edges.some((e) => {
-            const srcNode = nodes.find((n) => n.id === e.source);
-            const tgtNode = nodes.find((n) => n.id === e.target);
-            if (!srcNode || !tgtNode) return false;
+            const srcDomain = domainById.get(e.source);
+            const tgtDomain = domainById.get(e.target);
+            if (!srcDomain || !tgtDomain) return false;
             return (
-              (srcNode.domain === cd && allowedDomains.has(tgtNode.domain)) ||
-              (tgtNode.domain === cd && allowedDomains.has(srcNode.domain))
+              (srcDomain === cd && allowedDomains.has(tgtDomain)) ||
+              (tgtDomain === cd && allowedDomains.has(srcDomain))
             );
           });
           if (hasCrossEdge) allowedDomains.add(cd);

@@ -225,6 +225,19 @@ canvas {
   animation: edge-flow 1s linear infinite;
 }
 
+/* CDOmegaMonitor CRITICAL-state pulses. Replaced two motion.div animations
+   so the header strip doesn't drag framer-motion into the launch eager
+   chunk (CDOmegaMonitor was the only static-chain importer). */
+@keyframes omega-segment-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes omega-badge-critical {
+  0%, 100% { border-color: var(--alert-color, currentColor); }
+  50% { border-color: transparent; }
+}
+
 /* Link break cursor */
 body.scissors-cursor,
 body.scissors-cursor canvas {

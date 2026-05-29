@@ -522,8 +522,8 @@ export const BRIDGE_EDGES: CausalEdge[] = [
     physicalMechanism: "Industrial gas feedstock disruptions cascade into regional grid instability, forcing classified enclaves onto generator backup and degrading availability SLAs.",
   },
   {
-    id: "br_sa_abqaiq__scif_infra",
-    source: "sa_abqaiq_plants",
+    id: "br_si_abqaiq__scif_infra",
+    source: "si_abqaiq_throughput",
     target: "scif_infra",
     weight: 0.45,
     lag: 2,
@@ -535,8 +535,8 @@ export const BRIDGE_EDGES: CausalEdge[] = [
 
   // ── Maritime chokepoints ↔ kill chain & ISR ──
   {
-    id: "br_mn_hormuz__killchain",
-    source: "mn_strait_of_hormuz",
+    id: "br_si_hormuz__killchain",
+    source: "si_hormuz_throughput",
     target: "killchain_latency",
     weight: 0.6,
     lag: 1,

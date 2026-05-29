@@ -78,7 +78,7 @@ const FLOW_HORMUZ: DemoFlow = {
       durationMs: 5000,
       narrative:
         "Iran-aligned forces signal capability to interdict Strait of Hormuz transit. The Strait carries ~20% of global oil and ~30% of seaborne LNG. Markets price a tail-risk premium.",
-      highlightNodeIds: ["qf_strait_of_hormuz", "mn_strait_of_hormuz"],
+      highlightNodeIds: ["si_hormuz_throughput"],
     },
     {
       durationMs: 7000,
@@ -89,9 +89,9 @@ const FLOW_HORMUZ: DemoFlow = {
         severity: 0.8,
         category: "geopolitical",
         description: "Strait of Hormuz interdicted; 20% of global oil transit blocked.",
-        targetNodes: ["qf_strait_of_hormuz", "mn_strait_of_hormuz", "sa_ras_tanura_terminal", "qe_ras_laffan_port"],
+        targetNodes: ["si_hormuz_throughput", "sa_ras_tanura_terminal", "qe_ras_laffan_port"],
       },
-      highlightNodeIds: ["qf_strait_of_hormuz", "sa_ras_tanura_terminal", "qe_ras_laffan_port"],
+      highlightNodeIds: ["si_hormuz_throughput", "sa_ras_tanura_terminal", "qe_ras_laffan_port"],
     },
     {
       durationMs: 7000,
@@ -190,7 +190,7 @@ const FLOW_RED_SEA: DemoFlow = {
       durationMs: 5000,
       narrative:
         "Houthi forces signal threats to Red Sea shipping AND submarine cable infrastructure simultaneously. The same threat vector hits both maritime and digital chokepoints.",
-      highlightNodeIds: ["ic_red_sea_exposure", "qf_strait_of_hormuz"],
+      highlightNodeIds: ["ic_red_sea_exposure", "si_hormuz_throughput"],
     },
     {
       durationMs: 7000,

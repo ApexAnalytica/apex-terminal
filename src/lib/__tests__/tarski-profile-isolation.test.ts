@@ -69,7 +69,7 @@ function makeGeopoliticalChokepointGraph() {
         },
       }),
       makeNode({
-        id: "qf_strait_of_hormuz",
+        id: "si_hormuz_throughput",
         label: "Strait of Hormuz",
         domain: "Saudi Aramco Energy",
         category: "infrastructure",
@@ -87,13 +87,13 @@ function makeGeopoliticalChokepointGraph() {
       makeEdge({
         id: "e_sa_strait",
         source: "sa_terminal",
-        target: "qf_strait_of_hormuz",
+        target: "si_hormuz_throughput",
         weight: 1.5,                   // structural-flow trigger for A-04
         type: "temporal",
       }),
       makeEdge({
         id: "e_strait_out",
-        source: "qf_strait_of_hormuz",
+        source: "si_hormuz_throughput",
         target: "sa_terminal",         // edge out, sums to > 3.0 structural threshold
         weight: 1.6,
         type: "temporal",

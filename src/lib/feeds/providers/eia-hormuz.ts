@@ -13,22 +13,23 @@ import type { EiaHormuzFeed } from "@/lib/feeds/eia-hormuz";
 import type { FeedDispatchBatch, FeedProvider } from "./types";
 
 // Match throughput-semantic chokepoint nodes — the canonical facet
-// (si_hormuz_throughput) OR a legacy per-domain copy (qf_/mn_strait_of_hormuz)
-// whose label is the bare "Strait of Hormuz" string. Specifically EXCLUDES
-// the new capacity / war-risk facets which share the "Strait of Hormuz"
-// substring but represent different variables.
+// `si_hormuz_throughput` (label "Strait of Hormuz — Throughput") and
+// any future chokepoint-throughput nodes (label containing
+// "chokepoint"). Negatively excludes the sibling capacity / war-risk
+// facets which share "Strait of Hormuz" in their labels but represent
+// different variables.
 //
-// Decomposition pilot (PR #1, 2026-05-23): Phase 16 introduced
-// si_hormuz_capacity + si_hormuz_war_risk_premium alongside
-// si_hormuz_throughput. All three labels contain "strait of hormuz", so
-// the previous substring-only matcher would have pushed throughput data
-// onto all three — wrong semantically. New matcher excludes the non-
-// throughput facets by negative substring match before falling through
-// to the legacy "strait of hormuz" / "chokepoint" inclusion test.
+// Phase 16 history: PR #440 (additive) introduced the canonical facets
+// alongside legacy per-domain copies (qf_/mn_strait_of_hormuz). PR #3
+// (cleanup, this branch) removed the legacy copies — so the matcher
+// no longer needs to handle the bare "Strait of Hormuz" legacy label.
+// The negative-exclusion guard still protects against the capacity +
+// war-risk facets accidentally receiving throughput data.
 const isThroughputNode = (label: string): boolean => {
   const l = label.toLowerCase();
-  // Phase 16 facet exclusions — these new nodes share "strait of hormuz"
-  // in their label but represent capacity / risk variables, not flow.
+  // Phase 16 facet exclusions — these sibling nodes share "strait of
+  // hormuz" in their label but represent capacity / risk variables,
+  // not flow.
   if (l.includes("capacity") || l.includes("war-risk") || l.includes("war risk")) {
     return false;
   }

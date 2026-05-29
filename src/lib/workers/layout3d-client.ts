@@ -49,6 +49,47 @@ let nextId = 0;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pending = new Map<number, (r: any) => void>();
 
+/**
+ * Slim projections sent across the worker boundary.
+ *
+ * Both `computeLayout3D` / `computeNetworkMetrics` (3D) and
+ * `compute2DForceLayout` (2D) read only a tiny subset of CausalNode /
+ * CausalEdge: `id` (+ `domain` for 3D's z-layering) per node, and
+ * `source` / `target` / `weight` per edge. Everything else — `label`,
+ * `shortLabel`, the `omegaFragility` object, `liveData` arrays (which
+ * grow per live-feed tick), `physicalMechanism` natural-language
+ * strings, etc — is dead weight to the worker.
+ *
+ * structuredClone is O(payload bytes) and routinely runs 5-20 ms per MB
+ * for nested objects. On the default ~350-node graph the full payload
+ * sits around 200-700 KB; the slim projection is ~30 KB. Stripping the
+ * payload before postMessage cuts launch / domain-swap clone time by
+ * roughly an order of magnitude.
+ *
+ * The slim objects are cast to CausalNode / CausalEdge so the existing
+ * worker request types still typecheck without forcing a sweep of
+ * compute*Layout / computeNetworkMetrics signatures. Safe at runtime
+ * because those functions only touch the fields the slim type carries.
+ */
+function slimNodes(nodes: CausalNode[]): CausalNode[] {
+  const out: { id: string; domain: string }[] = new Array(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    out[i] = { id: n.id, domain: n.domain };
+  }
+  return out as unknown as CausalNode[];
+}
+
+function slimEdges(edges: CausalEdge[]): CausalEdge[] {
+  const out: { id: string; source: string; target: string; weight: number }[] =
+    new Array(edges.length);
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i];
+    out[i] = { id: e.id, source: e.source, target: e.target, weight: e.weight };
+  }
+  return out as unknown as CausalEdge[];
+}
+
 function ensureWorker(): Worker | null {
   if (typeof window === "undefined" || typeof Worker === "undefined") {
     return null;
@@ -95,7 +136,13 @@ export function requestLayout3D(
   }
   const promise = new Promise<LayoutResult>((resolve) => {
     pending.set(id, resolve);
-    w.postMessage({ id, kind: "layout3d", nodes, edges, prev });
+    w.postMessage({
+      id,
+      kind: "layout3d",
+      nodes: slimNodes(nodes),
+      edges: slimEdges(edges),
+      prev,
+    });
   });
   return Object.assign(promise, { id });
 }
@@ -125,7 +172,12 @@ export function requestLayout2D(
   }
   const promise = new Promise<Layout2DResult>((resolve) => {
     pending.set(id, resolve);
-    w.postMessage({ id, kind: "layout2d", nodes, edges });
+    w.postMessage({
+      id,
+      kind: "layout2d",
+      nodes: slimNodes(nodes),
+      edges: slimEdges(edges),
+    });
   });
   return Object.assign(promise, { id });
 }

@@ -28,6 +28,10 @@ import {
 } from "@/lib/pareto-relevance";
 import { bootstrapRelevanceBatch } from "@/lib/pareto-relevance-bootstrap";
 import {
+  computeRelevanceCompare,
+  type RelevanceCompareEntry,
+} from "@/lib/pareto-relevance-compare";
+import {
   buildScopedAdjacency,
   inducedEdgeCount,
 } from "@/lib/pareto-scoped-subgraph";
@@ -650,6 +654,15 @@ function ParetoPanel({
     return result;
   }, [csdData, phData, lpplsData, bocpdData, graphData.edges, graphData.nodes, scopeLabel, activeProfile, scopedNodeIds]);
 
+  // Cross-estimator comparison — per-card rank + winning/lagging dim vs
+  // siblings in the same relevance batch. Used by CriticalityCard to surface
+  // a "ranked #N of M — winning F (+0.43)" badge next to the breakdown
+  // header. Cheap O(n · 5) given n is typically 2–5 active estimators.
+  const relevanceCompareMap = useMemo(
+    () => computeRelevanceCompare(relevanceMap),
+    [relevanceMap],
+  );
+
   const paretoSectionExpanded = expandedChart === "pareto";
 
   return (
@@ -678,6 +691,12 @@ function ParetoPanel({
           confidence: number;
           /** Full F·E·G·S breakdown when the model is in the relevance batch. */
           relevance?: RelevanceBreakdown;
+          /**
+           * Cross-estimator comparison vs the rest of the batch (rank,
+           * winning/lagging dim). Present whenever `relevance` is — the two
+           * are produced from the same batch in the same render.
+           */
+          relevanceCompare?: RelevanceCompareEntry;
           timeSeries: number[];
           modelSeries: number[] | undefined;
           shortDesc: string;
@@ -691,6 +710,7 @@ function ParetoPanel({
           const meta = getEstimatorMeta(id);
           if (id === "csd") {
             const rel = relevanceMap.get("csd");
+            const cmp = relevanceCompareMap.get("csd");
             return {
               key: "csd",
               abbrev: "CSD",
@@ -700,6 +720,7 @@ function ParetoPanel({
               color: getCritColor(csdEpochs),
               confidence: rel ? rel.composite : csdData.confidence,
               relevance: rel,
+              relevanceCompare: cmp,
               timeSeries: csdData.timeSeries,
               modelSeries: csdData.observedSeries ? csdData.modelSeries : undefined,
               shortDesc: meta.shortDesc,
@@ -716,6 +737,7 @@ function ParetoPanel({
           }
           if (id === "ph") {
             const rel = relevanceMap.get("ph");
+            const cmp = relevanceCompareMap.get("ph");
             return {
               key: "ph",
               abbrev: "PH",
@@ -725,6 +747,7 @@ function ParetoPanel({
               color: getCritColor(phEpochs),
               confidence: rel ? rel.composite : phData.confidence,
               relevance: rel,
+              relevanceCompare: cmp,
               timeSeries: phData.timeSeries,
               modelSeries: phData.modelSeries,
               shortDesc: meta.shortDesc,
@@ -739,6 +762,7 @@ function ParetoPanel({
           }
           if (id === "lppls") {
             const rel = relevanceMap.get("lppls");
+            const cmp = relevanceCompareMap.get("lppls");
             return {
               key: "lppls",
               abbrev: "LPPLS",
@@ -748,6 +772,7 @@ function ParetoPanel({
               color: getCritColor(lpplsEpochs),
               confidence: rel ? rel.composite : lpplsData.confidence,
               relevance: rel,
+              relevanceCompare: cmp,
               timeSeries: lpplsData.timeSeries,
               modelSeries: lpplsData.modelSeries,
               shortDesc: meta.shortDesc,
@@ -766,6 +791,7 @@ function ParetoPanel({
           // scoped Ω trajectory — same series CSD/LPPLS use) ──────────
           if (id === "bocpd") {
             const rel = relevanceMap.get("bocpd");
+            const cmp = relevanceCompareMap.get("bocpd");
             const bocpdEpochs = Math.max(
               0,
               Math.round((1 - bocpdData.peakRecent) * 200),
@@ -779,6 +805,7 @@ function ParetoPanel({
               color: getCritColor(bocpdEpochs),
               confidence: rel ? rel.composite : bocpdData.confidence,
               relevance: rel,
+              relevanceCompare: cmp,
               timeSeries: bocpdData.timeSeries,
               modelSeries: bocpdData.modelSeries,
               shortDesc: meta.shortDesc,
@@ -1013,6 +1040,7 @@ function ParetoPanel({
               chartExpanded={paretoSectionExpanded}
               confidence={selected.confidence}
               relevance={selected.relevance}
+              relevanceCompare={selected.relevanceCompare}
               referenceLookup={
                 relevanceReference && selected.relevance
                   ? lookupRelevanceReference(
@@ -1378,6 +1406,7 @@ function CriticalityCard({
   chartExpanded,
   confidence,
   relevance,
+  relevanceCompare,
   referenceLookup,
   shortDesc,
   methodology,
@@ -1397,6 +1426,12 @@ function CriticalityCard({
   chartExpanded?: boolean;
   confidence: number;
   relevance?: RelevanceBreakdown;
+  /**
+   * Cross-estimator comparison vs the rest of the active relevance batch.
+   * Drives the "ranked #N of M — winning F (+0.43)" badge next to the
+   * RELEVANCE BREAKDOWN header. Undefined when `relevance` is undefined.
+   */
+  relevanceCompare?: RelevanceCompareEntry;
   /**
    * Per-selection F → historical event-rate lookup. Computed by the parent
    * from the active profile's pre-built reference (e.g. FRED HY OAS). Null
@@ -1652,11 +1687,64 @@ function CriticalityCard({
                 <div>
                   <button
                     onClick={() => setBreakdownOpen((v) => !v)}
-                    className="w-full flex items-center justify-between mb-1 hover:brightness-125 transition-all"
+                    className="w-full flex items-center justify-between gap-2 mb-1 hover:brightness-125 transition-all"
                   >
                     <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
                       RELEVANCE BREAKDOWN
                     </span>
+                    {/* Rank badge — answers "why is THIS estimator weighted
+                        the way it is among its siblings". Rank #1 surfaces
+                        the WINNING dim (positive delta vs sibling avg);
+                        lower ranks surface the LAGGING dim (what's holding
+                        the card back). Hidden when there's no cohort to
+                        compare against (single-estimator profile). */}
+                    {relevanceCompare && relevanceCompare.total > 1 && (() => {
+                      const isLeader = relevanceCompare.rank === 1;
+                      const isLast = relevanceCompare.rank === relevanceCompare.total;
+                      const badgeColor = isLeader
+                        ? "#00e676"
+                        : isLast
+                          ? "#ff5252"
+                          : "#ffab00";
+                      const dim = isLeader
+                        ? relevanceCompare.winningDim
+                        : relevanceCompare.laggingDim;
+                      const delta = dim ? relevanceCompare.delta[dim] : 0;
+                      const sign = delta >= 0 ? "+" : "−";
+                      const deltaFmt = Math.abs(delta).toFixed(2);
+                      const title = dim
+                        ? `Composite rank ${relevanceCompare.rank} of ${
+                            relevanceCompare.total
+                          } across active estimators · ${
+                            isLeader ? "winning on" : "lagging on"
+                          } ${dim} (this estimator: ${(
+                            relevance[dim].score
+                          ).toFixed(2)}; sibling avg: ${
+                            relevanceCompare.siblingAvg[dim].toFixed(2)
+                          })`
+                        : `Composite rank ${relevanceCompare.rank} of ${relevanceCompare.total} across active estimators`;
+                      return (
+                        <span
+                          title={title}
+                          className="flex items-center gap-1.5 px-1.5 py-[1px] rounded text-[8px] font-mono tabular-nums"
+                          style={{
+                            backgroundColor: `${badgeColor}1f`,
+                            color: badgeColor,
+                            border: `1px solid ${badgeColor}33`,
+                          }}
+                        >
+                          <span className="font-[family-name:var(--font-michroma)] tracking-wider">
+                            #{relevanceCompare.rank}/{relevanceCompare.total}
+                          </span>
+                          {dim && (
+                            <span className="opacity-90">
+                              {sign}
+                              {dim} {deltaFmt}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     <span
                       className="text-[10px] text-text-muted transition-transform duration-200"
                       style={{ transform: breakdownOpen ? "rotate(180deg)" : "rotate(0deg)" }}

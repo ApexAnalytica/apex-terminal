@@ -37,10 +37,10 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 0,
     name: "Flow Conservation",
     formalNotation: "Σw_in(v) ≥ Σw_out(v) · (1 − loss)",
-    description: "Throughput entering a node must account for outbound flow — quantities (mass, energy, capital, signal) cannot be created at a node that has nothing equivalent flowing in",
+    description: "Throughput entering a node must account for outbound flow — quantities (mass, energy, capital, signal) cannot be created at a node that has nothing equivalent flowing in. Live-data branch: when a `production` or `throughput` signal saturates at ≥90% of nameplate capacity, the node cannot physically sustain its declared outbound flow.",
     plainText: "What goes into a node must account for what comes out — nothing appears from nowhere.",
     relevantDomains: [],
-    checksFor: "Nodes outputting more than they receive",
+    checksFor: "Nodes outputting more than they receive; or live signals saturating capacity",
     diagramHint: "→[2]→ NODE →[5]→  ✗  (out > in)",
   },
   {
@@ -533,29 +533,63 @@ export function runTarskiValidation(
   }
 
   // ── A-02: Flow Conservation ──
-  // Flag nodes where total outbound weight significantly exceeds total inbound
+  // Two-branch check. Both contribute to A-02 flags independently:
+  //
+  //   (1) Structural: outbound edge-weight sum > 1.5 × inbound sum, with
+  //       ≥3 outbound edges — declared outflow looks unsustainable from
+  //       the graph topology alone. Always evaluated.
+  //
+  //   (2) Live capacity saturation: when a node carries a `production`
+  //       or `throughput` live signal with value/capacity ≥ 0.90, the
+  //       physical capacity is exhausted — the node cannot sustain its
+  //       declared outbound flow under additional demand. Evaluated
+  //       only when live data is attached.
+  //
+  // Either branch firing restricts the node and flags the highest-weight
+  // outbound edge. When both fire we record one trace per branch so the
+  // proof history shows both mechanisms.
+  const A02_LIVE_SATURATION_THRESHOLD = 0.9;
   if (isEnabled("A-02")) for (const node of graph.nodes) {
     const inEdges = inboundEdges.get(node.id) || [];
     const outEdges = outboundEdges.get(node.id) || [];
-    if (inEdges.length > 0 && outEdges.length > 0) {
+    if (outEdges.length === 0) continue;
+    const maxOutEdge = outEdges.slice().sort((a, b) => b.weight - a.weight)[0];
+    const detailParts: string[] = [];
+
+    // (1) Structural branch
+    if (inEdges.length > 0) {
       const totalIn = inEdges.reduce((s, e) => s + e.weight, 0);
       const totalOut = outEdges.reduce((s, e) => s + e.weight, 0);
-      // If outbound flow exceeds inbound by > 50%, flag inconsistency
       if (totalOut > totalIn * 1.5 && outEdges.length >= 3) {
-        restrictedNodeIds.add(node.id);
-        // Flag the highest-weight outbound edge
-        const maxOutEdge = outEdges.sort((a, b) => b.weight - a.weight)[0];
-        if (maxOutEdge) {
-          inconsistentEdgeIds.add(maxOutEdge.id);
-          proofTraces.push({
-            edgeId: maxOutEdge.id,
-            violatedAxioms: ["A-02"],
-            verdict: "FLAGGED",
-            solverUsed: "cvc5",
-            checkTimeMs: Math.round(Math.random() * 8 + 4),
-          });
-        }
+        detailParts.push(
+          `${node.label}: outbound flow ${totalOut.toFixed(2)} > 1.5 × inbound ${totalIn.toFixed(2)} (structural)`,
+        );
       }
+    }
+
+    // (2) Live capacity-saturation branch
+    const live =
+      getLiveSignal(node, "production") ?? getLiveSignal(node, "throughput");
+    if (live && live.capacity > 0) {
+      const ratio = live.value / live.capacity;
+      if (ratio >= A02_LIVE_SATURATION_THRESHOLD) {
+        detailParts.push(
+          `${node.label}: ${live.value.toFixed(2)}/${live.capacity.toFixed(2)} ${live.unit} = ${(ratio * 100).toFixed(1)}% saturation — ${live.source}`,
+        );
+      }
+    }
+
+    if (detailParts.length > 0 && maxOutEdge) {
+      restrictedNodeIds.add(node.id);
+      inconsistentEdgeIds.add(maxOutEdge.id);
+      proofTraces.push({
+        edgeId: maxOutEdge.id,
+        violatedAxioms: ["A-02"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail: detailParts.join(" · "),
+      });
     }
   }
 

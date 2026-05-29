@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -690,6 +690,18 @@ export default function CausalDAG3D() {
   // Memoised on topologyKey so it only recomputes when the graph
   // structure actually changes — Brandes' BES is O(V·E) and
   // re-running every render would be wasteful.
+  // Defer the chi-star computation behind topologyKey. chiStar runs a full
+  // Brandes' edge-betweenness pass (O(V·E)) — ~120K queue/Map ops on the
+  // default ~350-node / ~350-edge graph — and used to run synchronously in
+  // the same React commit as the canvas mount on LAUNCH WORKSPACE. The
+  // result only drives visual edge-tier styling (bridge / chi-star /
+  // regular), so a one-frame lag where new edges briefly render at the
+  // default tier before popping into bridge styling is imperceptible. By
+  // keying the memo on `deferredTopologyKey` instead of `topologyKey`, the
+  // commit that introduces a new topology paints first with the prior
+  // chiStarInfo, then a follow-up commit lands with the recomputed sets —
+  // identical pattern to round 13's APSP deferral in CDOmegaMonitor.
+  const deferredTopologyKey = useDeferredValue(topologyKey);
   const chiStarInfo = useMemo(() => {
     if (graphData.edges.length === 0) {
       return {
@@ -713,7 +725,7 @@ export default function CausalDAG3D() {
       rank,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topologyKey]);
+  }, [deferredTopologyKey]);
   const chiStarSet = chiStarInfo.chiStarSet;
 
   // Store baseline omega scores (live/initial values) as a reference point.

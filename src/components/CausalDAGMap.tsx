@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useCallback, useRef, useEffect, useState } from "react";
+import React, { useDeferredValue, useMemo, useCallback, useRef, useEffect, useState } from "react";
 import { Map as MapGL, Source, Layer, Popup, type MapRef } from "@vis.gl/react-maplibre";
 import type { MapLayerMouseEvent } from "@vis.gl/react-maplibre";
 import type { FeatureCollection, Point, LineString, Feature } from "geojson";
@@ -11,6 +11,7 @@ import { getDomainColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
@@ -229,6 +230,16 @@ function CausalDAGMapInner() {
   // χ★ result on the live filtered graph. Powers (a) the violet halo
   // GeoJSON layer that renders behind the main edge lines, and (b)
   // the per-edge BES + bridge / top-k context surfaced by the
+  // Topology-stable fingerprint so the chiStar Brandes pass below
+  // (~120K ops on the default graph) doesn't fire on every feed-tick
+  // graphData mutation, AND defers off the launch commit (round 16,
+  // matching CausalDAG3D / CausalDAG2D / CausalDAGRelief).
+  const sig = useMemo(
+    () => graphSignature(activeGraph.nodes, activeGraph.edges),
+    [activeGraph.nodes, activeGraph.edges],
+  );
+  const deferredSig = useDeferredValue(sig);
+
   // EdgeInspector — same data flow as CausalDAG3D / CausalDAG2D.
   const chiStarInfo = useMemo(() => {
     if (activeGraph.edges.length === 0) {
@@ -252,7 +263,8 @@ function CausalDAGMapInner() {
       bes: r.bes,
       rank,
     };
-  }, [activeGraph]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
 
   const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarOutlineGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();

@@ -11,9 +11,9 @@ import {
 import { DEFAULT_AUTHOR_SOURCE } from "../edge-provenance";
 import type { EdgeAttributeSource } from "../types";
 
-// Real graph datasets — used by the forward-looking guard test that asserts
-// every edge ref in shipped data resolves. Trivially passes today (no edge
-// carries a ref yet) and becomes a real typo-guard once the audit lands.
+// Real graph datasets — used by the guard test that asserts every edge ref in
+// shipped data resolves. The t1d audit has tagged 8 edges with real refs, so
+// this is now a live typo-guard (and asserted non-vacuous below).
 import { MAIN_GRAPH } from "../graph-data";
 import { ATHENA_GRAPH, BRIDGE_EDGES } from "../athena-graph-data";
 import { T1D_GRAPH } from "../t1d-graph-data";
@@ -126,13 +126,41 @@ describe("validateEdgeProvenanceRefs", () => {
   });
 });
 
-// ─── Live registry accessors (catalog is empty until the audit) ─────────
+// ─── Live registry accessors (t1d audited; other domains pending) ──────
 
-describe("live registry", () => {
-  it("is empty in the mechanism PR — undefined lookups, empty lists", () => {
-    expect(getEdgeProvenanceEntry("anything")).toBeUndefined();
-    expect(getEdgeProvenanceCatalog("t1d")).toEqual([]);
-    expect(allEdgeProvenanceEntries()).toEqual([]);
+describe("live registry — t1d audit", () => {
+  const T1D_IDS = [
+    "dcct-1993",
+    "edic-legacy",
+    "herold-nejm-2019",
+    "perdigoto-stm-2021",
+    "reichman-nejm-2025",
+    "vigersky-2019",
+  ];
+
+  it("exposes the audited t1d catalog as 6 cited literature entries", () => {
+    const catalog = getEdgeProvenanceCatalog("t1d");
+    expect(catalog.length).toBe(6);
+    expect(catalog.map((e) => e.id).sort()).toEqual([...T1D_IDS].sort());
+    for (const entry of catalog) {
+      expect(entry.domain).toBe("t1d");
+      expect(entry.kind).toBe("literature");
+      expect(entry.citation).toBeTruthy();
+    }
+  });
+
+  it("resolves each audited id to its entry; unknown ids stay undefined", () => {
+    for (const id of T1D_IDS) {
+      expect(getEdgeProvenanceEntry(id)?.id).toBe(id);
+    }
+    expect(getEdgeProvenanceEntry("does-not-exist")).toBeUndefined();
+  });
+
+  it("only the audited domains populate the live index", () => {
+    // allEdgeProvenanceEntries flattens every populated domain. Today that's
+    // t1d only; un-audited domains resolve to an empty catalog.
+    expect(allEdgeProvenanceEntries().length).toBe(6);
+    expect(getEdgeProvenanceCatalog("geopolitical")).toEqual([]);
   });
 });
 
@@ -151,8 +179,17 @@ describe("real graph data ref integrity", () => {
       e.weightSourceRef,
       e.confidenceSourceRef,
     ]);
-    // Passes trivially today (no edge carries a ref). Becomes a real guard
-    // as the per-domain audit tags edges — a typo'd ref fails here.
+    // No ref in shipped data may dangle — a typo'd ref fails here.
     expect(validateEdgeProvenanceRefs(refs)).toEqual([]);
+  });
+
+  it("the t1d audit tagged real edges (guard is non-vacuous)", () => {
+    // The integrity test above is only meaningful if real refs exist. The
+    // t1d audit tagged 8 edges, each carrying both a weight + confidence ref.
+    const t1dRefs = T1D_GRAPH.edges
+      .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
+      .filter((r): r is string => Boolean(r));
+    expect(t1dRefs.length).toBe(16);
+    expect(validateEdgeProvenanceRefs(t1dRefs)).toEqual([]);
   });
 });

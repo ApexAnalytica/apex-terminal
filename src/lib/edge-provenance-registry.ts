@@ -18,11 +18,20 @@
  *   2. `weightSourceRef` → catalog entry   — the registry path
  *   3. `{kind:"author"}` backfill          — nothing recorded
  *
- * The catalog is intentionally EMPTY in the PR that introduces this
- * mechanism. The per-domain audit populates `CATALOGS` (and tags edges with
- * refs) as a follow-up — no change to this module's logic is required for
- * that, only data. Keeping the two PRs separate keeps the mechanism review
- * clean and avoids shipping any unverified citation as part of the plumbing.
+ * The mechanism shipped with an EMPTY catalog; the per-domain audit
+ * populates `CATALOGS` (and tags edges with refs) domain by domain — no
+ * change to this module's logic is required for that, only data. The `t1d`
+ * domain is the first audited (DCCT/EDIC, TrialNet TN-10, FORWARD-101,
+ * TIR↔HbA1c consensus); every entry is a real, verifiable publication, all
+ * DOIs cross-checked against the repo's own vetted source-of-truth in
+ * research/scripts/build_t1d_timeseries.py. Other domains (geopolitical
+ * energy, AI-safety, the VX-880 companion graph) land in later passes.
+ *
+ * Honesty note: a `literature` entry asserts that the *relationship* (sign +
+ * approximate magnitude) of an edge is grounded in the cited source. The
+ * exact edge `weight`/`confidence` scalar remains an author calibration onto
+ * the network's [-1,1] / [0,1] scale — each entry's `note` says so plainly,
+ * so the inspector never implies a number was lifted verbatim from a paper.
  *
  * Convention matches `criticality-registry.ts` (static const dict + pure
  * accessors) rather than a runtime `register()` call, so the full catalog is
@@ -49,21 +58,96 @@ export interface EdgeProvenanceEntry extends EdgeAttributeSource {
 }
 
 /**
- * The catalog, grouped by domain for authoring clarity. EMPTY until the
- * per-domain provenance audit populates it. Example shape (for the audit
- * PR — not live data):
- *
- *   t1d: [
- *     {
- *       id: "dcct-1993",
- *       domain: "t1d",
- *       kind: "literature",
- *       citation: "DCCT Research Group, N Engl J Med 1993;329:977-986",
- *       note: "Intensive glycemic control vs complications — landmark RCT",
- *     },
- *   ],
+ * The catalog, grouped by domain for authoring clarity. Populated one domain
+ * at a time by the per-domain provenance audit. `t1d` is the first audited
+ * domain; see the module header for the honesty convention on `literature`
+ * entries (relationship grounded in source; scalar is author calibration).
  */
-const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {};
+const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {
+  t1d: [
+    {
+      // DCCT — the landmark T1D glycemic-control RCT. Grounds the
+      // glycemia → microvascular-complication edges (retinopathy + nephropathy).
+      id: "dcct-1993",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "DCCT Research Group. N Engl J Med 1993;329:977-986. doi:10.1056/NEJM199309303291401",
+      note:
+        "Landmark RCT (n=1,441): intensive glycemic control cut retinopathy ~76% and " +
+        "early nephropathy (albuminuria) ~50% vs conventional therapy. Grounds the sign " +
+        "and approximate magnitude of the glycemic-control → complication edges; the edge " +
+        "weight itself is an author calibration to the [-1,1] scale.",
+    },
+    {
+      // EDIC — the observational follow-up of the DCCT cohort that established
+      // the durable "metabolic memory" / legacy effect. Grounds the long-lagged
+      // HbA1c → complication temporal edges (lag measured in years).
+      id: "edic-legacy",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "DCCT/EDIC Research Group; Nathan DM et al. N Engl J Med 2005;353:2643-2653. doi:10.1056/NEJMoa052187",
+      note:
+        "EDIC follow-up of the DCCT cohort — the 'metabolic memory'/legacy effect: early " +
+        "glycemic control determines complication risk decades later. Grounds the multi-year " +
+        "lagged HbA1c → complication edges; lag and direction are literature-derived, weight is calibrated.",
+    },
+    {
+      // TrialNet TN-10 — teplizumab onset-delay RCT. Grounds the
+      // teplizumab → C-peptide preservation edge.
+      id: "herold-nejm-2019",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "Herold KC et al. N Engl J Med 2019;381:603-613. doi:10.1056/NEJMoa1902226",
+      note:
+        "TrialNet TN-10: a single 14-day teplizumab course delayed Stage-3 T1D onset by a " +
+        "median ~2 years vs placebo, with preserved C-peptide. Grounds the teplizumab → " +
+        "C-peptide edge.",
+    },
+    {
+      // TN-10 immunological follow-up — anti-CD3 mechanism on islet-reactive
+      // CD8+ effectors. Grounds the teplizumab → CD8-Teff edge.
+      id: "perdigoto-stm-2021",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "Perdigoto AL et al. Sci Transl Med 2021. doi:10.1126/scitranslmed.abc8980",
+      note:
+        "TN-10 immunological follow-up: anti-CD3 drives partial exhaustion/anergy of " +
+        "islet-reactive CD8+ T effectors — the mechanism behind the teplizumab → CD8-Teff edge.",
+    },
+    {
+      // Vertex FORWARD-101 (zimislecel/VX-880) — stem-cell-derived islet
+      // engraftment. Grounds the SC-β → β-mass restoration edge (low confidence:
+      // early phase, n=12).
+      id: "reichman-nejm-2025",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "Reichman et al. N Engl J Med 2025. doi:10.1056/NEJMoa2506549",
+      note:
+        "Vertex FORWARD-101 (zimislecel, full-dose cohort n=12): stem-cell-derived islet " +
+        "engraftment restored endogenous insulin, with 83% insulin-independent at 1 year. " +
+        "Early-phase, small n — hence the edge's deliberately low confidence.",
+    },
+    {
+      // TIR↔HbA1c published relationship + international consensus. Grounds the
+      // real-world-TIR → population-HbA1c edge (near-mathematical coupling →
+      // high confidence).
+      id: "vigersky-2019",
+      domain: "t1d",
+      kind: "literature",
+      citation:
+        "Vigersky RA, McMahon C. Diabetes Technol Ther 2019;21(2):81-85. doi:10.1089/dia.2018.0310; " +
+        "consensus: Battelino T et al. Diabetes Care 2019;42(8):1593-1603. doi:10.2337/dci19-0028",
+      note:
+        "Published TIR↔HbA1c relationship — a near-mathematical coupling via time-averaged " +
+        "glucose. Grounds the high confidence on the real-world-TIR → population-HbA1c edge.",
+    },
+  ],
+};
 
 /**
  * Build an id → entry index from a catalog map. Pure — separated from the

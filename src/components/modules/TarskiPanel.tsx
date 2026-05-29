@@ -116,14 +116,25 @@ function TarskiPanel() {
   const enabledAxioms = useApexStore((s) => s.enabledAxioms);
   const setEnabledAxioms = useApexStore((s) => s.setEnabledAxioms);
   const runTarskiWithAxioms = useApexStore((s) => s.runTarskiWithAxioms);
+  // Selection state for the recommender's selection-aware boosts —
+  // clicking a chokepoint boosts A-04, clicking a node with cross-
+  // domain incident edges boosts R-04, etc. See scoreAxiomRelevance.
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
   const [expandedAxiom, setExpandedAxiom] = useState<string | null>(null);
 
   // Score axioms by relevance to current graph, filtered by the active profile
   // so e.g. T1D sessions don't surface chokepoint / force-majeure axioms.
+  // Selection is fed in so the recommended list reacts to what the user is
+  // focused on, not just the overall graph.
   const activeProfileId = resolveDomainProfile(selectedDomains).id;
   const scoredAxioms = useMemo(
-    () => scoreAxiomRelevance(graphData, activeProfileId),
-    [graphData, activeProfileId]
+    () =>
+      scoreAxiomRelevance(graphData, activeProfileId, {
+        selectedNode,
+        selectedNodes,
+      }),
+    [graphData, activeProfileId, selectedNode, selectedNodes]
   );
 
   // Split into recommended (score >= 0.4) and other

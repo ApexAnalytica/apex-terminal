@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { OmegaState, DoomsdayState, AlertLevel, CausalGraph } from "@/lib/types";
 import { getStatusColor } from "@/lib/omega-engine";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
@@ -113,7 +113,16 @@ export default function CDOmegaMonitor({
 
   const avgOmega = useMemo(() => computeAvgOmega(filteredGraph), [filteredGraph]);
   const maxOmega = useMemo(() => computeMaxOmega(filteredGraph), [filteredGraph]);
-  const avgPathLen = useMemo(() => computeAvgPathLength(filteredGraph), [filteredGraph]);
+  // computeAvgPathLength does BFS from every node (APSP) — O(N·(N+E)),
+  // ~121K ops on the default ~350-node graph. It used to run
+  // synchronously on every filteredGraph reference flip, which on
+  // LAUNCH WORKSPACE landed in the same tick as the canvas mount and
+  // on feed ticks would block any concurrent input. The displayed
+  // value is just a number rounded to 1-2 decimals, so a one-frame
+  // stale read is fine. `useDeferredValue` reuses the same pattern
+  // already in StructuralMetrics for omega-bridge-density.
+  const deferredGraph = useDeferredValue(filteredGraph);
+  const avgPathLen = useMemo(() => computeAvgPathLength(deferredGraph), [deferredGraph]);
   const omegaPct = useMemo(() => (hasNodes ? (avgOmega / 10) * 100 : 100), [avgOmega, hasNodes]);
   const derivedStatus = useMemo(() => (hasNodes ? deriveStatusLabel(avgOmega) : { status: "NOMINAL", color: "var(--accent-green)" }), [avgOmega, hasNodes]);
   const derivedAlert = useMemo(() => (hasNodes ? deriveAlertColor(avgOmega) : { level: "GREEN", color: "#00e676" }), [avgOmega, hasNodes]);

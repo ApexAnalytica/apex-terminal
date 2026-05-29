@@ -231,6 +231,51 @@ export function bridgeEdgeStrength(graph: CausalGraph): Map<string, number> {
   return bes;
 }
 
+// Module-level fingerprint cache. chiStar is O(V·E) (Brandes' edge
+// betweenness inside `bridgeEdgeStrength`) — ~120K ops on the default
+// ~350-node graph. The result is a pure function of the input graph
+// (plus topK), so we can intern it across callers.
+//
+// Why a content-fingerprint cache instead of a WeakMap on `graph.edges`:
+// every canvas-class caller passes `graphData.edges.filter((e) => !e.isSevered)`,
+// which is a fresh array reference per render. A WeakMap on that array
+// would miss on every call. A fingerprint built from (length, first id,
+// last id) of each input array hits across:
+//   - Per-component re-renders where the same canvas's useMemo keying
+//     would have already short-circuited anyway.
+//   - View-mode switches (3D → 2D → 3D) — round 16's per-canvas
+//     useMemo dies with the unmount; this cache survives, so the
+//     remount returns the cached result without re-running Brandes.
+//   - Live-feed ticks — graphData.nodes is rebuilt via `.map` (new ref,
+//     same id set and same first/last ids), so a feed tick that
+//     doesn't touch topology produces an identical fingerprint.
+//
+// Severing edges is correctly invalidated: a sever monotonically
+// shortens the filtered edges array, so `edges.length` (part of the
+// fingerprint) shifts and we miss → recompute → cache.
+//
+// Cache is bounded to MAX_ENTRIES with FIFO eviction (cheap and
+// adequate for the 5 chiStar consumers we have). Set order in JS is
+// insertion order, so deleting the first key on overflow gives an
+// LRU-ish policy without extra bookkeeping.
+const MAX_ENTRIES = 16;
+const cache = new Map<string, ChiStarResult>();
+
+function chiStarFingerprint(
+  graph: CausalGraph,
+  topK: number | null | undefined,
+): string {
+  const { nodes, edges } = graph;
+  const nN = nodes.length;
+  const nE = edges.length;
+  const nFirst = nN > 0 ? nodes[0].id : "";
+  const nLast = nN > 0 ? nodes[nN - 1].id : "";
+  const eFirst = nE > 0 ? edges[0].id : "";
+  const eLast = nE > 0 ? edges[nE - 1].id : "";
+  const k = topK === undefined || topK === null ? "d" : String(topK);
+  return `${nN}:${nFirst}:${nLast}|${nE}:${eFirst}:${eLast}|${k}`;
+}
+
 /**
  * Compute the χ★ bridge set: strict bridges ∪ top-k BES edges.
  *
@@ -242,6 +287,15 @@ export function chiStar(
   graph: CausalGraph,
   options: ChiStarOptions = {},
 ): ChiStarResult {
+  const fp = chiStarFingerprint(graph, options.topK);
+  const cached = cache.get(fp);
+  if (cached) {
+    // Refresh insertion order so this entry survives the next eviction.
+    cache.delete(fp);
+    cache.set(fp, cached);
+    return cached;
+  }
+
   const bridges = findBridges(graph);
   const bes = bridgeEdgeStrength(graph);
 
@@ -276,13 +330,21 @@ export function chiStar(
   const chiStarSet = new Set<string>(bridges);
   for (const eid of topByBes) chiStarSet.add(eid);
 
-  return {
+  const result: ChiStarResult = {
     bridges,
     bes,
     chiStar: [...chiStarSet],
     besRanking,
     topK,
   };
+
+  if (cache.size >= MAX_ENTRIES) {
+    // FIFO eviction — drop the oldest entry.
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) cache.delete(firstKey);
+  }
+  cache.set(fp, result);
+  return result;
 }
 
 /**

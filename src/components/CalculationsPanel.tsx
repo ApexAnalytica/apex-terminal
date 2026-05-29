@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import {
   availableCalculations,
@@ -94,6 +94,18 @@ export default function CalculationsPanel() {
   );
   const pushGraphCalcSnapshot = useApexStore((s) => s.pushGraphCalcSnapshot);
   const graphCalcHistory = useApexStore((s) => s.graphCalcHistory);
+  const hydrateGraphCalcHistory = useApexStore(
+    (s) => s.hydrateGraphCalcHistory,
+  );
+
+  // Hydrate persisted graph-calc history once, after mount. Done here
+  // rather than at store-create time so the server-rendered HTML (empty
+  // history) matches the client's first render — the persisted data is
+  // merged in post-hydration, which only adds sparklines that weren't
+  // in the SSR output (purely additive, no mismatch on existing DOM).
+  useEffect(() => {
+    hydrateGraphCalcHistory();
+  }, [hydrateGraphCalcHistory]);
 
   const ctx: CalculationContext = useMemo(
     () => ({

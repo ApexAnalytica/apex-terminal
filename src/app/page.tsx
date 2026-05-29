@@ -47,24 +47,13 @@ const SpotlightTour = dynamic(
   { ssr: false }
 );
 
-// TimeSeriesOverlay is ~1000 LOC and renders null when no node is
-// pinned. The initial paint never has pinned series, so we defer the
-// chunk and only mount the component after the user pins something.
-// Once mounted the gate keeps it alive across unpin → repin cycles so
-// we don't pay the import cost twice.
+// ΩF Time Series dock (watchlist + comparison chart, ~1000 LOC + the
+// folded-in discovery logic). Deferred until a workspace is loaded
+// (`hasGraph`); the empty splash has nothing to chart. This single dock
+// replaces the former RiskPropagationFlow strip + pinned-overlay pair.
 const TimeSeriesOverlay = dynamic(
   () => import("@/components/TimeSeriesOverlay"),
   { ssr: false }
-);
-
-// RiskPropagationFlow (594 LOC + framer-motion) shows risk cards below
-// the canvas. On the empty-graph splash it just renders a collapsed
-// toggle bar with no cards — so we defer the chunk until the user has
-// loaded a workspace (`hasGraph`). The placeholder is the natural empty
-// state: nothing.
-const RiskPropagationFlow = dynamic(
-  () => import("@/components/RiskPropagationFlow"),
-  { ssr: false },
 );
 
 // ModulePanel (842 LOC + DiscoveryRunsPanel 523 + community-detection
@@ -185,10 +174,8 @@ const CausalDAGRelief = dynamic(() => import("@/components/CausalDAGRelief"), {
 
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
-  const hasPinnedSeries = useApexStore((s) => s.pinnedTimeSeriesNodes.length > 0);
-  // Gate to defer the 594-LOC RiskPropagationFlow chunk until a graph
-  // is loaded. Empty graph means risk cards are empty anyway — the
-  // collapsible toggle bar at the bottom would render an empty strip.
+  // Gate to defer the ΩF Time Series dock chunk until a graph is loaded.
+  // An empty workspace has nothing to watch, suggest, or chart.
   const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
 
   // Live-data feed registry — single hook that polls every registered
@@ -288,17 +275,13 @@ export default function Home() {
                 what shape) is a UX decision we'll revisit separately. */}
           </div>
 
-          {/* Risk Propagation Flow — lazy + gated on workspace load.
-              Empty graph renders no cards (just a collapsed toggle bar),
-              so deferring the chunk until hasGraph is true costs nothing
-              on first paint. */}
-          {hasGraph && <RiskPropagationFlow />}
-
-          {/* Pinned time series comparison overlay — deferred until
-              the user pins a series. The overlay returns null when
-              empty anyway, so gating on length here saves the
-              ~1000 LOC chunk on first paint. */}
-          {hasPinnedSeries && <TimeSeriesOverlay />}
+          {/* ΩF Time Series dock — consolidated watchlist + comparison
+              chart (replaces the old separate risk-card strip and the
+              pinned-comparison overlay). Gated on workspace load: the
+              empty graph has nothing to watch or chart. The left rail
+              surfaces suggestions so the panel is useful before anything
+              is pinned. */}
+          {hasGraph && <TimeSeriesOverlay />}
 
           {/* Time Dial — persistent timeline scrubber */}
           <TimeDial />

@@ -300,4 +300,40 @@ describe("meanOmegaCalculation", () => {
     )!;
     expect(r.tone).toBe("red");
   });
+
+  it("toGraphSnapshot returns the scalar value", () => {
+    const nodes = [
+      makeNode({
+        id: "a",
+        omegaFragility: {
+          composite: 6.4,
+          irreplaceability: 0,
+          restorationLatency: 0,
+          jurisdictionalHazard: 0,
+          cascadeLoad: 0,
+          tailDepth: 0,
+        },
+      }),
+    ];
+    const c = ctx({ graph: { nodes, edges: [] } });
+    const r = meanOmegaCalculation.compute(c)!;
+    const snap = meanOmegaCalculation.toGraphSnapshot!(r, c)!;
+    expect(snap.value).toBeCloseTo(6.4, 4);
+  });
+});
+
+describe("crossDomainEdgesCalculation — toGraphSnapshot", () => {
+  it("returns the scalar count", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "finance" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b],
+        edges: [makeEdge({ id: "e1", source: "a", target: "b" })],
+      },
+    });
+    const r = crossDomainEdgesCalculation.compute(c)!;
+    const snap = crossDomainEdgesCalculation.toGraphSnapshot!(r, c)!;
+    expect(snap.value).toBe(1);
+  });
 });

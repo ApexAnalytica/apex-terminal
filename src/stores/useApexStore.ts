@@ -13,6 +13,7 @@ import {
   EpochSnapshot,
   TimelineId,
   LiveDataPoint,
+  LIVE_HISTORY_MAX,
   upsertLiveSignal,
 } from "@/lib/types";
 import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
@@ -215,6 +216,16 @@ export interface ApexState {
    * nodes don't clobber each other.
    */
   pushCalculationSnapshot: (nodeId: string, point: LiveDataPoint) => void;
+
+  /**
+   * History of graph-wide calculation snapshots, keyed by calc id.
+   * Populated by `pushGraphCalcSnapshot` from the CALCULATIONS panel
+   * when a graph-wide calc (mean ΩF, cross-domain edges, etc.) is
+   * pushed. Capped at LIVE_HISTORY_MAX entries per calc.
+   */
+  graphCalcHistory: Record<string, { value: number; observedAt: string }[]>;
+  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX. */
+  pushGraphCalcSnapshot: (calcId: string, value: number) => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -664,6 +675,27 @@ export const useApexStore = create<ApexState>((set, get) => ({
       );
       return {
         graphData: { ...s.graphData, nodes: nextNodes },
+      };
+    });
+  },
+
+  graphCalcHistory: {},
+  pushGraphCalcSnapshot: (calcId, value) => {
+    set((s) => {
+      const observedAt = new Date().toISOString();
+      const existing = s.graphCalcHistory[calcId] ?? [];
+      // De-dupe identical-timestamp entries (rapid double-click safety).
+      const last = existing[existing.length - 1];
+      if (last && last.observedAt === observedAt && last.value === value) {
+        return {};
+      }
+      const next = [...existing, { value, observedAt }];
+      const trimmed =
+        next.length > LIVE_HISTORY_MAX
+          ? next.slice(-LIVE_HISTORY_MAX)
+          : next;
+      return {
+        graphCalcHistory: { ...s.graphCalcHistory, [calcId]: trimmed },
       };
     });
   },

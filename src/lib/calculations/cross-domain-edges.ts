@@ -34,4 +34,8 @@ export const crossDomainEdgesCalculation: Calculation = {
       detail: `${pct.toFixed(0)}% of ${totalLive} active edges cross a domain boundary`,
     };
   },
+  toGraphSnapshot: (result) => {
+    if (result.value.kind !== "scalar") return null;
+    return { value: result.value.value };
+  },
 };

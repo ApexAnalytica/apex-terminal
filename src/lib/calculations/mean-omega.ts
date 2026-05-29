@@ -29,4 +29,8 @@ export const meanOmegaCalculation: Calculation = {
       tone,
     };
   },
+  toGraphSnapshot: (result) => {
+    if (result.value.kind !== "scalar") return null;
+    return { value: result.value.value };
+  },
 };

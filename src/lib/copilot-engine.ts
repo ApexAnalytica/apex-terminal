@@ -375,6 +375,10 @@ interface StreamLlmOptions {
   snapshotContext?: string;
   tarskiReport?: TarskiValidationReport | null;
   ollamaUrl?: string;
+  /** Active domain profile — forwarded to the server so the
+   *  profile-specific bits of the system prompt swap accordingly.
+   *  Defaults to "geopolitical" server-side when omitted. */
+  profileId?: "geopolitical" | "t1d";
 }
 
 export async function streamLlmQuery(
@@ -474,6 +478,7 @@ export async function streamLlmQuery(
       apiKey: opts.apiKey,
       model: opts.model,
       provider: opts.provider,
+      profileId: opts.profileId,
     }),
   });
 

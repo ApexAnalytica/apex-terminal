@@ -2859,6 +2859,66 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+
+  // ── Abqaiq Plants — Phase 16 second pilot (validates the pattern
+  //    generalizes from chokepoint to processing facility). Abqaiq is
+  //    the central stabilization facility for ~65-70% of Saudi crude
+  //    production. Same shape as Hormuz: throughput is a flow that's
+  //    bounded by capacity, war-risk premium captures disruption
+  //    probability (proven real by the 2019 drone strike). The legacy
+  //    `sa_abqaiq_plants` node will be deprecated in the follow-up
+  //    cleanup PR; for now it's preserved as a downstream consumer of
+  //    the throughput facet (cross-domain edge below).
+  //
+  //    Throughput facet is wired LIVE via the existing eia-saudi-crude
+  //    provider — the matcher (updated in this PR) recognizes
+  //    `si_abqaiq_throughput` as a throughput-semantic node and routes
+  //    the monthly EIA Saudi crude production signal here. Note the
+  //    proxy semantics: EIA reports country-level production (~10 mb/d)
+  //    while Abqaiq's actual processed volume is ~67% of that. The
+  //    facet's source string documents this.
+  {
+    id: "si_abqaiq_throughput",
+    label: "Abqaiq — Throughput",
+    shortLabel: "ABQ-T",
+    category: "manufacturing",
+    omegaFragility: omega(7.8, 9.0, 6.5, 7.5, 7.9, 7.0),
+    globalConcentration: "100% Saudi Arabia",
+    replacementTime: "n/a (metric, not asset)",
+    physicalConstraint: "Live signal: EIA monthly Saudi crude production as the closest free public proxy for Abqaiq processed volume. Abqaiq processes 65-70% of national output; exact per-facility split is not published.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_abqaiq_capacity",
+    label: "Abqaiq — Capacity",
+    shortLabel: "ABQ-C",
+    category: "manufacturing",
+    omegaFragility: omega(8.0, 10, 8.5, 7.5, 8.0, 7.0),
+    globalConcentration: "100% Saudi Arabia",
+    replacementTime: "2-5 years (rebuild stabilization columns + spheroids)",
+    physicalConstraint: "Stated processing capacity ~7 mb/d (Aramco published). Single-node concentration — no comparable alternative facility exists within Saudi Arabia. Designed-in redundancy in stabilization trains limits worst-case from a single train failure but full-facility loss (e.g. 2019 drone strike scenario) takes 2-5 years to fully recover.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_abqaiq_war_risk_premium",
+    label: "Abqaiq — War-Risk Premium",
+    shortLabel: "ABQ-W",
+    category: "manufacturing",
+    omegaFragility: omega(8.8, 8.5, 5.5, 9.5, 8.5, 9.5),
+    globalConcentration: "100% Houthi / IRGC missile range",
+    replacementTime: "Inversely proportional to Yemen / Iran detente",
+    physicalConstraint: "Already realized: 14-Sep-2019 Houthi/IRGC drone-and-cruise-missile attack temporarily took 5.7 mb/d of capacity offline (~50% of Saudi production at the time). Recurrent risk surface tied to Yemen conflict + Iran tension index. Tail-depth heavy — single successful strike can produce 5-10× oil price shock within hours.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -3364,6 +3424,20 @@ const EDGES: CausalEdge[] = [
   // single-node design couldn't carry — facet decomposition unlocks
   // them by separating the risk facet from the throughput facet.
   { id: "si_hormuz_war_risk_premium__sc_shipping_cost_index", source: "si_hormuz_war_risk_premium", target: "sc_shipping_cost_index", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Gulf war-risk spikes drive marine insurance premiums (Lloyd's W3 list inclusion) and trigger Suez/Cape rerouting decisions — both feed directly into the Cass Freight Expenditures Index. Channel was hidden in the single-node Hormuz design because throughput-and-risk were conflated." },
+
+  // ── Abqaiq Plants facets (Phase 16 second pilot)
+  // Intra-facet: capacity bounds throughput; war-risk reduces effective throughput
+  { id: "si_abqaiq_capacity__si_abqaiq_throughput", source: "si_abqaiq_capacity", target: "si_abqaiq_throughput", weight: 0.85, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Facility capacity sets the upper bound on processed volume. Realized throughput operates below capacity except in peak demand episodes — the throughput/capacity ratio is the analog of the Hormuz chokepoint-stress signal for processing facilities." },
+  { id: "si_abqaiq_war_risk_premium__si_abqaiq_throughput", source: "si_abqaiq_war_risk_premium", target: "si_abqaiq_throughput", weight: 0.6, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Elevated war-risk premium triggers preemptive throughput reduction (planned maintenance, dispersal of inventory) and forces post-incident shutdowns. 2019 drone strike took 5.7 mb/d offline immediately and ~3 mb/d for the following 2 weeks — the canonical realized impact path." },
+
+  // Facet → legacy per-domain copy (backward compat during transition)
+  { id: "si_abqaiq_throughput__sa_abqaiq_plants", source: "si_abqaiq_throughput", target: "sa_abqaiq_plants", weight: 0.95, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Legacy `sa_abqaiq_plants` node (Saudi Aramco Energy domain) reflects the canonical throughput signal — same physical facility, same processed volume. Edge exists for backward-compatibility during the shared-infra rollout; will be removed once downstream Aramco edges are wired directly to si_abqaiq_throughput." },
+
+  // Cross-domain bridge: Abqaiq war-risk premium spills into Financial
+  // Contagion via high-yield OAS pricing (oil-shock proxy) and the
+  // Saudi sovereign-default channel. This is a NEW signal path that
+  // wasn't expressible in the single-node Abqaiq design.
+  { id: "si_abqaiq_war_risk_premium__fc_sovereign_default", source: "si_abqaiq_war_risk_premium", target: "fc_sovereign_default", weight: 0.5, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Abqaiq disruption directly threatens Saudi oil revenue and crowd-out of sovereign-debt servicing. 2019 strike triggered measurable HY OAS spike (BAMLH0A0HYM2 jumped 40 bp in the following week). Channel was implicit in the single-node Abqaiq design but couldn't be assigned to a specific facet — now lives on the war-risk facet where it semantically belongs." },
 ];
 
 const METADATA: GraphMetadata = {

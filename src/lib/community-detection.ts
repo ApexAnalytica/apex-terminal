@@ -44,10 +44,41 @@ export interface CommunityDetectionResult {
 
 const MAX_ITERATIONS = 20;
 
+// Memoize on (edges ref, node-set fingerprint). The store's
+// `applyFeedBatch` runs through `applyOmegaLiveAdjustments` on every
+// live-feed tick, which calls detectCommunities synchronously — ~2.4M
+// ops per call on the default ~350-node graph just to rediscover that
+// the topology hasn't moved. Feed ticks rebuild the nodes array (`.map`
+// to overlay liveData) but keep the edges array reference and the
+// id set untouched, so a WeakMap on edges + a fingerprint of the
+// (length, first id, last id) of the nodes array hits across the
+// common case.
+//
+// The fingerprint distinguishes the ModulePanel scoped path
+// (`allNodes.filter(...)` → different length / endpoints) from the
+// full-graph path so a scoped call doesn't read back a cached
+// full-graph result. setGraphData replaces the edges array entirely,
+// which drops the WeakMap entry. Communities also depend on
+// `node.domain` via finalize's dominantDomain pass — feeds never
+// mutate `domain`, so a same-id-set rebuild is safe.
+function fingerprintNodes(nodes: CausalNode[]): string {
+  const n = nodes.length;
+  if (n === 0) return "0";
+  return `${n}:${nodes[0].id}:${nodes[n - 1].id}`;
+}
+
+const cache = new WeakMap<
+  CausalEdge[],
+  { fingerprint: string; result: CommunityDetectionResult }
+>();
+
 export function detectCommunities(
   nodes: CausalNode[],
   edges: CausalEdge[],
 ): CommunityDetectionResult {
+  const fingerprint = fingerprintNodes(nodes);
+  const cached = cache.get(edges);
+  if (cached && cached.fingerprint === fingerprint) return cached.result;
   if (nodes.length === 0) {
     return {
       membership: new Map(),
@@ -92,7 +123,9 @@ export function detectCommunities(
   });
 
   if (m === 0) {
-    return finalize(nodes, sortedIds, membership, edges, 0, true);
+    const empty = finalize(nodes, sortedIds, membership, edges, 0, true);
+    cache.set(edges, { fingerprint, result: empty });
+    return empty;
   }
 
   let iter = 0;
@@ -155,7 +188,9 @@ export function detectCommunities(
     }
   }
 
-  return finalize(nodes, sortedIds, membership, edges, iter, converged);
+  const result = finalize(nodes, sortedIds, membership, edges, iter, converged);
+  cache.set(edges, { fingerprint, result });
+  return result;
 }
 
 function finalize(

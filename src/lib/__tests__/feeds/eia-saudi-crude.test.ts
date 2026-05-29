@@ -121,6 +121,27 @@ describe("eiaSaudiCrudeProvider.matchPayload", () => {
     expect(batch.event).toBeUndefined();
   });
 
+  it("excludes Phase 16 capacity + war-risk Abqaiq facets (regression)", () => {
+    // After PR #441 (Phase 16 Abqaiq facets), the graph has three nodes
+    // whose labels all contain "abqaiq" but represent different
+    // variables. Only the throughput facet should receive the EIA
+    // production signal — capacity is static + war-risk is a separate
+    // disruption-probability dimension.
+    const nodes = [
+      makeNode({ id: "throughput", label: "Abqaiq — Throughput" }),
+      makeNode({ id: "capacity", label: "Abqaiq — Capacity" }),
+      makeNode({ id: "warrisk", label: "Abqaiq — War-Risk Premium" }),
+      makeNode({ id: "legacy", label: "Abqaiq Plants" }),
+    ];
+    const feed = mockEiaSaudiCrudeFeed();
+    const batch = eiaSaudiCrudeProvider.matchPayload(feed, nodes);
+    const matched = batch.updates.map((u) => u.nodeId).sort();
+    expect(matched).toContain("throughput");
+    expect(matched).toContain("legacy");
+    expect(matched).not.toContain("capacity");
+    expect(matched).not.toContain("warrisk");
+  });
+
   it("severity scales with production-vs-capacity ratio (capped at 1.0)", () => {
     const nodes = [makeNode({ id: "abqaiq", label: "Abqaiq Plants" })];
     // Synthesise a stress-regime feed: 11.5 mb/d / 12 capacity ≈ 96%.

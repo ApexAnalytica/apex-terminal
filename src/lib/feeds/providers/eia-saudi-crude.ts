@@ -27,6 +27,19 @@ const SAUDI_PRODUCTION_PATTERNS = [
 
 function matchesSaudiProduction(node: CausalNode): boolean {
   const label = node.label.toLowerCase();
+  // Phase 16 facet exclusions — the new si_abqaiq_capacity +
+  // si_abqaiq_war_risk_premium facets share "abqaiq" in their labels
+  // but represent different variables than the throughput signal this
+  // provider emits. Without this exclusion, a single Saudi-production
+  // value would land on capacity (wrong: capacity is static, not the
+  // observed throughput) and on the war-risk facet (wrong: that
+  // represents disruption probability, not realized flow).
+  if (
+    label.includes("abqaiq") &&
+    (label.includes("capacity") || label.includes("war-risk") || label.includes("war risk"))
+  ) {
+    return false;
+  }
   return SAUDI_PRODUCTION_PATTERNS.some((p) => label.includes(p));
 }
 

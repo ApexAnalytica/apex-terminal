@@ -277,19 +277,9 @@ export default function TimeSeriesOverlay() {
     }[];
   }, [pinnedNodes, temporalData, graphData]);
 
-  // Pinned nodes that have zero history entries — truly no temporal data
-  // (nodes with ≥ 1 history point are now included in curves above)
-  const noDataNodes = useMemo(() => {
-    if (!temporalData) return [];
-    const curveIds = new Set(curves.map((c) => c.nodeId));
-    return pinnedNodes
-      .filter((id) => !curveIds.has(id))
-      .map((id) => {
-        const node = graphData.nodes.find((n) => n.id === id);
-        return node ? { nodeId: id, label: node.label, domain: node.domain } : null;
-      })
-      .filter(Boolean) as { nodeId: string; label: string; domain: string }[];
-  }, [pinnedNodes, curves, temporalData, graphData]);
+  // (Pinned nodes with no plottable history are surfaced directly in the
+  // watchlist rail below via each row's `hasData: false` branch, so the
+  // old separate `noDataNodes` list is no longer needed.)
 
   // Watchlist rows for the left rail — one per pinned node, in pin order.
   // Prefer the rich curve data (color + current value + unit); fall back to
@@ -387,31 +377,6 @@ export default function TimeSeriesOverlay() {
     return scales;
   }, [curves]);
 
-  // Per-curve RAW range — used by the legend chip so it reads in the
-  // actual unit (e.g. "0.50–11.20 %" for food inflation) instead of
-  // pasting the omega-scale min/max next to the raw unit. Falls back
-  // to curveScales when a curve has no rawValue (synthetic-omega
-  // nodes, edges with derived omega histories).
-  const curveRawScales = useMemo(() => {
-    const scales = new Map<string, { min: number; max: number }>();
-    for (const curve of curves) {
-      let lo = Infinity;
-      let hi = -Infinity;
-      for (const h of curve.history) {
-        if (h.rawValue === undefined) continue;
-        if (h.rawValue < lo) lo = h.rawValue;
-        if (h.rawValue > hi) hi = h.rawValue;
-      }
-      if (!Number.isFinite(lo)) continue; // no rawValue → omit; legend will fall through
-      if (lo === hi) {
-        hi = lo + Math.max(Math.abs(lo) * 0.01, 1e-6);
-        lo = lo - Math.max(Math.abs(lo) * 0.01, 1e-6);
-      }
-      scales.set(curve.nodeId, { min: lo, max: hi });
-    }
-    return scales;
-  }, [curves]);
-
   // Compute dynamic y-axis range from actual data with padding.
   // (When normalized, the chart axis is 0..1; gridLines reflect that.)
   // Kept for the rare single-curve case where global scale is meaningful.
@@ -466,24 +431,6 @@ export default function TimeSeriesOverlay() {
     }
     return { xStart: timelineRange.start, xEnd: timelineRange.end };
   }, [xAxisMode, timelineRange, dataXBounds]);
-
-  // Per-curve count of history points that fall inside the visible x-range.
-  // Used by the legend's "OUT OF WINDOW" badge — when this is 0, the curve
-  // is rendering as a pure hold-forward line at the latest value with no
-  // intra-window detail, and the user should be told to widen the dial
-  // rather than think the data is broken. The hold-forward render itself
-  // stays correct; this is purely a UX signal.
-  const inWindowCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const c of curves) {
-      let n = 0;
-      for (const h of c.history) {
-        if (h.timestamp >= xStart && h.timestamp <= xEnd) n++;
-      }
-      m.set(c.nodeId, n);
-    }
-    return m;
-  }, [curves, xStart, xEnd]);
 
   // Convert data coordinates to SVG coordinates. Per-curve normalization:
   // when curveId is provided, the value is mapped to its own 0..1 range
@@ -757,7 +704,18 @@ export default function TimeSeriesOverlay() {
         )}
       </div>
 
-      {/* Chart area */}
+      {/* Chart area — show a prompt until at least one series is pinned,
+          rather than an empty grid. */}
+      {!hasPinned ? (
+        <div
+          className="flex items-center justify-center px-4"
+          style={{ minHeight: CHART_HEIGHT }}
+        >
+          <span className="text-[9px] font-mono text-text-muted/50 text-center">
+            Pin a series from the watchlist to chart it here.
+          </span>
+        </div>
+      ) : (
       <AnimatePresence initial={false}>
         <motion.div
           initial={{ height: 0, opacity: 0 }}
@@ -1052,125 +1010,9 @@ export default function TimeSeriesOverlay() {
             </div>
           </div>
 
-          {/* Legend retired — the left WATCHLIST rail now serves as the
-              chart legend (one row per pinned curve, with its colour swatch
-              and current value). Kept rendered-but-hidden to preserve the
-              per-curve range/sparsity tooltips without a larger refactor;
-              `false &&` strips it from the tree entirely. */}
-          {false && (
-          <div className="hidden">
-            <div className="min-w-[72px] flex-shrink-0" />
-            {curves.map((curve) => {
-              const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
-              const inWindow = inWindowCounts.get(curve.nodeId) ?? 0;
-              const outOfWindow = inWindow === 0;
-              const tooltipParts: string[] = [];
-              if (curve.sourceLabel) tooltipParts.push(`${curve.sourceLabel}${curve.sourceUnit ? ` (${curve.sourceUnit})` : ""}`);
-              tooltipParts.push(isSparse ? `${curve.pointCount} published timepoint${curve.pointCount !== 1 ? "s" : ""} — hold-forward rendering` : `${curve.pointCount} datapoints`);
-              if (outOfWindow) {
-                tooltipParts.push("⚠ no data inside the current dial window — widen the dial (1W / 1M / ZOOM OUT) to see this curve's shape");
-              }
-              tooltipParts.push("Click to remove");
-              return (
-                <button
-                  key={curve.nodeId}
-                  onClick={() => togglePinned(curve.nodeId)}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border hover:border-accent-red/40 transition-colors group"
-                  title={tooltipParts.join(" · ")}
-                >
-                  {/* Swatch — dashed for sparse series to match the chart line style */}
-                  <span
-                    className="w-3 flex-shrink-0"
-                    style={{
-                      height: "1.5px",
-                      backgroundColor: isSparse ? "transparent" : curve.color,
-                      borderTop: isSparse ? `1.5px dashed ${curve.color}` : "none",
-                    }}
-                  />
-                  <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
-                    {curve.label}
-                  </span>
-                  {/* Per-curve value-range chip — shows the actual unit-bearing
-                      range so the normalized 0-100% chart isn't ambiguous about
-                      what shape corresponds to what magnitude. Prefers the raw
-                      range when the curve carries underlying values (food
-                      inflation %, oil $/bbl); falls back to the omega range. */}
-                  {(() => {
-                    const rawScale = curveRawScales.get(curve.nodeId);
-                    const scale = rawScale ?? curveScales.get(curve.nodeId);
-                    if (!scale) return null;
-                    const u = rawScale ? (curve.sourceUnit ?? "") : "";
-                    const unitSep = u ? " " : "";
-                    return (
-                      <span className="text-[7px] font-mono text-text-muted/70 tabular-nums shrink-0">
-                        {formatRawValue(scale.min)}–{formatRawValue(scale.max)}{unitSep}{u}
-                      </span>
-                    );
-                  })()}
-                  {/* Sparsity badge — shown for sparse real data */}
-                  {isSparse && (
-                    <span
-                      className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wide px-1 py-px rounded flex-shrink-0"
-                      style={{
-                        color: curve.color,
-                        backgroundColor: `${curve.color}18`,
-                        border: `1px solid ${curve.color}40`,
-                        opacity: 0.85,
-                      }}
-                    >
-                      {curve.pointCount === 1 ? "STATIC" : `${curve.pointCount}PT`}
-                    </span>
-                  )}
-                  {/* Out-of-window badge — zero history points fall inside
-                      the dial's visible range, so the curve is rendering as
-                      a flat hold-forward line at the latest value with no
-                      intra-window shape. Tells the user this is a cadence
-                      issue (window too tight for this signal's cadence),
-                      not broken data. Hidden in "data" x-axis mode since
-                      that mode by definition zooms to encompass all points. */}
-                  {outOfWindow && xAxisMode === "dial" && (
-                    <span
-                      className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wide px-1 py-px rounded flex-shrink-0"
-                      style={{
-                        color: "var(--accent-amber, #ffb454)",
-                        backgroundColor: "rgba(255, 180, 84, 0.10)",
-                        border: "1px solid rgba(255, 180, 84, 0.40)",
-                      }}
-                      title="No data points inside the dial window — curve is hold-forward only. Widen the dial to see this signal's actual shape."
-                    >
-                      OUT OF WINDOW
-                    </span>
-                  )}
-                  <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
-                    {"\u2715"}
-                  </span>
-                </button>
-              );
-            })}
-            {noDataNodes.map((nd) => (
-              <button
-                key={nd.nodeId}
-                onClick={() => togglePinned(nd.nodeId)}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border/50 hover:border-accent-red/40 transition-colors group opacity-50"
-                title={`${nd.label} — no time series data available`}
-              >
-                <span
-                  className="w-2 h-0.5 rounded-full flex-shrink-0 border border-text-muted/30"
-                  style={{ backgroundColor: "transparent" }}
-                />
-                <span className="text-[8px] font-mono text-text-muted group-hover:text-accent-red transition-colors truncate max-w-[100px]">
-                  {nd.label}
-                </span>
-                <span className="text-[6px] font-mono text-text-muted/40 ml-0.5">NO DATA</span>
-                <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
-                  {"\u2715"}
-                </span>
-              </button>
-            ))}
-          </div>
-          )}
         </motion.div>
       </AnimatePresence>
+      )}
       </div>
     </div>
   );

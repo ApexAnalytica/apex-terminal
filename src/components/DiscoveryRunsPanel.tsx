@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DiscoveryRun } from "@/lib/discovery";
 import type { Capability } from "@/lib/capability";
 import CapabilityBadge from "./CapabilityBadge";
+import { useApexStore } from "@/stores/useApexStore";
 
 // Per-algorithm capability tag. The discovery algorithms are all
 // running on the public D1NAMO cohort today; calibration is also live.
@@ -61,14 +62,33 @@ const COHORT_SHORT_LABELS: Record<string, string> = {
 type LoadState =
   | { kind: "loading" }
   | { kind: "ready"; runs: DiscoveryRun[] }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  | { kind: "out-of-scope" };
 
 export default function DiscoveryRunsPanel() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeIdx, setActiveIdx] = useState(0);
 
+  // All current sample runs are T1D cohorts (D1NAMO + Hall). If the
+  // user hasn't selected any T1D domain, loading them would surface
+  // diabetes-flavored discovered edges (cgm_glucose_mgdl → insulin_…)
+  // inside what should be a geopolitical / macro / financial session
+  // — confusing and out of context. Same `t1d-` prefix convention used
+  // by ModulePanel for the Tissue Cohort view; avoids pulling
+  // domain-profiles into the critical-path bundle.
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const isT1DDomain = useMemo(
+    () => selectedDomains.some((id) => id.startsWith("t1d-")),
+    [selectedDomains],
+  );
+
   useEffect(() => {
+    if (!isT1DDomain) {
+      setState({ kind: "out-of-scope" });
+      return;
+    }
     let cancelled = false;
+    setState({ kind: "loading" });
     Promise.all(
       SAMPLE_RUN_URLS.map((url) =>
         fetch(url).then((r) => {
@@ -91,7 +111,7 @@ export default function DiscoveryRunsPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isT1DDomain]);
 
   return (
     <div className="p-4 space-y-3">
@@ -106,6 +126,7 @@ export default function DiscoveryRunsPanel() {
 
       {state.kind === "loading" && <LoadingTile />}
       {state.kind === "error" && <ErrorTile message={state.message} />}
+      {state.kind === "out-of-scope" && <OutOfScopeTile />}
       {state.kind === "ready" && (
         <>
           {/* Algorithm × cohort tabs. Cohort prefix only appears when
@@ -165,6 +186,17 @@ function ErrorTile({ message }: { message: string }) {
   return (
     <div className="text-[8px] font-mono text-accent-red p-3 border border-accent-red/40 rounded bg-accent-red/5">
       Failed to load run: {message}
+    </div>
+  );
+}
+
+function OutOfScopeTile() {
+  return (
+    <div className="text-[8px] font-mono text-text-muted p-3 border border-border/40 rounded">
+      No discovery runs available for the current domain selection. The
+      bundled cohorts (D1NAMO, Hall) are T1D substrates — select a T1D
+      domain to surface them here. Geopolitical / macro / financial
+      cohort discovery runs will appear when they ship.
     </div>
   );
 }

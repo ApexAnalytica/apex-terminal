@@ -214,6 +214,170 @@ const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {
         "autoimmune-recurrence edge. Grounds direction/approximate strength; weight is calibrated.",
     },
   ],
+  // Geopolitical-energy → US-macro pass-through. Unlike the t1d/vx880
+  // literature entries (where the scalar is an author calibration onto
+  // [-1,1]), the six `regression` entries below are the highest-provenance
+  // edges in the whole graph: their weight IS an empirically fitted long-run
+  // multiplier scaled by the source node's documented share of global supply
+  // (see research/macro/README.md + output/*.json — ARDL on monthly
+  // log-returns, AIC-selected lags, Newey-West HAC). The two `literature`
+  // EIA entries ground the *source shares* / disruption realism (so they sit
+  // on the confidence axis), and the two academic `literature` entries cover
+  // the DXY channels that were too noisy to identify on the synthetic proxy.
+  // Honesty caveat carried in each note: the DXY driver is a SYNTHETIC 6-major
+  // basket (real DXY feed unreachable from the sandbox); commodity/EM targets
+  // are real public series (IMF Pink Sheet, EM FX panels).
+  geo_energy: [
+    {
+      // P1 Energy → inflation. Brent + Henry Hub → IMF Fuel Energy channel.
+      id: "imf-fuel-energy-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "IMF Primary Commodity Prices (Pink Sheet, monthly; imf.org/en/Research/commodity-prices, " +
+        "datasets/commodity-prices mirror). ARDL channel fit (research/macro/output/edge_fits.json): " +
+        "Brent crude → IMF Fuel Energy Index, long-run multiplier 0.918 [0.839, 0.996], n=303 " +
+        "(1992-02–2017-06); Henry Hub gas → IMF Fuel Energy, 0.107 [0.033, 0.182], n=304. Newey-West HAC SEs.",
+      note:
+        "Backs the energy→US-inflation pass-through edges (Ras Tanura/Abqaiq/Hormuz/North Field/Ras " +
+        "Laffan → CPI/PPI energy). The edge weight IS the fitted long-run multiplier scaled by the " +
+        "source's documented share of global supply (a transmission coefficient under full source " +
+        "disruption) — not an author calibration. IMF Fuel Energy is the reachable monthly proxy for " +
+        "the BLS CPI/PPI energy series (FRED CPIENGSL).",
+    },
+    {
+      // P2 Food → CPI-food. IMF Wheat → IMF Food Price Index channel.
+      id: "imf-wheat-food-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "IMF Primary Commodity Prices (Pink Sheet, monthly). ARDL fit (research/macro/output/edge_fits.json): " +
+        "IMF Wheat price → IMF Food Price Index, long-run multiplier 0.184 [0.122, 0.245], n=316 " +
+        "(1991-02–2017-06), Newey-West HAC.",
+      note:
+        "Backs the food/fertilizer→US-CPI-food edges. Edge weight = fitted multiplier × source share " +
+        "(QAFCO nitrogen / Ma'aden phosphate shares of the global food-cost channel). IMF Food Price " +
+        "Index proxies the BLS CPI-food series (FRED CPIUFDSL).",
+    },
+    {
+      // P2/P3 Industrial Inputs → All Commodity (fertilizer → PPI).
+      id: "imf-industrial-inputs-allcommodity-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "IMF Primary Commodity Prices (Pink Sheet, monthly). ARDL fit (research/macro/output/edge_fits.json): " +
+        "IMF Industrial Inputs Index → IMF All Commodity Index, long-run multiplier 0.785 [0.609, 0.960], " +
+        "n=304 (1992-02–2017-06), Newey-West HAC.",
+      note:
+        "Backs the fertilizer→all-commodities-PPI edge. Edge weight = fitted multiplier × source share. " +
+        "IMF All Commodity proxies the BLS PPI all-commodities series (FRED PPIACO). (The P3 shipping " +
+        "edges reuse this Industrial-Inputs fit as a PARTIAL proxy and are left untagged at 0.55 " +
+        "confidence until a real freight feed — Cass/Baltic Dry — is reachable.)",
+    },
+    {
+      // P4 Sovereign → US macro. China iron-ore → Industrial Inputs channel.
+      id: "imf-ironore-industrial-inputs-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "IMF Primary Commodity Prices (Pink Sheet, monthly). ARDL fit (research/macro/output/edge_fits.json): " +
+        "IMF China-import Iron-Ore Fines (62% Fe) → IMF Industrial Inputs Index, long-run multiplier " +
+        "0.193 [0.129, 0.257], n=446 (1980-03–2017-06), Newey-West HAC.",
+      note:
+        "Backs the China-demand→US-manufacturing/IP/PPI feedback edges (P4). Iron-ore is the China " +
+        "marginal-demand proxy. Edge weight = fitted multiplier × per-target mapping share.",
+    },
+    {
+      // DXY → CPI-goods import-price channel.
+      id: "dxy-allcommodity-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "ARDL fit (research/macro/output/dxy_fits.json): synthetic DXY → IMF All Commodity Index, " +
+        "long-run multiplier −0.749 [−1.189, −0.310], n=220 (1999-02–2017-06), Newey-West HAC.",
+      note:
+        "Backs the USD-strength→CPI-goods import-price edge — strong, sign-correct, significant. " +
+        "CAVEAT: the DXY driver is a SYNTHETIC monthly basket of 6 majors (EUR/JPY/GBP/CAD/SEK/CHF) " +
+        "rebuilt from the datasets/exchange-rates mirror (tracks real DXY to ~1% in 2026-03) pending " +
+        "FRED DTWEXBGS access; the IMF All Commodity target is real. Edge weight is the fitted " +
+        "multiplier magnitude (negative sign carried in the mechanism text).",
+    },
+    {
+      // DXY → EM FX pressure + EM reserve drawdown.
+      id: "dxy-em-fx-ardl",
+      domain: "geo_energy",
+      kind: "regression",
+      citation:
+        "Panel fits (research/macro/output/dxy_em_fits.json): synthetic DXY → EM FX pressure — " +
+        "(i) monthly 7-EM geometric-mean panel β=0.381 [0.270, 0.493], n=325 (1999-02–2026-03); " +
+        "(ii) annual 14-EM PIMCO sovereign panel β=0.520 [0.097, 0.943], n=195. DXY → EM FX reserves " +
+        "(same PIMCO panel) β=−0.478 [−1.006, +0.050], n=195.",
+      note:
+        "Backs the USD-strength→EM-FX-pressure and →EM-reserve-drawdown edges. The two FX panels " +
+        "triangulate the channel (tight low-vol monthly CI vs wider literature-anchored annual CI); the " +
+        "edge weight sits between the point estimates. CAVEAT: same synthetic 6-major DXY driver as " +
+        "dxy-allcommodity-ardl; the EM FX/reserve targets are real. Reserves CI just touches zero — " +
+        "channel real, identification benefits from a longer panel.",
+    },
+    {
+      // EIA chokepoint fact — grounds the Hormuz source-share + confidence.
+      id: "eia-hormuz-chokepoint",
+      domain: "geo_energy",
+      kind: "literature",
+      citation:
+        "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' " +
+        "(Today in Energy, 2023; eia.gov/todayinenergy/detail.php?id=61002) + EIA World Oil Transit Chokepoints.",
+      note:
+        "EIA: ~20 million b/d transit the Strait of Hormuz (2024), ≈20% of global petroleum-liquids " +
+        "consumption and ~a quarter of seaborne oil. Grounds the 0.20 source-share scaling and the high " +
+        "confidence on the Hormuz→energy-inflation edge; the multiplier itself comes from imf-fuel-energy-ardl.",
+    },
+    {
+      // EIA event fact — grounds the Abqaiq disruption realism + confidence.
+      id: "eia-abqaiq-2019",
+      domain: "geo_energy",
+      kind: "literature",
+      citation:
+        "U.S. EIA, 'Saudi Arabia crude oil production outage affects global crude oil and gasoline prices' " +
+        "(Today in Energy, Sep 2019; eia.gov/todayinenergy/detail.php?id=41413).",
+      note:
+        "EIA: the 14-Sep-2019 Abqaiq/Khurais attack temporarily removed 5.7 million b/d (~5% of global " +
+        "supply); Abqaiq's ~7 million b/d capacity is ~7% of global crude processing. The realized event " +
+        "(largest single-day Brent/WTI jump in a decade) is the high-confidence anchor for the " +
+        "Abqaiq→energy-inflation edge; the multiplier comes from imf-fuel-energy-ardl.",
+    },
+    {
+      // Literature anchor — real-rate-differential → USD (synthetic-proxy refit too noisy).
+      id: "dxy-real-rate-literature",
+      domain: "geo_energy",
+      kind: "literature",
+      citation:
+        "Engel C, Mark NC, West KD. 'Exchange Rate Models Are Not as Bad as You Think.' NBER " +
+        "Macroeconomics Annual 2007;22:381-441 (NBER WP 13318). Stavrakeva V, Tang J. 'Exchange Rates " +
+        "and Monetary Policy.' Federal Reserve Bank of Boston Working Paper No. 15-16.",
+      note:
+        "Grounds the real-rate-differential→USD edge: higher US real rates pull capital in and appreciate " +
+        "the dollar (≈+5-7% DXY per +1pp 10y real rate over 12-18m in the literature). The empirical refit " +
+        "on the synthetic real-rate proxy was too noisy to identify (β≈0, n=219), so this edge is " +
+        "LITERATURE-CITED until FRED DFII10 (TIPS yield) is reachable; weight/lag are author calibration " +
+        "to the cited magnitude.",
+    },
+    {
+      // Literature anchor — USD → EM financial stress (confidence axis).
+      id: "em-dollar-funding-literature",
+      domain: "geo_energy",
+      kind: "literature",
+      citation:
+        "Bruno V, Shin HS. 'Cross-Border Banking and Global Liquidity.' Review of Economic Studies " +
+        "2015;82(2):535-564. doi:10.1093/restud/rdu042. Hofmann B, Patel N, Wu SPY. 'Original sin redux: " +
+        "a model-based evaluation.' BIS Working Paper No. 1004, 2022.",
+      note:
+        "Mechanism anchor for the USD→EM-financial-stress edges: dollar appreciation tightens dollar " +
+        "funding and lifts EM risk premia (Bruno-Shin leverage channel; Hofmann-Patel-Wu original-sin-" +
+        "redux). Used to ground the CONFIDENCE of the dxy→FX-pressure and dxy→reserves edges; the " +
+        "magnitudes come from the dxy-em-fx-ardl panel fits.",
+    },
+  ],
 };
 
 /**

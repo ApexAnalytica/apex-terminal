@@ -158,9 +158,10 @@ describe("live registry — t1d audit", () => {
 
   it("only the audited domains populate the live index", () => {
     // allEdgeProvenanceEntries flattens every populated domain. Today that's
-    // t1d (6) + vx880 (4) = 10; un-audited domains resolve to an empty catalog.
-    expect(allEdgeProvenanceEntries().length).toBe(10);
-    expect(getEdgeProvenanceCatalog("geopolitical")).toEqual([]);
+    // t1d (6) + vx880 (4) + geo_energy (10) = 20; un-audited domains resolve
+    // to an empty catalog.
+    expect(allEdgeProvenanceEntries().length).toBe(20);
+    expect(getEdgeProvenanceCatalog("ai_safety")).toEqual([]);
   });
 });
 
@@ -209,6 +210,59 @@ describe("live registry — vx880 audit", () => {
   });
 });
 
+describe("live registry — geo_energy audit", () => {
+  // The geopolitical-energy → US-macro pass-through leg: six `regression`
+  // entries whose weight IS an empirically fitted long-run multiplier
+  // (research/macro/output/*.json), two EIA chokepoint `literature` facts that
+  // ground source-share / confidence, and two academic `literature` anchors
+  // for the DXY channels that were too noisy to identify on the synthetic proxy.
+  const GEO_REGRESSION_IDS = [
+    "imf-fuel-energy-ardl",
+    "imf-wheat-food-ardl",
+    "imf-industrial-inputs-allcommodity-ardl",
+    "imf-ironore-industrial-inputs-ardl",
+    "dxy-allcommodity-ardl",
+    "dxy-em-fx-ardl",
+  ];
+  const GEO_LITERATURE_IDS = [
+    "eia-hormuz-chokepoint",
+    "eia-abqaiq-2019",
+    "dxy-real-rate-literature",
+    "em-dollar-funding-literature",
+  ];
+
+  it("exposes the audited geo_energy catalog as 6 regression + 4 literature entries", () => {
+    const catalog = getEdgeProvenanceCatalog("geo_energy");
+    expect(catalog.length).toBe(10);
+    expect(catalog.map((e) => e.id).sort()).toEqual(
+      [...GEO_REGRESSION_IDS, ...GEO_LITERATURE_IDS].sort(),
+    );
+    for (const entry of catalog) {
+      expect(entry.domain).toBe("geo_energy");
+      expect(entry.citation).toBeTruthy();
+    }
+  });
+
+  it("kinds split correctly: the empirical channels are regression, the anchors are literature", () => {
+    for (const id of GEO_REGRESSION_IDS) {
+      expect(getEdgeProvenanceEntry(id)?.kind).toBe("regression");
+    }
+    for (const id of GEO_LITERATURE_IDS) {
+      expect(getEdgeProvenanceEntry(id)?.kind).toBe("literature");
+    }
+  });
+
+  it("the synthetic-DXY caveat is carried in every DXY-driven entry's note", () => {
+    // Honesty constraint: no synthetic input may ship unlabelled. Each DXY
+    // channel must flag that the driver is a reconstructed basket proxy.
+    for (const id of ["dxy-allcommodity-ardl", "dxy-em-fx-ardl"]) {
+      expect(getEdgeProvenanceEntry(id)?.note?.toLowerCase()).toContain(
+        "synthetic",
+      );
+    }
+  });
+});
+
 // ─── Forward-looking guard over real shipped graph data ─────────────────
 
 describe("real graph data ref integrity", () => {
@@ -247,5 +301,26 @@ describe("real graph data ref integrity", () => {
       .filter((r): r is string => Boolean(r));
     expect(vx880Refs.length).toBe(10);
     expect(validateEdgeProvenanceRefs(vx880Refs)).toEqual([]);
+  });
+
+  it("the geo_energy audit tagged real MAIN_GRAPH edges (guard is non-vacuous)", () => {
+    // The geo-energy audit tagged 16 main-graph edges (P1 energy ×5, P2 food
+    // ×4, P4 sovereign ×3, DXY loop ×4), each carrying both a weight +
+    // confidence ref → 32 ref slots. The Abqaiq/Hormuz P1 edges and both DXY→EM
+    // edges deliberately split weight (the empirical channel fit) from
+    // confidence (an EIA chokepoint fact / dollar-funding literature anchor).
+    const geoRefs = MAIN_GRAPH.edges
+      .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
+      .filter((r): r is string => Boolean(r));
+    expect(geoRefs.length).toBe(32);
+    expect(validateEdgeProvenanceRefs(geoRefs)).toEqual([]);
+    // The split-axis edges actually use distinct weight vs confidence sources.
+    const splitAxisCount = MAIN_GRAPH.edges.filter(
+      (e) =>
+        e.weightSourceRef &&
+        e.confidenceSourceRef &&
+        e.weightSourceRef !== e.confidenceSourceRef,
+    ).length;
+    expect(splitAxisCount).toBe(4);
   });
 });

@@ -48,6 +48,7 @@ const CALIBRATION_ALGORITHM_IDS = new Set([
 const SAMPLE_RUN_URLS = [
   "/discovery-runs/d1namo-lag-correlation-v0-1-0.json",
   "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
+  "/discovery-runs/synthetic-cgm-pcmci-plus-v0-2-0.json",
   "/discovery-runs/d1namo-bocpd-hypo-calibration-v0-1-0.json",
   "/discovery-runs/d1namo-csd-fit-hypo-calibration-v0-1-0.json",
   "/discovery-runs/hall-csd-fit-hypo-calibration-v0-1-0.json",
@@ -58,6 +59,7 @@ const SAMPLE_RUN_URLS = [
 const COHORT_SHORT_LABELS: Record<string, string> = {
   "d1namo-2018": "D1NAMO",
   "hall-cgm-2018": "HALL",
+  "synthetic-cgm-2026-05": "SYNTH-CGM",
 };
 
 type LoadState =
@@ -125,9 +127,12 @@ export default function DiscoveryRunsPanel() {
           Edges and calibration runs computed on real observational
           cohorts, separate from the curated CausalGraph above. Two public
           substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
-          Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). Tab
-          labels carry the cohort prefix; same algorithm across cohorts
-          is how cross-substrate generalisation gets tested.
+          Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). A
+          deterministic synthetic CGM cohort with the D1NAMO variable
+          schema is also included for the PCMCI+ contemporaneous-orientation
+          demo when raw D1NAMO bytes aren't available in the build
+          environment. Tab labels carry the cohort prefix; same algorithm
+          across cohorts is how cross-substrate generalisation gets tested.
         </div>
       )}
 

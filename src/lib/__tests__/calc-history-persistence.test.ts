@@ -2,8 +2,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   loadGraphCalcHistory,
   saveGraphCalcHistory,
+  loadNodeCalcHistory,
+  saveNodeCalcHistory,
   type GraphCalcHistory,
+  type NodeCalcHistory,
 } from "@/lib/calc-history-persistence";
+import type { LiveDataPoint } from "@/lib/types";
 
 // ─── calc-history-persistence tests ───────────────────────────────────
 //
@@ -105,5 +109,137 @@ describe("calc-history-persistence", () => {
     const loaded = loadGraphCalcHistory();
     expect(loaded.weird).toBeUndefined();
     expect(loaded.ok).toHaveLength(1);
+  });
+});
+
+// ─── Node-scoped calc-history persistence ─────────────────────────────
+//
+// Mirrors the graph-wide round-trip + defensive-validation suite, but
+// entries are calc-kind LiveDataPoints keyed by nodeId. The persisted
+// point carries its trajectory on the embedded `history` array, so the
+// round-trip must preserve that field too.
+
+const NODE_STORAGE_KEY = "manifold:node-calc-history";
+
+function calcPoint(
+  kind: string,
+  value: number,
+  observedAt: string,
+  history?: { value: number; observedAt: string }[],
+): LiveDataPoint {
+  return {
+    kind,
+    value,
+    capacity: 1,
+    unit: "",
+    observedAt,
+    source: "calc",
+    ...(history ? { history } : {}),
+  };
+}
+
+describe("calc-history-persistence — node-scoped", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("round-trips a node calc history with embedded trajectory", () => {
+    function installLocalStorage() {
+      const store = new Map<string, string>();
+      const mock = {
+        getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => store.clear(),
+      };
+      vi.stubGlobal("window", { localStorage: mock });
+      return { store, mock };
+    }
+    installLocalStorage();
+    const history: NodeCalcHistory = {
+      "node-a": [
+        calcPoint("calc:supply-hhi", 0.42, "2025-01-02T00:00:00.000Z", [
+          { value: 0.31, observedAt: "2025-01-01T00:00:00.000Z" },
+        ]),
+      ],
+    };
+    saveNodeCalcHistory(history);
+    const loaded = loadNodeCalcHistory();
+    expect(loaded).toEqual(history);
+    expect(loaded["node-a"][0].history).toHaveLength(1);
+  });
+
+  it("drops entries whose kind doesn't start with 'calc:'", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: () => undefined,
+        clear: () => store.clear(),
+      },
+    });
+    store.set(
+      NODE_STORAGE_KEY,
+      JSON.stringify({
+        "node-a": [
+          calcPoint("calc:hhi", 0.4, "2025-01-01T00:00:00.000Z"),
+          // Non-calc kinds (e.g. a feed signal) must NOT leak in.
+          {
+            kind: "throughput",
+            value: 1.2,
+            capacity: 2,
+            unit: "mb/d",
+            observedAt: "2025-01-01T00:00:00.000Z",
+            source: "EIA",
+          },
+        ],
+      }),
+    );
+    const loaded = loadNodeCalcHistory();
+    expect(loaded["node-a"]).toHaveLength(1);
+    expect(loaded["node-a"][0].kind).toBe("calc:hhi");
+  });
+
+  it("returns {} on corrupted JSON / missing localStorage", () => {
+    vi.stubGlobal("window", undefined);
+    expect(loadNodeCalcHistory()).toEqual({});
+    const store = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: () => "{not-json",
+        setItem: () => undefined,
+        removeItem: () => undefined,
+        clear: () => store.clear(),
+      },
+    });
+    expect(loadNodeCalcHistory()).toEqual({});
+  });
+
+  it("saveNodeCalcHistory is a no-op under SSR (no throw)", () => {
+    vi.stubGlobal("window", undefined);
+    expect(() => saveNodeCalcHistory({ a: [] })).not.toThrow();
+  });
+
+  it("drops a nodeId whose entries are all invalid", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: () => undefined,
+        clear: () => store.clear(),
+      },
+    });
+    store.set(
+      NODE_STORAGE_KEY,
+      JSON.stringify({
+        "node-a": [{ kind: "calc:x", value: "nope", observedAt: "x" }],
+        "node-b": [calcPoint("calc:y", 1, "2025-01-01T00:00:00.000Z")],
+      }),
+    );
+    const loaded = loadNodeCalcHistory();
+    expect(loaded["node-a"]).toBeUndefined();
+    expect(loaded["node-b"]).toHaveLength(1);
   });
 });

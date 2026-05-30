@@ -376,10 +376,13 @@ export default function RiskPropagationFlow() {
               <div ref={containerRef} className="flex-1 flex items-stretch gap-2 overflow-x-auto min-w-0">
               {displayNodes.map((card, i) => {
                 const omegaHistory = nodeHistories.get(card.nodeId) ?? [];
-                // Prefer live-data when ANY liveData entry is attached (even
-                // if history hasn't accumulated yet — first tick has only the
-                // current value, history.length === 0). On second tick the
-                // sparkline gets 2 points and renders a curve.
+                // Prefer live-data when ANY liveData entry is attached. On
+                // the first tick `liveSignal.history` is empty, but the
+                // current observation is appended below as a literal — so
+                // `allHistory.length` is 1, not 0, and OmegaSparkline draws
+                // a horizontal hold-forward line at that single value. On
+                // the second tick `allHistory.length` is 2 and the sparkline
+                // renders a real curve.
                 const node = nodeById.get(card.nodeId);
                 const liveSignal = node?.liveData?.[0];
                 const usingLiveHistory = !!liveSignal;

@@ -139,8 +139,16 @@ export default function TimeSeriesOverlay() {
   // the retired RiskPropagationFlow strip: a clickable header bar that hides
   // both the watchlist rail and the chart, giving the canvas above more
   // vertical room when the user wants to focus on the primary module.
-  // Local state (non-persisted) for parity with the previous behaviour.
-  const [collapsed, setCollapsed] = useState(false);
+  // Persisted via the store (localStorage-backed) so the choice survives a
+  // reload; hydrated post-mount to keep SSR and first client render in sync.
+  const collapsed = useApexStore((s) => s.bottomDockCollapsed);
+  const setBottomDockCollapsed = useApexStore((s) => s.setBottomDockCollapsed);
+  const hydrateBottomDockCollapsed = useApexStore(
+    (s) => s.hydrateBottomDockCollapsed,
+  );
+  useEffect(() => {
+    hydrateBottomDockCollapsed();
+  }, [hydrateBottomDockCollapsed]);
   // X-axis zoom mode.
   //  - "dial": chart x-axis mirrors the TimeDial's 60-day window so the
   //    chart cursor lines up with the scrubber below. Default, matches the
@@ -666,7 +674,7 @@ export default function TimeSeriesOverlay() {
           above more vertical room. Mirrors the affordance the retired
           RiskPropagationFlow strip used to expose. */}
       <button
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => setBottomDockCollapsed(!collapsed)}
         className="flex items-center gap-3 w-full px-4 py-1 hover:bg-surface transition-colors"
         title={collapsed ? "Expand ΩF time series" : "Collapse ΩF time series"}
       >

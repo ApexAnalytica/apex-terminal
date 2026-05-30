@@ -6,6 +6,7 @@ import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
 import { edgeFireIntensity } from "@/lib/cascade-edge-activation-order";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 
 interface DAGEdge3DProps {
   edge: CausalEdge;
@@ -62,21 +63,13 @@ interface DAGEdge3DProps {
 }
 
 /**
- * Edge color — matches 2D ReactFlow edge styling:
- *   directed  → cyan (#00e5ff)  — solid line
- *   temporal  → amber (#ffab00) — solid line + animated particle
- *   confounded → orange (#ff6d00) — dashed line
- *   inconsistent → red (#ff1744) — overrides type color
+ * Edge color — the per-type hue comes from the edge-type registry
+ * (single source of truth across 3D / 2D / Map). Tarski-inconsistent
+ * edges override the type color with red.
  */
 function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string {
   if (isVerifiedInconsistent) return "#ff1744";
-  switch (edge.type) {
-    case "directed": return "#00e5ff";
-    case "temporal": return "#ffab00";
-    case "confounded": return "#ff6d00";
-    case "flow": return "#1de9b6";
-    default: return "#42466a";
-  }
+  return getEdgeTypeMeta(edge.type).color;
 }
 
 function DAGEdge3DInner({
@@ -190,10 +183,13 @@ function DAGEdge3DInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posKey, curveOffset]);
 
-  // Edge type determines rendering style
+  // Edge type determines rendering style. Color / dash come from the
+  // edge-type registry; the temporal-particle vs flow-whoosh motion
+  // distinction stays an explicit per-renderer treatment (the registry
+  // only declares THAT a type animates, not the 3D cadence).
   const isTemporalFlow = edge.type === "temporal";
   const isFlow = edge.type === "flow";
-  const isDashed = edge.type === "confounded" || isVerifiedInconsistent ||
+  const isDashed = getEdgeTypeMeta(edge.type).dashed || isVerifiedInconsistent ||
     isAblated || isSevered;
 
   // Selection-aware opacity
@@ -227,12 +223,15 @@ function DAGEdge3DInner({
     : isConnectedToSelected ? 1.0
     : Math.min(1, baseOpacity);
 
-  // Should the particle flow animate? Fire pulse counts as a reason
-  // to animate too — at very low propSignal the steady-flow path
+  // Should the particle flow animate? The registry's `animated` flag is
+  // the cross-surface gate for "this type carries a steady at-rest motion
+  // cue" (temporal + flow today, plus any domain type that opts in) — the
+  // 3D cadence below stays a local treatment. Fire pulse counts as a
+  // reason to animate too — at very low propSignal the steady-flow path
   // wouldn't kick in, but the fire moment still needs to render
   // a particle whoosh.
   const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
-    (isTemporalFlow || isFlow || propSignal > 0.3 || fireIntensity > 0.05);
+    (getEdgeTypeMeta(edge.type).animated || propSignal > 0.3 || fireIntensity > 0.05);
   // Boost the animation speed during the fire pulse so the particle
   // visibly accelerates at firing time — matches the human read of
   // "signal arriving fast" vs "signal continuously flowing." Flow

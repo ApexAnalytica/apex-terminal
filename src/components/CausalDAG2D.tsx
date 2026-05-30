@@ -41,6 +41,7 @@ import {
 import { type NodeMetrics } from "@/lib/graph-layout";
 import { requestLayout2D } from "@/lib/workers/layout3d-client";
 import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 import {
   cascadeEdgeActivationOrder,
   edgeFireIntensity,
@@ -328,19 +329,9 @@ function EdgeInspector({
   onClose: () => void;
   chiStarInfo?: ChiStarEdgeInfo | null;
 }) {
-  const typeColor =
-    edge.type === "temporal"
-      ? "#ffab00"
-      : edge.type === "confounded"
-        ? "#ff6d00"
-        : "#00e5ff";
-
-  const typeLabel =
-    edge.type === "temporal"
-      ? "TEMPORAL"
-      : edge.type === "confounded"
-        ? "CONFOUNDED"
-        : "DIRECTED";
+  const typeMeta = getEdgeTypeMeta(edge.type);
+  const typeColor = typeMeta.color;
+  const typeLabel = typeMeta.label;
 
   return (
     <motion.div
@@ -1128,9 +1119,9 @@ function CausalDAG2DInner() {
         const isInconsistent = truthFilter === "verified" && !!e.isInconsistent;
         const propagationSignal = currentSnapshot?.edgeStates[e.id]?.propagationSignal ?? 0;
         const isSelected = selectedEdge?.id === e.id;
+        const typeMeta = getEdgeTypeMeta(e.type);
         const isTemporal = e.type === "temporal";
         const isConfounded = e.type === "confounded";
-        const isFlow = e.type === "flow";
         // FIRE pulse — peaks at the edge's activation epoch and decays
         // over a 3-epoch window. 0 when the edge never fired in the
         // visible cascade. Severed / ablated suppress separately in
@@ -1141,15 +1132,9 @@ function CausalDAG2DInner() {
             ? edgeFireIntensity(fireActivationEpoch, clampedEpoch)
             : 0;
 
-        const baseColor = isInconsistent
-          ? "#ff1744"
-          : isTemporal
-            ? "#ffab00"
-            : isConfounded
-              ? "#ff6d00"
-              : isFlow
-                ? "#1de9b6"
-                : "#00e5ff";
+        // Inconsistent edges flag red regardless of type; otherwise the
+        // edge-type registry is the single source of the canvas hue.
+        const baseColor = isInconsistent ? "#ff1744" : typeMeta.color;
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
         // Power-scale weight to widen the visible width range. Real
         // edge weights cluster between 0.4 and 0.8, so a linear
@@ -1159,7 +1144,7 @@ function CausalDAG2DInner() {
         // as ~3× a thin one even at typical clustering.
         const w = Math.max(0, Math.min(1, e.weight));
         const baseWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
-        const showArrow = e.type === "directed" || isTemporal || isFlow;
+        const showArrow = typeMeta.arrow;
 
         return {
           id: e.id,
@@ -1171,7 +1156,7 @@ function CausalDAG2DInner() {
           // reads at rest — same intent as the 3D particle whoosh for
           // type==="flow". Temporal animates for its lag cue; any edge
           // animates while a cascade signal is propagating through it.
-          animated: isTemporal || isFlow || propagationSignal > 0.3,
+          animated: typeMeta.animated || propagationSignal > 0.3,
           markerEnd: showArrow
             ? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: baseColor }
             : undefined,

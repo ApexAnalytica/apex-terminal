@@ -109,9 +109,10 @@ export type NodeCategory =
   | "science";
 
 /**
- * Edge-type discriminator. Visual encoding (kept in lockstep across
- * the four canvas surfaces — see `CausalDAG2D` / `DAGEdge3D` /
- * `CausalDAGMap` / `CausalDAGRelief`):
+ * The four built-in edge-type discriminators. Visual encoding (kept in
+ * lockstep across the canvas surfaces — see `CausalDAG2D` / `DAGEdge3D`
+ * / `CausalDAGMap`) is now owned centrally by `edge-type-registry.ts`,
+ * not duplicated per renderer:
  *
  *   - `directed`   → cyan, solid, arrow on target. "A → B" causal claim.
  *   - `temporal`   → amber, solid, arrow on target, animated particle.
@@ -124,7 +125,19 @@ export type NodeCategory =
  *                    and `temporal` (lag correlation) — `flow` is
  *                    "stuff is actually moving here".
  */
-export type EdgeType = "directed" | "confounded" | "temporal" | "flow";
+export type BuiltinEdgeType = "directed" | "confounded" | "temporal" | "flow";
+
+/**
+ * Edge-type discriminator stored on `CausalEdge.type`. OPEN string enum:
+ * the four built-ins above get editor autocomplete, but a domain may
+ * declare its own type (e.g. T1D `metabolic` / `immunological`, finance
+ * `contagion`) by calling `registerEdgeType(...)` in
+ * `edge-type-registry.ts`. The registry owns presentation; an
+ * unregistered string still renders with a neutral fallback rather than
+ * crashing a canvas. (Was a closed union before the edge-types-registry
+ * PR — opened so the type taxonomy is extensible per domain.)
+ */
+export type EdgeType = BuiltinEdgeType | (string & {});
 
 /**
  * Where an edge attribute (weight, confidence) came from. Surfaces in

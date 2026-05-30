@@ -13,6 +13,7 @@ import {
   extractAutoBridgeScore,
   bridgeStatus,
 } from "@/lib/cross-domain-bridging";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 import { useApexStore } from "@/stores/useApexStore";
 
 /**
@@ -51,19 +52,12 @@ export default function EdgeInspector({
 }) {
   const promoteAutoBridge = useApexStore((s) => s.promoteAutoBridge);
   const status = bridgeStatus(edge);
-  const typeColor =
-    edge.type === "temporal"
-      ? "#ffab00"
-      : edge.type === "confounded"
-        ? "#ff6d00"
-        : "#00e5ff";
-
-  const typeLabel =
-    edge.type === "temporal"
-      ? "TEMPORAL"
-      : edge.type === "confounded"
-        ? "CONFOUNDED"
-        : "DIRECTED";
+  // Color + label come from the shared edge-type registry, so FLOW (and
+  // any domain-registered type) renders its own hue/label instead of
+  // silently falling through to the cyan DIRECTED default.
+  const typeMeta = getEdgeTypeMeta(edge.type);
+  const typeColor = typeMeta.color;
+  const typeLabel = typeMeta.label;
 
   // Resolve provenance once. Missing fields fall back to author so the
   // analyst always sees *some* signal — silence would be a worse UX

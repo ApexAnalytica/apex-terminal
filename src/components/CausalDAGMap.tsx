@@ -8,6 +8,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-color";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
 import { chiStar } from "@/lib/estimators/chi-star";
@@ -337,23 +338,20 @@ function CausalDAGMapInner() {
         }
       }
 
-      // Edge color — matches 3D exactly. Severed gets a distinct slate color
-      // so Pearl link-breaks don't look like Tarski-inconsistent edges.
+      // Edge color — matches 3D exactly via the shared edge-type registry.
+      // Severed gets a distinct slate color so Pearl link-breaks don't look
+      // like Tarski-inconsistent edges; inconsistent overrides to red.
       const isSevered = edge.isSevered ?? false;
+      const typeMeta = getEdgeTypeMeta(edge.type);
       const edgeColor = isSevered
         ? "#78909c"
         : edge.isInconsistent
           ? "#ff1744"
-          : edge.type === "temporal"
-            ? "#ffab00"
-            : edge.type === "confounded"
-              ? "#ff6d00"
-              : edge.type === "flow"
-                ? "#1de9b6"
-                : "#00e5ff";
+          : typeMeta.color;
 
-      // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
-      const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
+      // Dashed: registry-dashed type (confounded), inconsistent, or severed
+      // (matches 3D isDashed logic)
+      const isDashed = typeMeta.dashed || edge.isInconsistent || isSevered;
 
       const baseOpacity = isSevered ? 0.45 : 0.5;
       const opacity = edgeIsDimmed ? 0.08 : baseOpacity;
@@ -429,7 +427,7 @@ function CausalDAGMapInner() {
     return solidEdgeGeoJSON.features
       .filter(
         (f) =>
-          (f.properties?.type === "temporal" || f.properties?.type === "flow") &&
+          getEdgeTypeMeta(f.properties?.type ?? "").animated &&
           (f.properties?.opacity ?? 1) > 0.1,
       )
       .map((f) => {

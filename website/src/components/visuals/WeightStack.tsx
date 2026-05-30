@@ -18,7 +18,7 @@ export default function WeightStack() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/80">
-          PILLAR WEIGHTS · EXAMPLE
+          PILLAR WEIGHTS · CANONICAL
         </div>
         <div className="font-mono text-[10px] tracking-wider text-text-muted">
           Σw = 1.00

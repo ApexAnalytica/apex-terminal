@@ -18,13 +18,19 @@ import {
 //
 // "→ DIAL" affordance — calcs that implement `toSnapshot` (node-
 // scoped) or `toGraphSnapshot` (graph-wide) get a push button that
-// records the current value:
+// records the current value AND auto-pins the trajectory into the
+// bottom watchlist + chart so the user immediately sees the curve
+// appear (without having to manually pin afterwards):
 //   - Node-scoped: appends to the selected node's liveData[] via
-//     pushCalculationSnapshot — picks up the existing time-series
-//     card / TimeDial rendering.
+//     pushCalculationSnapshot + auto-pins the node via
+//     togglePinnedTimeSeries (one-shot — only when not already pinned).
 //   - Graph-wide: appends to graphCalcHistory[calc.id] via
-//     pushGraphCalcSnapshot — a tiny inline sparkline renders next
-//     to the value to show the trajectory.
+//     pushGraphCalcSnapshot + auto-pins the calc id via
+//     togglePinnedCalcSeries; TimeSeriesOverlay reads pinnedCalcSeries
+//     and renders one calc-typed row in the watchlist plus a chart
+//     curve from graphCalcHistory[calcId]. The inline sparkline next
+//     to the value stays as a redundant preview for when the bottom
+//     panel is scrolled / collapsed.
 //
 // Renders nothing when no calculations apply, so empty graphs don't
 // paint dead chrome.
@@ -97,6 +103,13 @@ export default function CalculationsPanel() {
   const hydrateGraphCalcHistory = useApexStore(
     (s) => s.hydrateGraphCalcHistory,
   );
+  // Auto-pin actions so the user immediately sees a curve in the
+  // bottom time-series panel after pressing "→ DIAL" — closes the
+  // "where is my trajectory" gap.
+  const pinnedTimeSeriesNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
+  const togglePinnedTimeSeries = useApexStore((s) => s.togglePinnedTimeSeries);
+  const pinnedCalcSeries = useApexStore((s) => s.pinnedCalcSeries);
+  const togglePinnedCalcSeries = useApexStore((s) => s.togglePinnedCalcSeries);
 
   // Hydrate persisted graph-calc history once, after mount. Done here
   // rather than at store-create time so the server-rendered HTML (empty
@@ -144,14 +157,28 @@ export default function CalculationsPanel() {
         {rows.map(({ calc, result, nodeSnapshot, graphSnapshot }) => {
           const history = graphCalcHistory[calc.id] ?? [];
           const pushDisabled = !nodeSnapshot && !graphSnapshot;
+          // On "→ DIAL": (a) snapshot the value, (b) auto-pin so the
+          // bottom watchlist + chart immediately picks it up. The auto-
+          // pin is one-shot — toggle only when not yet pinned, so the
+          // user keeps control over what's in the watchlist (no
+          // surprise re-pinning if they unpinned manually).
           const onPush = nodeSnapshot
-            ? () =>
+            ? () => {
                 pushCalculationSnapshot(
                   nodeSnapshot.nodeId,
                   nodeSnapshot.point,
-                )
+                );
+                if (!pinnedTimeSeriesNodes.includes(nodeSnapshot.nodeId)) {
+                  togglePinnedTimeSeries(nodeSnapshot.nodeId);
+                }
+              }
             : graphSnapshot
-              ? () => pushGraphCalcSnapshot(calc.id, graphSnapshot.value)
+              ? () => {
+                  pushGraphCalcSnapshot(calc.id, graphSnapshot.value);
+                  if (!pinnedCalcSeries.includes(calc.id)) {
+                    togglePinnedCalcSeries(calc.id);
+                  }
+                }
               : undefined;
           return (
             <div
@@ -192,8 +219,8 @@ export default function CalculationsPanel() {
                   className="ml-auto flex-shrink-0 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border border-accent-cyan/30 text-accent-cyan/80 hover:text-accent-cyan hover:border-accent-cyan/60 transition-colors"
                   title={
                     nodeSnapshot
-                      ? `Push current ${calc.name} value to the selected node's TimeDial history. Each press appends a snapshot.`
-                      : `Push current ${calc.name} value to graph-wide history. Each press appends a snapshot; sparkline renders inline once ≥2 entries exist.`
+                      ? `Push current ${calc.name} value to the selected node's TimeDial history. First press auto-pins the node to the bottom watchlist + chart. Each press appends a snapshot to the trajectory.`
+                      : `Push current ${calc.name} value to graph-wide history. First press auto-pins the calc to the bottom watchlist + chart. Each press appends a snapshot to the trajectory.`
                   }
                 >
                   → DIAL

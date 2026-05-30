@@ -121,6 +121,12 @@ export default function TimeSeriesOverlay() {
   const selectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [hoverX, setHoverX] = useState<number | null>(null);
+  // Collapse state for the whole dock. Mirrors the affordance that lived on
+  // the retired RiskPropagationFlow strip: a clickable header bar that hides
+  // both the watchlist rail and the chart, giving the canvas above more
+  // vertical room when the user wants to focus on the primary module.
+  // Local state (non-persisted) for parity with the previous behaviour.
+  const [collapsed, setCollapsed] = useState(false);
   // X-axis zoom mode.
   //  - "dial": chart x-axis mirrors the TimeDial's 60-day window so the
   //    chart cursor lines up with the scrubber below. Default, matches the
@@ -559,9 +565,43 @@ export default function TimeSeriesOverlay() {
   return (
     <div
       ref={containerRef}
-      className="border-t border-border bg-surface-elevated flex items-stretch"
+      className="border-t border-border bg-surface-elevated"
       data-tour="risk-flow"
     >
+      {/* Collapse toggle bar. When collapsed, only this strip is visible —
+          the watchlist + chart body below are hidden, giving the canvas
+          above more vertical room. Mirrors the affordance the retired
+          RiskPropagationFlow strip used to expose. */}
+      <button
+        onClick={() => setCollapsed((c) => !c)}
+        className="flex items-center gap-3 w-full px-4 py-1 hover:bg-surface transition-colors"
+        title={collapsed ? "Expand ΩF time series" : "Collapse ΩF time series"}
+      >
+        <span className="text-[9px] font-mono text-text-muted w-3 flex-shrink-0 text-center">
+          {collapsed ? "▶" : "▼"}
+        </span>
+        <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+          {"Ω"}F TIME SERIES
+        </span>
+        {collapsed && (
+          <span className="text-[7px] font-mono text-text-muted/60 tabular-nums">
+            {pinnedRows.length > 0 ? `${pinnedRows.length} pinned` : "none pinned"}
+            {liveCount > 0 ? ` · ${liveCount} live` : ""}
+          </span>
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key="ts-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-stretch border-t border-border/40">
       {/* LEFT: watchlist rail — pinned series + suggestions. Doubles as the
           chart legend (each pinned row is a curve) and the discovery surface
           (suggested rows pin with one click). Replaces the old standalone
@@ -673,11 +713,12 @@ export default function TimeSeriesOverlay() {
             {"\u2261"}
           </span>
         </div>
-        <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted flex-1">
-          {"\u03A9"}F TIME SERIES
+        {/* Title moved to the outer collapse toggle bar. Only the zoom
+            indicator stays here, when applicable. */}
+        <span className="text-[8px] font-mono text-text-muted flex-1">
           {xAxisMode === "data" && (
-            <span className="ml-2 text-accent-cyan/80">
-              {"·"} ZOOMED {new Date(xStart).getFullYear()}{"–"}{new Date(xEnd).getFullYear()}
+            <span className="text-accent-cyan/80">
+              ZOOMED {new Date(xStart).getFullYear()}{"–"}{new Date(xEnd).getFullYear()}
             </span>
           )}
         </span>
@@ -1014,6 +1055,10 @@ export default function TimeSeriesOverlay() {
       </AnimatePresence>
       )}
       </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

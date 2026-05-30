@@ -113,7 +113,7 @@ export default function InterdictionPanel() {
             </button>
           ))}
         </div>
-        <div className="h-4 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-4 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
         <div className="flex items-center gap-1">
           <span className="text-[8px] font-mono text-text-muted">MODE:</span>
           {(["edge", "node", "both"] as InterdictionMode[]).map((m) => (

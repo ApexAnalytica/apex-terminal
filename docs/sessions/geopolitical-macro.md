@@ -464,11 +464,20 @@ reading would target next — and **they have no target nodes**:
   proxy *to*. (The `eia-hormuz` provider already sums these six
   producers for the chokepoint-throughput signal; that's the only place
   they appear.)
-- **US / Qatar LNG export *flow*** — would be a genuinely distinct
-  signal (flow vs. the upstream production signal #479 adds) and the
-  Ras Laffan / export-train nodes exist, but it needs the EIA
-  natural-gas *trade* series, not `international/data`. Deferred as a
-  real-but-separate build, not a clone of the existing providers.
+- **Qatar LNG export *flow*** — would be a genuinely distinct signal
+  (export-train throughput vs. the upstream North Field production #479
+  adds) and the target nodes exist (`qe_qatarenergy_lng_export_trains_qatargas_1`
+  "14 trains, 77 MTPA"; `qe_ras_laffan_port`). **Checked 2026-05-29 and
+  found non-viable on EIA:** `GET /v2/international/facet/activityId`
+  returns only `1 Production / 2 Consumption / 3 Imports / 5 Stocks(OECD)`
+  — there is **no Exports activity** for international natural gas, and
+  EIA's LNG-export volume series are US-domestic only. No free EIA series
+  publishes Qatar's export-train throughput. Do NOT smear the North Field
+  *production* value onto the export-train node as a proxy — production ≠
+  export throughput (processing, domestic burn, and condensate split sit
+  between them), so that would violate the Phase 16 throughput-vs-capacity
+  discipline. This candidate is closed unless a different free source for
+  Qatar LNG export volumes turns up.
 - **Algeria / Nigeria gas** — those domains have no graph presence at
   all yet.
 
@@ -479,8 +488,11 @@ aggregate AND a graph node exists for it — is satisfied nowhere else
 today. The remaining ~50 physical-asset-moat nodes (per-refinery,
 per-cable, per-mine, per-gas-plant) genuinely have no free per-asset
 source. A future session should NOT keep cloning EIA providers expecting
-more wins here; the next live-data gains require either new graph nodes
-(new domain cards) or the LNG-trade-flow build above.
+more wins here. With the LNG-trade-flow candidate now checked and closed
+(see above), the EIA aggregate-proxy seam is fully mined — the next
+live-data gains require **new graph nodes** (new domain cards), a **new
+data source** beyond EIA/FRED/World Bank, or resolving the prod FRED-all-
+mock issue (see below), not another producer clone.
 
 ## Likely upcoming themes
 

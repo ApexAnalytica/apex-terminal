@@ -1356,6 +1356,52 @@ The `applyDomainFilter` helper became `async`; its callers (the `set_domains` / 
 
 **Verification.** `tsc --noEmit` clean (modulo pre-existing inherited errors); lint clean on touched file; vitest 1489 / 1489 pass.
 
+### 2026-05-29 — Shipped: rendering-perf rounds 10-20 + bottom-dock UX consolidation; pausing the series
+
+**Where this leaves us.** After 11 rounds across 8 PRs the LAUNCH WORKSPACE freeze surface has been hollowed out. The remaining candidates I scoped are all sub-millisecond. I'd rather flag the diminishing returns and pause than ship round 21 for its own sake.
+
+**What landed.**
+
+| PR | Round(s) | What |
+|---|---|---|
+| #452 | 10 | `useFilteredGraph` cross-domain inclusion: O(C·E·N) → O(N+C·E). Inner `nodes.find(...)` per edge replaced with an `id→domain` Map. ~6.3M ops removed from the launch frame across the 14 hook consumers on a 348-node / 350-edge graph. |
+| #452 | 11 | `framer-motion` off the launch eager bundle. `CDOmegaMonitor` was the only static-chain importer; replaced two `motion.div` CRITICAL pulses with CSS keyframes (`omega-segment-critical`, `omega-badge-critical`) in `globals.css`. |
+| #452 | 12 | `proposeCrossDomainBridges` was re-tokenizing labels ~175× per launch on multi-component graphs (once per scoreBridge AND again per rationaleFor). Pre-tokenize into `tokensById: Map<id, Set<token>>` once outside the cross-product. |
+| #454 | 13 | `CDOmegaMonitor.computeAvgPathLength` (BFS from every node, O(N·(N+E)) ≈ 121K ops on the default graph) deferred via `useDeferredValue(filteredGraph)`. Was firing per LAUNCH AND per `applyFeedBatch`. |
+| #454 | 14 | `detectCommunities` memoised on `(edges ref, node fingerprint)` via WeakMap. Feed-tick `applyFeedBatch` reuses the cached membership (edges ref stable, only `nodes.liveData` mutates). |
+| #471 | 15 | `CausalDAG3D.chiStarInfo` (full Brandes' edge-betweenness, ~120K ops) deferred via `useDeferredValue(topologyKey)`. Drives visual edge-tier styling, one-frame lag is imperceptible. |
+| #471 | 16 | Same defer + topology-gate for the other four `chiStar` consumers: `CausalDAG2D`, `CausalDAGMap`, `CausalDAGRelief`, `NodeInspector`. Switched memo keys from `[graphData]`/`[activeGraph]` to `[deferredSig]` (via `graphSignature`) so feed-tick `liveData` mutations don't re-fire Brandes at all. |
+| #474 | 17 | Content-fingerprint cache around `chiStar()` itself: `Map<(N, first/last node id, E, first/last edge id, topK), result>`, bounded to 16 entries with FIFO + touch-on-hit. Covers view-mode switches (3D ↔ 2D ↔ Map ↔ Relief) and NodeInspector mount/unmount where per-component `useMemo` dies with the unmount. |
+| #476 | 18 | Same fingerprint cache around `graphSignature` itself. Feed-tick `useMemo(() => graphSignature(...), [nodes, edges])` recomputations across the 4 canvases were doing ~10 KB of allocation + sort+join per tick; cache hit returns instantly. |
+| #477 | 19 | `CausalDAG3D`'s inline `topologyKey` (manual sort+join over `${e.source}>${e.target}` pairs) replaced with `graphSignature(...)` so 3D inherits round 18's cache. |
+| #480 | 20 | Slim payload sent across the layout-worker boundary. `computeLayout3D` / `computeNetworkMetrics` / `compute2DForceLayout` read only `id`+`domain` per node and `source`/`target`/`weight` per edge — but `requestLayout3D`/`requestLayout2D` were structured-cloning full `CausalNode` / `CausalEdge` (label, `omegaFragility`, `liveData`, `physicalMechanism`, …). Full payload ~200-700 KB → slim ~30 KB on the default graph. |
+| #464 | UX | Bottom-dock consolidation. The old workspace had FOUR stacked bands ("ΩF TIME SERIES — SELECTED NODE" risk cards, "ΩF COMPARISON" chart, TimeDial, stats footer). The first two both plotted ΩF over time → redundant. Consolidated into one `ΩF TIME SERIES` panel: a left WATCHLIST rail (pinned series with current Ω value + a SUGGESTED group folding in the discovery job the old risk-card strip did) beside the comparison chart. Bug fix while there: chart Y-axis labels were printing `100/25/50/75/0` because `gridLines` ascending-sorted into a top-down flex column. De-jargoned `NORM` → `% OF RANGE`, `FIT: DIAL/DATA` → `FIT TO DATA` / `SYNC TO TIMELINE`. Empty-state prompt when nothing's pinned. Net −150 LOC. `RiskPropagationFlow` untouched — the `/client` sandbox route still uses it. |
+
+**Net effect.**
+
+*Launch frame* — every known synchronous hog is deferred, cached, or algorithmically reduced. The remaining launch cost is essentially: `setGraphData` store update + React commit + canvas mount + (now slim) worker `postMessage`. The launch-freeze user complaints that motivated this series should no longer reproduce on the default workspaces.
+
+*Per feed tick (stable topology)* — `detectCommunities` cache hit (round 14), `chiStar` cache hits in all 5 consumers (rounds 15-17), `graphSignature` cache hits in all 5 consumers (rounds 18-19). Background CPU dropped from millions of ops per tick to ~hundreds (just the store map + React re-render commit).
+
+*Per view-mode switch (3D ↔ 2D ↔ Map ↔ Relief)* — `chi-star` content cache covers the remount instead of running a fresh Brandes pass.
+
+**Leftovers (scoped, intentionally NOT done — sub-ms each).**
+
+If a profiler ever shows one of these mattering, pick it up; otherwise leave them:
+
+- `applyOmegaLiveAdjustments` outer `.map` over nodes. Already O(N) with O(1) per-node work after the round-14 community cache. Could be tightened to return the input graph reference when no overlay deltas changed → saves one allocation. ~100µs per feed tick. NOT done because the savings don't actually skip the downstream re-render cascade: `applyFeedBatch` constructs `nextGraph` upfront, so the graph reference at the store level is new regardless of what `applyOmegaLiveAdjustments` returns.
+- `DAGOverlay.topOmega` sorts ALL nodes to take top-5: O(N log N) ≈ 3K comparisons. Could be O(N log 5) ≈ 800. Trivial absolute cost.
+- `DAGOverlay.domainPanelRows` rebuilds `cardById`/`rawDomainToCardId` (from static `DOMAIN_CARDS`/`DOMAIN_MAP` imports) on every memo invalidation. Could lift to module scope. Trivial.
+- `mergeGraphs` rebuilds Sets from a growing array on each successive merge in `buildGraphFromDomains`. Already O(N+E) per call; called at most 4× per launch. Not worth a refactor.
+- Live-feed `liveData` propagation through the store always invalidates 14+ subscribers. The store can't bail because `liveData` IS semantically visible to several of them (TimeSeriesOverlay plots it, the new WATCHLIST shows live indicator dots, etc). Subscriber-level memoisation is the right axis — and rounds 14/17/18 already covered the heavy ones.
+- Worker post-clone trip itself (slim payload notwithstanding). The clone latency for ~30 KB is in single-digit ms territory and only fires on real topology change. Further reduction would require `transferable` `ArrayBuffer` plumbing — much bigger refactor for sub-ms savings.
+
+**What's next if perf becomes an issue again.** Instrument first, optimise second. The candidate I'd reach for is profiler markers (`performance.mark` / `measure`) around three checkpoints: (a) LAUNCH WORKSPACE click → first paint, (b) `applyFeedBatch` end → next render commit, (c) view-mode toggle click → next canvas paint. Write the measured baselines down in this doc. Decide based on whether the numbers match user perception or not.
+
+**Files.** No code in this entry. All work referenced above is in the PRs listed in the table; this entry is the wrap-up summary.
+
+**Unresolved from the same session, not perf:** the production-side crash from selecting a card on the bottom time-series strip (Application error: a client-side exception … `manifold.apexanalytica.co`). I could not reproduce — no stack trace ever surfaced. The bottom-dock consolidation (#464) touched the same surface and is null-safe, so the original crash trigger may or may not still exist. If it recurs, paste the browser console error into the next session and I can fix it directly.
+
 ---
 
 ## How a fresh session resumes

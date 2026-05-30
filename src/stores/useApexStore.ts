@@ -23,6 +23,9 @@ import type { SystemStateSnapshot } from "@/lib/snapshots/types";
 import {
   loadGraphCalcHistory,
   saveGraphCalcHistory,
+  loadNodeCalcHistory,
+  saveNodeCalcHistory,
+  type NodeCalcHistory,
 } from "@/lib/calc-history-persistence";
 import {
   loadBottomDockCollapsed,
@@ -235,12 +238,28 @@ export interface ApexState {
   /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX.
    *  Persists the updated history to localStorage (best-effort). */
   pushGraphCalcSnapshot: (calcId: string, value: number) => void;
+
+  /**
+   * Persistent mirror of node-scoped calc-kind LiveDataPoints, keyed
+   * by nodeId. Each entry holds the latest calc-kind point per kind
+   * (the point's embedded `history` array carries the full trajectory).
+   * Written by pushCalculationSnapshot and hydrated by
+   * hydrateNodeCalcHistory.
+   */
+  nodeCalcHistory: NodeCalcHistory;
   /** Hydrate graphCalcHistory from localStorage. Called from a client
    *  effect after mount (not at store-create time) to avoid an SSR
    *  hydration mismatch — the server renders with {}, the client merges
    *  persisted history in post-hydration. Merge is non-destructive:
    *  any in-memory entries pushed before hydration are preserved. */
   hydrateGraphCalcHistory: () => void;
+
+  /** Hydrate node-scoped calc trajectories from localStorage. Each
+   *  persisted entry is a calc-kind LiveDataPoint (with embedded
+   *  `history` array) that gets replayed into the matching node's
+   *  liveData via upsertLiveSignal. Same SSR-safe post-mount pattern
+   *  as hydrateGraphCalcHistory. */
+  hydrateNodeCalcHistory: () => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -701,11 +720,39 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   pushCalculationSnapshot: (nodeId, point) => {
     set((s) => {
-      const nextNodes = s.graphData.nodes.map((n) =>
-        n.id !== nodeId
-          ? n
-          : { ...n, liveData: upsertLiveSignal(n.liveData, point) },
-      );
+      let persistedPoint: LiveDataPoint | null = null;
+      const nextNodes = s.graphData.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const merged = upsertLiveSignal(n.liveData, point);
+        // Capture the merged calc-kind point (with its accumulated
+        // history array) so we can mirror just that into persistent
+        // storage — no need to drag the rest of n.liveData through
+        // localStorage.
+        persistedPoint = merged.find((p) => p.kind === point.kind) ?? null;
+        return { ...n, liveData: merged };
+      });
+      // Persistence (best-effort): mirror the upserted calc-kind point
+      // into nodeCalcHistory[nodeId], dropping any prior entry of the
+      // same kind (upsert semantics mirror node.liveData). Save outside
+      // the React state cycle but synchronous so the write completes
+      // before the user can navigate away.
+      if (persistedPoint) {
+        const safePoint: LiveDataPoint = persistedPoint;
+        const existing = s.nodeCalcHistory[nodeId] ?? [];
+        const next: LiveDataPoint[] = [
+          ...existing.filter((p) => p.kind !== safePoint.kind),
+          safePoint,
+        ];
+        const nextHistory: NodeCalcHistory = {
+          ...s.nodeCalcHistory,
+          [nodeId]: next,
+        };
+        saveNodeCalcHistory(nextHistory);
+        return {
+          graphData: { ...s.graphData, nodes: nextNodes },
+          nodeCalcHistory: nextHistory,
+        };
+      }
       return {
         graphData: { ...s.graphData, nodes: nextNodes },
       };
@@ -746,6 +793,62 @@ export const useApexStore = create<ApexState>((set, get) => ({
         if (entries.length > 0) merged[calcId] = entries;
       }
       return { graphCalcHistory: merged };
+    });
+  },
+
+  nodeCalcHistory: {},
+  hydrateNodeCalcHistory: () => {
+    const persisted = loadNodeCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Replay each persisted calc-kind point into the matching node's
+      // liveData via upsertLiveSignal. Skip nodes that aren't in the
+      // current graph (stale persistence from a prior graph schema).
+      // We also skip replay if the node already has a same-kind point
+      // with a >= observedAt — the in-memory side wins on collision,
+      // mirroring hydrateGraphCalcHistory semantics.
+      const byId = new Map(s.graphData.nodes.map((n) => [n.id, n]));
+      const matchedIds: string[] = [];
+      const nextNodes = s.graphData.nodes.map((n) => {
+        const entries = persisted[n.id];
+        if (!entries || entries.length === 0) return n;
+        matchedIds.push(n.id);
+        let liveData = n.liveData;
+        for (const point of entries) {
+          const existing = liveData?.find((p) => p.kind === point.kind);
+          if (existing && existing.observedAt >= point.observedAt) continue;
+          liveData = upsertLiveSignal(liveData, point);
+        }
+        return liveData === n.liveData ? n : { ...n, liveData };
+      });
+      if (matchedIds.length === 0) {
+        // Nothing matched — still seed in-memory mirror with what's on
+        // disk so subsequent pushes don't silently lose prior trajectory
+        // (e.g. user reselects a node we haven't touched yet).
+        return { nodeCalcHistory: { ...persisted, ...s.nodeCalcHistory } };
+      }
+      // Mirror only what we actually replayed (matched ids), so
+      // nodeCalcHistory tracks the live nodes; nodes not in the
+      // current graph still survive in the localStorage layer (we
+      // didn't touch the persisted object).
+      const mirror: NodeCalcHistory = { ...s.nodeCalcHistory };
+      for (const id of matchedIds) {
+        const fromDisk = persisted[id];
+        const inMem = mirror[id] ?? [];
+        // Per-kind, keep whichever side has the newer observedAt.
+        const byKind = new Map<string, LiveDataPoint>();
+        for (const p of fromDisk) byKind.set(p.kind, p);
+        for (const p of inMem) {
+          const prev = byKind.get(p.kind);
+          if (!prev || p.observedAt >= prev.observedAt) byKind.set(p.kind, p);
+        }
+        mirror[id] = Array.from(byKind.values());
+      }
+      void byId; // (kept for readability; lookup map above)
+      return {
+        graphData: { ...s.graphData, nodes: nextNodes },
+        nodeCalcHistory: mirror,
+      };
     });
   },
 

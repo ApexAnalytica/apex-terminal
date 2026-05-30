@@ -103,6 +103,9 @@ export default function CalculationsPanel() {
   const hydrateGraphCalcHistory = useApexStore(
     (s) => s.hydrateGraphCalcHistory,
   );
+  const hydrateNodeCalcHistory = useApexStore(
+    (s) => s.hydrateNodeCalcHistory,
+  );
   // Auto-pin actions so the user immediately sees a curve in the
   // bottom time-series panel after pressing "→ DIAL" — closes the
   // "where is my trajectory" gap.
@@ -111,14 +114,17 @@ export default function CalculationsPanel() {
   const pinnedCalcSeries = useApexStore((s) => s.pinnedCalcSeries);
   const togglePinnedCalcSeries = useApexStore((s) => s.togglePinnedCalcSeries);
 
-  // Hydrate persisted graph-calc history once, after mount. Done here
+  // Hydrate persisted calc history once, after mount. Done here
   // rather than at store-create time so the server-rendered HTML (empty
   // history) matches the client's first render — the persisted data is
   // merged in post-hydration, which only adds sparklines that weren't
   // in the SSR output (purely additive, no mismatch on existing DOM).
+  // Covers both graph-wide (graphCalcHistory) and node-scoped
+  // (nodeCalcHistory replayed into node.liveData) trajectories.
   useEffect(() => {
     hydrateGraphCalcHistory();
-  }, [hydrateGraphCalcHistory]);
+    hydrateNodeCalcHistory();
+  }, [hydrateGraphCalcHistory, hydrateNodeCalcHistory]);
 
   const ctx: CalculationContext = useMemo(
     () => ({

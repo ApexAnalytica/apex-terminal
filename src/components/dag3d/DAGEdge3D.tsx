@@ -6,6 +6,7 @@ import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
 import { edgeFireIntensity } from "@/lib/cascade-edge-activation-order";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 
 interface DAGEdge3DProps {
   edge: CausalEdge;
@@ -62,21 +63,13 @@ interface DAGEdge3DProps {
 }
 
 /**
- * Edge color — matches 2D ReactFlow edge styling:
- *   directed  → cyan (#00e5ff)  — solid line
- *   temporal  → amber (#ffab00) — solid line + animated particle
- *   confounded → orange (#ff6d00) — dashed line
- *   inconsistent → red (#ff1744) — overrides type color
+ * Edge color — sourced from the central edge-type registry
+ * (src/lib/edge-type-registry), kept in lockstep with 2D / Map / inspector.
+ * `inconsistent` (red) overrides the type color.
  */
 function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string {
   if (isVerifiedInconsistent) return "#ff1744";
-  switch (edge.type) {
-    case "directed": return "#00e5ff";
-    case "temporal": return "#ffab00";
-    case "confounded": return "#ff6d00";
-    case "flow": return "#1de9b6";
-    default: return "#42466a";
-  }
+  return getEdgeTypeMeta(edge.type).color;
 }
 
 function DAGEdge3DInner({
@@ -193,7 +186,7 @@ function DAGEdge3DInner({
   // Edge type determines rendering style
   const isTemporalFlow = edge.type === "temporal";
   const isFlow = edge.type === "flow";
-  const isDashed = edge.type === "confounded" || isVerifiedInconsistent ||
+  const isDashed = getEdgeTypeMeta(edge.type).dashed || isVerifiedInconsistent ||
     isAblated || isSevered;
 
   // Selection-aware opacity

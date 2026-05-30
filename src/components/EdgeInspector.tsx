@@ -13,6 +13,7 @@ import {
   extractAutoBridgeScore,
   bridgeStatus,
 } from "@/lib/cross-domain-bridging";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 import { useApexStore } from "@/stores/useApexStore";
 
 /**
@@ -51,19 +52,13 @@ export default function EdgeInspector({
 }) {
   const promoteAutoBridge = useApexStore((s) => s.promoteAutoBridge);
   const status = bridgeStatus(edge);
-  const typeColor =
-    edge.type === "temporal"
-      ? "#ffab00"
-      : edge.type === "confounded"
-        ? "#ff6d00"
-        : "#00e5ff";
-
-  const typeLabel =
-    edge.type === "temporal"
-      ? "TEMPORAL"
-      : edge.type === "confounded"
-        ? "CONFOUNDED"
-        : "DIRECTED";
+  // Type → color/label via the central registry (src/lib/edge-type-registry).
+  // Previously a hardcoded ternary that only knew temporal/confounded and fell
+  // through to DIRECTED/cyan — so a `flow` edge showed as DIRECTED here while
+  // rendering teal on every canvas. The registry fixes that drift.
+  const typeMeta = getEdgeTypeMeta(edge.type);
+  const typeColor = typeMeta.color;
+  const typeLabel = typeMeta.label;
 
   // Resolve provenance once. Missing fields fall back to author so the
   // analyst always sees *some* signal — silence would be a worse UX

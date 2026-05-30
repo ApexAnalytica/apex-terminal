@@ -182,7 +182,7 @@ export default function DcdGraph() {
             className="text-[8px] font-mono px-1 py-0.5 rounded border transition-colors"
             style={{
               color: showInfo ? "#00e5ff" : "var(--text-muted)",
-              borderColor: showInfo ? "rgba(0,229,255,0.3)" : "rgba(90,94,114,0.3)",
+              borderColor: showInfo ? "rgba(0,229,255,0.3)" : "color-mix(in srgb, var(--text-muted) 30%, transparent)",
               backgroundColor: showInfo ? "rgba(0,229,255,0.08)" : "transparent",
             }}
           >

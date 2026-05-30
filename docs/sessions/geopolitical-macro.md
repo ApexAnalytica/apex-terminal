@@ -381,6 +381,119 @@ Apply shared-infrastructure decomposition when:
 - **Tarski session** — A-04 chokepoint axiom currently reads the single conflated node's `value` and `capacity` fields. After Phase 16 cleanup these now refer to nothing (legacy nodes deleted). A coordinated Tarski-session PR is needed to update A-04 to read `si_<concept>_throughput.value > si_<concept>_capacity.value` directly.
 - **UX / Onboarding session** — domain-profiles.ts may eventually want an explicit "Shared Infrastructure" profile entry (for sidebar grouping, persona mapping, etc.). For now, untyped string domains render correctly with default behavior; no UX coordination required for the pilot.
 
+## Phase 17 — Aggregate-proxy lift into the physical-asset moat
+
+The pipeline audit (above) classed 52 nodes as "physical-asset moat —
+unlikely to wire live" because per-asset APIs don't exist for individual
+refineries, fields, ports, or pipelines. But it flagged one escape hatch:
+
+> Aggregate proxies could lift some of these via the `derivations`
+> provider (e.g. EIA aggregate KSA production driving multiple Aramco
+> nodes).
+
+Phase 17 starts working that hatch. The key realisation is that a
+**national production aggregate is a direct observed proxy for the
+deliverability of the single dominant asset** when one asset accounts for
+~all of a country's output. You don't need per-asset data; the national
+number *is* the asset number.
+
+### Applied: EIA Qatar dry-gas → North Field (#479)
+
+- **Source**: EIA v2 `international/data`, productId=26 (Dry natural
+  gas), activityId=1 (Production), country=QAT. Annual cadence (no
+  monthly partition exists for this series). Returns two rows per period
+  — BCM + BCF; the parser prefers BCM.
+- **Drives** `qe_north_field_gas_field` + `qf_north_field_gas` (the QAFCO
+  duplicate). North Field is the source of ~all Qatari dry gas, so
+  national production proxies its deliverability — the variable that
+  bounds every downstream LNG train / GTL plant / Barzan / ammonia node.
+- **Negative exclusion**: `qe_north_field_expansion_nfe_nfs` ("North
+  Field Expansion (NFE + NFS)") shares the "north field" substring but
+  represents *future added capacity*, not current realized production.
+  Excluded in the matcher — same throughput-vs-capacity discipline as the
+  Phase 16 facets.
+- **Live value**: 169.95 BCM/yr (2024), capacity 220 BCM/yr (disclosed
+  post-NFE/NFS medium-term estimate, not an official nameplate — see the
+  feed module header), severity 0.773.
+- **Files**: `src/lib/feeds/eia-qatar-gas.ts` (fetch/parse/mock),
+  `src/lib/feeds/providers/eia-qatar-gas.ts` (matcher + dispatch),
+  `src/app/api/feeds/eia/qatar-gas/route.ts` (cached proxy),
+  registered in `registry.ts`. 12 tests.
+- **+2 nodes** to live coverage.
+
+### Applied: EIA Saudi crude → Ras Tanura export terminal (#484)
+
+Extended the *existing* `eia-saudi-crude` provider (no new module) to also
+match `sa_ras_tanura_terminal` — the world's largest crude export
+terminal. Consistent with the provider already driving the Juaymah crude
+terminal: the graph's own `sa_ras_tanura_terminal →
+sa_juaymah_crude_terminal` edge calls the two "an integrated eastern
+export complex". The matcher pattern is the **specific** substring
+`"ras tanura terminal"`, not bare `"ras tanura"`, so the co-located "Ras
+Tanura Refinery" (a downstream crude *consumer*) doesn't get the
+production signal — no negative exclusion needed. **+1 node.**
+
+### The recipe (repeatable for the rest of the moat)
+
+When a physical-asset node is the dominant component of a national
+aggregate that EIA International publishes:
+
+1. Find the EIA International `(productId, activityId, countryRegionId)`
+   tuple — probe `https://api.eia.gov/v2/international/facet/productId`
+   for the product, then query `international/data` to confirm cadence +
+   unit rows.
+2. Clone `eia-saudi-crude.ts` / `eia-qatar-gas.ts` — change the three
+   facet IDs, the capacity constant (disclose the basis), and the unit
+   handling.
+3. Provider matcher: positive substring on the asset/concept, negative
+   exclusion on any sibling capacity/expansion/war-risk node that shares
+   the substring.
+4. API route is boilerplate (copy saudi-crude/route.ts).
+5. Register, test, live-validate the fetch+parse with the prod key.
+
+### Aggregate-proxy technique is now exhausted (verified 2026-05-29)
+
+After #479 + #484, I audited the graph for the other producers a naive
+reading would target next — and **they have no target nodes**:
+
+- **Iran / Iraq / UAE / Kuwait crude** — grepped the full node list for
+  UAE / Abu Dhabi / ADNOC / Iraq / Basra / Kuwait / KOC / Iran / NIOC /
+  Kharg / Rumaila. The *only* hit was "Dolphin Pipeline (gas exports to
+  UAE/Oman)", a Qatar→UAE gas pipeline — not a crude-producer asset
+  node. There is nothing to wire an Iran/Iraq/UAE/Kuwait production
+  proxy *to*. (The `eia-hormuz` provider already sums these six
+  producers for the chokepoint-throughput signal; that's the only place
+  they appear.)
+- **Qatar LNG export *flow*** — would be a genuinely distinct signal
+  (export-train throughput vs. the upstream North Field production #479
+  adds) and the target nodes exist (`qe_qatarenergy_lng_export_trains_qatargas_1`
+  "14 trains, 77 MTPA"; `qe_ras_laffan_port`). **Checked 2026-05-29 and
+  found non-viable on EIA:** `GET /v2/international/facet/activityId`
+  returns only `1 Production / 2 Consumption / 3 Imports / 5 Stocks(OECD)`
+  — there is **no Exports activity** for international natural gas, and
+  EIA's LNG-export volume series are US-domestic only. No free EIA series
+  publishes Qatar's export-train throughput. Do NOT smear the North Field
+  *production* value onto the export-train node as a proxy — production ≠
+  export throughput (processing, domestic burn, and condensate split sit
+  between them), so that would violate the Phase 16 throughput-vs-capacity
+  discipline. This candidate is closed unless a different free source for
+  Qatar LNG export volumes turns up.
+- **Algeria / Nigeria gas** — those domains have no graph presence at
+  all yet.
+
+**Net: the two producers with rich asset clusters in the graph (Saudi
+Aramco, QatarEnergy) are now both covered by their national-aggregate
+proxies.** The technique's precondition — one asset ≈ the whole national
+aggregate AND a graph node exists for it — is satisfied nowhere else
+today. The remaining ~50 physical-asset-moat nodes (per-refinery,
+per-cable, per-mine, per-gas-plant) genuinely have no free per-asset
+source. A future session should NOT keep cloning EIA providers expecting
+more wins here. With the LNG-trade-flow candidate now checked and closed
+(see above), the EIA aggregate-proxy seam is fully mined — the next
+live-data gains require **new graph nodes** (new domain cards), a **new
+data source** beyond EIA/FRED/World Bank, or resolving the prod FRED-all-
+mock issue (see below), not another producer clone.
+
 ## Likely upcoming themes
 
 - New domain cards as customer pilots demand them.

@@ -232,7 +232,7 @@ export default function Home() {
 
         <div className="mb-6 max-w-2xl">
           <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.04em] text-foreground leading-snug">
-            Click any node. This is what you see.
+            What your analyst sees 4 seconds after flagging TSMC Arizona-1.
           </h3>
         </div>
 
@@ -294,7 +294,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/access" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>
@@ -635,6 +635,23 @@ function NodeReadout() {
       </div>
 
       <div className="relative p-5 md:p-6 space-y-5">
+        {/* Verdict banner — Manifold's judgment on the node, surfaced
+            before the raw numbers so the prospect sees a decision,
+            not a dashboard. Added 2026-05-29. */}
+        <div className="relative flex gap-3 bg-accent-cyan/[0.04] border border-accent-cyan/30 rounded p-4">
+          <div className="absolute top-0 left-0 h-0.5 w-12 bg-accent-cyan opacity-80" />
+          <div className="space-y-1.5 flex-1">
+            <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
+              // VERDICT
+            </div>
+            <p className="text-[12.5px] md:text-[13px] font-mono text-foreground/90 leading-relaxed">
+              Critical single-source. A 90-day outage cascades to 37
+              downstream nodes — including 4 of the top 5 positions in
+              the mobile and accelerated-compute book.
+            </p>
+          </div>
+        </div>
+
         {/* Identity row + composite + sub-stats */}
         <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
           {/* Identity */}
@@ -742,10 +759,24 @@ function NodeReadout() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="relative flex items-center justify-between border-t border-border px-5 py-2.5 bg-surface/60 text-[10px] font-mono text-text-muted/80 tracking-wider">
-        <span>SCORE · ENRICHMENT · ANALYZED BY · SPIRTES · TARSKI · PEARL · PARETO</span>
-        <span>VERIFIED · 2026.05.01 14:08:11Z</span>
+      {/* Footer. Two-row layout: top row drives home the time-savings
+          claim (the actual prospect-relevant value); bottom row keeps
+          the engine attribution + verified timestamp for credibility.
+          Reworked 2026-05-29 to make the screen's *value* — not just
+          its provenance — legible in the footer. */}
+      <div className="relative border-t border-border bg-surface/60">
+        <div className="px-5 py-3 border-b border-border/60">
+          <p className="text-[11px] md:text-[12px] font-mono text-foreground/85 leading-snug">
+            <span className="text-text-muted">Without Manifold:</span>{" "}
+            2–3 analyst-days to assemble.{" "}
+            <span className="text-accent-cyan/90">With Manifold:</span>{" "}
+            this screen.
+          </p>
+        </div>
+        <div className="flex items-center justify-between px-5 py-2 text-[10px] font-mono text-text-muted/70 tracking-wider">
+          <span>SCORE · ENRICHMENT · ANALYZED BY · SPIRTES · TARSKI · PEARL · PARETO</span>
+          <span>VERIFIED · 2026.05.01 14:08:11Z</span>
+        </div>
       </div>
     </div>
   );

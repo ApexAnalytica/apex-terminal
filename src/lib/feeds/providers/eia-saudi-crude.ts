@@ -15,14 +15,22 @@ import type { FeedDispatchBatch, FeedProvider } from "./types";
 
 /** Substrings (case-insensitive) that mark a node as receiving Saudi
  *  crude-production updates. Conservative — Abqaiq is the main
- *  processing facility for ~half of Saudi production; Juaymah is the
- *  export terminal. Both are reasonable proxies for "Saudi crude
- *  throughput" today and any future "Saudi Crude Production"
- *  dedicated node will match. */
+ *  processing facility for ~half of Saudi production; Juaymah and Ras
+ *  Tanura form the integrated eastern crude-export complex (the graph's
+ *  own `sa_ras_tanura_terminal → sa_juaymah_crude_terminal` edge calls
+ *  them exactly that). All three are reasonable proxies for "Saudi
+ *  crude throughput" today and any future "Saudi Crude Production"
+ *  dedicated node will match.
+ *
+ *  Note the pattern is "ras tanura TERMINAL", not bare "ras tanura":
+ *  the co-located "Ras Tanura Refinery" is a downstream crude *consumer*,
+ *  not an export-throughput node, so the specific substring keeps the
+ *  production signal off it without needing a negative exclusion. */
 const SAUDI_PRODUCTION_PATTERNS = [
   "saudi crude production",
   "abqaiq",
   "juaymah crude",
+  "ras tanura terminal",
 ];
 
 function matchesSaudiProduction(node: CausalNode): boolean {

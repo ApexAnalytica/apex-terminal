@@ -364,7 +364,7 @@ function DAGNode3DInner({
             <div
               style={{
                 fontSize: isSelected ? "8px" : "7px",
-                color: isSelected ? "rgba(0,229,255,0.7)" : "rgba(90,94,114,1)",
+                color: isSelected ? "rgba(0,229,255,0.7)" : "var(--text-muted)",
                 textShadow: "0 0 4px rgba(0,0,0,0.9)",
                 marginTop: "1px",
               }}

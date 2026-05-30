@@ -1177,8 +1177,8 @@ function CritSparklineChart({
         const y = padTop + (1 - frac) * chartH;
         return (
           <g key={frac}>
-            <line x1={padX} y1={y} x2={padX + chartW} y2={y} stroke="rgba(90,94,114,0.2)" strokeWidth={0.5} />
-            <text x={padX - 3} y={y + fs * 0.5} fontSize={fs} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">
+            <line x1={padX} y1={y} x2={padX + chartW} y2={y} stroke="color-mix(in srgb, var(--text-muted) 20%, transparent)" strokeWidth={0.5} />
+            <text x={padX - 3} y={y + fs * 0.5} fontSize={fs} fill="color-mix(in srgb, var(--text-muted) 60%, transparent)" fontFamily="monospace" textAnchor="end">
               {frac.toFixed(2)}
             </text>
           </g>
@@ -1187,7 +1187,7 @@ function CritSparklineChart({
 
       {/* Vertical grid lines */}
       {[0.25, 0.5, 0.75].map((frac) => (
-        <line key={`v${frac}`} x1={padX + frac * chartW} y1={padTop} x2={padX + frac * chartW} y2={padTop + chartH} stroke="rgba(90,94,114,0.1)" strokeWidth={0.5} />
+        <line key={`v${frac}`} x1={padX + frac * chartW} y1={padTop} x2={padX + frac * chartW} y2={padTop + chartH} stroke="color-mix(in srgb, var(--text-muted) 10%, transparent)" strokeWidth={0.5} />
       ))}
 
       {/* Critical threshold */}
@@ -1225,16 +1225,16 @@ function CritSparklineChart({
       )}
 
       {/* X-axis labels */}
-      <text x={padX} y={height - 3} fontSize={fs + 0.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace">t=0</text>
-      <text x={padX + chartW} y={height - 3} fontSize={fs + 0.5} fill="rgba(90,94,114,0.6)" fontFamily="monospace" textAnchor="end">now</text>
+      <text x={padX} y={height - 3} fontSize={fs + 0.5} fill="color-mix(in srgb, var(--text-muted) 60%, transparent)" fontFamily="monospace">t=0</text>
+      <text x={padX + chartW} y={height - 3} fontSize={fs + 0.5} fill="color-mix(in srgb, var(--text-muted) 60%, transparent)" fontFamily="monospace" textAnchor="end">now</text>
 
       {/* Legend */}
       {modelData && (
         <g>
           <line x1={padX} y1={fs} x2={padX + 12} y2={fs} stroke={color} strokeWidth={1.8} opacity={0.85} />
-          <text x={padX + 15} y={fs + 2} fontSize={fs} fill="rgba(90,94,114,0.7)" fontFamily="monospace">observed</text>
+          <text x={padX + 15} y={fs + 2} fontSize={fs} fill="color-mix(in srgb, var(--text-muted) 70%, transparent)" fontFamily="monospace">observed</text>
           <line x1={padX + 58} y1={fs} x2={padX + 70} y2={fs} stroke={color} strokeWidth={1} opacity={0.4} strokeDasharray="4,3" />
-          <text x={padX + 73} y={fs + 2} fontSize={fs} fill="rgba(90,94,114,0.7)" fontFamily="monospace">model</text>
+          <text x={padX + 73} y={fs + 2} fontSize={fs} fill="color-mix(in srgb, var(--text-muted) 70%, transparent)" fontFamily="monospace">model</text>
         </g>
       )}
 

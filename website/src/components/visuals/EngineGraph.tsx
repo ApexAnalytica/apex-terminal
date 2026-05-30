@@ -23,13 +23,6 @@ const EDGES: Array<[string, string]> = [
   ["h1", "out"], ["h2", "out"], ["n2", "out"],
 ];
 
-const ENGINE_BANDS = [
-  { engine: "SPIRTES", x: 90,  w: 200, color: "var(--accent-cyan)",   y: 14, role: "STRUCTURE" },
-  { engine: "TARSKI",  x: 290, w: 90,  color: "var(--accent-amber)",  y: 14, role: "VERIFY" },
-  { engine: "PEARL",   x: 380, w: 180, color: "var(--accent-purple)", y: 14, role: "COUNTERFACT" },
-  { engine: "PARETO",  x: 560, w: 140, color: "var(--accent-orange)", y: 14, role: "SIMULATE" },
-];
-
 const W = 760;
 const H = 360;
 
@@ -45,56 +38,30 @@ export default function EngineGraph() {
         </radialGradient>
       </defs>
 
-      {/* Engine annotation bands at top */}
-      {ENGINE_BANDS.map((band) => (
-        <g key={band.engine}>
-          <line
-            x1={band.x}
-            x2={band.x + band.w}
-            y1={band.y + 8}
-            y2={band.y + 8}
-            stroke={band.color}
-            strokeOpacity={0.5}
-            strokeWidth={1}
-          />
-          <line x1={band.x} x2={band.x} y1={band.y + 4} y2={band.y + 12} stroke={band.color} strokeOpacity={0.5} strokeWidth={1} />
-          <line x1={band.x + band.w} x2={band.x + band.w} y1={band.y + 4} y2={band.y + 12} stroke={band.color} strokeOpacity={0.5} strokeWidth={1} />
-          <rect
-            x={band.x + band.w / 2 - 38}
-            y={band.y - 6}
-            width={76}
-            height={14}
-            fill="var(--background)"
-            opacity={0.95}
-          />
-          <text
-            x={band.x + band.w / 2}
-            y={band.y + 4}
-            textAnchor="middle"
-            fontFamily="var(--font-michroma)"
-            fontSize="8"
-            letterSpacing="2"
-            fill={band.color}
-          >
-            {band.engine}
-          </text>
-        </g>
-      ))}
-
-      {/* Vertical band guides */}
-      {ENGINE_BANDS.map((band) => (
-        <line
-          key={`g-${band.engine}`}
-          x1={band.x + band.w}
-          x2={band.x + band.w}
-          y1={50}
-          y2={H - 30}
-          stroke={band.color}
-          strokeOpacity={0.07}
-          strokeWidth={1}
-          strokeDasharray="4 4"
-        />
-      ))}
+      {/* The four engines, listed as equal peers that all run on the
+          whole shared graph below — deliberately NOT split into per-
+          engine regions. The old banded layout gave each engine its
+          own horizontal slice of the graph, which read as a pipeline
+          and contradicted "running in parallel on a shared graph".
+          Single neutral color so the names don't appear to "own" the
+          same-colored domain nodes. */}
+      <text
+        x={W / 2}
+        y={26}
+        textAnchor="middle"
+        fontFamily="var(--font-michroma)"
+        fontSize="8.5"
+        letterSpacing="2"
+        fill="var(--accent-cyan)"
+        fillOpacity={0.85}
+      >
+        SPIRTES · TARSKI · PEARL · PARETO
+      </text>
+      {/* Full-width scope rule: all four engines cover the entire
+          graph span (first feed → Ω output), not partitioned slices. */}
+      <line x1={90} x2={660} y1={38} y2={38} stroke="var(--accent-cyan)" strokeOpacity={0.15} strokeWidth={1} />
+      <line x1={90} x2={90} y1={36} y2={40} stroke="var(--accent-cyan)" strokeOpacity={0.15} strokeWidth={1} />
+      <line x1={660} x2={660} y1={36} y2={40} stroke="var(--accent-cyan)" strokeOpacity={0.15} strokeWidth={1} />
 
       {/* Edges */}
       {EDGES.map(([a, b], i) => {

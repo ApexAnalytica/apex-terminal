@@ -471,6 +471,26 @@ export function scoreAxiomRelevance(
       n.liveData?.find((p) => p.kind === "throughput");
     return !!live && live.capacity > 0 && live.value / live.capacity >= 0.9;
   });
+  // Calc-driven concentration features — read user-pushed calc snapshots
+  // from node.liveData[] (kind: "calc:supply-hhi" / "calc:buyer-hhi"),
+  // pushed via the CALCULATIONS panel's "→ DIAL" button. Threshold
+  // mirrors the DOJ/FTC "highly concentrated" line (HHI ≥ 2500) so a
+  // node a user has flagged as concentrated lifts the structural-
+  // fragility axiom (A-05) and, when compounded with a high-J
+  // jurisdiction, the jurisdictional axiom (R-01).
+  const selHighSupplyHHI = hasSelection && selectedNodes.some((n) => {
+    const hhi = n.liveData?.find((p) => p.kind === "calc:supply-hhi");
+    return !!hhi && hhi.value >= 2500;
+  });
+  const selHighBuyerHHI = hasSelection && selectedNodes.some((n) => {
+    const hhi = n.liveData?.find((p) => p.kind === "calc:buyer-hhi");
+    return !!hhi && hhi.value >= 2500;
+  });
+  const selHighHHIInHighJ = hasSelection && selectedNodes.some((n) => {
+    const supply = n.liveData?.find((p) => p.kind === "calc:supply-hhi");
+    if (!supply || supply.value < 2500) return false;
+    return n.omegaFragility.jurisdictionalHazard >= 6;
+  });
 
   // Helper: when a selection-aware feature fires for a single
   // selected-node case, prefix the reason with the node's label for
@@ -593,11 +613,26 @@ export function scoreAxiomRelevance(
           if (selSingleSource) {
             score += SELECTION_BOOST;
             reason = `${selPrefix()} is single-supplier with high cascade load`;
+          } else if (selHighSupplyHHI) {
+            // Calc-driven boost: a user-pushed Supply HHI ≥ 2500 makes
+            // the concentrated supply mix explicit even if the graph
+            // doesn't have a single literal incoming edge.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Supply HHI ≥ 2500 — concentrated supply`;
+          } else if (selHighBuyerHHI) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Buyer HHI ≥ 2500 — concentrated demand`;
           }
           break;
         case "R-01":
         case "R-02":
-          if (selHighJ) {
+          if (selHighHHIInHighJ) {
+            // Compound risk: HHI ≥ 2500 AND high-J jurisdiction =
+            // jurisdictional concentration in the literal sense — both
+            // the antitrust and the political-risk frame fire together.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Supply HHI ≥ 2500 in high-J jurisdiction`;
+          } else if (selHighJ) {
             score += SELECTION_BOOST;
             reason = `${selPrefix()} sits in a high-J jurisdiction`;
           }

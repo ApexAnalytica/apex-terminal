@@ -227,6 +227,120 @@ describe("scoreAxiomRelevance — live capacity saturation boosts A-02 and A-04"
   });
 });
 
+describe("scoreAxiomRelevance — calc-driven boosts (HHI → A-05 / R-01)", () => {
+  function hhiPoint(
+    kind: "calc:supply-hhi" | "calc:buyer-hhi",
+    value: number,
+  ): LiveDataPoint {
+    return {
+      kind,
+      value,
+      capacity: 10_000,
+      unit: "HHI",
+      observedAt: "2025-01-01T00:00:00.000Z",
+      source: "test",
+    };
+  }
+
+  it("Supply HHI ≥ 2500 on selected node boosts A-05 with HHI-specific reason", () => {
+    const n = makeNode({
+      id: "n",
+      label: "Refinery",
+      liveData: [hhiPoint("calc:supply-hhi", 3200)],
+    });
+    const graph = makeGraph([n], []);
+    const without = scoreAxiomRelevance(graph, "geopolitical");
+    const withSel = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "n",
+    });
+    const before = scoreById(without).get("A-05")!;
+    const after = scoreById(withSel).get("A-05")!;
+    expect(after.relevanceScore).toBeGreaterThan(before.relevanceScore);
+    expect(after.reason).toContain("Refinery");
+    expect(after.reason).toContain("Supply HHI");
+    expect(after.reason).toContain("concentrated");
+  });
+
+  it("Buyer HHI ≥ 2500 on selected node boosts A-05 when no Supply HHI present", () => {
+    const n = makeNode({
+      id: "n",
+      label: "Smelter",
+      liveData: [hhiPoint("calc:buyer-hhi", 2800)],
+    });
+    const graph = makeGraph([n], []);
+    const withSel = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "n",
+    });
+    const a05 = scoreById(withSel).get("A-05")!;
+    expect(a05.reason).toContain("Buyer HHI");
+    expect(a05.reason).toContain("concentrated demand");
+  });
+
+  it("Supply HHI below 2500 does NOT boost A-05", () => {
+    const n = makeNode({
+      id: "n",
+      liveData: [hhiPoint("calc:supply-hhi", 1800)], // moderately concentrated, not HIGH
+    });
+    const graph = makeGraph([n], []);
+    const without = scoreAxiomRelevance(graph, "geopolitical");
+    const withSel = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "n",
+    });
+    const before = scoreById(without).get("A-05")!;
+    const after = scoreById(withSel).get("A-05")!;
+    expect(after.relevanceScore).toBe(before.relevanceScore);
+  });
+
+  it("Supply HHI ≥ 2500 + jurisdictionalHazard ≥ 6 compounds into R-01", () => {
+    const n = makeNode({
+      id: "n",
+      label: "Hormuz",
+      omegaFragility: {
+        composite: 5,
+        irreplaceability: 5,
+        cascadeLoad: 5,
+        tailDepth: 5,
+        restorationLatency: 5,
+        jurisdictionalHazard: 8, // ≥ 6
+      },
+      liveData: [hhiPoint("calc:supply-hhi", 3500)],
+    });
+    const graph = makeGraph([n], []);
+    const without = scoreAxiomRelevance(graph, "geopolitical");
+    const withSel = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "n",
+    });
+    const before = scoreById(without).get("R-01")!;
+    const after = scoreById(withSel).get("R-01")!;
+    expect(after.relevanceScore).toBeGreaterThan(before.relevanceScore);
+    expect(after.reason).toContain("Supply HHI");
+    expect(after.reason).toContain("high-J");
+  });
+
+  it("falls back to plain high-J reason when HHI < 2500 even if J ≥ 6", () => {
+    const n = makeNode({
+      id: "n",
+      label: "Tank",
+      omegaFragility: {
+        composite: 5,
+        irreplaceability: 5,
+        cascadeLoad: 5,
+        tailDepth: 5,
+        restorationLatency: 5,
+        jurisdictionalHazard: 8,
+      },
+      liveData: [hhiPoint("calc:supply-hhi", 1200)],
+    });
+    const graph = makeGraph([n], []);
+    const withSel = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "n",
+    });
+    const r01 = scoreById(withSel).get("R-01")!;
+    expect(r01.reason).toContain("high-J jurisdiction");
+    expect(r01.reason).not.toContain("Supply HHI");
+  });
+});
+
 describe("scoreAxiomRelevance — multi-select reasons use a count", () => {
   it("two selected chokepoints produce a 'Selection (2 nodes)' reason", () => {
     const a = makeNode({

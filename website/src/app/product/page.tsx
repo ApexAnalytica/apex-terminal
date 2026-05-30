@@ -274,8 +274,8 @@ export default function ProductPage() {
               criticality in pancreatic biology — and the same Manifold
               substrate renders both. Engines plug per domain; the
               criticality core swaps; the rest of the system stays put.
-              The same codebase ships today as a macro-impact terminal,
-              a geopolitical terminal, and a biomedical-research terminal.
+              The same codebase already spans domains this far apart,
+              from global supply chains to human biology.
             </p>
             <div className="pt-2">
               <Link

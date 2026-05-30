@@ -484,6 +484,16 @@ export interface ApexState {
   pinnedTimeSeriesNodes: string[];
   togglePinnedTimeSeries: (nodeId: string) => void;
   clearPinnedTimeSeries: () => void;
+
+  /**
+   * Calc ids pinned to the bottom time-series watchlist. Graph-wide
+   * calcs (mean ΩF, cross-domain edges, etc.) have no node to pin
+   * against, so they keep their own pinned list. Each entry's
+   * trajectory comes from `graphCalcHistory[calcId]`.
+   */
+  pinnedCalcSeries: string[];
+  togglePinnedCalcSeries: (calcId: string) => void;
+  clearPinnedCalcSeries: () => void;
 }
 
 export const useApexStore = create<ApexState>((set, get) => ({
@@ -1490,4 +1500,13 @@ export const useApexStore = create<ApexState>((set, get) => ({
         : [...s.pinnedTimeSeriesNodes, nodeId],
     })),
   clearPinnedTimeSeries: () => set({ pinnedTimeSeriesNodes: [] }),
+
+  pinnedCalcSeries: [],
+  togglePinnedCalcSeries: (calcId) =>
+    set((s) => ({
+      pinnedCalcSeries: s.pinnedCalcSeries.includes(calcId)
+        ? s.pinnedCalcSeries.filter((id) => id !== calcId)
+        : [...s.pinnedCalcSeries, calcId],
+    })),
+  clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));

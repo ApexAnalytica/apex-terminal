@@ -6,6 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-color";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import type { NodeTemporalState } from "@/lib/temporal-data";
+import { CALCULATION_REGISTRY } from "@/lib/calculations/registry";
 
 const CHART_HEIGHT = 120;
 // left/right are overridden at runtime to match the TimeDial track's actual
@@ -107,7 +108,20 @@ function formatRawValue(value: number): string {
 export default function TimeSeriesOverlay() {
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
+  // Pinned graph-wide calculations — surface as additional watchlist
+  // rows + chart curves so the user actually sees the calc trajectory
+  // they pushed via "→ DIAL". Without this, calc snapshots silently
+  // accumulated in graphCalcHistory with no rendering surface beyond
+  // the right-rail inline sparkline.
+  const pinnedCalcs = useApexStore((s) => s.pinnedCalcSeries);
+  const togglePinnedCalc = useApexStore((s) => s.togglePinnedCalcSeries);
+  const graphCalcHistory = useApexStore((s) => s.graphCalcHistory);
   const clearPinned = useApexStore((s) => s.clearPinnedTimeSeries);
+  const clearPinnedCalcs = useApexStore((s) => s.clearPinnedCalcSeries);
+  const clearAllPinned = useCallback(() => {
+    clearPinned();
+    clearPinnedCalcs();
+  }, [clearPinned, clearPinnedCalcs]);
   const temporalData = useApexStore((s) => s.temporalData);
   const graphData = useApexStore((s) => s.graphData);
   const timelineRange = useApexStore((s) => s.timelineRange);
@@ -281,6 +295,52 @@ export default function TimeSeriesOverlay() {
   // watchlist rail below via each row's `hasData: false` branch, so the
   // old separate `noDataNodes` list is no longer needed.)
 
+  // Pinned graph-wide calc series → curves with the same shape the
+  // chart and tooltip code consumes. nodeId is the calc id verbatim so
+  // it can't collide with real node ids (real nodes never start with
+  // "calc-"). The history is mapped from graphCalcHistory[calcId] into
+  // NodeTemporalState[], with the value going into both
+  // `omegaComposite` (chart y) and `rawValue` (tooltip).
+  const calcCurves = useMemo(() => {
+    const out: typeof curves = [];
+    for (const calcId of pinnedCalcs) {
+      const calc = CALCULATION_REGISTRY.find((c) => c.id === calcId);
+      if (!calc) continue;
+      const history = graphCalcHistory[calcId] ?? [];
+      if (history.length === 0) continue;
+      const points: NodeTemporalState[] = history.map((h) => ({
+        timestamp: new Date(h.observedAt).getTime(),
+        omegaComposite: h.value,
+        rawValue: h.value,
+        omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+      }));
+      const current = history[history.length - 1].value;
+      // Calc curves use a distinct cyan to set them apart from
+      // domain-coloured node curves. Falls through the chart's
+      // existing yMin/yMax normalisation so mixed Ω / HHI / % series
+      // co-exist in one frame without one swamping the others.
+      out.push({
+        nodeId: calcId,
+        label: calc.name,
+        domain: "calculation",
+        color: "#00e5ff",
+        history: points,
+        currentOmega: current,
+        pointCount: points.length,
+        sourceLabel: "Calculation",
+        sourceUnit: null,
+      });
+    }
+    return out;
+  }, [pinnedCalcs, graphCalcHistory]);
+
+  // Merge node-derived curves with calc curves so all downstream
+  // consumers (chart polylines, axis bounds, tooltip) iterate one list.
+  const allCurves = useMemo(
+    () => [...curves, ...calcCurves],
+    [curves, calcCurves],
+  );
+
   // Watchlist rows for the left rail — one per pinned node, in pin order.
   // Prefer the rich curve data (color + current value + unit); fall back to
   // a bare label for pinned nodes that carry no plottable history yet so the
@@ -321,6 +381,34 @@ export default function TimeSeriesOverlay() {
     }[];
   }, [pinnedNodes, curves, graphData]);
 
+  // Calc rows for the watchlist — one per pinned calc id, in pin order.
+  // Mirrors the node-row shape so the rendering code can iterate both
+  // lists with the same template. Uses calcId as the key; the unpin
+  // click routes to togglePinnedCalc (not togglePinned).
+  const pinnedCalcRows = useMemo(() => {
+    return pinnedCalcs
+      .map((calcId) => {
+        const calc = CALCULATION_REGISTRY.find((c) => c.id === calcId);
+        if (!calc) return null;
+        const history = graphCalcHistory[calcId] ?? [];
+        const current = history.length > 0 ? history[history.length - 1].value : 0;
+        return {
+          calcId,
+          label: calc.name,
+          color: "#00e5ff",
+          value: current,
+          hasData: history.length > 0,
+        };
+      })
+      .filter(Boolean) as {
+      calcId: string;
+      label: string;
+      color: string;
+      value: number;
+      hasData: boolean;
+    }[];
+  }, [pinnedCalcs, graphCalcHistory]);
+
   // Suggested series to pin: explicit selection first, then live-fed nodes,
   // then the highest-Ω nodes — minus anything already pinned. Capped so the
   // rail stays scannable. This is the discovery path that used to live in
@@ -355,7 +443,7 @@ export default function TimeSeriesOverlay() {
   // curves collapsed to flat lines along the bottom.
   const curveScales = useMemo(() => {
     const scales = new Map<string, { min: number; max: number }>();
-    for (const curve of curves) {
+    for (const curve of allCurves) {
       let lo = Infinity;
       let hi = -Infinity;
       for (const h of curve.history) {
@@ -375,16 +463,16 @@ export default function TimeSeriesOverlay() {
       scales.set(curve.nodeId, { min: lo, max: hi });
     }
     return scales;
-  }, [curves]);
+  }, [allCurves]);
 
   // Compute dynamic y-axis range from actual data with padding.
   // (When normalized, the chart axis is 0..1; gridLines reflect that.)
   // Kept for the rare single-curve case where global scale is meaningful.
   const { yMin, yMax, gridLines } = useMemo(() => {
-    if (curves.length === 0) return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
+    if (allCurves.length === 0) return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
     // Multi-curve: normalized 0..1 axis with quartile gridlines.
     return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
-  }, [curves]);
+  }, [allCurves]);
 
   // Data-driven x-axis bounds: min/max across every pinned curve's history.
   // Used by the "data" zoom mode and by the FIT button's availability check.
@@ -393,7 +481,7 @@ export default function TimeSeriesOverlay() {
   const dataXBounds = useMemo(() => {
     let lo = Infinity;
     let hi = -Infinity;
-    for (const c of curves) {
+    for (const c of allCurves) {
       for (const h of c.history) {
         if (h.timestamp < lo) lo = h.timestamp;
         if (h.timestamp > hi) hi = h.timestamp;
@@ -414,7 +502,7 @@ export default function TimeSeriesOverlay() {
   // regime where the curve would render as a flat hold-forward line in
   // "dial" mode and the user would benefit from zooming out.
   const shouldOfferFit = useMemo(() => {
-    if (curves.length === 0) return false;
+    if (allCurves.length === 0) return false;
     const dialSpan = timelineRange.end - timelineRange.start || 1;
     const overshootStart = Math.max(0, timelineRange.start - dataXBounds.start);
     return overshootStart > dialSpan * 0.25;
@@ -497,7 +585,7 @@ export default function TimeSeriesOverlay() {
       rawValue?: number;
       unit?: string | null;
     }[] = [];
-    for (const curve of curves) {
+    for (const curve of allCurves) {
       const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
       let omega: number;
       let rawValue: number | undefined;
@@ -551,9 +639,14 @@ export default function TimeSeriesOverlay() {
   // Render nothing only when there's genuinely nothing to show — no pinned
   // series and no candidates to suggest (e.g. empty workspace). Page-level
   // gating on `hasGraph` is the primary guard; this is the safety net.
-  if (pinnedRows.length === 0 && suggestions.length === 0) return null;
+  if (
+    pinnedRows.length === 0 &&
+    pinnedCalcRows.length === 0 &&
+    suggestions.length === 0
+  )
+    return null;
 
-  const hasPinned = pinnedRows.length > 0;
+  const hasPinned = pinnedRows.length > 0 || pinnedCalcRows.length > 0;
   const liveCount = curves.filter((c) => c.sourceLabel?.startsWith("LIVE")).length;
 
   return (
@@ -580,7 +673,7 @@ export default function TimeSeriesOverlay() {
             )}
             {hasPinned && (
               <button
-                onClick={clearPinned}
+                onClick={clearAllPinned}
                 className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
                 title="Unpin all series"
               >
@@ -592,9 +685,43 @@ export default function TimeSeriesOverlay() {
         <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5 max-h-[180px]">
           {hasPinned && (
             <div className="text-[7px] font-mono text-text-muted/50 px-1 pb-0.5 tracking-wider">
-              PINNED · {pinnedRows.length}
+              PINNED · {pinnedRows.length + pinnedCalcRows.length}
             </div>
           )}
+          {/* Calc rows first — they're typically what the user just
+              pushed via "→ DIAL" so they want immediate confirmation
+              that the trajectory landed in the chart. */}
+          {pinnedCalcRows.map((row) => (
+            <button
+              key={`calc-${row.calcId}`}
+              onClick={() => togglePinnedCalc(row.calcId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${row.label} (calculation) — click to unpin`}
+            >
+              <span className="text-[9px] leading-none text-accent-cyan group-hover:text-accent-red transition-colors flex-shrink-0">
+                ◉
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: row.color, opacity: row.hasData ? 1 : 0.4 }}
+              />
+              <span className="text-[9px] font-mono text-foreground truncate flex-1">
+                {row.label}
+                <span className="text-[6px] text-text-muted/50 ml-1">CALC</span>
+              </span>
+              {row.hasData ? (
+                <span
+                  className="text-[9px] font-mono font-bold tabular-nums flex-shrink-0 text-accent-cyan"
+                >
+                  {row.value.toFixed(row.value > 100 ? 0 : 2)}
+                </span>
+              ) : (
+                <span className="text-[6px] font-mono text-text-muted/40 flex-shrink-0">
+                  NO DATA
+                </span>
+              )}
+            </button>
+          ))}
           {pinnedRows.map((row) => (
             <button
               key={row.nodeId}
@@ -774,7 +901,7 @@ export default function TimeSeriesOverlay() {
                 })}
 
                 {/* Curves */}
-                {curves.map((curve) => {
+                {allCurves.map((curve) => {
                   const w = chartW;
                   const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
 

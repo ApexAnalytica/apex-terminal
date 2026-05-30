@@ -128,18 +128,29 @@ function ParetoPanel({
     ? replayEpochs[currentEpoch] ?? null
     : null;
   // ── Derive three criticality countdowns ──
-  // CSD: Critical Slowing Down — based on spectral radius and cascade load
-  const csdEpochs = useMemo(() => {
+  // CSD: Critical Slowing Down — based on spectral radius and cascade load.
+  //
+  // Split into a replay-STABLE base and the replay-animated display value.
+  // `csdBaseEpochs` depends only on graph structure + shocks — NOT on
+  // `currentSnapshot` — so it is constant across a cascade replay. It seeds the
+  // LPPLS relevance fit (see `lpplsData`), which is what keeps the 200-sample
+  // relevance bootstrap in `relevanceMap` from re-running on every 150 ms epoch
+  // tick. `csdEpochs` layers the per-epoch countdown on top for DISPLAY only.
+  // When replay is inactive (currentSnapshot === null) the two are identical,
+  // so the settled-state relevance is byte-for-byte unchanged by this split.
+  const csdBaseEpochs = useMemo(() => {
     const lambdaMax = graphData.edges.reduce((max, e) => {
       const srcNode = graphData.nodes.find((n) => n.id === e.source);
       return Math.max(max, (srcNode?.omegaFragility.cascadeLoad ?? 0) * e.weight / 10);
     }, 0);
     const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
-    const baseEpochs = Math.max(3, Math.round(200 * (1 - lambdaMax) * (1 - shockPressure * 0.4)));
-    return currentSnapshot
-      ? Math.max(0, baseEpochs - Math.round(currentSnapshot.epoch * (1 + shockPressure)))
-      : baseEpochs;
-  }, [graphData, shocks, currentSnapshot]);
+    return Math.max(3, Math.round(200 * (1 - lambdaMax) * (1 - shockPressure * 0.4)));
+  }, [graphData, shocks]);
+  const csdEpochs = useMemo(() => {
+    if (!currentSnapshot) return csdBaseEpochs;
+    const shockPressure = shocks.reduce((s, sh) => s + sh.severity, 0);
+    return Math.max(0, csdBaseEpochs - Math.round(currentSnapshot.epoch * (1 + shockPressure)));
+  }, [csdBaseEpochs, shocks, currentSnapshot]);
 
   // PH: Persistent Homology — based on topological holes (high-fragility clusters)
   const phEpochs = useMemo(() => {
@@ -399,8 +410,13 @@ function ParetoPanel({
     const seedPhase = avgOmega * 0.3;
 
     // Template values that used to be used verbatim; now a seed into the grid.
+    // tc seeds from the replay-STABLE `csdBaseEpochs`, not the per-epoch
+    // `csdEpochs` — otherwise the seed (and therefore this whole memo, and the
+    // 200-sample relevance bootstrap downstream) would churn on every replay
+    // tick. The seed is only a grid-search starting point; the converged fit is
+    // seed-robust, and outside replay csdBaseEpochs === csdEpochs.
     const seed = {
-      tc: 1 + csdEpochs / Math.max(1, csdEpochs + 50),
+      tc: 1 + csdBaseEpochs / Math.max(1, csdBaseEpochs + 50),
       omega: 6.36 + shockPressure * 2.1,
       m: 0.33 + shockPressure * 0.1,
       phase: seedPhase,
@@ -447,7 +463,7 @@ function ParetoPanel({
       fitted: true as const,
       evaluations: fit.evaluations,
     };
-  }, [scopedOmegaSeries, graphData.nodes, shocks, csdEpochs]);
+  }, [scopedOmegaSeries, graphData.nodes, shocks, csdBaseEpochs]);
 
   // ── BOCPD: Bayesian online change-point detection on the same Ω trajectory ──
   // Runs the run-length posterior over `scopedOmegaSeries` and exposes the

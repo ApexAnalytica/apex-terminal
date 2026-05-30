@@ -124,7 +124,7 @@ export default function ProductPage() {
                 <div className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan" />
                   <span className="font-[family-name:var(--font-michroma)] text-[8px] tracking-[0.3em] text-text-muted">
-                    ENGINE COVERAGE · CAUSAL GRAPH
+                    FOUR ENGINES · ONE SHARED GRAPH
                   </span>
                 </div>
                 <span className="font-mono text-[9px] tracking-wider text-text-muted/70">

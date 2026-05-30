@@ -146,9 +146,23 @@ export default function TimeSeriesOverlay() {
   const hydrateBottomDockCollapsed = useApexStore(
     (s) => s.hydrateBottomDockCollapsed,
   );
+  // Watchlist column collapse (independent of the whole-dock collapse).
+  // Lets the chart take the freed width without hiding the chart too.
+  const watchlistCollapsed = useApexStore((s) => s.watchlistCollapsed);
+  const setWatchlistCollapsed = useApexStore((s) => s.setWatchlistCollapsed);
+  const hydrateWatchlistCollapsed = useApexStore(
+    (s) => s.hydrateWatchlistCollapsed,
+  );
+  const hydratePinnedSeries = useApexStore((s) => s.hydratePinnedSeries);
   useEffect(() => {
     hydrateBottomDockCollapsed();
-  }, [hydrateBottomDockCollapsed]);
+    hydrateWatchlistCollapsed();
+    hydratePinnedSeries();
+  }, [
+    hydrateBottomDockCollapsed,
+    hydrateWatchlistCollapsed,
+    hydratePinnedSeries,
+  ]);
   // X-axis zoom mode.
   //  - "dial": chart x-axis mirrors the TimeDial's 60-day window so the
   //    chart cursor lines up with the scrubber below. Default, matches the
@@ -706,12 +720,49 @@ export default function TimeSeriesOverlay() {
       {/* LEFT: watchlist rail — pinned series + suggestions. Doubles as the
           chart legend (each pinned row is a curve) and the discovery surface
           (suggested rows pin with one click). Replaces the old standalone
-          risk-card strip and the chart's bottom legend chips. */}
-      <div className="w-56 flex-shrink-0 border-r border-border flex flex-col">
-        <div className="flex items-center justify-between px-3 py-1 border-b border-border">
-          <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+          risk-card strip and the chart's bottom legend chips.
+          When `watchlistCollapsed`, the rail shrinks to a narrow vertical
+          strip with a single expand chevron + pin count, letting the chart
+          fill the freed width. */}
+      <motion.div
+        animate={{ width: watchlistCollapsed ? 24 : 224 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className="flex-shrink-0 border-r border-border flex flex-col overflow-hidden"
+      >
+      {watchlistCollapsed ? (
+        // Collapsed rail: vertical expand affordance + pinned count.
+        // Whole column is clickable to reduce target-acquisition cost.
+        <button
+          onClick={() => setWatchlistCollapsed(false)}
+          className="flex-1 flex flex-col items-center justify-start gap-2 pt-2 pb-1 hover:bg-surface transition-colors"
+          title="Expand watchlist"
+        >
+          <span className="text-[9px] font-mono text-text-muted leading-none">▶</span>
+          <span
+            className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
             WATCHLIST
           </span>
+          {(pinnedRows.length + pinnedCalcRows.length) > 0 && (
+            <span className="text-[7px] font-mono text-accent-cyan tabular-nums">
+              {pinnedRows.length + pinnedCalcRows.length}
+            </span>
+          )}
+        </button>
+      ) : (
+        <>
+        <div className="flex items-center justify-between px-3 py-1 border-b border-border">
+          <button
+            onClick={() => setWatchlistCollapsed(true)}
+            className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            title="Collapse watchlist to the left"
+          >
+            <span className="text-[9px] font-mono text-text-muted leading-none">◀</span>
+            <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+              WATCHLIST
+            </span>
+          </button>
           <div className="flex items-center gap-2">
             {liveCount > 0 && (
               <span className="flex items-center gap-1 text-[7px] font-mono text-accent-green">
@@ -837,7 +888,9 @@ export default function TimeSeriesOverlay() {
             </div>
           )}
         </div>
-      </div>
+        </>
+      )}
+      </motion.div>
 
       {/* RIGHT: header + comparison chart */}
       <div className="flex-1 min-w-0 flex flex-col">

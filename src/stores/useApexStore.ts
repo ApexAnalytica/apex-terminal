@@ -24,6 +24,10 @@ import {
   loadGraphCalcHistory,
   saveGraphCalcHistory,
 } from "@/lib/calc-history-persistence";
+import {
+  loadBottomDockCollapsed,
+  saveBottomDockCollapsed,
+} from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
 // stays in `tarski-data.ts` next to the 891-LOC AXIOM_LIBRARY +
@@ -250,6 +254,14 @@ export interface ApexState {
   // is per-node, not per-app.
   expandedPillar: PillarKey | null;
   setExpandedPillar: (key: PillarKey | null) => void;
+
+  /** Bottom time-series dock collapsed state. Persisted to localStorage
+   *  (see ui-prefs-persistence) so the user's choice to reclaim canvas
+   *  room survives reloads. Defaults to expanded; hydrated post-mount via
+   *  hydrateBottomDockCollapsed to avoid an SSR hydration mismatch. */
+  bottomDockCollapsed: boolean;
+  setBottomDockCollapsed: (collapsed: boolean) => void;
+  hydrateBottomDockCollapsed: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -750,6 +762,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   expandedPillar: null,
   setExpandedPillar: (key) => set({ expandedPillar: key }),
+
+  // Bottom-dock collapse. Default expanded; the persisted preference is
+  // applied post-mount by hydrateBottomDockCollapsed so server and first
+  // client render agree (both see `false`) before the stored value lands.
+  bottomDockCollapsed: false,
+  setBottomDockCollapsed: (collapsed) => {
+    saveBottomDockCollapsed(collapsed);
+    set({ bottomDockCollapsed: collapsed });
+  },
+  hydrateBottomDockCollapsed: () => {
+    const persisted = loadBottomDockCollapsed();
+    if (persisted !== null) set({ bottomDockCollapsed: persisted });
+  },
 
   // Selected edge
   selectedEdgeId: null,

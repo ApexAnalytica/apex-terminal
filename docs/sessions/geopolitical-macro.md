@@ -494,6 +494,63 @@ live-data gains require **new graph nodes** (new domain cards), a **new
 data source** beyond EIA/FRED/World Bank, or resolving the prod FRED-all-
 mock issue (see below), not another producer clone.
 
+## Phase 18 — OpenSanctions consolidated watchlist (new free source, PR #506)
+
+First live-data source added *beyond* the EIA/FRED/World Bank coverage
+push — a second sanctions feed alongside OFAC SDN. Keyless. Two-hop fetch
+that mirrors the OFAC route's shape:
+
+1. Stable index `https://data.opensanctions.org/datasets/latest/sanctions/index.json`
+   → `statistics_url`, `version`, `last_change`, `target_count`.
+2. Versioned `statistics.json` → `targets.countries[] = {code, count, label}`
+   (lowercase ISO-2), pre-aggregated per-country deduplicated target counts.
+
+**Files:** `src/lib/feeds/opensanctions.ts` (fetch/parse/mock + `OPENSANCTIONS_INDEX_URL`
++ `buildOpenSanctionsFeed` + `normalizeCountryCode`), `src/lib/feeds/providers/opensanctions.ts`
+(`FeedProvider`, jurisdiction keyword map), `src/app/api/feeds/opensanctions/targets/route.ts`
+(24h cache / 1h fallback, env override `OPENSANCTIONS_INDEX_URL`, zero-jurisdiction
+defensive fallback), `registry.ts` (registered after `ofacSdnProvider`),
+`display.ts` (`watchlist` `KIND_FORMATTER`), `src/lib/__tests__/feeds/opensanctions.test.ts` (15 tests).
+
+**Distinct `watchlist` kind — does NOT clobber OFAC `sanctions`.** `value` =
+per-country deduped target count, `capacity` = dataset-wide total (so the
+ratio is the country's global share). A node like *Iran crude* can now carry
+BOTH the US-only OFAC program count (`sanctions`) AND the consolidated global
+target count (`watchlist`) at once — `providerId` keeps the two batches from
+overwriting each other. The keyword map is broader than OFAC's (adds CN / PK /
+UAE / TR / etc.).
+
+**Validated live (2026-05-30):** 204 ISO-2 jurisdictions parsed from 211 raw
+(historical / non-ISO2 buckets like `suhh` dropped by `normalizeCountryCode`),
+70,075 total targets, versioned non-mock source; the Iran node renders
+`OpenSanctions / Iran / 2,697 listed`. Feeds suite 133/133, lint clean.
+
+**Bonus fix — shared display formatter hardened.** The `watchlist` test
+exposed that the country-extraction regex `/—\s*([^:]+):/` shared with OFAC's
+`sanctions` formatter breaks on any mock-fallback source: the em-dash inside
+`(mock — upstream unreachable)` made it capture `"upstream unreachable) — Iran"`.
+OFAC has the identical latent bug (its test just never rendered a mock source).
+Both formatters now use `[^:—]` (excludes the em-dash) so the country segment
+right before the colon resolves correctly; live-source parsing is unchanged.
+
+**⚠ MERGE/DEPLOY GATE — LICENSE (enforced in code).** OpenSanctions
+consolidated data is **CC-BY-NC 4.0 (non-commercial)**. Wiring the feed is
+engineering (this lane, done). **Enabling it on the commercial deployment is a
+partnerships / legal decision.** This is now enforced rather than just
+documented: the server route is **hard off unless `OPENSANCTIONS_ENABLED` is
+set**. When unset it serves the mock (`source: "… (mock — disabled)"`,
+`x-feed-mode: mock-disabled`) and **never contacts OpenSanctions' servers** —
+so merging is genuinely inert on prod and no commercial use of the licensed
+dataset occurs until an operator flips the env var on Vercel. Three route
+tests lock this: gate-closed makes zero upstream `fetch` calls; an
+unrecognized flag value (`"false"`) stays off; only an explicit opt-in lets
+the fetch through. (Gotcha found in real-runtime validation: header values are
+Latin-1/ByteString, so the `x-feed-error` string must avoid the em-dash that
+the `source` body field uses.)
+
+`check:feeds` is unaffected — like OFAC, this is a single-payload feed and is
+not catalog-registered in the FRED/WB health check.
+
 ## Likely upcoming themes
 
 - New domain cards as customer pilots demand them.

@@ -725,6 +725,7 @@ export default function TimeSeriesOverlay() {
           strip with a single expand chevron + pin count, letting the chart
           fill the freed width. */}
       <motion.div
+        data-tour="calc-watchlist"
         animate={{ width: watchlistCollapsed ? 24 : 224 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="flex-shrink-0 border-r border-border flex flex-col overflow-hidden"

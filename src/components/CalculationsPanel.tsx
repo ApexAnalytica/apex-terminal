@@ -150,7 +150,10 @@ export default function CalculationsPanel() {
   if (rows.length === 0) return null;
 
   return (
-    <div className="px-2 py-2 mt-1 rounded border border-border bg-surface-elevated/50">
+    <div
+      data-tour="calculations-panel"
+      className="px-2 py-2 mt-1 rounded border border-border bg-surface-elevated/50"
+    >
       <div className="flex items-baseline justify-between mb-0.5">
         <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-secondary">
           CALCULATIONS
@@ -222,6 +225,7 @@ export default function CalculationsPanel() {
               {!pushDisabled && (
                 <button
                   onClick={onPush}
+                  data-tour="calc-dial-button"
                   className="ml-auto flex-shrink-0 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border border-accent-cyan/30 text-accent-cyan/80 hover:text-accent-cyan hover:border-accent-cyan/60 transition-colors"
                   title={
                     nodeSnapshot

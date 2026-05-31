@@ -39,6 +39,12 @@ import {
   saveWatchlistCollapsed,
   loadPinnedSeries,
   savePinnedSeries,
+  loadSeveredEdges,
+  saveSeveredEdges,
+  loadEnabledAxioms,
+  saveEnabledAxioms,
+  loadSnapshotHistory,
+  saveSnapshotHistory,
 } from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
@@ -322,6 +328,15 @@ export interface ApexState {
    *  series mutations are persisted automatically by a store-level
    *  subscription (see end of file) — callers only need to hydrate. */
   hydratePinnedSeries: () => void;
+
+  /** Hydrate persisted Pearl-scissors severed edges, enabled Tarski
+   *  axioms, and Pareto snapshot history. Each is persisted on change
+   *  via the store-level subscription at the end of the file; callers
+   *  only need to trigger hydration once on mount. Severed edges are
+   *  pruned against the current graph so stale ids drop. */
+  hydrateSeveredEdges: () => void;
+  hydrateEnabledAxioms: () => void;
+  hydrateSnapshotHistory: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -990,6 +1005,38 @@ export const useApexStore = create<ApexState>((set, get) => ({
         out.pinnedCalcSeries = nextCalcs;
       }
       return out;
+    });
+  },
+
+  hydrateSeveredEdges: () => {
+    const persisted = loadSeveredEdges();
+    if (!persisted || persisted.length === 0) return;
+    set((s) => {
+      // Prune to edge ids that still exist in the current graph; stale
+      // ids (graph was reloaded with a different schema) silently drop.
+      const valid = new Set(s.graphData.edges.map((e) => e.id));
+      const next = persisted.filter((id) => valid.has(id));
+      if (next.length === 0) return {};
+      return { severedEdges: next };
+    });
+  },
+  hydrateEnabledAxioms: () => {
+    const persisted = loadEnabledAxioms();
+    if (!persisted) return;
+    // Empty stored array is a deliberate "no axioms enabled" — preserved
+    // as such. Set reference always changes here so the persistence
+    // subscription will run once on hydration (harmless idempotent write).
+    set({ enabledAxioms: new Set(persisted) });
+  },
+  hydrateSnapshotHistory: () => {
+    const persisted = loadSnapshotHistory();
+    if (!persisted || persisted.length === 0) return;
+    set({
+      snapshotHistory: persisted,
+      // Surface the most recent persisted snapshot as the "current" so
+      // panels that read currentSnapshot have something to render
+      // immediately on mount.
+      currentSnapshot: persisted[persisted.length - 1],
     });
   },
 
@@ -1753,19 +1800,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
   clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));
 
-// ─── Pinned-series persistence (store-level subscription) ──────────
+// ─── Auto-persistence (store-level subscriptions) ──────────────────
 //
-// Rather than wire savePinnedSeries() into every mutator + every
-// graph-change path that calls prunePinsToGraph(), subscribe once and
-// write whenever either array's reference changes. Reference equality
-// is correct here — all mutators (toggle/clear) and the prune paths
-// produce new arrays via spread/filter, so a referential delta tracks
-// the semantic delta exactly.
+// Rather than wire save*() into every mutator + every graph-change
+// path, subscribe once per concern and write whenever the watched
+// reference changes. Reference equality is correct here — all
+// mutators (toggle/clear/prune) produce new arrays/sets via
+// spread/filter/new Set(...), so a referential delta tracks the
+// semantic delta exactly.
 //
-// SSR-safe via the localStorage guard inside savePinnedSeries itself.
-// The subscription fires once on initial subscribe with `prev` ===
-// current state, so the first invocation is a no-op; subsequent
-// invocations only persist on actual change.
+// SSR-safe via the localStorage guard inside each save* helper. The
+// subscription does not fire on initial subscribe, so the first
+// invocation is always on a real state change.
+
 useApexStore.subscribe((state, prev) => {
   if (
     state.pinnedTimeSeriesNodes === prev.pinnedTimeSeriesNodes &&
@@ -1777,4 +1824,16 @@ useApexStore.subscribe((state, prev) => {
     nodes: state.pinnedTimeSeriesNodes,
     calcs: state.pinnedCalcSeries,
   });
+});
+
+useApexStore.subscribe((state, prev) => {
+  if (state.severedEdges !== prev.severedEdges) {
+    saveSeveredEdges(state.severedEdges);
+  }
+  if (state.enabledAxioms !== prev.enabledAxioms) {
+    saveEnabledAxioms(state.enabledAxioms);
+  }
+  if (state.snapshotHistory !== prev.snapshotHistory) {
+    saveSnapshotHistory(state.snapshotHistory);
+  }
 });

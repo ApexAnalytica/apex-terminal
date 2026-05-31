@@ -149,6 +149,50 @@ Fan-out (one upstream signal driving N graph nodes — only possible after #347)
 
 Remaining bare nodes (no public source available): same intentional set as before the push — 6 frontier-science placeholders (`dataStatus: "blank-needs-data"`), 5 Ma'aden private infra, 2 ISM PMI proprietary since ~2015, 1 NY Fed SCE non-FRED.
 
+### Data freshness / cadence — known limitation + planned audit (flagged 2026-05-31)
+
+The LIVE / HISTORICAL / SYNTHETIC tiers above describe **provenance**, not
+**freshness**. "LIVE" currently means *"a poll of the upstream API succeeded
+and returned a real value"* — it does **not** mean the value changes often.
+The polling cadence (how often we hit the endpoint) is decoupled from the
+**data cadence** (how often the underlying series actually updates), and for a
+chunk of the live tier those are wildly different:
+
+| Source | Poll cadence | True data cadence | Freshness |
+|---|---|---|---|
+| EIA Hormuz | 5 min | monthly | good |
+| FRED daily (DFII10, DTWEXBGS) | 30 min | daily (business days) | good |
+| OpenSanctions (when enabled) | 30 min | ~daily | good |
+| OFAC SDN | 30 min | ~weekly | good |
+| FRED monthly (CPI, PPI, PAYEMS) | 30 min | monthly | acceptable |
+| **World Bank (all 17 entries + WB-derived composites)** | **1 h** | **annual, 1–3y lag** | **poor** |
+
+`check:feeds` on 2026-05-31 made this concrete: all 17 WB series report
+`LIVE`, but each carries an age of **1.4–3.4 years** — Brazil/India fertilizer
+consumption is `period 2023` (3.4y old), most GDP/debt series are `period
+2024` (2.4y old). We poll those hourly, but the number moves once a year, so
+the card's sparkline is a flat hold-forward for ~364 days and the `check:feeds`
+STALE guard (WB threshold 5y) never trips on a 3-year-old value. WB-derived
+composites (Sovereign-Risk PWT proxies, the fertilizer fan-outs, K/L + MPK)
+inherit this annual cadence.
+
+This is a quality gap, not a coverage gap — the nodes ARE wired to real data;
+the data just isn't fresh. Planned workstream (backlog 1c.6):
+
+1. **Tag true cadence per catalog entry** (realtime / daily / monthly /
+   quarterly / annual) and surface a **freshness tier** in the UI that's
+   distinct from the live-vs-mock dot, so an annual series doesn't masquerade
+   as real-time.
+2. **Per-cadence STALE thresholds in `check:feeds`** — one global threshold
+   can't express both "a FRED daily series 30d stale is broken" and "a WB
+   annual series 2y stale is normal."
+3. **Higher-frequency upgrades where a free source exists** — e.g. swap an
+   annual WB indicator for a monthly FRED/IMF proxy of the same concept.
+
+NB: the #353 → #375 → #387 TimeDial arc (FIT toggle, OUT-OF-WINDOW chip, dial
+presets) was a *display* fix for annual curves on a daily axis — it did not
+classify or surface data cadence, which is what this audit adds.
+
 ### Open handoff for next session
 
 **✅ Resolved 2026-05-21 — `FRED_API_KEY` is live on prod.** Set via Vercel UI on the manifold project (Production + Preview, Sensitive), redeployed with build cache disabled, all 51 FRED series flipped MOCK → LIVE. Key also saved to `.env.local` in the repo root for local-dev `check:feeds` runs. Local fingerprint: 32 chars, starts `aebd…`, ends `…be68`.

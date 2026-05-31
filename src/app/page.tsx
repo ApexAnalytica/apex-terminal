@@ -188,10 +188,12 @@ export default function Home() {
     (s) => s.hydrateSnapshotHistory,
   );
   const hydrateSeveredEdges = useApexStore((s) => s.hydrateSeveredEdges);
+  const hydrateUserPrefs = useApexStore((s) => s.hydrateUserPrefs);
   useEffect(() => {
     hydrateEnabledAxioms();
     hydrateSnapshotHistory();
-  }, [hydrateEnabledAxioms, hydrateSnapshotHistory]);
+    hydrateUserPrefs();
+  }, [hydrateEnabledAxioms, hydrateSnapshotHistory, hydrateUserPrefs]);
   const severedHydratedRef = useRef(false);
   useEffect(() => {
     if (!hasGraph || severedHydratedRef.current) return;

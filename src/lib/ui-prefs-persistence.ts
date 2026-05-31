@@ -13,6 +13,13 @@ const PINNED_SERIES_KEY = "manifold:pinned-series";
 const SEVERED_EDGES_KEY = "manifold:severed-edges";
 const ENABLED_AXIOMS_KEY = "manifold:enabled-axioms";
 const SNAPSHOT_HISTORY_KEY = "manifold:snapshot-history";
+const VIEW_MODE_KEY = "manifold:view-mode";
+const ACTIVE_MODULE_KEY = "manifold:active-module";
+const NODE_SIZE_METRIC_KEY = "manifold:node-size-metric";
+const VISIBLE_EDGE_TYPES_KEY = "manifold:visible-edge-types";
+const TRUTH_FILTER_KEY = "manifold:truth-filter";
+const ACTIVE_PERSONA_KEY = "manifold:active-persona";
+const SELECTED_DATA_SOURCES_KEY = "manifold:selected-data-sources";
 
 /**
  * Load the persisted bottom-dock collapsed preference. SSR-safe.
@@ -146,6 +153,64 @@ export function saveSnapshotHistory(history: SystemStateSnapshot[]): void {
   }
 }
 
+// ─── User preferences (string / array / set primitives) ────────────
+//
+// Each pair is a thin named wrapper over loadString / loadStringArray
+// so consumers grep cleanly and a future rename catches every site.
+// Caller is responsible for validating the value matches the current
+// union (we don't import the unions here to keep this file
+// type-independent). An unknown stored value gets passed through; the
+// consuming component / store either coerces or falls back to default.
+
+export function loadViewMode(): string | null {
+  return loadString(VIEW_MODE_KEY);
+}
+export function saveViewMode(v: string): void {
+  saveString(VIEW_MODE_KEY, v);
+}
+
+export function loadActiveModule(): string | null {
+  return loadString(ACTIVE_MODULE_KEY);
+}
+export function saveActiveModule(v: string): void {
+  saveString(ACTIVE_MODULE_KEY, v);
+}
+
+export function loadNodeSizeMetric(): string | null {
+  return loadString(NODE_SIZE_METRIC_KEY);
+}
+export function saveNodeSizeMetric(v: string): void {
+  saveString(NODE_SIZE_METRIC_KEY, v);
+}
+
+export function loadVisibleEdgeTypes(): string[] | null {
+  return loadStringArray(VISIBLE_EDGE_TYPES_KEY);
+}
+export function saveVisibleEdgeTypes(types: Set<string>): void {
+  saveStringArray(VISIBLE_EDGE_TYPES_KEY, Array.from(types).sort());
+}
+
+export function loadTruthFilter(): string | null {
+  return loadString(TRUTH_FILTER_KEY);
+}
+export function saveTruthFilter(v: string): void {
+  saveString(TRUTH_FILTER_KEY, v);
+}
+
+export function loadActivePersona(): string | null {
+  return loadString(ACTIVE_PERSONA_KEY);
+}
+export function saveActivePersona(v: string): void {
+  saveString(ACTIVE_PERSONA_KEY, v);
+}
+
+export function loadSelectedDataSources(): string[] | null {
+  return loadStringArray(SELECTED_DATA_SOURCES_KEY);
+}
+export function saveSelectedDataSources(sources: string[]): void {
+  saveStringArray(SELECTED_DATA_SOURCES_KEY, sources);
+}
+
 // ─── shared helpers ─────────────────────────────────────────────────
 
 function loadBoolFlag(key: string): boolean | null {
@@ -163,6 +228,24 @@ function saveBoolFlag(key: string, value: boolean): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     window.localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // ignore — quota exceeded, private-mode, etc.
+  }
+}
+
+function loadString(key: string): string | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function saveString(key: string, value: string): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(key, value);
   } catch {
     // ignore — quota exceeded, private-mode, etc.
   }

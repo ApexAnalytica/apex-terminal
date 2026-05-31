@@ -186,37 +186,30 @@ export default function FrameworkPage() {
         <TerminalHeader
           label="// SYSTEM-LEVEL METRICS"
           path="manifold.omega_system"
-          right="ΩSF · ΩSX · CONTAGION · BUFFER"
+          right="ΩSF · CONTAGION · BUFFER"
           color="purple"
         />
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3">
           <MetricCard
             symbol="ΩSF"
             name="System Fragility"
             color="cyan"
-            formula="Σᵢ αᵢ·ΩFᵢ"
-            blurb="Throughput-weighted system fragility. Each node contributes proportional to its share of system flow."
-          />
-          <MetricCard
-            symbol="ΩSX"
-            name="System Exposure"
-            color="amber"
-            formula="Σᵢ eᵢ·ΩFᵢ"
-            blurb="Exposure-weighted system fragility. Weighted by sanctions, geographic concentration, capital risk."
+            formula="∝ Σσᵢ + (100 − buffer)"
+            blurb="Live 0–100 system fragility index. Rises with aggregate shock severity and depleted buffer, and drives the regime band (STABLE → CRASH) in the Ω monitor."
           />
           <MetricCard
             symbol="Ω-Contagion"
             name="Cascade Reach"
             color="red"
             formula="|{j : Lⱼ(failᵢ) > τ}|"
-            blurb="Number of downstream nodes whose loss exceeds threshold τ when node i fails."
+            blurb="Count of downstream nodes whose loss exceeds threshold τ when node i fails — measured across Monte Carlo cascade runs."
           />
           <MetricCard
             symbol="Ω-Buffer"
             name="Time to Failure"
             color="green"
-            formula="τ_buffer(i)"
-            blurb="Time between a node's failure and the onset of systemic failure. The operational window for response."
+            formula="365 · (buffer/100)"
+            blurb="Days from the current buffer to systemic failure: 365 nominal, compressing toward 3 at breach. The operational window for response."
           />
         </div>
       </Section>

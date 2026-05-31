@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
@@ -177,6 +177,27 @@ export default function Home() {
   // Gate to defer the ΩF Time Series dock chunk until a graph is loaded.
   // An empty workspace has nothing to watch, suggest, or chart.
   const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
+
+  // App-wide hydration of persisted user state. Non-graph-dependent
+  // entries (axioms, snapshot history) run once on mount; severed
+  // edges wait for the graph so the prune-to-valid-ids step has
+  // something to match against. The ref-guard prevents a re-hydration
+  // if hasGraph ever flips false→true again (e.g. workspace reset).
+  const hydrateEnabledAxioms = useApexStore((s) => s.hydrateEnabledAxioms);
+  const hydrateSnapshotHistory = useApexStore(
+    (s) => s.hydrateSnapshotHistory,
+  );
+  const hydrateSeveredEdges = useApexStore((s) => s.hydrateSeveredEdges);
+  useEffect(() => {
+    hydrateEnabledAxioms();
+    hydrateSnapshotHistory();
+  }, [hydrateEnabledAxioms, hydrateSnapshotHistory]);
+  const severedHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!hasGraph || severedHydratedRef.current) return;
+    severedHydratedRef.current = true;
+    hydrateSeveredEdges();
+  }, [hasGraph, hydrateSeveredEdges]);
 
   // Live-data feed registry — single hook that polls every registered
   // provider on its declared cadence. Add a new provider in

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildCopilotSystemPrompt,
   COPILOT_SYSTEM_PROMPT,
+  getFeatureManifestDigest,
 } from "@/lib/copilot/system-prompt";
 
 // ─── Copilot system-prompt builder tests ──────────────────────────────
@@ -63,5 +64,53 @@ describe("buildCopilotSystemPrompt", () => {
 
   it("COPILOT_SYSTEM_PROMPT constant exports the geopolitical variant", () => {
     expect(COPILOT_SYSTEM_PROMPT).toBe(buildCopilotSystemPrompt("geopolitical"));
+  });
+});
+
+describe("getFeatureManifestDigest", () => {
+  it("geopolitical digest excludes T1D-only entries and CGM terminology", () => {
+    const digest = getFeatureManifestDigest("geopolitical");
+    expect(digest).not.toContain("CGM");
+    expect(digest).not.toContain("glycemic");
+    expect(digest).not.toContain("insulin");
+    expect(digest).not.toContain("#514");
+  });
+
+  it("t1d digest includes both shared and T1D-only entries", () => {
+    const digest = getFeatureManifestDigest("t1d");
+    expect(digest).toContain("#514");
+    expect(digest).toContain("glycemic");
+    expect(digest).toContain("time-in-range");
+    // Shared entries still present
+    expect(digest).toContain("#495");
+    expect(digest).toContain("#508");
+  });
+
+  it("both digests preserve the candidates-to-revert trailer verbatim", () => {
+    const geo = getFeatureManifestDigest("geopolitical");
+    const t1d = getFeatureManifestDigest("t1d");
+    for (const variant of [geo, t1d]) {
+      expect(variant).toContain("Bridge-ratio → A-04 wiring");
+      expect(variant).toContain("Supply Gini");
+      expect(variant).toContain("DO NOT RECOMMEND");
+    }
+  });
+
+  it("both digests reference the full manifest path for step-by-step verification", () => {
+    for (const profileId of ["geopolitical", "t1d"] as const) {
+      const digest = getFeatureManifestDigest(profileId);
+      expect(digest).toContain("/docs/copilot-feature-manifest.md");
+    }
+  });
+
+  it("buildCopilotSystemPrompt embeds the digest under a FEATURE MANIFEST section", () => {
+    const out = buildCopilotSystemPrompt("geopolitical");
+    expect(out).toContain("=== FEATURE MANIFEST ===");
+    expect(out).toContain("#495");
+    expect(out).toContain("DO NOT RECOMMEND");
+  });
+
+  it("defaults to geopolitical digest when no profile id is passed", () => {
+    expect(getFeatureManifestDigest()).toBe(getFeatureManifestDigest("geopolitical"));
   });
 });

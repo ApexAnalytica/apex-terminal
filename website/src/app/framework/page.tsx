@@ -165,17 +165,19 @@ export default function FrameworkPage() {
         <TerminalHeader
           label="// COMPOSING ΩF"
           path="manifold.omega_f.weights"
-          right="WEIGHTS PER DOMAIN"
+          right="ONE CANONICAL WEIGHTING"
           color="cyan"
         />
         <div className="bg-surface-elevated border border-border rounded-lg p-4 md:p-6">
           <WeightStack />
         </div>
         <p className="mt-3 text-[11.5px] font-mono text-text-muted leading-relaxed max-w-2xl">
-          A Geopolitical Analyst weights J and T for sovereign credit. A
-          Macro Analyst weights C and R for inflation pass-through. A
-          Financial Analyst weights I and T for counterparty stress.
-          The same five pillars, configured per persona.
+          These weights are canonical — Manifold applies the same composite
+          to every domain, so a ΩF of 7.0 on a semiconductor supply chain is
+          directly comparable to a 7.0 on pancreatic biology. What changes
+          per domain is the vocabulary, not the math: on a biomedical graph
+          &ldquo;Irreplaceability&rdquo; reads as mechanism rarity and
+          &ldquo;Jurisdictional Hazard&rdquo; as regulatory exposure.
         </p>
       </Section>
 

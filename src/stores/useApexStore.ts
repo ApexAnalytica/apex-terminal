@@ -30,6 +30,10 @@ import {
 import {
   loadBottomDockCollapsed,
   saveBottomDockCollapsed,
+  loadWatchlistCollapsed,
+  saveWatchlistCollapsed,
+  loadPinnedSeries,
+  savePinnedSeries,
 } from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
@@ -281,6 +285,20 @@ export interface ApexState {
   bottomDockCollapsed: boolean;
   setBottomDockCollapsed: (collapsed: boolean) => void;
   hydrateBottomDockCollapsed: () => void;
+
+  /** Watchlist column (inside the dock) collapsed-to-left state.
+   *  Independent of the whole-dock collapse: the user can shrink just
+   *  the watchlist rail to a narrow strip and let the chart fill the
+   *  freed width while keeping both surfaces visible. */
+  watchlistCollapsed: boolean;
+  setWatchlistCollapsed: (collapsed: boolean) => void;
+  hydrateWatchlistCollapsed: () => void;
+
+  /** Hydrate persisted pinned series (node + calc) from localStorage,
+   *  pruned against the current graph so stale node ids drop. Pinned
+   *  series mutations are persisted automatically by a store-level
+   *  subscription (see end of file) — callers only need to hydrate. */
+  hydratePinnedSeries: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -877,6 +895,47 @@ export const useApexStore = create<ApexState>((set, get) => ({
   hydrateBottomDockCollapsed: () => {
     const persisted = loadBottomDockCollapsed();
     if (persisted !== null) set({ bottomDockCollapsed: persisted });
+  },
+
+  // Watchlist column collapse. Same post-mount hydration pattern.
+  watchlistCollapsed: false,
+  setWatchlistCollapsed: (collapsed) => {
+    saveWatchlistCollapsed(collapsed);
+    set({ watchlistCollapsed: collapsed });
+  },
+  hydrateWatchlistCollapsed: () => {
+    const persisted = loadWatchlistCollapsed();
+    if (persisted !== null) set({ watchlistCollapsed: persisted });
+  },
+
+  // Pinned series hydration. Node ids are pruned against the current
+  // graph so a persisted pin for a node that no longer exists silently
+  // drops rather than rendering a phantom row. Calc ids are kept as-is
+  // — graphCalcHistory hydrates separately and the chart's hasData
+  // branch handles the empty case.
+  hydratePinnedSeries: () => {
+    const persisted = loadPinnedSeries();
+    if (!persisted) return;
+    set((s) => {
+      const nextNodes = prunePinsToGraph(s.graphData, persisted.nodes);
+      const nextCalcs = persisted.calcs;
+      // Only update keys that actually change so we don't kick off a
+      // re-render or trip the persistence subscription for a no-op.
+      const out: Partial<ApexState> = {};
+      if (
+        nextNodes.length !== s.pinnedTimeSeriesNodes.length ||
+        nextNodes.some((id, i) => id !== s.pinnedTimeSeriesNodes[i])
+      ) {
+        out.pinnedTimeSeriesNodes = nextNodes;
+      }
+      if (
+        nextCalcs.length !== s.pinnedCalcSeries.length ||
+        nextCalcs.some((id, i) => id !== s.pinnedCalcSeries[i])
+      ) {
+        out.pinnedCalcSeries = nextCalcs;
+      }
+      return out;
+    });
   },
 
   // Selected edge
@@ -1638,3 +1697,29 @@ export const useApexStore = create<ApexState>((set, get) => ({
     })),
   clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));
+
+// ─── Pinned-series persistence (store-level subscription) ──────────
+//
+// Rather than wire savePinnedSeries() into every mutator + every
+// graph-change path that calls prunePinsToGraph(), subscribe once and
+// write whenever either array's reference changes. Reference equality
+// is correct here — all mutators (toggle/clear) and the prune paths
+// produce new arrays via spread/filter, so a referential delta tracks
+// the semantic delta exactly.
+//
+// SSR-safe via the localStorage guard inside savePinnedSeries itself.
+// The subscription fires once on initial subscribe with `prev` ===
+// current state, so the first invocation is a no-op; subsequent
+// invocations only persist on actual change.
+useApexStore.subscribe((state, prev) => {
+  if (
+    state.pinnedTimeSeriesNodes === prev.pinnedTimeSeriesNodes &&
+    state.pinnedCalcSeries === prev.pinnedCalcSeries
+  ) {
+    return;
+  }
+  savePinnedSeries({
+    nodes: state.pinnedTimeSeriesNodes,
+    calcs: state.pinnedCalcSeries,
+  });
+});

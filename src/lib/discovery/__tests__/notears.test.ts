@@ -8,6 +8,7 @@ import {
   transpose,
 } from "../algorithms/_matrix-ops";
 import type { Cohort } from "../cohort-types";
+import type { DiscoveredEdge } from "../run-types";
 
 // ─── Cohort helper (shared shape with FCI / lag-correlation tests) ───
 
@@ -75,10 +76,10 @@ function buildCohort(opts: {
 }
 
 function findEdge(
-  edges: { source: string; target: string }[],
+  edges: DiscoveredEdge[],
   s: string,
   t: string,
-) {
+): DiscoveredEdge | undefined {
   return edges.find((e) => e.source === s && e.target === t);
 }
 

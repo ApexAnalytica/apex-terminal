@@ -449,7 +449,7 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     copy: {
       title: "WATCHLIST — TRAJECTORIES ACCUMULATE HERE",
       description:
-        "The pushed calc lands as a row in the WATCHLIST column (left side of the bottom dock) with a small CALC badge to distinguish it from node ΩF rows. The chart to the right draws a cyan curve — extending with each subsequent → DIAL press. Trajectories persist across reloads, so a long-running investigation (week-over-week supply concentration drift, daily cycle-count check) is just \"press DIAL on the same calc when you come back.\"",
+        "The pushed calc lands as a row in the WATCHLIST column (left side of the bottom dock) with a small CALC badge to distinguish it from node ΩF rows. The chart to the right draws a cyan curve — extending with each subsequent → DIAL press. Trajectories persist across reloads, so a long-running investigation (week-over-week drift on any metric, daily cycle-count or bridge-ratio check) is just \"press DIAL on the same calc when you come back.\"",
     },
   },
 

@@ -5,9 +5,14 @@
 // position) which intentionally resets. Kept separate from
 // calc-history-persistence so each file owns exactly one concern.
 
+import type { SystemStateSnapshot } from "@/lib/snapshots/types";
+
 const BOTTOM_DOCK_COLLAPSED_KEY = "manifold:bottom-dock-collapsed";
 const WATCHLIST_COLLAPSED_KEY = "manifold:watchlist-collapsed";
 const PINNED_SERIES_KEY = "manifold:pinned-series";
+const SEVERED_EDGES_KEY = "manifold:severed-edges";
+const ENABLED_AXIOMS_KEY = "manifold:enabled-axioms";
+const SNAPSHOT_HISTORY_KEY = "manifold:snapshot-history";
 
 /**
  * Load the persisted bottom-dock collapsed preference. SSR-safe.
@@ -77,6 +82,70 @@ export function savePinnedSeries(pins: PersistedPinnedSeries): void {
   }
 }
 
+// ─── Pearl scissors mode: severed edges ─────────────────────────────
+//
+// User-curated edge severs are real interdiction work, not session
+// state. Pruning to the current graph happens on hydration (caller's
+// job) so stale ids drop silently.
+
+export function loadSeveredEdges(): string[] | null {
+  return loadStringArray(SEVERED_EDGES_KEY);
+}
+export function saveSeveredEdges(edges: string[]): void {
+  saveStringArray(SEVERED_EDGES_KEY, edges);
+}
+
+// ─── Tarski axioms: user's enabled subset ───────────────────────────
+//
+// Serialized as a sorted array; the store keeps it as a Set. An empty
+// stored array means "explicit empty subset" (user disabled all); a
+// missing key means "never customized" → fall back to default.
+
+export function loadEnabledAxioms(): string[] | null {
+  return loadStringArray(ENABLED_AXIOMS_KEY);
+}
+export function saveEnabledAxioms(axioms: Set<string>): void {
+  saveStringArray(ENABLED_AXIOMS_KEY, Array.from(axioms).sort());
+}
+
+// ─── Snapshot history (Pareto panel captures) ───────────────────────
+//
+// `SystemStateSnapshot` is a slim summary (~50 nodes + a few floats
+// each), so even the 50-entry cap stays well under localStorage's
+// ~5MB quota. Persisted as a JSON array; defensive on parse so a
+// corrupted entry returns null and the store keeps its empty default.
+
+export function loadSnapshotHistory(): SystemStateSnapshot[] | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(SNAPSHOT_HISTORY_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    // Cheap shape check — version + timestamp + graph + tarskiValidation
+    // are the minimum we render against; anything missing those drops.
+    return parsed.filter(
+      (s): s is SystemStateSnapshot =>
+        !!s &&
+        typeof s === "object" &&
+        (s as { version?: unknown }).version === 1 &&
+        typeof (s as { timestamp?: unknown }).timestamp === "string" &&
+        !!(s as { graph?: unknown }).graph &&
+        !!(s as { tarskiValidation?: unknown }).tarskiValidation,
+    );
+  } catch {
+    return null;
+  }
+}
+export function saveSnapshotHistory(history: SystemStateSnapshot[]): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(SNAPSHOT_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // ignore — quota exceeded, private-mode, etc.
+  }
+}
+
 // ─── shared helpers ─────────────────────────────────────────────────
 
 function loadBoolFlag(key: string): boolean | null {
@@ -94,6 +163,28 @@ function saveBoolFlag(key: string, value: boolean): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     window.localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // ignore — quota exceeded, private-mode, etc.
+  }
+}
+
+function loadStringArray(key: string): string[] | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return null;
+  }
+}
+
+function saveStringArray(key: string, value: string[]): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // ignore — quota exceeded, private-mode, etc.
   }

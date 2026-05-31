@@ -12,7 +12,13 @@
 
 import type { Calculation, CalculationResult } from "./types";
 
-function countCyclicSCCs(
+/**
+ * Count cyclic strongly-connected components (size > 1 OR a self-
+ * looping singleton) via iterative Tarjan SCC. Exported so the
+ * Tarski scorer can read this feature without duplicating the
+ * algorithm — keeps the calc and the relevance booster in sync.
+ */
+export function countCyclicSCCs(
   nodes: { id: string }[],
   edges: { source: string; target: string; isSevered?: boolean }[],
 ): number {

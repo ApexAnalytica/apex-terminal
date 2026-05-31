@@ -341,6 +341,93 @@ describe("scoreAxiomRelevance — calc-driven boosts (HHI → A-05 / R-01)", () 
   });
 });
 
+describe("scoreAxiomRelevance — calc→Tarski wiring (cycles, bridge ratio)", () => {
+  it("lifts A-03 when the graph has a cyclic SCC", () => {
+    // a → b → c → a (3-node cycle)
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graphAcyclic = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+      ],
+    );
+    const graphCyclic = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "a" }),
+      ],
+    );
+    const before = scoreById(scoreAxiomRelevance(graphAcyclic, "geopolitical"));
+    const after = scoreById(scoreAxiomRelevance(graphCyclic, "geopolitical"));
+    const a03Before = before.get("A-03")!;
+    const a03After = after.get("A-03")!;
+    expect(a03After.relevanceScore).toBeGreaterThan(a03Before.relevanceScore);
+    expect(a03After.reason).toContain("cyclic SCC");
+    expect(a03After.reason).toContain("A-03");
+  });
+
+  it("escalates A-03 reason when the selected node sits IN the cycle", () => {
+    const a = makeNode({ id: "a", label: "Refinery", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graph = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "a" }),
+      ],
+    );
+    const noSel = scoreById(scoreAxiomRelevance(graph, "geopolitical"));
+    const withSel = scoreById(
+      scoreAxiomRelevance(graph, "geopolitical", { selectedNode: "a" }),
+    );
+    expect(withSel.get("A-03")!.relevanceScore).toBeGreaterThan(
+      noSel.get("A-03")!.relevanceScore,
+    );
+    expect(withSel.get("A-03")!.reason).toContain("Refinery");
+    expect(withSel.get("A-03")!.reason).toContain("cyclic");
+  });
+
+  it("does NOT escalate A-03 selection reason when the selected node is outside the cycle", () => {
+    // Cycle is b → c → b; selected node "a" is upstream and not part of it.
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graph = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "b" }),
+      ],
+    );
+    const withSel = scoreById(
+      scoreAxiomRelevance(graph, "geopolitical", { selectedNode: "a" }),
+    );
+    // Structural boost still fires (graph has cycles) but selection-
+    // aware reason does NOT mention "a".
+    expect(withSel.get("A-03")!.reason).not.toContain(": a sits");
+    expect(withSel.get("A-03")!.reason).toContain("cyclic SCC");
+  });
+
+  it("does not touch A-03 when the graph is acyclic", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const graph = makeGraph(
+      [a, b],
+      [makeEdge({ id: "e1", source: "a", target: "b" })],
+    );
+    const a03 = scoreById(scoreAxiomRelevance(graph, "geopolitical")).get("A-03")!;
+    expect(a03.reason).not.toContain("cyclic");
+  });
+});
+
 describe("scoreAxiomRelevance — recommender memory (recency boost)", () => {
   it("recent click on an axiom lifts its score above baseline", () => {
     const a = makeNode({ id: "a", domain: "energy" });

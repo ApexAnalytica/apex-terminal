@@ -19,6 +19,7 @@ import { fredProvider } from "./providers/fred";
 import { noaaStormsProvider } from "./providers/noaa-storms";
 import { ofacSdnProvider } from "./providers/ofac-sdn";
 import { openFdaProvider } from "./providers/openfda";
+import { openSanctionsProvider } from "./providers/opensanctions";
 import { worldBankProvider } from "./providers/world-bank";
 import type { FeedProvider } from "./providers/types";
 
@@ -33,6 +34,7 @@ export const FEED_PROVIDERS: ReadonlyArray<FeedProvider> = [
   eiaSaudiCrudeProvider,
   eiaQatarGasProvider,
   ofacSdnProvider,
+  openSanctionsProvider,
   fredProvider,
   worldBankProvider,
   openFdaProvider,

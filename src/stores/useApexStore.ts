@@ -32,6 +32,16 @@ import {
   saveAxiomInteractionHistory,
   type AxiomInteractionHistory,
 } from "@/lib/axiom-interaction-persistence";
+import { record as recordPerf } from "@/lib/perf/instrument";
+
+// Mirrors instrument.ts's internal ENABLED gate so hot-path call sites
+// can skip even the cheap performance.now() in production. Keeping the
+// constant local avoids exporting an internal from the perf module.
+const ENABLED_PERF =
+  typeof window !== "undefined" &&
+  typeof performance !== "undefined" &&
+  process.env.NODE_ENV !== "production";
+
 import {
   loadBottomDockCollapsed,
   saveBottomDockCollapsed,
@@ -647,7 +657,18 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // View
   viewMode: "3d",
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) => {
+    // View-switch instrumentation: start mark fires the instant the
+    // user picks a new view. The end mark is emitted from the new
+    // view component's first mount effect; measureBetween joins them
+    // into a "view-switch" rolling aggregate. We tag the mark per
+    // target mode so consecutive switches don't overwrite each other
+    // mid-render.
+    if (ENABLED_PERF) {
+      performance.mark(`view-switch:start:${mode}`);
+    }
+    set({ viewMode: mode });
+  },
 
   // Default to eigenvector — that's what the 3D view shipped with before
   // the toggle. Surfacing the choice as a visible UI control is the
@@ -677,6 +698,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     });
   },
   applyFeedBatch: (batch) => {
+    // Perf instrumentation: synchronous phase only — the post-set
+    // Tarski revalidation (phase 2) runs async and gets its own
+    // microtask budget. The "feed-tick" bucket therefore measures
+    // exactly the work that blocks the next paint, which is what we
+    // care about for laptop-felt smoothness.
+    const tickStart = ENABLED_PERF ? performance.now() : 0;
     // Phase 1: apply feed mutation + omega adjustments synchronously. The
     // non-verified path is complete here. Verified mode trails phase 2.
     let needsTarskiRevalidation = false;
@@ -752,6 +779,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
       needsTarskiRevalidation = s.truthFilter === "verified";
       return { ...base, graphData: adjusted };
     });
+    if (ENABLED_PERF) recordPerf("feed-tick", performance.now() - tickStart);
 
     if (!needsTarskiRevalidation) return;
     void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {

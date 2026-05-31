@@ -28,6 +28,11 @@ import {
   type NodeCalcHistory,
 } from "@/lib/calc-history-persistence";
 import {
+  loadAxiomInteractionHistory,
+  saveAxiomInteractionHistory,
+  type AxiomInteractionHistory,
+} from "@/lib/axiom-interaction-persistence";
+import {
   loadBottomDockCollapsed,
   saveBottomDockCollapsed,
   loadWatchlistCollapsed,
@@ -264,6 +269,24 @@ export interface ApexState {
    *  liveData via upsertLiveSignal. Same SSR-safe post-mount pattern
    *  as hydrateGraphCalcHistory. */
   hydrateNodeCalcHistory: () => void;
+
+  /**
+   * Tracks which Tarski axioms the user has clicked into and when.
+   * Drives the recommender's decayed-recency boost — an axiom the
+   * user has investigated recently surfaces in the recommended list
+   * even when no node selection / structural feature lights it up.
+   *
+   * Persisted to localStorage via axiom-interaction-persistence so the
+   * memory survives reloads (and travel between machines via the
+   * sessions/MD-sync workflow, eventually).
+   */
+  axiomInteractionHistory: AxiomInteractionHistory;
+  /** Record an axiom interaction (the user expanded its card).
+   *  Increments clickCount + bumps lastClickedAt to now. Persists. */
+  recordAxiomInteraction: (axiomId: string) => void;
+  /** Hydrate axiom interaction history from localStorage. SSR-safe
+   *  post-mount pattern. */
+  hydrateAxiomInteractionHistory: () => void;
 
   // Selected node (focus)
   selectedNode: string | null;
@@ -867,6 +890,38 @@ export const useApexStore = create<ApexState>((set, get) => ({
         graphData: { ...s.graphData, nodes: nextNodes },
         nodeCalcHistory: mirror,
       };
+    });
+  },
+
+  axiomInteractionHistory: {},
+  recordAxiomInteraction: (axiomId) => {
+    set((s) => {
+      const now = new Date().toISOString();
+      const existing = s.axiomInteractionHistory[axiomId];
+      const next: AxiomInteractionHistory = {
+        ...s.axiomInteractionHistory,
+        [axiomId]: {
+          lastClickedAt: now,
+          clickCount: (existing?.clickCount ?? 0) + 1,
+        },
+      };
+      saveAxiomInteractionHistory(next);
+      return { axiomInteractionHistory: next };
+    });
+  },
+  hydrateAxiomInteractionHistory: () => {
+    const persisted = loadAxiomInteractionHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory wins on collision (it's
+      // either a fresh click that hasn't been persisted yet or an
+      // identical replay — either way prefer it). Same pattern as
+      // graphCalcHistory hydration.
+      const merged: AxiomInteractionHistory = { ...persisted };
+      for (const [id, rec] of Object.entries(s.axiomInteractionHistory)) {
+        merged[id] = rec;
+      }
+      return { axiomInteractionHistory: merged };
     });
   },
 

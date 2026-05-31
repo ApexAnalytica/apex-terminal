@@ -5,7 +5,7 @@
 // extraction — TarskiPanel + its two private helpers (AxiomIcon,
 // ProofTraceList). See PR history for the original inline definitions.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-color";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
@@ -121,6 +121,21 @@ function TarskiPanel() {
   // domain incident edges boosts R-04, etc. See scoreAxiomRelevance.
   const selectedNode = useApexStore((s) => s.selectedNode);
   const selectedNodes = useApexStore((s) => s.selectedNodes);
+  // Recommender memory: per-axiom click history fuels a decayed-
+  // recency boost so axioms the user has been investigating lately
+  // surface even without a structural / selection trigger.
+  const axiomInteractionHistory = useApexStore(
+    (s) => s.axiomInteractionHistory,
+  );
+  const recordAxiomInteraction = useApexStore(
+    (s) => s.recordAxiomInteraction,
+  );
+  const hydrateAxiomInteractionHistory = useApexStore(
+    (s) => s.hydrateAxiomInteractionHistory,
+  );
+  useEffect(() => {
+    hydrateAxiomInteractionHistory();
+  }, [hydrateAxiomInteractionHistory]);
   const [expandedAxiom, setExpandedAxiom] = useState<string | null>(null);
 
   // Score axioms by relevance to current graph, filtered by the active profile
@@ -133,8 +148,9 @@ function TarskiPanel() {
       scoreAxiomRelevance(graphData, activeProfileId, {
         selectedNode,
         selectedNodes,
+        interactionHistory: axiomInteractionHistory,
       }),
-    [graphData, activeProfileId, selectedNode, selectedNodes]
+    [graphData, activeProfileId, selectedNode, selectedNodes, axiomInteractionHistory]
   );
 
   // Split into recommended (score >= 0.4) and other
@@ -237,7 +253,12 @@ function TarskiPanel() {
         {/* Compact header — always visible */}
         <div
           className="flex items-center gap-2 px-2 py-2 cursor-pointer hover:bg-white/[0.02] transition-colors"
-          onClick={() => setExpandedAxiom(isExpanded ? null : axiom.id)}
+          onClick={() => {
+            // Record only on EXPAND (not collapse) so the recommender
+            // memory tracks investigation, not toggle noise.
+            if (!isExpanded) recordAxiomInteraction(axiom.id);
+            setExpandedAxiom(isExpanded ? null : axiom.id);
+          }}
         >
           {/* Visual icon */}
           <AxiomIcon axiomId={axiom.id} color={levelColor} />

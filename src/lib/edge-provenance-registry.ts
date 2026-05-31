@@ -28,7 +28,14 @@
  * second audited domain (Edmonton/Shapiro, CIT-07, Ryan 5-yr, HLA-DR matching),
  * and it also showcases cross-domain reuse — its dose→engraftment and TIR→HbA1c
  * edges reference `t1d`-domain entries by global id rather than re-citing them.
- * Other domains (geopolitical energy, AI-safety) land in later passes.
+ * The `geo_energy` domain is the third audit — its six `regression` entries are
+ * the highest-provenance edges in the graph (the weight IS a fitted ARDL
+ * multiplier from research/macro, not a calibration). The `ai_safety` domain is
+ * the fourth: its dataset→attack edges cite public IDS benchmarks (CICIDS-2017,
+ * UNSW-NB15, AWID3), while its `ghauri-*` pipeline edges cite a single-author
+ * D.Eng. dissertation that is NOT independently web-verifiable — so each of
+ * those notes carries that caveat and points at the in-repo implementation
+ * (src/lib/discovery/*) as the concrete, checkable grounding.
  *
  * Honesty note: a `literature` entry asserts that the *relationship* (sign +
  * approximate magnitude) of an edge is grounded in the cited source. The
@@ -376,6 +383,129 @@ const CATALOGS: Record<string, EdgeProvenanceEntry[]> = {
         "funding and lifts EM risk premia (Bruno-Shin leverage channel; Hofmann-Patel-Wu original-sin-" +
         "redux). Used to ground the CONFIDENCE of the dxy→FX-pressure and dxy→reserves edges; the " +
         "magnitudes come from the dxy-em-fx-ardl panel fits.",
+    },
+  ],
+  // AI-safety / IDS continual-learning pipeline (Ghauri 2025 D.Eng., Ch 5-8).
+  // TWO grounding tiers, kept honestly distinct:
+  //   (a) the three dataset→attack-class entries cite PUBLIC, web-verifiable
+  //       IDS benchmarks (CICIDS-2017, UNSW-NB15, AWID3) — the cited paper's
+  //       published class taxonomy is the verifiable anchor for "corpus X
+  //       contains attack class Y"; the 0.9/0.95 scalars are author
+  //       calibration of detection salience, not lifted from any paper.
+  //   (b) the four `ghauri-*` entries cite the dissertation's OWN architecture
+  //       (GAT continual learner, BES/FR/HES metrics, χ★-biased replay buffer).
+  //       HONESTY CAVEAT carried in every ghauri-* note: this is a single-author
+  //       D.Eng. dissertation that is NOT independently web-verified — but the
+  //       machinery it describes is concretely IMPLEMENTED in this repo
+  //       (src/lib/discovery/{bes-temporal,fr-estimator,omega-forgetting-pressure,
+  //       ai-safety-demo-trace}.ts + src/lib/estimators/chi-star.ts), and every
+  //       chapter/section ref reproduced below already appears on the matching
+  //       ais_* node in graph-data.ts. The two `ghauri-*-replay-*` entries are
+  //       the registry migration of the two inline seeds shipped in PR #391
+  //       (verbatim — same kind, section, rSquared, and numeric claims).
+  ai_safety: [
+    {
+      // Datasets (3) → attack classes. Public, web-verified IDS benchmarks.
+      id: "cicids-2017-dataset",
+      domain: "ai_safety",
+      kind: "literature",
+      citation:
+        "Sharafaldin I, Lashkari AH, Ghorbani AA. 'Toward Generating a New Intrusion Detection Dataset " +
+        "and Intrusion Traffic Characterization.' 4th Intl Conf on Information Systems Security and Privacy " +
+        "(ICISSP), Portugal, Jan 2018. Canadian Institute for Cybersecurity, Univ. of New Brunswick " +
+        "(unb.ca/cic/datasets/ids-2017.html).",
+      note:
+        "Grounds the CICIDS-2017→{DDoS, Brute Force, Heartbleed} membership edges: all three are labelled " +
+        "classes in the published taxonomy (Heartbleed captured Wed 5-Jul-2017). The edge asserts corpus→" +
+        "class membership (verifiable from the dataset docs); the 0.9/0.95 weight/confidence are an author " +
+        "calibration of detection salience, not a figure from the paper.",
+    },
+    {
+      id: "unsw-nb15-dataset",
+      domain: "ai_safety",
+      kind: "literature",
+      citation:
+        "Moustafa N, Slay J. 'UNSW-NB15: a comprehensive data set for network intrusion detection systems.' " +
+        "2015 Military Communications and Information Systems Conference (MilCIS), Canberra, 10-12 Nov 2015. " +
+        "Cyber Range Lab, Australian Centre for Cyber Security, UNSW (research.unsw.edu.au/projects/unsw-nb15-dataset).",
+      note:
+        "Grounds the UNSW-NB15→{Exploits, DoS, Fuzzers} membership edges: all three are among the dataset's " +
+        "nine published attack categories (49 features). Corpus→class membership is verifiable; the scalars " +
+        "are author calibration of detection salience.",
+    },
+    {
+      id: "awid3-dataset",
+      domain: "ai_safety",
+      kind: "literature",
+      citation:
+        "Chatzoglou E, Kambourakis G, Kolias C. 'Empirical Evaluation of Attacks Against IEEE 802.11 " +
+        "Enterprise Networks: The AWID3 Dataset.' IEEE Access, 2021. (Original AWID: Kolias C, Kambourakis G, " +
+        "Stavrou A, Gritzalis S. 'Intrusion Detection in 802.11 Networks.' IEEE Comms Surveys & Tutorials, 2016.) " +
+        "Univ. of the Aegean.",
+      note:
+        "Grounds the AWID→{frame-injection, spoofing/impersonation, evil-twin MITM} membership edges: all are " +
+        "covered 802.11 attack classes in AWID3. CAVEAT: the node's 'AWID-H23Q' label (HTTP/2-3/QUIC revision) " +
+        "is the DISSERTATION'S working subset name, NOT a published benchmark — the citable public dataset is " +
+        "AWID3. Scalars are author calibration.",
+    },
+    {
+      // Dissertation architecture (Ch 8): GAT learner + window scheduler + eval harness.
+      id: "ghauri-gat-continual-ids",
+      domain: "ai_safety",
+      kind: "literature",
+      citation:
+        "Ghauri 2025 D.Eng., Ch 8 — continual-IDS reference architecture: 3-layer Graph Attention Network " +
+        "(8 heads, dim 64, ELU, dropout 0.2); streaming scheduler segmenting each corpus into 24 one-hour " +
+        "windows (one epoch/window, weights frozen between windows); evaluation harness computing Forgetting " +
+        "Rate (FR), Bridge-Edge Strength (BES) and Hub-Edge Strength (HES) per window.",
+      note:
+        "Backs the corpus→GAT, scheduler→GAT and GAT→eval pipeline edges. HONESTY: single-author D.Eng. " +
+        "dissertation, NOT independently web-verified — but the FR/window-scheduler/eval machinery is " +
+        "implemented in src/lib/discovery/{fr-estimator,ai-safety-demo-trace}.ts, and the Ch 8 architecture " +
+        "specs reproduced here already appear on the ais_gat / ais_training_scheduler / ais_eval_harness " +
+        "nodes. weight/confidence are author calibration. (On the corpus→GAT edges the dataset citation sits " +
+        "on the confidence axis — the corpus identity IS web-verifiable.)",
+    },
+    {
+      // Dissertation result (Ch 8 §4.1): BES is a leading indicator of forgetting.
+      id: "ghauri-bes-leading-indicator",
+      domain: "ai_safety",
+      kind: "literature",
+      citation:
+        "Ghauri 2025 D.Eng., Ch 8 §4.1 — Bridge-Edge Strength (BES = mean attention weight α_e over edges " +
+        "e ∈ χ★) measured at the GAT attention heads; BES peaks lead Forgetting-Rate spikes by 0-1 windows.",
+      note:
+        "Backs the GAT→attention-layer edge (BES is read at the attention heads as a leading cascade " +
+        "indicator). HONESTY: dissertation not independently web-verified; the BES↔FR temporal-lead " +
+        "relationship is implemented in src/lib/discovery/bes-temporal.ts + src/lib/estimators/chi-star.ts, " +
+        "and the Ch 8 §4.1 ref already appears on the ais_attention_layer node. weight is author calibration.",
+    },
+    {
+      // MIGRATED from PR #391 inline seed on ais_attention_layer__ais_replay_buffer (verbatim).
+      id: "ghauri-bes-replay-selection",
+      domain: "ai_safety",
+      kind: "literature",
+      citation: "Ghauri 2025 D.Eng., Ch 6 §3 (BES-biased buffer selection)",
+      note:
+        "p=0.9 incident, p=0.05 baseline. Backs the attention→replay-buffer and eval→replay-buffer edges: " +
+        "flows incident on χ★ bridge edges enter the rehearsal buffer at p=0.9 vs p=0.05 baseline. HONESTY: " +
+        "dissertation not independently web-verified; the χ★-biased selection is implemented in " +
+        "src/lib/discovery/omega-forgetting-pressure.ts + src/lib/estimators/chi-star.ts. (Registry migration " +
+        "of the inline seed shipped in PR #391 — kind, section and numeric claim unchanged.)",
+    },
+    {
+      // MIGRATED from PR #391 inline seed on ais_replay_buffer__ais_gat (verbatim).
+      id: "ghauri-replay-forgetting-reduction",
+      domain: "ai_safety",
+      kind: "regression",
+      citation: "Ghauri 2025 D.Eng., Ch 8 §6",
+      rSquared: 0.51,
+      note:
+        "Forgetting Rate halved vs. no-replay baseline (paired t, n=24 windows). Backs the replay-buffer→GAT " +
+        "rehearsal-loop edge (and the confidence of eval→buffer). HONESTY: single-author dissertation, NOT " +
+        "independently web-verified; the forgetting-reduction loop is implemented in " +
+        "src/lib/discovery/fr-estimator.ts + omega-forgetting-pressure.ts. (Registry migration of the inline " +
+        "seed shipped in PR #391 — kind, section, rSquared and numeric claim unchanged.)",
     },
   ],
 };

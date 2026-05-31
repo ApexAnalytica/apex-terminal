@@ -158,10 +158,10 @@ describe("live registry — t1d audit", () => {
 
   it("only the audited domains populate the live index", () => {
     // allEdgeProvenanceEntries flattens every populated domain. Today that's
-    // t1d (6) + vx880 (4) + geo_energy (10) = 20; un-audited domains resolve
-    // to an empty catalog.
-    expect(allEdgeProvenanceEntries().length).toBe(20);
-    expect(getEdgeProvenanceCatalog("ai_safety")).toEqual([]);
+    // t1d (6) + vx880 (4) + geo_energy (10) + ai_safety (7) = 27; un-audited
+    // domains resolve to an empty catalog.
+    expect(allEdgeProvenanceEntries().length).toBe(27);
+    expect(getEdgeProvenanceCatalog("finance")).toEqual([]);
   });
 });
 
@@ -263,6 +263,78 @@ describe("live registry — geo_energy audit", () => {
   });
 });
 
+describe("live registry — ai_safety audit", () => {
+  // The AI-safety / IDS continual-learning leg (Ghauri 2025 D.Eng., Ch 5-8).
+  // Two honestly-distinct grounding tiers: three dataset→attack entries cite
+  // PUBLIC, web-verifiable IDS benchmarks (CICIDS-2017, UNSW-NB15, AWID3); four
+  // `ghauri-*` entries cite the dissertation's own architecture (NOT
+  // independently web-verifiable) and point at the in-repo implementation.
+  const AI_DATASET_IDS = [
+    "cicids-2017-dataset",
+    "unsw-nb15-dataset",
+    "awid3-dataset",
+  ];
+  const AI_DISSERTATION_IDS = [
+    "ghauri-gat-continual-ids",
+    "ghauri-bes-leading-indicator",
+    "ghauri-bes-replay-selection",
+    "ghauri-replay-forgetting-reduction",
+  ];
+
+  it("exposes the audited ai_safety catalog as 3 dataset + 4 dissertation entries", () => {
+    const catalog = getEdgeProvenanceCatalog("ai_safety");
+    expect(catalog.length).toBe(7);
+    expect(catalog.map((e) => e.id).sort()).toEqual(
+      [...AI_DATASET_IDS, ...AI_DISSERTATION_IDS].sort(),
+    );
+    for (const entry of catalog) {
+      expect(entry.domain).toBe("ai_safety");
+      expect(entry.citation).toBeTruthy();
+    }
+  });
+
+  it("public IDS datasets are literature; the one quantitative dissertation result is regression", () => {
+    for (const id of AI_DATASET_IDS) {
+      expect(getEdgeProvenanceEntry(id)?.kind).toBe("literature");
+    }
+    // Three dissertation entries assert a relationship (literature); only the
+    // migrated PR #391 replay→GAT seed is a quantitative fit (regression).
+    expect(getEdgeProvenanceEntry("ghauri-gat-continual-ids")?.kind).toBe(
+      "literature",
+    );
+    expect(getEdgeProvenanceEntry("ghauri-bes-leading-indicator")?.kind).toBe(
+      "literature",
+    );
+    expect(getEdgeProvenanceEntry("ghauri-bes-replay-selection")?.kind).toBe(
+      "literature",
+    );
+    const forgetting = getEdgeProvenanceEntry(
+      "ghauri-replay-forgetting-reduction",
+    );
+    expect(forgetting?.kind).toBe("regression");
+    expect(forgetting?.rSquared).toBe(0.51);
+  });
+
+  it("every dissertation entry carries the 'not independently web-verified' honesty caveat", () => {
+    // Honesty constraint: the Ghauri D.Eng. dissertation is a single-author
+    // source we cannot web-verify, so each note must flag that AND point at the
+    // in-repo implementation (src/lib/discovery/*) as the checkable grounding.
+    for (const id of AI_DISSERTATION_IDS) {
+      const note = getEdgeProvenanceEntry(id)?.note?.toLowerCase();
+      expect(note).toContain("not independently web-verified");
+      expect(note).toContain("src/lib/discovery");
+    }
+  });
+
+  it("the AWID3 entry flags that the node's 'H23Q' label is not a published benchmark", () => {
+    // The graph node is named ais_awid_h23q, but the citable public dataset is
+    // AWID3; H23Q is the dissertation's working subset name, not a benchmark.
+    expect(
+      getEdgeProvenanceEntry("awid3-dataset")?.note?.toLowerCase(),
+    ).toContain("not a published benchmark");
+  });
+});
+
 // ─── Forward-looking guard over real shipped graph data ─────────────────
 
 describe("real graph data ref integrity", () => {
@@ -309,18 +381,77 @@ describe("real graph data ref integrity", () => {
     // confidence ref → 32 ref slots. The Abqaiq/Hormuz P1 edges and both DXY→EM
     // edges deliberately split weight (the empirical channel fit) from
     // confidence (an EIA chokepoint fact / dollar-funding literature anchor).
-    const geoRefs = MAIN_GRAPH.edges
+    // Scoped to geo_energy-resolved refs so the ai_safety leg (also tagged in
+    // MAIN_GRAPH) doesn't inflate the counts.
+    const geoEdges = MAIN_GRAPH.edges.filter(
+      (e) =>
+        e.weightSourceRef &&
+        getEdgeProvenanceEntry(e.weightSourceRef)?.domain === "geo_energy",
+    );
+    const geoRefs = geoEdges
       .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
       .filter((r): r is string => Boolean(r));
     expect(geoRefs.length).toBe(32);
     expect(validateEdgeProvenanceRefs(geoRefs)).toEqual([]);
     // The split-axis edges actually use distinct weight vs confidence sources.
-    const splitAxisCount = MAIN_GRAPH.edges.filter(
+    const splitAxisCount = geoEdges.filter(
       (e) =>
         e.weightSourceRef &&
         e.confidenceSourceRef &&
         e.weightSourceRef !== e.confidenceSourceRef,
     ).length;
     expect(splitAxisCount).toBe(4);
+  });
+
+  it("the ai_safety audit tagged real MAIN_GRAPH edges (guard is non-vacuous)", () => {
+    // The AI-safety leg tagged 18 main-graph pipeline edges (9 dataset→attack,
+    // 3 dataset→GAT, scheduler→GAT, GAT→attention, attention→buffer, buffer→GAT,
+    // GAT→eval, eval→buffer), each carrying both a weight + confidence ref → 36
+    // ref slots. The 3 dataset→GAT edges and the eval→buffer loop split weight
+    // (dissertation architecture / selection rule) from confidence (the
+    // web-verifiable corpus / the forgetting-reduction result) → 4 split-axis.
+    // The 3 cross-domain cascade bridges (ddos→telecom, ddos→latency,
+    // mitm→banking) are left UNTAGGED — no verifiable cascade-magnitude source.
+    const aiEdges = MAIN_GRAPH.edges.filter(
+      (e) =>
+        e.weightSourceRef &&
+        getEdgeProvenanceEntry(e.weightSourceRef)?.domain === "ai_safety",
+    );
+    const aiRefs = aiEdges
+      .flatMap((e) => [e.weightSourceRef, e.confidenceSourceRef])
+      .filter((r): r is string => Boolean(r));
+    expect(aiRefs.length).toBe(36);
+    expect(validateEdgeProvenanceRefs(aiRefs)).toEqual([]);
+    const splitAxisCount = aiEdges.filter(
+      (e) =>
+        e.weightSourceRef &&
+        e.confidenceSourceRef &&
+        e.weightSourceRef !== e.confidenceSourceRef,
+    ).length;
+    expect(splitAxisCount).toBe(4);
+  });
+
+  it("the two PR #391 inline seeds were migrated to registry refs (no inline source survives)", () => {
+    // attention→buffer and buffer→GAT used to carry inline weightSource objects;
+    // the audit replaced them with registry refs (verbatim claims). Assert the
+    // inline source is gone and the regression seed's rSquared survived intact.
+    const seedEdges = MAIN_GRAPH.edges.filter((e) =>
+      [
+        "ais_attention_layer__ais_replay_buffer",
+        "ais_replay_buffer__ais_gat",
+      ].includes(e.id),
+    );
+    expect(seedEdges.length).toBe(2);
+    for (const e of seedEdges) {
+      expect(e.weightSource).toBeUndefined();
+      expect(e.confidenceSource).toBeUndefined();
+      expect(e.weightSourceRef).toBeTruthy();
+    }
+    const buffer2gat = seedEdges.find(
+      (e) => e.id === "ais_replay_buffer__ais_gat",
+    )!;
+    expect(getEdgeProvenanceEntry(buffer2gat.weightSourceRef!)?.rSquared).toBe(
+      0.51,
+    );
   });
 });

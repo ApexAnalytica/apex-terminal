@@ -436,3 +436,130 @@ Recorded here for the copilot to surface honestly when a user asks
 
 The copilot should **not** recommend these features to users until
 the underlying concerns are resolved.
+
+---
+
+# Week of 2026-05-24 — broader context
+
+Beyond the 12 PRs walked through above, the same 7-day window shipped
+~40 more PRs. They're grouped here by theme with one-line honest
+notes — terser than the full walkthroughs above, but the copilot can
+still cite them when answering "what shipped this week?" or "is X
+new?".
+
+## Engine work (causal-discovery + verification)
+
+- **PCMCI+ v0.2 — contemporaneous PC-stable + v-structures + Meek (#478)** — replaced v0.1's lagged-imbalance heuristic with canonical Pearl/Meek pipeline. Real algorithm now, not a heuristic. Linear-Gaussian CI only — non-parametric CI still on the roadmap.
+- **Selection-aware Tarski recommender (#467)** — clicking a node now reorders RECOMMENDED axioms with selection-specific reasons. Foundation for the visibility fix (#508).
+- **Domain-aware copilot system prompt (#475)** — T1D sessions now get T1D framing in the LLM's reasoning, not geopolitical analogies. Eval-tested per-profile.
+- **Surface the recommender's "why" (#470)** — the selection-aware boosts were silent before; now every recommended card carries a "why · ..." caption. Predecessor to #508's score badges.
+- **A-02 Flow Conservation — live capacity-saturation branch (#455)** — A-02 now fires on live production/throughput saturation ≥ 90%, not just structural edge-weight imbalance. Matches the A-04 multi-branch pattern shipped earlier.
+- **PCMCI+ contemp + R-03 live branches (#473)** — combined PR: PCMCI+ v0.1 algorithm + R-03 export-route-monopoly live branches (storm, sanctions, saturation). v0.1 PCMCI+ later superseded by #478.
+
+## Calculations registry (entire system, from zero)
+
+- **CALCULATIONS registry + right-rail panel (#457)** — the entire concept. Pure-function calcs that render in the right rail. Foundation for everything below.
+- **"→ DIAL" TimeDial push (#458)** — calcs push values onto node liveData[] as snapshots.
+- **Graph-wide calc snapshots + inline sparkline (#459)** — extends the pattern to graph-wide calcs (mean ΩF, cross-domain edges).
+- **3 more calcs — bridge ratio, mean J, buyer HHI (#466)** — doubled the registry from 3 to 6.
+- **Persist graph-wide calc history (#468)** — first half of the persistence story.
+- **"→ DIAL" auto-pin to watchlist (#489)** — closed the "I pressed DIAL but nothing happened" gap. Calc trajectories now auto-pin to the bottom watchlist on first push.
+- **Persist node-scoped calc trajectories (#493)** — finished the persistence story.
+
+## Dock + watchlist consolidation
+
+- **Consolidate bottom dock into one panel (#464)** — folded the old standalone risk-card strip into a unified WATCHLIST + ΩF TIME SERIES panel on the main `/` page. The big UX consolidation of the week.
+- **Restore collapse toggle (#490)** — fix-up for #464 that brought back a regression.
+- **Persist bottom-dock collapse (#491)** — choice survives reload.
+- **Watchlist left-collapse + persist pinned series (#497)** — narrow column collapse independent of whole-dock collapse.
+
+## Persistence layer
+
+- **Snapshot history + severed edges + enabled axioms (#503)** — user investigation state survives reload.
+- **User preference fields — view, module, persona, etc. (#505)** — preferences survive reload.
+
+## Data + feeds
+
+- **OpenSanctions consolidated watchlist provider (#506)** — sanctions feed beyond just OFAC.
+- **EIA Saudi-crude proxy extended to Ras Tanura (#484)** — production proxy reused for the export terminal node.
+- **EIA Qatar dry-gas → North Field (#479)** — first non-Saudi gas feed.
+
+## Graph data — Phase 16 facet decomposition
+
+- **Phase 16 PR 2: Abqaiq Plants facet decomposition (#456)** — second pilot of the shared-infrastructure pattern; splits an aggregate node into the actual physical facets that connect to different downstream chains.
+- **Phase 16 PR 3: cleanup sweep (#461)** — deletes legacy domain-scoped duplicate nodes once the facet decomposition stabilizes.
+
+## Performance
+
+The week's perf wave: 6 separate PRs that each shaved real wall-clock
+from canvas re-renders. Together they made the 3D canvas usable on
+the medium-density graphs:
+
+- **chi-star content-fingerprint cache (#474)** — was the single
+  biggest hotspot (O(V·E) Brandes runs on every render).
+- **graphSignature() fingerprint cache (#476)**
+- **canvas3d cached topology key (#477)**
+- **Slim worker payload (#480)** — less data crossing the worker boundary.
+- **Defer chiStar across all 5 consumers (#471)**
+- **top-N partial select, nodeById map, rAF resize (#507)** — wrap-up
+  round with smaller wins compounded.
+
+## Domain isolation (T1D vs geopolitical)
+
+- **Hide T1D discovery runs when no T1D domain selected (#463)** — the
+  original leak the user caught with a screenshot. Fix #1 of the audit.
+- **Domain-aware ScenarioInput placeholder + leak-audit results (#469)** —
+  full audit; ScenarioInput's Hormuz example was the one real leak found.
+- **Tour copy domain-leak fix (#509)** — round 2 audit; "supply
+  concentration" example in shared-track tour copy.
+
+## Infra + hygiene
+
+- **Header settings menu consolidation (#510)** — refactored top-bar
+  controls. Removed the performative CDΩ monitor that was always
+  showing CRITICAL.
+- **Vercel deploy gating via branch protection (#511)** — closes the
+  "merged before deploy completes" gap. User ran the script.
+- **TS error cleanup (#512)** — `tsc --noEmit` now exits 0 across the
+  whole tree.
+- **3D Canvas frameloop fix (#513)** — orbs animate at idle again.
+
+## Docs
+
+- **Phase 16 Shared-Infrastructure pattern + template (#462)** — recorded
+  the facet-decomposition workflow so future graph expansions follow
+  the same recipe.
+- **Perf rounds 10-20 + remaining sub-ms leftovers (#482)** — wrap-up
+  doc for the perf wave.
+- **EIA aggregate-proxy technique exhausted note (#485)** — honest cap
+  on the proxy approach: it works for Hormuz/Ras Tanura, but LNG export
+  has no exports-activity dataset to proxy from (#486).
+
+---
+
+## Cross-cutting themes the copilot can cite
+
+When asked "what's the story of this week's work?", the honest framing
+groups the 50 PRs into four narratives:
+
+1. **The calc → axiom feedback loop**, end to end. CALCULATIONS registry
+   (#457) → DIAL push (#458, #489) → graph-wide variants (#459, #466) →
+   persistence (#468, #493) → recommender wiring (#495, #504) →
+   visibility (#508). Eight PRs across the week build to: user
+   computes a metric, recommender lifts the matching axiom, trajectory
+   accumulates over time, all of it survives reload.
+
+2. **Recommender went from passive to active**, in three steps.
+   Selection-aware boosts (#467) → reason captions (#470) → memory +
+   score badges + scoring caption (#501, #508). The reorder used to
+   be silent; now it has a face.
+
+3. **PCMCI+ went from heuristic to real**, twice. v0.1 lagged-imbalance
+   (#473) → v0.2 PC-stable + v-structures + Meek (#478) → wired into
+   panel via synthetic CGM (#498) → PAG marks rendered (#499). The
+   algorithm is now canonical Pearl/Meek; the panel wiring is
+   honest-but-incomplete (synthetic substrate, no real D1NAMO).
+
+4. **The performance round** — six PRs (#471, #474, #476, #477, #480,
+   #507) compounded into the 3D canvas being usable on medium-density
+   graphs. The chi-star cache (#474) was the single biggest win.

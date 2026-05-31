@@ -400,6 +400,58 @@ const DEEP_DIVE_STEPS: TourStep[] = [
         "COMPUTE WITH CLAUDE generates a System State Snapshot — a structured digest of nodes, edges, engine outputs, and criticality metrics. Claude does the heavy reasoning; the copilot uses that snapshot as context for follow-up questions. If no Claude key is configured, a local snapshot is computed from graph structure instead. Snapshot status appears as a badge in the copilot header.",
     },
   },
+  // ─── Calculations → DIAL → Watchlist loop ──────────────────────────
+  //
+  // The CALCULATIONS panel + "→ DIAL" + the bottom WATCHLIST + chart
+  // form a four-step closed loop:
+  //   compute → push → row appears → trajectory accumulates over time
+  // Without a tour, it's not obvious that pressing DIAL does anything
+  // (the inline sparkline is small and the watchlist is a different
+  // panel). These three steps walk the user through it once.
+  {
+    id: "calculations-panel-intro",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calculations-panel"]',
+    tooltipPosition: "left",
+    copy: {
+      title: "CALCULATIONS — RIGHT-RAIL CONTEXT",
+      description:
+        "The CALCULATIONS panel surfaces measures that apply to your current focus — Supply HHI / Gini on the selected node, graph-wide cycle count / bridge ratio / edge density when none is selected. Each row carries a tone dot (red / amber / green), the scalar value, and one-clause context. Rows appear and disappear with selection — no fixed widget, no dead chrome.",
+    },
+  },
+  {
+    id: "calc-dial-push",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calc-dial-button"]',
+    tooltipPosition: "left",
+    copy: {
+      title: "→ DIAL — PUSH TO TIMEDIAL",
+      description:
+        "Pressing → DIAL on any calc row snapshots the current value into a trajectory. Node-scoped calcs (HHI, Gini) attach to the selected node's liveData[]; graph-wide calcs (mean ΩF, cycle count) accumulate in a separate per-calc history. First push auto-pins the row to the bottom watchlist + chart so the curve appears immediately. Every press appends a new point — repeat over time to build the trajectory. Both flavours persist across page reloads.",
+    },
+    awaitInteraction: {
+      hint: "Press → DIAL on any calc row to push a snapshot.",
+      // Predicate fires when EITHER history map has its first entry —
+      // the moment a calc gets pushed (node-scoped or graph-wide).
+      predicate: (s) =>
+        Object.keys(s.graphCalcHistory).length > 0 ||
+        Object.keys(s.nodeCalcHistory).length > 0,
+    },
+  },
+  {
+    id: "calc-watchlist-row",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calc-watchlist"]',
+    tooltipPosition: "top",
+    copy: {
+      title: "WATCHLIST — TRAJECTORIES ACCUMULATE HERE",
+      description:
+        "The pushed calc lands as a row in the WATCHLIST column (left side of the bottom dock) with a small CALC badge to distinguish it from node ΩF rows. The chart to the right draws a cyan curve — extending with each subsequent → DIAL press. Trajectories persist across reloads, so a long-running investigation (week-over-week supply concentration drift, daily cycle-count check) is just \"press DIAL on the same calc when you come back.\"",
+    },
+  },
 
   // Customization
   {

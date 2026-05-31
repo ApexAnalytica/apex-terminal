@@ -15,6 +15,13 @@
  * `session_partnerships.md` (OpenSanctions appears in the Bucket-1 data-in
  * tracker).
  *
+ * ENFORCEMENT: the server route (`/api/feeds/opensanctions/targets`) is hard
+ * off unless `OPENSANCTIONS_ENABLED` is set — when unset it serves the mock
+ * and never contacts OpenSanctions' servers, so no commercial use of the
+ * licensed data occurs until an operator deliberately opts in. Merging the
+ * provider is therefore inert on prod; flipping the env var is the explicit
+ * enable step.
+ *
  * The dataset's `statistics.json` carries a pre-aggregated per-country
  * breakdown of sanctioned *targets* (the deduplicated entities a list
  * actually designates, vs. every cross-reference). We surface that as a

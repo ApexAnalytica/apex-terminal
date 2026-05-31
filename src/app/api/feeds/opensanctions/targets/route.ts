@@ -17,8 +17,41 @@ const USER_AGENT = "apex-terminal/feed (sovereign-risk research)";
 
 let cache: { feed: OpenSanctionsFeed; expiresAt: number } | null = null;
 
+/**
+ * Commercial-license gate. OpenSanctions consolidated data is CC-BY-NC 4.0
+ * (NON-COMMERCIAL). The provider is registered unconditionally in
+ * `FEED_PROVIDERS`, but this route refuses to contact OpenSanctions' servers
+ * unless an operator has explicitly opted in via `OPENSANCTIONS_ENABLED`.
+ * When unset, we serve the deterministic mock — no upstream fetch, so no
+ * commercial use of the licensed dataset ever occurs on a deployment that
+ * hasn't deliberately enabled it. Flip `OPENSANCTIONS_ENABLED=1` (e.g. on
+ * Vercel) only once the non-commercial-license posture has been cleared.
+ */
+function opensanctionsEnabled(): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env.OPENSANCTIONS_ENABLED ?? "");
+}
+
 export async function GET() {
   const now = Date.now();
+
+  if (!opensanctionsEnabled()) {
+    // Hard off by default: never touch the CC-BY-NC upstream. Tag the source
+    // "(mock — disabled)" so the UI shows an intentional mock (not a fallback
+    // from an upstream failure) and the operator knows the gate is closed.
+    const feed: OpenSanctionsFeed = {
+      ...mockOpenSanctionsFeed(),
+      source: "OpenSanctions consolidated (mock — disabled)",
+    };
+    return NextResponse.json(feed, {
+      headers: {
+        "x-feed-mode": "mock-disabled",
+        // HTTP header values must be Latin-1 (ByteString) — no em-dash here.
+        "x-feed-error":
+          "opensanctions disabled: set OPENSANCTIONS_ENABLED to opt in (CC-BY-NC non-commercial)",
+      },
+    });
+  }
+
   if (cache && cache.expiresAt > now) {
     return NextResponse.json(cache.feed, { headers: { "x-feed-cache": "hit" } });
   }

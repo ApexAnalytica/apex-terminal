@@ -533,12 +533,20 @@ OFAC has the identical latent bug (its test just never rendered a mock source).
 Both formatters now use `[^:—]` (excludes the em-dash) so the country segment
 right before the colon resolves correctly; live-source parsing is unchanged.
 
-**⚠ MERGE/DEPLOY GATE — LICENSE.** OpenSanctions consolidated data is
-**CC-BY-NC 4.0 (non-commercial)**. Wiring the feed is engineering (this lane,
-done). **Enabling it on the commercial deployment is a partnerships / legal
-decision** — flagged as the headline caveat in PR #506 and documented in the
-feed module header. Merging registers the provider but does NOT make the
-commercial-use call. Do not treat "merged" as "enabled on prod."
+**⚠ MERGE/DEPLOY GATE — LICENSE (enforced in code).** OpenSanctions
+consolidated data is **CC-BY-NC 4.0 (non-commercial)**. Wiring the feed is
+engineering (this lane, done). **Enabling it on the commercial deployment is a
+partnerships / legal decision.** This is now enforced rather than just
+documented: the server route is **hard off unless `OPENSANCTIONS_ENABLED` is
+set**. When unset it serves the mock (`source: "… (mock — disabled)"`,
+`x-feed-mode: mock-disabled`) and **never contacts OpenSanctions' servers** —
+so merging is genuinely inert on prod and no commercial use of the licensed
+dataset occurs until an operator flips the env var on Vercel. Three route
+tests lock this: gate-closed makes zero upstream `fetch` calls; an
+unrecognized flag value (`"false"`) stays off; only an explicit opt-in lets
+the fetch through. (Gotcha found in real-runtime validation: header values are
+Latin-1/ByteString, so the `x-feed-error` string must avoid the em-dash that
+the `source` body field uses.)
 
 `check:feeds` is unaffected — like OFAC, this is a single-payload feed and is
 not catalog-registered in the FRED/WB health check.

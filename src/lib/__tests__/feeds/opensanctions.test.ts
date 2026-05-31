@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   OPENSANCTIONS_INDEX_URL,
   buildOpenSanctionsFeed,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/feeds/opensanctions";
 import { openSanctionsProvider, openSanctionsMatchesNode } from "@/lib/feeds/providers/opensanctions";
 import { formatLiveSignal } from "@/lib/feeds/display";
+import { GET as openSanctionsRoute } from "@/app/api/feeds/opensanctions/targets/route";
 import type { CausalNode } from "@/lib/types";
 
 describe("OPENSANCTIONS_INDEX_URL", () => {
@@ -155,5 +156,61 @@ describe("openSanctionsProvider.matchPayload", () => {
     const batch = openSanctionsProvider.matchPayload(payload, noMatch);
     expect(batch.updates).toHaveLength(0);
     expect(batch.event).toBeUndefined();
+  });
+});
+
+describe("opensanctions route — CC-BY-NC commercial-license gate", () => {
+  const realFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    delete process.env.OPENSANCTIONS_ENABLED;
+    vi.restoreAllMocks();
+  });
+
+  it("serves an intentional mock and NEVER contacts upstream when OPENSANCTIONS_ENABLED is unset", async () => {
+    delete process.env.OPENSANCTIONS_ENABLED;
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await openSanctionsRoute();
+    expect(res.headers.get("x-feed-mode")).toBe("mock-disabled");
+    // The licensed upstream is never touched while the gate is closed.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // HTTP header values must be Latin-1 (ByteString). jsdom doesn't enforce
+    // this but Node's runtime does — guard so no non-Latin-1 char (e.g. an
+    // em-dash) sneaks back into a header value and throws on a real server.
+    const errHeader = res.headers.get("x-feed-error") ?? "";
+    expect([...errHeader].every((ch) => ch.charCodeAt(0) <= 255)).toBe(true);
+
+    const body = await res.json();
+    expect(body.source.toLowerCase()).toContain("mock");
+    expect(body.source).toContain("disabled");
+    // Still carries jurisdictions so the engine path exercises against the mock.
+    expect(Object.keys(body.jurisdictions).length).toBeGreaterThan(0);
+  });
+
+  it("treats unrecognized OPENSANCTIONS_ENABLED values as off (no upstream fetch)", async () => {
+    process.env.OPENSANCTIONS_ENABLED = "false";
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await openSanctionsRoute();
+    expect(res.headers.get("x-feed-mode")).toBe("mock-disabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("attempts the upstream fetch only once explicitly opted in", async () => {
+    process.env.OPENSANCTIONS_ENABLED = "1";
+    // Reject the network so the test stays offline; we only assert that the
+    // gate let the fetch THROUGH (it falls back to mock on the throw).
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("network blocked in test");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await openSanctionsRoute();
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(res.headers.get("x-feed-mode")).toBe("mock-fallback");
   });
 });

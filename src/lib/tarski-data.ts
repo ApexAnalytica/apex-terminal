@@ -371,9 +371,36 @@ export interface ScoredAxiom {
 export interface AxiomRelevanceSelection {
   selectedNode?: string | null;
   selectedNodes?: readonly string[];
+  /**
+   * Per-axiom interaction memory: how recently and how often the user
+   * clicked into this axiom's expanded card. Feeds the recommender's
+   * decayed-recency boost so an axiom the user has been investigating
+   * lately surfaces even when no structural / selection feature fires.
+   * Optional — when omitted the recency layer is skipped entirely
+   * (preserves backwards-compat behaviour).
+   */
+  interactionHistory?: Record<
+    string,
+    { lastClickedAt: string; clickCount: number }
+  >;
+  /**
+   * Override the "now" timestamp used for the decay calculation.
+   * Tests pass a fixed ISO so the boost is deterministic; production
+   * callers omit and we use Date.now(). Stored as ISO-8601.
+   */
+  now?: string;
 }
 
 const SELECTION_BOOST = 0.25;
+/** Max recency boost (matches one structural signal of 0.3 within an
+ *  order of magnitude — strong enough to lift an otherwise-low-relevance
+ *  axiom into the recommended list, not strong enough to swamp
+ *  selection-aware boosts which carry more decision-relevant signal). */
+const RECENCY_BOOST_MAX = 0.15;
+/** Decay time constant in days. exp(-Δd / τ) — Δd=0 ⇒ 1; Δd=τ ⇒ ~0.37;
+ *  Δd=3τ ⇒ ~0.05 (effectively forgotten). 7 days mirrors a working week
+ *  of investigation rhythm. */
+const RECENCY_TAU_DAYS = 7;
 
 /**
  * Score and rank axioms by relevance to the provided graph.
@@ -642,6 +669,41 @@ export function scoreAxiomRelevance(
 
     // L0 axioms always get a base boost — they're physical laws
     if (axiom.level === 0) score += 0.15;
+
+    // ─── Decayed-recency boost (recommender memory) ───────────────
+    // If the user has clicked into this axiom recently, lift its
+    // score by RECENCY_BOOST_MAX × exp(-Δd / τ). Only fires when
+    // interactionHistory is supplied — backwards compat is preserved
+    // for callers that don't pass it. The boost layers on top of the
+    // structural / selection bonuses; reason is overridden only when
+    // nothing more decision-relevant has set one (we don't want
+    // "recently investigated" to mask "Selected: X is a chokepoint").
+    const interaction = selection?.interactionHistory?.[axiom.id];
+    if (interaction) {
+      const nowMs = selection?.now
+        ? Date.parse(selection.now)
+        : Date.now();
+      const lastMs = Date.parse(interaction.lastClickedAt);
+      if (Number.isFinite(nowMs) && Number.isFinite(lastMs) && nowMs >= lastMs) {
+        const deltaDays = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+        const decay = Math.exp(-deltaDays / RECENCY_TAU_DAYS);
+        const recencyBoost = RECENCY_BOOST_MAX * decay;
+        // Cutoff at ~3τ where decay drops below 0.05 — below that the
+        // boost is rounding noise and the reason is meaningless.
+        if (recencyBoost >= 0.005) {
+          score += recencyBoost;
+          if (!reason || reason === "Universal axiom — applies to all profiles") {
+            const dayLabel =
+              deltaDays < 1
+                ? "today"
+                : deltaDays < 2
+                  ? "yesterday"
+                  : `${Math.round(deltaDays)} days ago`;
+            reason = `Recently investigated (${dayLabel})`;
+          }
+        }
+      }
+    }
 
     // Clamp
     score = Math.min(1, score);

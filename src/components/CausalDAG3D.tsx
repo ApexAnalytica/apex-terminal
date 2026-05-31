@@ -1146,11 +1146,16 @@ export default function CausalDAG3D() {
         />
       )}
       <DAGErrorBoundary>
-      {/* frameloop="demand" stops the render loop when idle — invalidate() is called
-          on every interaction event so nothing visible is lost (item #1). */}
+      {/* frameloop="always" so the orb idle-breath in DAGNode3D's useFrame
+          renders continuously, matching 2D/map view behaviour. Was
+          "demand" — a battery-saving optimization that froze the orbs
+          between mouse moves and read as a dead canvas. The
+          invalidate()-based StoreInvalidator / ReplayInvalidator below
+          remain harmless no-ops in always mode and stay for low-cost
+          safety against any future flip back to demand. */}
       <Canvas
         key={canvasKey}
-        frameloop="demand"
+        frameloop="always"
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}

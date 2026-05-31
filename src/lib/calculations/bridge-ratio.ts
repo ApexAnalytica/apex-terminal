@@ -17,7 +17,14 @@ import { chiStar } from "../estimators/chi-star";
 
 const ratioCache = new WeakMap<CausalEdge[], number>();
 
-function bridgeRatio(graph: {
+/**
+ * χ★ / |edges| ratio — share of edges sitting on the load-bearing
+ * skeleton. Exported so the Tarski scorer can read this feature
+ * without re-running the (expensive) Brandes pass. The WeakMap cache
+ * is keyed on the edges array reference, so multiple readers within
+ * one render get the same memoized value.
+ */
+export function bridgeRatio(graph: {
   nodes: CausalGraph["nodes"];
   edges: CausalEdge[];
 }): number {

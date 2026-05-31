@@ -7,6 +7,7 @@ import { getDomainColor } from "@/lib/graph-color";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { CALCULATION_REGISTRY } from "@/lib/calculations/registry";
+import { topByKey } from "@/lib/perf/top-n";
 
 const CHART_HEIGHT = 120;
 // left/right are overridden at runtime to match the TimeDial track's actual
@@ -230,20 +231,44 @@ export default function TimeSeriesOverlay() {
           : { width, left, right },
       );
     };
+    // Coalesce resize storms (window-resize drag, container reflow
+    // chains) into a single per-frame update. ResizeObserver + the
+    // window listener can fire many times within one frame; without
+    // this the geom state was being set 3–5×/frame during interactive
+    // resizes, each triggering a full chart re-render.
+    let rafId: number | null = null;
+    const schedule = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        update();
+      });
+    };
     update();
-    const ro = new ResizeObserver(update);
+    const ro = new ResizeObserver(schedule);
     if (svgRef.current) ro.observe(svgRef.current);
     const track = document.querySelector<HTMLElement>("[data-timedial-track]");
     if (track) ro.observe(track);
-    window.addEventListener("resize", update);
+    window.addEventListener("resize", schedule);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       ro.disconnect();
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", schedule);
     };
   }, [pinnedNodes.length]);
 
   const plotInset = geom;
   const chartW = geom.width;
+
+  // O(1) id → node lookup. Replaces an O(N) Array.find() that ran
+  // once per pinned series inside curves and once per suggestion
+  // candidate — both rebuilt on every feed tick (graphData ref
+  // changes). On a 200-node graph with 6 pinned series that was
+  // ~1200 linear scans per tick.
+  const nodeById = useMemo(
+    () => new Map(graphData.nodes.map((n) => [n.id, n] as const)),
+    [graphData.nodes],
+  );
 
   // Gather histories for pinned nodes. Prefer live-data history when a node
   // has any liveData[] attached (consistent with the per-card sparkline
@@ -253,7 +278,7 @@ export default function TimeSeriesOverlay() {
     if (pinnedNodes.length === 0) return [];
     return pinnedNodes
       .map((nodeId) => {
-        const node = graphData.nodes.find((n) => n.id === nodeId);
+        const node = nodeById.get(nodeId);
         if (!node) return null;
         const dataDesc = getNodeDataDescription(nodeId);
 
@@ -317,7 +342,7 @@ export default function TimeSeriesOverlay() {
       sourceLabel: string | null;
       sourceUnit: string | null;
     }[];
-  }, [pinnedNodes, temporalData, graphData]);
+  }, [pinnedNodes, temporalData, nodeById]);
 
   // (Pinned nodes with no plottable history are surfaced directly in the
   // watchlist rail below via each row's `hasData: false` branch, so the
@@ -445,8 +470,8 @@ export default function TimeSeriesOverlay() {
     const seen = new Set(pinnedNodes);
     const out: { nodeId: string; label: string; color: string; omega: number }[] = [];
     const push = (id: string) => {
-      if (seen.has(id)) return;
-      const n = graphData.nodes.find((x) => x.id === id);
+      if (seen.has(id) || out.length >= 6) return;
+      const n = nodeById.get(id);
       if (!n) return;
       seen.add(id);
       out.push({
@@ -457,12 +482,25 @@ export default function TimeSeriesOverlay() {
       });
     };
     for (const id of [selectedNode, ...selectedNodes]) if (id) push(id);
-    for (const n of graphData.nodes) if (n.liveData && n.liveData.length > 0) push(n.id);
-    [...graphData.nodes]
-      .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
-      .forEach((n) => push(n.id));
-    return out.slice(0, 6);
-  }, [graphData, pinnedNodes, selectedNode, selectedNodes]);
+    for (const n of graphData.nodes) {
+      if (out.length >= 6) break;
+      if (n.liveData && n.liveData.length > 0) push(n.id);
+    }
+    // Partial-select top-Ω instead of full sort. We may push past the
+    // 6-cap from this list since `push` itself respects the cap.
+    if (out.length < 6) {
+      const topRanked = topByKey(
+        graphData.nodes,
+        (n) => n.omegaFragility.composite,
+        6 + seen.size,
+      );
+      for (const n of topRanked) {
+        if (out.length >= 6) break;
+        push(n.id);
+      }
+    }
+    return out;
+  }, [graphData, pinnedNodes, selectedNode, selectedNodes, nodeById]);
 
   // Per-curve scale: each pinned curve normalizes to its OWN min/max so
   // curves with mismatched units (Ω 0-10, %, mb/d, USD/ton, programs)
@@ -725,6 +763,7 @@ export default function TimeSeriesOverlay() {
           strip with a single expand chevron + pin count, letting the chart
           fill the freed width. */}
       <motion.div
+        data-tour="calc-watchlist"
         animate={{ width: watchlistCollapsed ? 24 : 224 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="flex-shrink-0 border-r border-border flex flex-col overflow-hidden"

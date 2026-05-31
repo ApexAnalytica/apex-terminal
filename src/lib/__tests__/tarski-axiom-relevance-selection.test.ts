@@ -341,6 +341,237 @@ describe("scoreAxiomRelevance — calc-driven boosts (HHI → A-05 / R-01)", () 
   });
 });
 
+describe("scoreAxiomRelevance — calc→Tarski wiring (cycles, bridge ratio)", () => {
+  it("lifts A-03 when the graph has a cyclic SCC", () => {
+    // a → b → c → a (3-node cycle)
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graphAcyclic = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+      ],
+    );
+    const graphCyclic = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "a" }),
+      ],
+    );
+    const before = scoreById(scoreAxiomRelevance(graphAcyclic, "geopolitical"));
+    const after = scoreById(scoreAxiomRelevance(graphCyclic, "geopolitical"));
+    const a03Before = before.get("A-03")!;
+    const a03After = after.get("A-03")!;
+    expect(a03After.relevanceScore).toBeGreaterThan(a03Before.relevanceScore);
+    expect(a03After.reason).toContain("cyclic SCC");
+    expect(a03After.reason).toContain("A-03");
+  });
+
+  it("escalates A-03 reason when the selected node sits IN the cycle", () => {
+    const a = makeNode({ id: "a", label: "Refinery", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graph = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "a" }),
+      ],
+    );
+    const noSel = scoreById(scoreAxiomRelevance(graph, "geopolitical"));
+    const withSel = scoreById(
+      scoreAxiomRelevance(graph, "geopolitical", { selectedNode: "a" }),
+    );
+    expect(withSel.get("A-03")!.relevanceScore).toBeGreaterThan(
+      noSel.get("A-03")!.relevanceScore,
+    );
+    expect(withSel.get("A-03")!.reason).toContain("Refinery");
+    expect(withSel.get("A-03")!.reason).toContain("cyclic");
+  });
+
+  it("does NOT escalate A-03 selection reason when the selected node is outside the cycle", () => {
+    // Cycle is b → c → b; selected node "a" is upstream and not part of it.
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const c = makeNode({ id: "c", domain: "energy" });
+    const graph = makeGraph(
+      [a, b, c],
+      [
+        makeEdge({ id: "e1", source: "a", target: "b" }),
+        makeEdge({ id: "e2", source: "b", target: "c" }),
+        makeEdge({ id: "e3", source: "c", target: "b" }),
+      ],
+    );
+    const withSel = scoreById(
+      scoreAxiomRelevance(graph, "geopolitical", { selectedNode: "a" }),
+    );
+    // Structural boost still fires (graph has cycles) but selection-
+    // aware reason does NOT mention "a".
+    expect(withSel.get("A-03")!.reason).not.toContain(": a sits");
+    expect(withSel.get("A-03")!.reason).toContain("cyclic SCC");
+  });
+
+  it("does not touch A-03 when the graph is acyclic", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const b = makeNode({ id: "b", domain: "energy" });
+    const graph = makeGraph(
+      [a, b],
+      [makeEdge({ id: "e1", source: "a", target: "b" })],
+    );
+    const a03 = scoreById(scoreAxiomRelevance(graph, "geopolitical")).get("A-03")!;
+    expect(a03.reason).not.toContain("cyclic");
+  });
+});
+
+describe("scoreAxiomRelevance — recommender memory (recency boost)", () => {
+  it("recent click on an axiom lifts its score above baseline", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const graph = makeGraph([a], []);
+    const baseline = scoreAxiomRelevance(graph, "geopolitical");
+    const baselineR04 = scoreById(baseline).get("R-04")!;
+
+    const withRecency = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-05-30T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z", // Δd = 0
+    });
+    const lifted = scoreById(withRecency).get("R-04")!;
+    expect(lifted.relevanceScore).toBeGreaterThan(baselineR04.relevanceScore);
+    // Δd = 0 ⇒ full boost (~0.15)
+    expect(lifted.relevanceScore - baselineR04.relevanceScore).toBeCloseTo(0.15, 2);
+  });
+
+  it("decays toward zero as Δt grows past several τ", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const graph = makeGraph([a], []);
+    const baseline = scoreAxiomRelevance(graph, "geopolitical");
+    const baselineR04 = scoreById(baseline).get("R-04")!;
+
+    // 30 days ⇒ exp(-30/7) ≈ 0.014 ⇒ boost ≈ 0.0021 (below 0.005 cutoff)
+    const decayed = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-04-30T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    const r04 = scoreById(decayed).get("R-04")!;
+    expect(r04.relevanceScore).toBe(baselineR04.relevanceScore);
+  });
+
+  it("partially decays at Δt = τ (one week)", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const graph = makeGraph([a], []);
+    const baseline = scoreAxiomRelevance(graph, "geopolitical");
+    const baselineR04 = scoreById(baseline).get("R-04")!;
+
+    // 7 days = τ ⇒ exp(-1) ≈ 0.368 ⇒ boost ≈ 0.055
+    const oneTau = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-05-23T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    const r04 = scoreById(oneTau).get("R-04")!;
+    const delta = r04.relevanceScore - baselineR04.relevanceScore;
+    expect(delta).toBeGreaterThan(0.04);
+    expect(delta).toBeLessThan(0.07);
+  });
+
+  it("does NOT mask selection-aware reasons", () => {
+    const hormuz = makeNode({
+      id: "hormuz",
+      label: "Strait of Hormuz",
+      domain: "Saudi Aramco Energy",
+    });
+    const graph = makeGraph([hormuz], []);
+    const scored = scoreAxiomRelevance(graph, "geopolitical", {
+      selectedNode: "hormuz",
+      interactionHistory: {
+        "A-04": {
+          lastClickedAt: "2026-05-30T00:00:00.000Z",
+          clickCount: 5,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    const a04 = scoreById(scored).get("A-04")!;
+    // Selection reason wins; recency does not overwrite it
+    expect(a04.reason).toContain("Strait of Hormuz");
+    expect(a04.reason).not.toContain("Recently investigated");
+  });
+
+  it("falls back to a recency reason when no other reason fires", () => {
+    const a = makeNode({ id: "a", domain: "weather" }); // off-profile
+    const graph = makeGraph([a], []);
+    const scored = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-05-30T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    const r04 = scoreById(scored).get("R-04")!;
+    expect(r04.reason).toContain("Recently investigated");
+    expect(r04.reason).toContain("today");
+  });
+
+  it("uses 'yesterday' / 'N days ago' labels for older clicks", () => {
+    const a = makeNode({ id: "a", domain: "weather" });
+    const graph = makeGraph([a], []);
+    const yesterday = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-05-29T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    expect(scoreById(yesterday).get("R-04")!.reason).toContain("yesterday");
+
+    const fiveDaysAgo = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {
+        "R-04": {
+          lastClickedAt: "2026-05-25T00:00:00.000Z",
+          clickCount: 1,
+        },
+      },
+      now: "2026-05-30T00:00:00.000Z",
+    });
+    expect(scoreById(fiveDaysAgo).get("R-04")!.reason).toContain("5 days ago");
+  });
+
+  it("omitting interactionHistory preserves backwards-compat (no recency layer)", () => {
+    const a = makeNode({ id: "a", domain: "energy" });
+    const graph = makeGraph([a], []);
+    const withoutHistory = scoreAxiomRelevance(graph, "geopolitical");
+    const withEmptyHistory = scoreAxiomRelevance(graph, "geopolitical", {
+      interactionHistory: {},
+    });
+    for (const s of withoutHistory) {
+      const matched = withEmptyHistory.find((x) => x.axiom.id === s.axiom.id)!;
+      expect(matched.relevanceScore).toBe(s.relevanceScore);
+    }
+  });
+});
+
 describe("scoreAxiomRelevance — multi-select reasons use a count", () => {
   it("two selected chokepoints produce a 'Selection (2 nodes)' reason", () => {
     const a = makeNode({

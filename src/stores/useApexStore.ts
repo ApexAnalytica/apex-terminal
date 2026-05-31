@@ -28,12 +28,37 @@ import {
   type NodeCalcHistory,
 } from "@/lib/calc-history-persistence";
 import {
+  loadAxiomInteractionHistory,
+  saveAxiomInteractionHistory,
+  type AxiomInteractionHistory,
+} from "@/lib/axiom-interaction-persistence";
+import {
   loadBottomDockCollapsed,
   saveBottomDockCollapsed,
   loadWatchlistCollapsed,
   saveWatchlistCollapsed,
   loadPinnedSeries,
   savePinnedSeries,
+  loadSeveredEdges,
+  saveSeveredEdges,
+  loadEnabledAxioms,
+  saveEnabledAxioms,
+  loadSnapshotHistory,
+  saveSnapshotHistory,
+  loadViewMode,
+  saveViewMode,
+  loadActiveModule,
+  saveActiveModule,
+  loadNodeSizeMetric,
+  saveNodeSizeMetric,
+  loadVisibleEdgeTypes,
+  saveVisibleEdgeTypes,
+  loadTruthFilter,
+  saveTruthFilter,
+  loadActivePersona,
+  saveActivePersona,
+  loadSelectedDataSources,
+  saveSelectedDataSources,
 } from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
@@ -265,6 +290,24 @@ export interface ApexState {
    *  as hydrateGraphCalcHistory. */
   hydrateNodeCalcHistory: () => void;
 
+  /**
+   * Tracks which Tarski axioms the user has clicked into and when.
+   * Drives the recommender's decayed-recency boost — an axiom the
+   * user has investigated recently surfaces in the recommended list
+   * even when no node selection / structural feature lights it up.
+   *
+   * Persisted to localStorage via axiom-interaction-persistence so the
+   * memory survives reloads (and travel between machines via the
+   * sessions/MD-sync workflow, eventually).
+   */
+  axiomInteractionHistory: AxiomInteractionHistory;
+  /** Record an axiom interaction (the user expanded its card).
+   *  Increments clickCount + bumps lastClickedAt to now. Persists. */
+  recordAxiomInteraction: (axiomId: string) => void;
+  /** Hydrate axiom interaction history from localStorage. SSR-safe
+   *  post-mount pattern. */
+  hydrateAxiomInteractionHistory: () => void;
+
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
@@ -299,6 +342,23 @@ export interface ApexState {
    *  series mutations are persisted automatically by a store-level
    *  subscription (see end of file) — callers only need to hydrate. */
   hydratePinnedSeries: () => void;
+
+  /** Hydrate persisted Pearl-scissors severed edges, enabled Tarski
+   *  axioms, and Pareto snapshot history. Each is persisted on change
+   *  via the store-level subscription at the end of the file; callers
+   *  only need to trigger hydration once on mount. Severed edges are
+   *  pruned against the current graph so stale ids drop. */
+  hydrateSeveredEdges: () => void;
+  hydrateEnabledAxioms: () => void;
+  hydrateSnapshotHistory: () => void;
+
+  /** Hydrate persisted user preferences (viewMode, activeModule,
+   *  nodeSizeMetric, visibleEdgeTypes, truthFilter, activePersona,
+   *  selectedDataSources). All seven validate against their respective
+   *  unions before applying; an unrecognised stored value falls back
+   *  to the in-memory default. Auto-persisted on change via the
+   *  subscription block at the end of the file. */
+  hydrateUserPrefs: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -870,6 +930,38 @@ export const useApexStore = create<ApexState>((set, get) => ({
     });
   },
 
+  axiomInteractionHistory: {},
+  recordAxiomInteraction: (axiomId) => {
+    set((s) => {
+      const now = new Date().toISOString();
+      const existing = s.axiomInteractionHistory[axiomId];
+      const next: AxiomInteractionHistory = {
+        ...s.axiomInteractionHistory,
+        [axiomId]: {
+          lastClickedAt: now,
+          clickCount: (existing?.clickCount ?? 0) + 1,
+        },
+      };
+      saveAxiomInteractionHistory(next);
+      return { axiomInteractionHistory: next };
+    });
+  },
+  hydrateAxiomInteractionHistory: () => {
+    const persisted = loadAxiomInteractionHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory wins on collision (it's
+      // either a fresh click that hasn't been persisted yet or an
+      // identical replay — either way prefer it). Same pattern as
+      // graphCalcHistory hydration.
+      const merged: AxiomInteractionHistory = { ...persisted };
+      for (const [id, rec] of Object.entries(s.axiomInteractionHistory)) {
+        merged[id] = rec;
+      }
+      return { axiomInteractionHistory: merged };
+    });
+  },
+
   // Selected node
   selectedNode: null,
   setSelectedNode: (nodeId) =>
@@ -936,6 +1028,93 @@ export const useApexStore = create<ApexState>((set, get) => ({
       }
       return out;
     });
+  },
+
+  hydrateSeveredEdges: () => {
+    const persisted = loadSeveredEdges();
+    if (!persisted || persisted.length === 0) return;
+    set((s) => {
+      // Prune to edge ids that still exist in the current graph; stale
+      // ids (graph was reloaded with a different schema) silently drop.
+      const valid = new Set(s.graphData.edges.map((e) => e.id));
+      const next = persisted.filter((id) => valid.has(id));
+      if (next.length === 0) return {};
+      return { severedEdges: next };
+    });
+  },
+  hydrateEnabledAxioms: () => {
+    const persisted = loadEnabledAxioms();
+    if (!persisted) return;
+    // Empty stored array is a deliberate "no axioms enabled" — preserved
+    // as such. Set reference always changes here so the persistence
+    // subscription will run once on hydration (harmless idempotent write).
+    set({ enabledAxioms: new Set(persisted) });
+  },
+  hydrateSnapshotHistory: () => {
+    const persisted = loadSnapshotHistory();
+    if (!persisted || persisted.length === 0) return;
+    set({
+      snapshotHistory: persisted,
+      // Surface the most recent persisted snapshot as the "current" so
+      // panels that read currentSnapshot have something to render
+      // immediately on mount.
+      currentSnapshot: persisted[persisted.length - 1],
+    });
+  },
+
+  hydrateUserPrefs: () => {
+    // Validate each stored value against the live union before applying.
+    // Anything stale (renamed enum member, hand-edited corruption) drops
+    // silently rather than being typed as `as ViewMode` and causing a
+    // runtime render mismatch.
+    const out: Partial<ApexState> = {};
+
+    const vm = loadViewMode();
+    if (vm === "2d" || vm === "3d" || vm === "map" || vm === "relief") {
+      out.viewMode = vm;
+    }
+
+    const am = loadActiveModule();
+    if (am === "spirtes" || am === "tarski" || am === "pearl" || am === "pareto") {
+      out.activeModule = am;
+    }
+
+    const nsm = loadNodeSizeMetric();
+    if (nsm === "omega" || nsm === "eigenvector" || nsm === "betweenness") {
+      out.nodeSizeMetric = nsm;
+    }
+
+    const tf = loadTruthFilter();
+    if (tf === "raw" || tf === "verified") out.truthFilter = tf;
+
+    const personaList: ApexState["activePersona"][] = [
+      "scientist",
+      "financial",
+      "macro",
+      "geopolitical",
+      "cross",
+      "analyst",
+    ];
+    const ap = loadActivePersona();
+    if (ap !== null && (personaList as string[]).includes(ap)) {
+      out.activePersona = ap as ApexState["activePersona"];
+    }
+
+    const ds = loadSelectedDataSources();
+    if (ds && ds.length > 0) out.selectedDataSources = ds;
+
+    const vet = loadVisibleEdgeTypes();
+    if (vet) {
+      const allowed: EdgeType[] = ["directed", "confounded", "temporal", "flow"];
+      const filtered = vet.filter((t): t is EdgeType =>
+        (allowed as string[]).includes(t),
+      );
+      // Empty-after-filter means corrupted storage → keep default rather
+      // than hiding every edge type on the user.
+      if (filtered.length > 0) out.visibleEdgeTypes = new Set(filtered);
+    }
+
+    if (Object.keys(out).length > 0) set(out);
   },
 
   // Selected edge
@@ -1698,19 +1877,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
   clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));
 
-// ─── Pinned-series persistence (store-level subscription) ──────────
+// ─── Auto-persistence (store-level subscriptions) ──────────────────
 //
-// Rather than wire savePinnedSeries() into every mutator + every
-// graph-change path that calls prunePinsToGraph(), subscribe once and
-// write whenever either array's reference changes. Reference equality
-// is correct here — all mutators (toggle/clear) and the prune paths
-// produce new arrays via spread/filter, so a referential delta tracks
-// the semantic delta exactly.
+// Rather than wire save*() into every mutator + every graph-change
+// path, subscribe once per concern and write whenever the watched
+// reference changes. Reference equality is correct here — all
+// mutators (toggle/clear/prune) produce new arrays/sets via
+// spread/filter/new Set(...), so a referential delta tracks the
+// semantic delta exactly.
 //
-// SSR-safe via the localStorage guard inside savePinnedSeries itself.
-// The subscription fires once on initial subscribe with `prev` ===
-// current state, so the first invocation is a no-op; subsequent
-// invocations only persist on actual change.
+// SSR-safe via the localStorage guard inside each save* helper. The
+// subscription does not fire on initial subscribe, so the first
+// invocation is always on a real state change.
+
 useApexStore.subscribe((state, prev) => {
   if (
     state.pinnedTimeSeriesNodes === prev.pinnedTimeSeriesNodes &&
@@ -1722,4 +1901,37 @@ useApexStore.subscribe((state, prev) => {
     nodes: state.pinnedTimeSeriesNodes,
     calcs: state.pinnedCalcSeries,
   });
+});
+
+useApexStore.subscribe((state, prev) => {
+  if (state.severedEdges !== prev.severedEdges) {
+    saveSeveredEdges(state.severedEdges);
+  }
+  if (state.enabledAxioms !== prev.enabledAxioms) {
+    saveEnabledAxioms(state.enabledAxioms);
+  }
+  if (state.snapshotHistory !== prev.snapshotHistory) {
+    saveSnapshotHistory(state.snapshotHistory);
+  }
+});
+
+// User-preference fields. Primitives → reference compare is just an
+// equality compare; Sets/arrays produce new references on every change
+// in their setters so === tracks the semantic delta.
+useApexStore.subscribe((state, prev) => {
+  if (state.viewMode !== prev.viewMode) saveViewMode(state.viewMode);
+  if (state.activeModule !== prev.activeModule) saveActiveModule(state.activeModule);
+  if (state.nodeSizeMetric !== prev.nodeSizeMetric) {
+    saveNodeSizeMetric(state.nodeSizeMetric);
+  }
+  if (state.visibleEdgeTypes !== prev.visibleEdgeTypes) {
+    saveVisibleEdgeTypes(state.visibleEdgeTypes);
+  }
+  if (state.truthFilter !== prev.truthFilter) saveTruthFilter(state.truthFilter);
+  if (state.activePersona !== prev.activePersona) {
+    saveActivePersona(state.activePersona);
+  }
+  if (state.selectedDataSources !== prev.selectedDataSources) {
+    saveSelectedDataSources(state.selectedDataSources);
+  }
 });

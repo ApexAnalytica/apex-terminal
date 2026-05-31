@@ -1,5 +1,7 @@
 import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode, getLiveSignal } from "./types";
 import type { TarskiValidationReport } from "./tarski-flags";
+import { countCyclicSCCs } from "./calculations/cycle-count";
+import { bridgeRatio } from "./calculations/bridge-ratio";
 
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts` so consumers that only
@@ -371,9 +373,36 @@ export interface ScoredAxiom {
 export interface AxiomRelevanceSelection {
   selectedNode?: string | null;
   selectedNodes?: readonly string[];
+  /**
+   * Per-axiom interaction memory: how recently and how often the user
+   * clicked into this axiom's expanded card. Feeds the recommender's
+   * decayed-recency boost so an axiom the user has been investigating
+   * lately surfaces even when no structural / selection feature fires.
+   * Optional — when omitted the recency layer is skipped entirely
+   * (preserves backwards-compat behaviour).
+   */
+  interactionHistory?: Record<
+    string,
+    { lastClickedAt: string; clickCount: number }
+  >;
+  /**
+   * Override the "now" timestamp used for the decay calculation.
+   * Tests pass a fixed ISO so the boost is deterministic; production
+   * callers omit and we use Date.now(). Stored as ISO-8601.
+   */
+  now?: string;
 }
 
 const SELECTION_BOOST = 0.25;
+/** Max recency boost (matches one structural signal of 0.3 within an
+ *  order of magnitude — strong enough to lift an otherwise-low-relevance
+ *  axiom into the recommended list, not strong enough to swamp
+ *  selection-aware boosts which carry more decision-relevant signal). */
+const RECENCY_BOOST_MAX = 0.15;
+/** Decay time constant in days. exp(-Δd / τ) — Δd=0 ⇒ 1; Δd=τ ⇒ ~0.37;
+ *  Δd=3τ ⇒ ~0.05 (effectively forgotten). 7 days mirrors a working week
+ *  of investigation rhythm. */
+const RECENCY_TAU_DAYS = 7;
 
 /**
  * Score and rank axioms by relevance to the provided graph.
@@ -421,6 +450,16 @@ export function scoreAxiomRelevance(
     const outDegree = graph.edges.filter((e) => e.source === n.id).length;
     return n.omegaFragility.cascadeLoad >= 7 && outDegree >= 3;
   });
+  // Calc-driven structural features. Cycle count taps the same
+  // iterative-Tarjan helper the cycle-count calc uses, so when the
+  // calc shows red the recommender lifts A-03 in lockstep. Bridge
+  // ratio reads from bridge-ratio.ts's WeakMap cache (keyed on the
+  // edges array) so repeat calls within the same render don't
+  // re-run Brandes.
+  const cyclicSCCCount = countCyclicSCCs(graph.nodes, graph.edges);
+  const hasCycles = cyclicSCCCount > 0;
+  const bridgeRatioPct = bridgeRatio({ nodes: graph.nodes, edges: graph.edges });
+  const hasBrittleSkeleton = bridgeRatioPct >= 0.5;
 
   // ─── Selection-aware feature extraction ──────────────────────────
   // Normalise the (single, multi) selection into one Set<string>; an
@@ -471,6 +510,37 @@ export function scoreAxiomRelevance(
       n.liveData?.find((p) => p.kind === "throughput");
     return !!live && live.capacity > 0 && live.value / live.capacity >= 0.9;
   });
+  // Selection-aware cycle membership: is any selected node part of a
+  // cyclic SCC? Computed only when hasCycles already fired (avoids
+  // re-running Tarjan for the no-cycle case). Used in the A-03
+  // selection-aware boost.
+  const selInCycle = hasSelection && hasCycles && (() => {
+    // Build node→reachable-set via DFS from each selected node, then
+    // check if any reachable node has a path back. Faster than full
+    // SCC re-detection for the selection layer specifically.
+    const adj = new Map<string, string[]>();
+    for (const n of graph.nodes) adj.set(n.id, []);
+    for (const e of graph.edges) {
+      if (e.isSevered) continue;
+      const out = adj.get(e.source);
+      if (out) out.push(e.target);
+    }
+    for (const start of selectedNodes) {
+      const seen = new Set<string>([start.id]);
+      const stack: string[] = [start.id];
+      while (stack.length > 0) {
+        const v = stack.pop()!;
+        for (const w of adj.get(v) ?? []) {
+          if (w === start.id) return true; // back-edge to start = cycle
+          if (!seen.has(w)) {
+            seen.add(w);
+            stack.push(w);
+          }
+        }
+      }
+    }
+    return false;
+  })();
   // Calc-driven concentration features — read user-pushed calc snapshots
   // from node.liveData[] (kind: "calc:supply-hhi" / "calc:buyer-hhi"),
   // pushed via the CALCULATIONS panel's "→ DIAL" button. Threshold
@@ -534,9 +604,33 @@ export function scoreAxiomRelevance(
 
     // Structural relevance bonus
     switch (axiom.id) {
+      case "A-03": // DAG Integrity
+        // Calc-driven: any cyclic SCC in the live graph is a direct
+        // A-03 violation. Lifts A-03 above the recommended threshold
+        // even before the user runs verified-mode Tarski validation.
+        if (hasCycles) {
+          score += 0.3;
+          reason =
+            cyclicSCCCount === 1
+              ? "1 cyclic SCC detected — A-03 violation"
+              : `${cyclicSCCCount} cyclic SCCs detected — A-03 violation`;
+        }
+        break;
       case "A-04": // Chokepoint
       case "R-03": // Export Route Monopoly
-        if (hasChokepoints) { score += 0.3; reason = "Chokepoint nodes detected in graph"; }
+        if (hasChokepoints) {
+          score += 0.3;
+          reason = "Chokepoint nodes detected in graph";
+        } else if (hasBrittleSkeleton) {
+          // Calc-driven: bridge-ratio ≥ 50% means most edges sit on
+          // the load-bearing skeleton, so removing the wrong one
+          // cascades — the same brittleness chokepoints expose,
+          // detected structurally rather than by name. Lower score
+          // than a direct chokepoint match (label-detected is more
+          // decision-relevant) but still recommended-worthy.
+          score += 0.25;
+          reason = `Bridge ratio ${(bridgeRatioPct * 100).toFixed(0)}% — load-bearing skeleton dominates`;
+        }
         break;
       case "R-04": // Cross-Domain
         if (hasCrossDomainEdges) { score += 0.3; reason = "Cross-domain links present"; }
@@ -571,6 +665,15 @@ export function scoreAxiomRelevance(
     // sees WHY their click moved this axiom up the list.
     if (hasSelection) {
       switch (axiom.id) {
+        case "A-03":
+          if (selInCycle) {
+            // Stronger than the graph-wide hasCycles boost — pins the
+            // violation to the user's focus so they see WHICH node is
+            // implicated.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} sits in a cyclic SCC — A-03 violation`;
+          }
+          break;
         case "A-04":
         case "R-03":
           if (selChokepoint) {
@@ -642,6 +745,41 @@ export function scoreAxiomRelevance(
 
     // L0 axioms always get a base boost — they're physical laws
     if (axiom.level === 0) score += 0.15;
+
+    // ─── Decayed-recency boost (recommender memory) ───────────────
+    // If the user has clicked into this axiom recently, lift its
+    // score by RECENCY_BOOST_MAX × exp(-Δd / τ). Only fires when
+    // interactionHistory is supplied — backwards compat is preserved
+    // for callers that don't pass it. The boost layers on top of the
+    // structural / selection bonuses; reason is overridden only when
+    // nothing more decision-relevant has set one (we don't want
+    // "recently investigated" to mask "Selected: X is a chokepoint").
+    const interaction = selection?.interactionHistory?.[axiom.id];
+    if (interaction) {
+      const nowMs = selection?.now
+        ? Date.parse(selection.now)
+        : Date.now();
+      const lastMs = Date.parse(interaction.lastClickedAt);
+      if (Number.isFinite(nowMs) && Number.isFinite(lastMs) && nowMs >= lastMs) {
+        const deltaDays = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+        const decay = Math.exp(-deltaDays / RECENCY_TAU_DAYS);
+        const recencyBoost = RECENCY_BOOST_MAX * decay;
+        // Cutoff at ~3τ where decay drops below 0.05 — below that the
+        // boost is rounding noise and the reason is meaningless.
+        if (recencyBoost >= 0.005) {
+          score += recencyBoost;
+          if (!reason || reason === "Universal axiom — applies to all profiles") {
+            const dayLabel =
+              deltaDays < 1
+                ? "today"
+                : deltaDays < 2
+                  ? "yesterday"
+                  : `${Math.round(deltaDays)} days ago`;
+            reason = `Recently investigated (${dayLabel})`;
+          }
+        }
+      }
+    }
 
     // Clamp
     score = Math.min(1, score);

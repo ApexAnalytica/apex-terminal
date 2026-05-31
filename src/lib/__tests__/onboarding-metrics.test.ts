@@ -49,7 +49,7 @@ describe("logTourEvent", () => {
   });
 
   it("posts to /api/tour/event with the JSON-serialised event", async () => {
-    const fetchSpy = vi.fn(async () =>
+    const fetchSpy = vi.fn<typeof fetch>(async () =>
       new Response('{"ok":true}', { status: 200 }),
     );
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
@@ -61,8 +61,8 @@ describe("logTourEvent", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("/api/tour/event");
-    expect((init as RequestInit).method).toBe("POST");
-    const body = JSON.parse(((init as RequestInit).body as string));
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse((init?.body as string));
     expect(body).toMatchObject({
       event: "first_run_completed",
       stepId: "first-run-finish",
@@ -92,7 +92,7 @@ describe("logTourEvent", () => {
   });
 
   it("uses keepalive so a tab-close on tour_closed still flushes", async () => {
-    const fetchSpy = vi.fn(async () =>
+    const fetchSpy = vi.fn<typeof fetch>(async () =>
       new Response("{}", { status: 200 }),
     );
     globalThis.fetch = fetchSpy as unknown as typeof fetch;

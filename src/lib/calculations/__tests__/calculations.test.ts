@@ -4,8 +4,11 @@ import {
   availableCalculations,
 } from "@/lib/calculations/registry";
 import { hhiCalculation } from "@/lib/calculations/hhi";
+import { giniCalculation } from "@/lib/calculations/gini";
 import { outdegreeHhiCalculation } from "@/lib/calculations/outdegree-hhi";
 import { crossDomainEdgesCalculation } from "@/lib/calculations/cross-domain-edges";
+import { edgeDensityCalculation } from "@/lib/calculations/edge-density";
+import { cycleCountCalculation } from "@/lib/calculations/cycle-count";
 import { bridgeRatioCalculation } from "@/lib/calculations/bridge-ratio";
 import { meanOmegaCalculation } from "@/lib/calculations/mean-omega";
 import { meanJurisdictionalHazardCalculation } from "@/lib/calculations/mean-jurisdictional-hazard";
@@ -536,5 +539,230 @@ describe("outdegreeHhiCalculation", () => {
     expect(snap.point.capacity).toBe(10_000);
     expect(snap.point.unit).toBe("HHI");
     expect(snap.point.source).toContain("Buyer HHI");
+  });
+});
+
+describe("giniCalculation", () => {
+  it("does not apply without a selected node", () => {
+    expect(giniCalculation.appliesWhen(ctx())).toBe(false);
+  });
+
+  it("requires ≥2 inbound edges", () => {
+    const t = makeNode({ id: "t" });
+    const s = makeNode({ id: "s" });
+    expect(
+      giniCalculation.appliesWhen(
+        ctx({
+          graph: {
+            nodes: [t, s],
+            edges: [makeEdge({ id: "e1", source: "s", target: "t" })],
+          },
+          selectedNode: "t",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("returns ~0 for perfectly equal shares (green)", () => {
+    const t = makeNode({ id: "t" });
+    const s1 = makeNode({ id: "s1" });
+    const s2 = makeNode({ id: "s2" });
+    const s3 = makeNode({ id: "s3" });
+    const c = ctx({
+      graph: {
+        nodes: [t, s1, s2, s3],
+        edges: [
+          makeEdge({ id: "e1", source: "s1", target: "t", weight: 0.5 }),
+          makeEdge({ id: "e2", source: "s2", target: "t", weight: 0.5 }),
+          makeEdge({ id: "e3", source: "s3", target: "t", weight: 0.5 }),
+        ],
+      },
+      selectedNode: "t",
+    });
+    const result = giniCalculation.compute(c)!;
+    expect(result.value.kind).toBe("scalar");
+    if (result.value.kind === "scalar") {
+      expect(result.value.value).toBeLessThan(0.05);
+    }
+    expect(result.tone).toBe("green");
+  });
+
+  it("returns high Gini (red) for one dominant + many tiny", () => {
+    const t = makeNode({ id: "t" });
+    const dominant = makeNode({ id: "dom" });
+    const tinies = [0, 1, 2, 3].map((i) => makeNode({ id: `t${i}` }));
+    const edges = [
+      makeEdge({ id: "ed", source: "dom", target: "t", weight: 0.95 }),
+      ...tinies.map((s, i) =>
+        makeEdge({ id: `et${i}`, source: s.id, target: "t", weight: 0.05 }),
+      ),
+    ];
+    const c = ctx({
+      graph: { nodes: [t, dominant, ...tinies], edges },
+      selectedNode: "t",
+    });
+    const result = giniCalculation.compute(c)!;
+    if (result.value.kind === "scalar") {
+      expect(result.value.value).toBeGreaterThan(0.6);
+    }
+    expect(result.tone).toBe("red");
+  });
+
+  it("emits a calc:supply-gini snapshot", () => {
+    const t = makeNode({ id: "t" });
+    const s1 = makeNode({ id: "s1" });
+    const s2 = makeNode({ id: "s2" });
+    const c = ctx({
+      graph: {
+        nodes: [t, s1, s2],
+        edges: [
+          makeEdge({ id: "e1", source: "s1", target: "t", weight: 0.8 }),
+          makeEdge({ id: "e2", source: "s2", target: "t", weight: 0.2 }),
+        ],
+      },
+      selectedNode: "t",
+    });
+    const result = giniCalculation.compute(c)!;
+    const snap = giniCalculation.toSnapshot!(result, c)!;
+    expect(snap.nodeId).toBe("t");
+    expect(snap.point.kind).toBe("calc:supply-gini");
+    expect(snap.point.unit).toBe("Gini");
+  });
+});
+
+describe("edgeDensityCalculation", () => {
+  it("does not apply on an empty graph", () => {
+    expect(edgeDensityCalculation.appliesWhen(ctx())).toBe(false);
+  });
+
+  it("flags dense graphs (density > 0.2) as red", () => {
+    // 3 nodes, 6 possible directed edges, 2 active → density 0.33
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c2 = makeNode({ id: "c" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b, c2],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b" }),
+          makeEdge({ id: "e2", source: "b", target: "c" }),
+        ],
+      },
+    });
+    const result = edgeDensityCalculation.compute(c)!;
+    if (result.value.kind === "scalar") {
+      expect(result.value.value).toBeCloseTo(2 / 6, 3);
+    }
+    expect(result.tone).toBe("red");
+  });
+
+  it("ignores severed edges when counting", () => {
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b", isSevered: true }),
+        ],
+      },
+    });
+    // appliesWhen passes (edges.length > 0) but the severed edge is
+    // skipped so density = 0/2 = 0.
+    const result = edgeDensityCalculation.compute(c)!;
+    if (result.value.kind === "scalar") {
+      expect(result.value.value).toBe(0);
+    }
+    expect(result.tone).toBe("green");
+  });
+});
+
+describe("cycleCountCalculation", () => {
+  it("returns 0 for an acyclic graph (green)", () => {
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c2 = makeNode({ id: "c" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b, c2],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b" }),
+          makeEdge({ id: "e2", source: "b", target: "c" }),
+        ],
+      },
+    });
+    const result = cycleCountCalculation.compute(c)!;
+    if (result.value.kind === "scalar") expect(result.value.value).toBe(0);
+    expect(result.tone).toBe("green");
+  });
+
+  it("detects a 3-node cycle (red)", () => {
+    // a → b → c → a
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c2 = makeNode({ id: "c" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b, c2],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b" }),
+          makeEdge({ id: "e2", source: "b", target: "c" }),
+          makeEdge({ id: "e3", source: "c", target: "a" }),
+        ],
+      },
+    });
+    const result = cycleCountCalculation.compute(c)!;
+    if (result.value.kind === "scalar") expect(result.value.value).toBe(1);
+    expect(result.tone).toBe("red");
+    expect(result.detail).toContain("A-03");
+  });
+
+  it("detects a self-loop", () => {
+    const a = makeNode({ id: "a" });
+    const c = ctx({
+      graph: {
+        nodes: [a],
+        edges: [makeEdge({ id: "e1", source: "a", target: "a" })],
+      },
+    });
+    const result = cycleCountCalculation.compute(c)!;
+    if (result.value.kind === "scalar") expect(result.value.value).toBe(1);
+  });
+
+  it("treats severed edges as removed", () => {
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b" }),
+          makeEdge({ id: "e2", source: "b", target: "a", isSevered: true }),
+        ],
+      },
+    });
+    const result = cycleCountCalculation.compute(c)!;
+    if (result.value.kind === "scalar") expect(result.value.value).toBe(0);
+  });
+
+  it("detects two disjoint cycles", () => {
+    // Cycle 1: a → b → a; Cycle 2: c → d → c
+    const a = makeNode({ id: "a" });
+    const b = makeNode({ id: "b" });
+    const c2 = makeNode({ id: "c" });
+    const d = makeNode({ id: "d" });
+    const c = ctx({
+      graph: {
+        nodes: [a, b, c2, d],
+        edges: [
+          makeEdge({ id: "e1", source: "a", target: "b" }),
+          makeEdge({ id: "e2", source: "b", target: "a" }),
+          makeEdge({ id: "e3", source: "c", target: "d" }),
+          makeEdge({ id: "e4", source: "d", target: "c" }),
+        ],
+      },
+    });
+    const result = cycleCountCalculation.compute(c)!;
+    if (result.value.kind === "scalar") expect(result.value.value).toBe(2);
   });
 });

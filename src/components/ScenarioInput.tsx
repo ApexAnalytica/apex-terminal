@@ -44,7 +44,16 @@ const PLACEHOLDER_GEOPOLITICAL =
 const PLACEHOLDER_T1D =
   "e.g. “Which edges should be cut to keep insulin-independence above 50% at 12 months?”\nThe copilot interprets the scenario, injects appropriate shocks, and proposes the cheapest defensive cuts.";
 
-export default function ScenarioInput() {
+// `embedded` renders just the textarea + submit control, dropping the
+// component's own header chip and footer explanation. The redesigned
+// PEARL workspace supplies those via the shared SectionHeader (title +
+// `?`), so printing them again here would duplicate the prose the
+// redesign is trying to remove.
+export default function ScenarioInput({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const selectedDomains = useApexStore((s) => s.selectedDomains);
@@ -80,16 +89,22 @@ export default function ScenarioInput() {
   return (
     <div
       data-tour="scenario-input"
-      className="border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2"
+      className={
+        embedded
+          ? "space-y-2"
+          : "border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2"
+      }
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-          SCENARIO {"→"} INTERDICTION
-        </span>
-        <span className="text-[7px] font-mono text-text-muted">
-          natural language
-        </span>
-      </div>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
+            SCENARIO {"→"} INTERDICTION
+          </span>
+          <span className="text-[7px] font-mono text-text-muted">
+            natural language
+          </span>
+        </div>
+      )}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -119,10 +134,12 @@ export default function ScenarioInput() {
           {busy ? "SUBMITTING…" : "RUN INTERDICTION"}
         </button>
       </div>
-      <div className="text-[7px] font-mono text-text-muted/80 leading-relaxed">
-        Routes to the copilot, which parses the prose, injects shocks,
-        runs the solver, and returns candidate cuts in the panel below.
-      </div>
+      {!embedded && (
+        <div className="text-[7px] font-mono text-text-muted/80 leading-relaxed">
+          Routes to the copilot, which parses the prose, injects shocks,
+          runs the solver, and returns candidate cuts in the panel below.
+        </div>
+      )}
     </div>
   );
 }

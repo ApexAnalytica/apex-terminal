@@ -45,6 +45,20 @@ import {
   saveEnabledAxioms,
   loadSnapshotHistory,
   saveSnapshotHistory,
+  loadViewMode,
+  saveViewMode,
+  loadActiveModule,
+  saveActiveModule,
+  loadNodeSizeMetric,
+  saveNodeSizeMetric,
+  loadVisibleEdgeTypes,
+  saveVisibleEdgeTypes,
+  loadTruthFilter,
+  saveTruthFilter,
+  loadActivePersona,
+  saveActivePersona,
+  loadSelectedDataSources,
+  saveSelectedDataSources,
 } from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
@@ -337,6 +351,14 @@ export interface ApexState {
   hydrateSeveredEdges: () => void;
   hydrateEnabledAxioms: () => void;
   hydrateSnapshotHistory: () => void;
+
+  /** Hydrate persisted user preferences (viewMode, activeModule,
+   *  nodeSizeMetric, visibleEdgeTypes, truthFilter, activePersona,
+   *  selectedDataSources). All seven validate against their respective
+   *  unions before applying; an unrecognised stored value falls back
+   *  to the in-memory default. Auto-persisted on change via the
+   *  subscription block at the end of the file. */
+  hydrateUserPrefs: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -1038,6 +1060,61 @@ export const useApexStore = create<ApexState>((set, get) => ({
       // immediately on mount.
       currentSnapshot: persisted[persisted.length - 1],
     });
+  },
+
+  hydrateUserPrefs: () => {
+    // Validate each stored value against the live union before applying.
+    // Anything stale (renamed enum member, hand-edited corruption) drops
+    // silently rather than being typed as `as ViewMode` and causing a
+    // runtime render mismatch.
+    const out: Partial<ApexState> = {};
+
+    const vm = loadViewMode();
+    if (vm === "2d" || vm === "3d" || vm === "map" || vm === "relief") {
+      out.viewMode = vm;
+    }
+
+    const am = loadActiveModule();
+    if (am === "spirtes" || am === "tarski" || am === "pearl" || am === "pareto") {
+      out.activeModule = am;
+    }
+
+    const nsm = loadNodeSizeMetric();
+    if (nsm === "omega" || nsm === "eigenvector" || nsm === "betweenness") {
+      out.nodeSizeMetric = nsm;
+    }
+
+    const tf = loadTruthFilter();
+    if (tf === "raw" || tf === "verified") out.truthFilter = tf;
+
+    const personaList: ApexState["activePersona"][] = [
+      "scientist",
+      "financial",
+      "macro",
+      "geopolitical",
+      "cross",
+      "analyst",
+    ];
+    const ap = loadActivePersona();
+    if (ap !== null && (personaList as string[]).includes(ap)) {
+      out.activePersona = ap as ApexState["activePersona"];
+    }
+
+    const ds = loadSelectedDataSources();
+    if (ds && ds.length > 0) out.selectedDataSources = ds;
+
+    const vet = loadVisibleEdgeTypes();
+    if (vet) {
+      const allowed: EdgeType[] = ["directed", "confounded", "temporal", "flow"];
+      const filtered = vet.filter((t): t is EdgeType =>
+        (allowed as string[]).includes(t),
+      );
+      // Empty-after-filter means corrupted storage → keep default rather
+      // than hiding every edge type on the user.
+      if (filtered.length > 0) out.visibleEdgeTypes = new Set(filtered);
+    }
+
+    if (Object.keys(out).length > 0) set(out);
   },
 
   // Selected edge
@@ -1835,5 +1912,26 @@ useApexStore.subscribe((state, prev) => {
   }
   if (state.snapshotHistory !== prev.snapshotHistory) {
     saveSnapshotHistory(state.snapshotHistory);
+  }
+});
+
+// User-preference fields. Primitives → reference compare is just an
+// equality compare; Sets/arrays produce new references on every change
+// in their setters so === tracks the semantic delta.
+useApexStore.subscribe((state, prev) => {
+  if (state.viewMode !== prev.viewMode) saveViewMode(state.viewMode);
+  if (state.activeModule !== prev.activeModule) saveActiveModule(state.activeModule);
+  if (state.nodeSizeMetric !== prev.nodeSizeMetric) {
+    saveNodeSizeMetric(state.nodeSizeMetric);
+  }
+  if (state.visibleEdgeTypes !== prev.visibleEdgeTypes) {
+    saveVisibleEdgeTypes(state.visibleEdgeTypes);
+  }
+  if (state.truthFilter !== prev.truthFilter) saveTruthFilter(state.truthFilter);
+  if (state.activePersona !== prev.activePersona) {
+    saveActivePersona(state.activePersona);
+  }
+  if (state.selectedDataSources !== prev.selectedDataSources) {
+    saveSelectedDataSources(state.selectedDataSources);
   }
 });

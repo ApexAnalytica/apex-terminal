@@ -7,6 +7,21 @@ import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";
 import type { NodeSizeMetric } from "@/lib/types";
+import { topByKey } from "@/lib/perf/top-n";
+
+// Static lookups derived from module-level constants — hoisted out of
+// the domainPanelRows memo so every memo invalidation (which fires on
+// any activeGraph.nodes / selectedDomainCardIds change) doesn't
+// rebuild them from scratch. DOMAIN_CARDS and DOMAIN_MAP are imports;
+// these maps are pure functions of them and never change at runtime.
+const DOMAIN_CARD_BY_ID = new Map(DOMAIN_CARDS.map((c) => [c.id, c]));
+const RAW_DOMAIN_TO_CARD_ID = (() => {
+  const m = new Map<string, string>();
+  for (const [cardId, rawDomains] of Object.entries(DOMAIN_MAP)) {
+    for (const raw of rawDomains) m.set(raw, cardId);
+  }
+  return m;
+})();
 
 /**
  * Documents every visual encoding the network views use, in one
@@ -384,11 +399,6 @@ export default function DAGOverlay() {
   // chose, displayed with the same label they recognised on the way in.
   const selectedDomainCardIds = useApexStore((s) => s.selectedDomains);
   const domainPanelRows = useMemo(() => {
-    const cardById = new Map(DOMAIN_CARDS.map((c) => [c.id, c]));
-    const rawDomainToCardId = new Map<string, string>();
-    for (const [cardId, rawDomains] of Object.entries(DOMAIN_MAP)) {
-      for (const raw of rawDomains) rawDomainToCardId.set(raw, cardId);
-    }
     type Row = {
       key: string;
       label: string;
@@ -399,9 +409,9 @@ export default function DAGOverlay() {
     };
     const byKey = new Map<string, Row>();
     for (const n of activeGraph.nodes) {
-      const cardId = rawDomainToCardId.get(n.domain);
+      const cardId = RAW_DOMAIN_TO_CARD_ID.get(n.domain);
       if (cardId) {
-        const card = cardById.get(cardId);
+        const card = DOMAIN_CARD_BY_ID.get(cardId);
         if (!card) continue;
         const existing = byKey.get(cardId);
         if (existing) {
@@ -448,12 +458,15 @@ export default function DAGOverlay() {
     return rows;
   }, [activeGraph.nodes, selectedDomainCardIds]);
 
-  // Top-Ω nodes
-  const topOmega = useMemo(() => {
-    return [...activeGraph.nodes]
-      .sort((a, b) => b.omegaFragility.composite - a.omegaFragility.composite)
-      .slice(0, 5);
-  }, [activeGraph.nodes]);
+  // Top-Ω nodes. O(N · 5) partial-select via topByKey; was
+  // [...nodes].sort().slice(0, 5) — O(N log N) plus a wasted full-array
+  // allocation. The legend only renders 5 entries, so paying for a
+  // total sort was strictly wasted work.
+  const topOmega = useMemo(
+    () =>
+      topByKey(activeGraph.nodes, (n) => n.omegaFragility.composite, 5),
+    [activeGraph.nodes],
+  );
 
   return (
     <div className="absolute inset-0 pointer-events-none z-10">

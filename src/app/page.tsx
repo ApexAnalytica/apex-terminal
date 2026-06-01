@@ -5,6 +5,13 @@ import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
 import { useFeedRegistry } from "@/hooks/useFeedRegistry";
+import { mark, measureBetween } from "@/lib/perf/instrument";
+
+// Earliest mark on the launch path — fires when this module is
+// evaluated (before any React render). Paired with "launch:firstFrame"
+// emitted from the first canvas's onCreated to give a real
+// page-load-to-pixels number in __manifoldPerf.
+mark("launch:moduleLoad");
 import HeaderBar from "@/components/HeaderBar";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import FeedbackWidget from "@/components/FeedbackWidget";
@@ -200,6 +207,27 @@ export default function Home() {
     severedHydratedRef.current = true;
     hydrateSeveredEdges();
   }, [hasGraph, hydrateSeveredEdges]);
+
+  // View-switch instrumentation. setViewMode in the store stamps a
+  // "view-switch:start:{mode}" mark; this effect closes the loop on
+  // the next paint after the new view commits. rAF gives a real
+  // "switch felt complete" number — measuring just the React commit
+  // skips browser layout / paint cost which is where the user-felt
+  // latency actually lives. Skips the initial mount: no setViewMode
+  // call was made, so there's no matching start mark to measure from.
+  const viewMountedRef = useRef(false);
+  useEffect(() => {
+    if (!viewMountedRef.current) {
+      viewMountedRef.current = true;
+      return;
+    }
+    const startMark = `view-switch:start:${viewMode}`;
+    requestAnimationFrame(() => {
+      const endMark = `view-switch:end:${viewMode}:${performance.now()}`;
+      mark(endMark);
+      measureBetween("view-switch", startMark, endMark);
+    });
+  }, [viewMode]);
 
   // Live-data feed registry — single hook that polls every registered
   // provider on its declared cadence. Add a new provider in

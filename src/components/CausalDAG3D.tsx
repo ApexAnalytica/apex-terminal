@@ -26,6 +26,7 @@ import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTick } from "@/lib/useReplayTick";
 import { AnimatePresence } from "framer-motion";
 import { EpochSnapshot, CausalEdge } from "@/lib/types";
+import { mark, measureBetween } from "@/lib/perf/instrument";
 
 // Error boundary to catch WebGL context loss and recover
 class DAGErrorBoundary extends React.Component<
@@ -1160,6 +1161,15 @@ export default function CausalDAG3D() {
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
+          // Launch instrumentation: r3f calls onCreated once the Canvas
+          // is mounted and the GL context is live but before the first
+          // frame paints. Pair with the "launch:moduleLoad" mark in
+          // page.tsx to give a full module-load → canvas-ready number.
+          // Subsequent canvas remounts (key change) re-fire; the
+          // aggregator rolls them into the same bucket which is fine —
+          // remount cost is itself worth tracking.
+          mark("launch:firstFrame");
+          measureBetween("launch", "launch:moduleLoad", "launch:firstFrame");
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();

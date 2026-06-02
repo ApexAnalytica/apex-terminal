@@ -8,6 +8,7 @@
 // without forking the codebase.
 
 import type { ManifoldModule } from "./types";
+import { DEFAULT_OMEGA_WEIGHTS } from "./types";
 // GEOPOLITICAL_MODULES used to be defined inline here; HeaderBar (on the
 // critical-path bundle) was pulling all 480 LOC of profile data just to
 // render the four tab labels. The constant now lives in `module-tabs.ts`
@@ -132,8 +133,32 @@ const GEOPOLITICAL_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
   },
 };
 
+// \u2500\u2500 \u03A9F weight prose, derived from the single source of truth \u2500\u2500
+// These strings used to hardcode the pillar weights as literal numbers,
+// which silently drifted out of sync with DEFAULT_OMEGA_WEIGHTS \u2014 the value
+// the engine actually aggregates the composite with (see import/enrich.ts,
+// `composite = \u03A3 w\u1D62\u00B7pillar\u1D62`). Deriving the prose from that constant means
+// the copy can never disagree with the engine again: retune the weights and
+// every methodology card updates automatically.
+const OMEGA_W = DEFAULT_OMEGA_WEIGHTS;
+const fmtW = (n: number) => n.toFixed(2);
+/** e.g. "I(0.25) + R(0.20) + J(0.15) + C(0.25) + T(0.15)" */
+const OMEGA_WEIGHTS_INLINE =
+  `I(${fmtW(OMEGA_W.irreplaceability)}) + R(${fmtW(OMEGA_W.restorationLatency)}) + ` +
+  `J(${fmtW(OMEGA_W.jurisdictionalHazard)}) + C(${fmtW(OMEGA_W.cascadeLoad)}) + T(${fmtW(OMEGA_W.tailDepth)})`;
+/** e.g. "0.25 / 0.20 / 0.15 / 0.25 / 0.15" */
+const OMEGA_WEIGHTS_SLASH = [
+  OMEGA_W.irreplaceability,
+  OMEGA_W.restorationLatency,
+  OMEGA_W.jurisdictionalHazard,
+  OMEGA_W.cascadeLoad,
+  OMEGA_W.tailDepth,
+]
+  .map(fmtW)
+  .join(" / ");
+
 const GEOPOLITICAL_METHODOLOGY =
-  "The \u03A9F (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0\u201310. The composite weights are: I(0.25) + R(0.20) + J(0.20) + C(0.20) + T(0.15). Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.";
+  `The \u03A9F (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0\u201310. The composite weights are: ${OMEGA_WEIGHTS_INLINE}. Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.`;
 
 export const GEOPOLITICAL_PROFILE: DomainProfile = {
   id: "geopolitical",
@@ -258,7 +283,7 @@ const T1D_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
 };
 
 const T1D_METHODOLOGY =
-  "The CRITICALITY composite score aggregates five orthogonal biological risk pillars, each scored 0\u201310: mechanism rarity, restoration latency, regulatory exposure, complication load, and outcome tail. Weights match the geopolitical composite (0.25 / 0.20 / 0.20 / 0.20 / 0.15) so cross-domain comparison stays apples-to-apples. Scores above 7.0 flag mechanisms worth prioritising for intervention; above 9.0 indicates nodes whose failure cascades across metabolic, vascular, and neurological subsystems.";
+  `The CRITICALITY composite score aggregates five orthogonal biological risk pillars, each scored 0\u201310: mechanism rarity, restoration latency, regulatory exposure, complication load, and outcome tail. Weights match the geopolitical composite (${OMEGA_WEIGHTS_SLASH}) so cross-domain comparison stays apples-to-apples. Scores above 7.0 flag mechanisms worth prioritising for intervention; above 9.0 indicates nodes whose failure cascades across metabolic, vascular, and neurological subsystems.`;
 
 export const T1D_PROFILE: DomainProfile = {
   id: "t1d",
@@ -385,7 +410,7 @@ const AI_SAFETY_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
 };
 
 const AI_SAFETY_METHODOLOGY =
-  "The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. AI-domain weights skew toward C(0.30) and T(0.30) — cascade and tail are the dominant failure modes per Ghauri (2025) — with I(0.10) + R(0.20) + J(0.10) summing the remainder. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.";
+  `The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. The encoded composite uses the standard cross-profile weights (${OMEGA_WEIGHTS_INLINE}) so AI-Safety scores stay comparable with the geopolitical and clinical profiles. Cascade susceptibility (C) and adversarial tail depth (T) are the dominant failure modes per Ghauri (2025); an AI-specific reweighting toward those pillars is a planned refinement, not yet encoded. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.`;
 
 export const AI_SAFETY_PROFILE: DomainProfile = {
   id: "ai-safety",

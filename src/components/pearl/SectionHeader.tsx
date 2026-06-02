@@ -15,7 +15,8 @@
 // which is itself a cognitive-load win (predictable patterns let the
 // eye move from reading to reasoning).
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export default function SectionHeader({
   title,
@@ -45,6 +46,43 @@ export default function SectionHeader({
   const open = hovered || focused || pinned;
   const popId = useId();
 
+  // The `?` popover renders into a body-level portal rather than as an
+  // in-flow absolute child. The PEARL module panel is a fixed-width
+  // (320px) column with `overflow-hidden` plus a scrolling `overflow-y-auto`
+  // body — both clip an absolutely-positioned popover, so the widest and
+  // most important explanation (DEFINE CUTS) was getting cut off exactly
+  // where it mattered. A fixed-position portal escapes the clip; we clamp
+  // `left` so it can never run off the viewport edge.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const POP_W = 240; // px — must match the w-60 below
+
+  useEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const update = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const margin = 8;
+      const left = Math.min(
+        Math.max(margin, r.left),
+        window.innerWidth - POP_W - margin,
+      );
+      setCoords({ top: r.bottom + 6, left });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   const TitleEl = (
     <span
       className="text-[11px] font-[family-name:var(--font-michroma)] tracking-wider"
@@ -72,6 +110,7 @@ export default function SectionHeader({
         {info && (
           <span className="relative inline-flex">
             <button
+              ref={btnRef}
               type="button"
               aria-label={`About ${title}`}
               aria-describedby={open ? popId : undefined}
@@ -89,16 +128,26 @@ export default function SectionHeader({
             >
               ?
             </button>
-            {open && (
-              <div
-                id={popId}
-                role="tooltip"
-                className="absolute left-0 top-5 z-50 w-60 rounded border bg-surface-elevated p-2 text-[9px] font-mono leading-relaxed text-text-muted shadow-lg"
-                style={{ borderColor: "var(--border)" }}
-              >
-                {info}
-              </div>
-            )}
+            {open &&
+              coords &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  id={popId}
+                  role="tooltip"
+                  className="fixed z-[100] w-60 rounded border bg-surface-elevated p-2 text-[9px] font-mono leading-relaxed text-text-muted shadow-lg"
+                  style={{
+                    top: coords.top,
+                    left: coords.left,
+                    borderColor: "var(--border)",
+                  }}
+                  onMouseEnter={() => setHovered(true)}
+                  onMouseLeave={() => setHovered(false)}
+                >
+                  {info}
+                </div>,
+                document.body,
+              )}
           </span>
         )}
       </div>

@@ -127,6 +127,15 @@ export default function PearlWorkspace({
 
   return (
     <div data-tour="pearl-workspace" className="space-y-3">
+      {/* One-line orientation. The adviser council pushed back hard on
+          removing ALL guidance: "operationalize" is a workflow-legibility
+          gap, not only a word-count one. This single plain-language line
+          names the loop and stays visible; concept-level detail still
+          lives behind the `?` popovers per the original brief. */}
+      <p className="text-[10px] font-mono text-text-muted leading-snug">
+        Pick connections to cut, run the cascade, then read the forecast.
+      </p>
+
       {/* ── Zone 1 — DEFINE CUTS ─────────────────────────────── */}
       <section className="border border-accent-amber/25 rounded bg-accent-amber/5 p-3 space-y-2">
         <SectionHeader
@@ -155,6 +164,16 @@ export default function PearlWorkspace({
         <div
           role="tablist"
           aria-label="Cut entry method"
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            const idx = METHOD_TABS.findIndex((t) => t.id === method);
+            const next =
+              e.key === "ArrowRight"
+                ? (idx + 1) % METHOD_TABS.length
+                : (idx - 1 + METHOD_TABS.length) % METHOD_TABS.length;
+            setMethod(METHOD_TABS[next].id);
+          }}
           className="flex items-center gap-1 p-0.5 rounded border border-border bg-surface/40"
         >
           {METHOD_TABS.map((t) => {
@@ -163,7 +182,10 @@ export default function PearlWorkspace({
               <button
                 key={t.id}
                 role="tab"
+                id={`cut-tab-${t.id}`}
                 aria-selected={active}
+                aria-controls={`cut-panel-${t.id}`}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setMethod(t.id)}
                 title={t.hint}
                 className={`flex-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-1 rounded transition-colors ${
@@ -178,16 +200,36 @@ export default function PearlWorkspace({
           })}
         </div>
 
-        {/* Tab body */}
+        {/* Tab body — all three panels stay mounted (hidden when inactive)
+            so switching tabs never discards in-progress scenario text or a
+            computed solver result (each panel holds local state). */}
         <div className="pt-1">
-          {method === "describe" && (
-            <div className="space-y-2">
-              <ScenarioInput embedded />
-              {lastInterdictionResult && <CopilotInterdictionResults />}
-            </div>
-          )}
-          {method === "solve" && <InterdictionPanel embedded />}
-          {method === "manual" && <AblationPanel embedded />}
+          <div
+            role="tabpanel"
+            id="cut-panel-describe"
+            aria-labelledby="cut-tab-describe"
+            hidden={method !== "describe"}
+            className="space-y-2"
+          >
+            <ScenarioInput embedded />
+            {lastInterdictionResult && <CopilotInterdictionResults />}
+          </div>
+          <div
+            role="tabpanel"
+            id="cut-panel-solve"
+            aria-labelledby="cut-tab-solve"
+            hidden={method !== "solve"}
+          >
+            <InterdictionPanel embedded />
+          </div>
+          <div
+            role="tabpanel"
+            id="cut-panel-manual"
+            aria-labelledby="cut-tab-manual"
+            hidden={method !== "manual"}
+          >
+            <AblationPanel embedded />
+          </div>
         </div>
       </section>
 
@@ -268,7 +310,7 @@ export default function PearlWorkspace({
             </>
           }
         />
-        <MonteCarloForecast expanded={expanded} />
+        <MonteCarloForecast expanded={expanded} embedded />
       </section>
 
       {/* ── VX880 — collapsible secondary ────────────────────── */}

@@ -1,21 +1,35 @@
 "use client";
 
 /**
- * DemoFlowPlayer — guided cause-and-effect tour through the causal graph.
+ * DemoFlowPlayer — guided, end-to-end analyst walkthrough.
  *
- * Steps a user through a scripted DemoFlow (see src/lib/demo-flows.ts):
- * sets the relevant domains, loads the graph, injects shocks in
- * sequence, and shows narrative overlays. Restores prior store state
- * on exit.
+ * Interprets a DemoFlow (see src/lib/demo-flows.ts) as a sequence of steps,
+ * each of which can: switch the active module tab, spotlight nodes on the
+ * canvas, and run imperative `actions` against the real store — inject a
+ * shock, run the baseline cascade, run the interdiction solver, apply its
+ * recommended cut and branch a counterfactual timeline. The final step
+ * renders a live before/after payoff card read straight from the engine
+ * output.
  *
- * Mounted at the app root level so it overlays the existing canvas.
- * Visibility is driven by zustand state (`activeDemoFlowId`).
+ * Each step's actions run at most once (executedRef), so Back/Next can't
+ * double-inject a shock or re-run a solve. Async actions are awaited before
+ * the step's dwell timer starts, so the narrative never races the engine.
+ *
+ * Mounted at the app root; visibility is driven by `activeDemoFlowId`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { buildGraphFromDomains } from "@/lib/build-domain-graph";
-import { FLOWS, getFlowById, type DemoFlow } from "@/lib/demo-flows";
-import type { CausalGraph, CausalShock } from "@/lib/types";
+import {
+  computeDemoPayoff,
+  FLOWS,
+  getFlowById,
+  type DemoFlow,
+  type DemoFlowStep,
+  type DemoPayoff,
+} from "@/lib/demo-flows";
+import { getStatusColor } from "@/lib/omega-engine";
+import type { CausalGraph, CausalShock, EpochSnapshot, ModuleId } from "@/lib/types";
 import { useApexStore } from "@/stores/useApexStore";
 
 interface PlayerProps {
@@ -27,21 +41,65 @@ interface PriorState {
   selectedDomains: string[];
   graphData: CausalGraph;
   selectedNodes: string[];
+  activeModule: ModuleId;
+}
+
+/** Poll a predicate until true or timeout. Used to await async store
+ *  populations (baselineEpochs / interventionEpochs landing). */
+function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 9000,
+  intervalMs = 80,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (predicate()) return resolve(true);
+    const start = performance.now();
+    const id = window.setInterval(() => {
+      if (predicate()) {
+        window.clearInterval(id);
+        resolve(true);
+      } else if (performance.now() - start > timeoutMs) {
+        window.clearInterval(id);
+        resolve(false);
+      }
+    }, intervalMs);
+  });
+}
+
+/** Index of the most-critical frame (lowest Ω-buffer). */
+function peakEpochIndex(epochs: EpochSnapshot[]): number {
+  if (epochs.length === 0) return 0;
+  let idx = 0;
+  let worst = Infinity;
+  for (let i = 0; i < epochs.length; i++) {
+    if (epochs[i].omegaBuffer < worst) {
+      worst = epochs[i].omegaBuffer;
+      idx = i;
+    }
+  }
+  return idx;
 }
 
 function Player({ flowId, onClose }: PlayerProps) {
   const flow = useMemo(() => getFlowById(flowId), [flowId]);
-  const addShock = useApexStore((s) => s.addShock);
-  const removeShock = useApexStore((s) => s.removeShock);
+
+  // Store actions (stable references from zustand).
+  const setActiveModule = useApexStore((s) => s.setActiveModule);
+  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
   const setGraphData = useApexStore((s) => s.setGraphData);
-  const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
-  const startReplay = useApexStore((s) => s.startReplay);
-  const stopReplay = useApexStore((s) => s.stopReplay);
+
+  // Live engine state for the payoff card.
+  const baselineEpochs = useApexStore((s) => s.baselineEpochs);
+  const interventionEpochs = useApexStore((s) => s.interventionEpochs);
+  const lastInterdictionResult = useApexStore((s) => s.lastInterdictionResult);
+
   const priorRef = useRef<PriorState | null>(null);
   const injectedShockIdsRef = useRef<string[]>([]);
+  const executedRef = useRef<Set<number>>(new Set());
   const [stepIdx, setStepIdx] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   // ── On mount: capture prior state, load the flow's graph + domains ──
   useEffect(() => {
@@ -51,76 +109,157 @@ function Player({ flowId, onClose }: PlayerProps) {
       selectedDomains: [...store.selectedDomains],
       graphData: store.graphData,
       selectedNodes: [...store.selectedNodes],
+      activeModule: store.activeModule,
     };
-    // Load the graph data so useFilteredGraph has nodes/edges to filter
-    // (the canvas was empty without this — DomainSelector's "Initialize"
-    // button does the same; we replicate it here so the demo works
-    // before the user has committed to a domain selection).
     const merged = buildGraphFromDomains(flow.domainIds);
     setGraphData(merged);
     setSelectedDomains(flow.domainIds);
+
+    const injectedShockIds = injectedShockIdsRef.current;
     return () => {
-      // Cleanup on unmount: stop the cascade replay, clear injected
-      // shocks, restore graph state + prior canvas selection.
-      stopReplay();
-      for (const id of injectedShockIdsRef.current) removeShock(id);
+      // Cleanup on unmount: stop the cascade, clear demo shocks + cuts +
+      // solver result, restore prior graph/domains/selection/module.
+      const s = useApexStore.getState();
+      s.stopReplay();
+      for (const id of injectedShockIds) s.removeShock(id);
       injectedShockIdsRef.current = [];
+      // resetSeveredEdges() also resets graphData to initialGraph, so call
+      // it FIRST and then restore the prior graph on top of it.
+      s.resetSeveredEdges();
+      s.setLastInterdictionResult(null);
       if (priorRef.current) {
-        setGraphData(priorRef.current.graphData);
-        setSelectedDomains(priorRef.current.selectedDomains);
-        setSelectedNodes(priorRef.current.selectedNodes);
+        s.setGraphData(priorRef.current.graphData);
+        s.setSelectedDomains(priorRef.current.selectedDomains);
+        s.setSelectedNodes(priorRef.current.selectedNodes);
+        s.setActiveModule(priorRef.current.activeModule);
       }
     };
-  }, [flow, setSelectedDomains, setGraphData, setSelectedNodes, removeShock, stopReplay]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow]);
 
-  // ── Drive the canvas highlight from the active step's highlightNodeIds ──
-  // Without this, clicking Next changed the narrative card text but the
-  // canvas itself sat inert (highlightNodeIds was rendered only as a
-  // "Watching:" comma list inside the narrative card). Now the same multi-
-  // select pipeline that the domain legend / shift-drag marquee use lights
-  // up the watched nodes — 3D rings + camera-fit, 2D dims everything else,
-  // RELIEF raises cyan obelisks. An empty / missing field clears the
-  // selection so narrative-only steps return the camera to the full-graph
-  // fit instead of holding on the previous step's nodes.
+  // ── Run a single action against the store; awaits async ones ──
+  const runAction = useCallback(
+    async (
+      action: NonNullable<DemoFlowStep["actions"]>[number],
+      idx: number,
+    ): Promise<void> => {
+      const s = useApexStore.getState();
+      switch (action.type) {
+        case "shock": {
+          const shock: CausalShock = {
+            ...action.shock,
+            id: `demo-${flowId}-${idx}`,
+          };
+          if (!injectedShockIdsRef.current.includes(shock.id)) {
+            injectedShockIdsRef.current.push(shock.id);
+          }
+          s.addShock(shock);
+          break;
+        }
+        case "replay": {
+          s.startReplay();
+          await waitFor(() => useApexStore.getState().baselineEpochs.length > 0);
+          break;
+        }
+        case "gotoEpoch": {
+          const cur = useApexStore.getState();
+          const epochs =
+            cur.activeTimeline === "baseline"
+              ? cur.baselineEpochs
+              : cur.interventionEpochs;
+          let target = 0;
+          if (action.epoch === "last") target = epochs.length - 1;
+          else if (action.epoch === "peak") target = peakEpochIndex(epochs);
+          else target = action.epoch;
+          cur.setReplayPlaying(false);
+          cur.setCurrentEpoch(target);
+          break;
+        }
+        case "solveInterdiction": {
+          const cur = useApexStore.getState();
+          const { solveInterdictionAsync } = await import("@/lib/interdiction-engine");
+          const result = await solveInterdictionAsync(
+            cur.graphData,
+            cur.shocks,
+            cur.severedEdges,
+            action.budget ?? 1,
+            action.mode ?? "edge",
+          );
+          useApexStore.getState().setLastInterdictionResult(result);
+          break;
+        }
+        case "applyAndBranch": {
+          const cur = useApexStore.getState();
+          const result = cur.lastInterdictionResult;
+          const maxCuts = action.maxCuts ?? 1;
+          if (result) {
+            result.interventions
+              .filter((i) => i.target.type === "edge")
+              .slice(0, maxCuts)
+              .forEach((i) => cur.severEdge(i.target.id));
+          }
+          cur.setCurrentEpoch(action.branchEpoch ?? 1);
+          cur.branchFromCurrentEpoch();
+          await waitFor(
+            () => useApexStore.getState().interventionEpochs.length > 0,
+          );
+          break;
+        }
+        case "timeline": {
+          useApexStore.getState().setActiveTimeline(action.timeline);
+          break;
+        }
+      }
+    },
+    [flowId],
+  );
+
+  // ── On each step: switch module + highlight, then run actions once ──
   useEffect(() => {
     if (!flow) return;
     const step = flow.steps[stepIdx];
-    setSelectedNodes(step?.highlightNodeIds ?? []);
-  }, [flow, stepIdx, setSelectedNodes]);
+    if (!step) return;
 
-  // ── Inject the step's shock when the step becomes active ──
-  // After each shock fires we kick startReplay() so the cascade simulator
-  // runs and the modules (SPIRTES/TARSKI/PEARL/PARETO) actually see node
-  // states change. Without this addShock just appends to an array and
-  // nothing visually propagates beyond the gauge.
-  useEffect(() => {
-    if (!flow) return;
-    const step = flow.steps[stepIdx];
-    if (!step?.shock) return;
-    const shock: CausalShock = {
-      ...step.shock,
-      id: `demo-${flow.id}-${stepIdx}-${Date.now()}`,
+    if (step.module) setActiveModule(step.module);
+    setSelectedNodes(step.highlightNodeIds ?? []);
+
+    // Actions run at most once per step index.
+    if (executedRef.current.has(stepIdx) || !step.actions?.length) return;
+    executedRef.current.add(stepIdx);
+
+    let cancelled = false;
+    setBusy(true);
+    (async () => {
+      for (const action of step.actions ?? []) {
+        if (cancelled) return;
+        await runAction(action, stepIdx);
+      }
+      if (!cancelled) setBusy(false);
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    injectedShockIdsRef.current.push(shock.id);
-    addShock(shock);
-    // Defer one tick so addShock state has applied before we read shocks
-    // back inside startReplay's simulateCascade call.
-    const t = window.setTimeout(() => startReplay(), 50);
-    return () => window.clearTimeout(t);
-  }, [flow, stepIdx, addShock, startReplay]);
+  }, [flow, stepIdx, setActiveModule, setSelectedNodes, runAction]);
 
-  // ── Auto-advance when durationMs > 0 ──
+  // ── Auto-advance once actions have settled (and not paused) ──
   useEffect(() => {
-    if (!flow || paused) return;
+    if (!flow || paused || busy) return;
     const step = flow.steps[stepIdx];
     if (!step || step.durationMs <= 0) return;
-    const t = window.setTimeout(() => {
-      if (stepIdx < flow.steps.length - 1) {
-        setStepIdx((i) => i + 1);
-      }
-    }, step.durationMs);
+    if (stepIdx >= flow.steps.length - 1) return;
+    const t = window.setTimeout(
+      () => setStepIdx((i) => Math.min(flow.steps.length - 1, i + 1)),
+      step.durationMs,
+    );
     return () => window.clearTimeout(t);
-  }, [flow, stepIdx, paused]);
+  }, [flow, stepIdx, paused, busy]);
+
+  const payoff = useMemo<DemoPayoff | null>(() => {
+    const step = flow?.steps[stepIdx];
+    if (!step?.payoff) return null;
+    return computeDemoPayoff(baselineEpochs, interventionEpochs, lastInterdictionResult);
+  }, [flow, stepIdx, baselineEpochs, interventionEpochs, lastInterdictionResult]);
 
   if (!flow) return null;
   const step = flow.steps[stepIdx];
@@ -145,10 +284,22 @@ function Player({ flowId, onClose }: PlayerProps) {
           <div className="text-[10px] font-mono text-text-muted">
             {stepIdx + 1} / {flow.steps.length}
           </div>
+          {step.module && (
+            <div className="hidden sm:block text-[9px] font-[family-name:var(--font-michroma)] tracking-widest text-accent-cyan/70 uppercase">
+              {step.module}
+            </div>
+          )}
+          {busy && (
+            <div className="flex items-center gap-1.5 text-[9px] font-mono text-accent-amber">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-amber animate-pulse" />
+              RUNNING
+            </div>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setPaused((p) => !p)}
-              className="text-[10px] font-mono text-text-muted hover:text-accent-cyan px-2 py-0.5 border border-border rounded"
+              disabled={busy}
+              className="text-[10px] font-mono text-text-muted hover:text-accent-cyan px-2 py-0.5 border border-border rounded disabled:opacity-40"
               aria-label={paused ? "Resume demo" : "Pause demo"}
             >
               {paused ? "▶ Resume" : "⏸ Pause"}
@@ -179,8 +330,9 @@ function Player({ flowId, onClose }: PlayerProps) {
         </div>
       </div>
 
-      {/* Narrative card — bottom-center */}
+      {/* Narrative + payoff card — bottom-center */}
       <div className="pointer-events-auto absolute bottom-6 left-1/2 -translate-x-1/2 max-w-2xl w-[calc(100%-3rem)] bg-bg-1/95 border border-accent-cyan/40 rounded p-4 backdrop-blur shadow-2xl">
+        {payoff && <PayoffCard payoff={payoff} />}
         <p className="text-sm leading-relaxed text-text-primary">{step.narrative}</p>
         <div className="flex items-center justify-between mt-3">
           <div className="text-[9px] font-mono text-text-muted">
@@ -194,7 +346,8 @@ function Player({ flowId, onClose }: PlayerProps) {
             {stepIdx > 0 && (
               <button
                 onClick={() => setStepIdx((i) => Math.max(0, i - 1))}
-                className="text-[10px] font-mono text-text-muted hover:text-accent-cyan px-3 py-1 border border-border rounded"
+                disabled={busy}
+                className="text-[10px] font-mono text-text-muted hover:text-accent-cyan px-3 py-1 border border-border rounded disabled:opacity-40"
               >
                 ← Back
               </button>
@@ -208,8 +361,11 @@ function Player({ flowId, onClose }: PlayerProps) {
               </button>
             ) : (
               <button
-                onClick={() => setStepIdx((i) => Math.min(flow.steps.length - 1, i + 1))}
-                className="text-[10px] font-mono text-accent-cyan hover:text-accent-cyan/80 px-3 py-1 border border-accent-cyan/60 rounded"
+                onClick={() =>
+                  setStepIdx((i) => Math.min(flow.steps.length - 1, i + 1))
+                }
+                disabled={busy}
+                className="text-[10px] font-mono text-accent-cyan hover:text-accent-cyan/80 px-3 py-1 border border-accent-cyan/60 rounded disabled:opacity-40"
               >
                 Next →
               </button>
@@ -221,9 +377,141 @@ function Player({ flowId, onClose }: PlayerProps) {
   );
 }
 
+/** The before/after results card on the final step. All numbers read live
+ *  from the engine output (cascade epochs + interdiction solver). */
+function PayoffCard({ payoff }: { payoff: DemoPayoff }) {
+  const { interdiction, baseline, intervention, deltas } = payoff;
+  const topCut = interdiction?.interventions?.[0] ?? null;
+
+  // The branch is still computing (intervention epochs not yet in).
+  if (!intervention || !baseline) {
+    return (
+      <div className="mb-3 border border-accent-amber/40 rounded p-3 bg-accent-amber/5">
+        <div className="text-[10px] font-mono text-accent-amber flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-amber animate-pulse" />
+          Computing the counterfactual…
+        </div>
+      </div>
+    );
+  }
+
+  const reduction = interdiction?.reductionPct ?? 0;
+
+  return (
+    <div className="mb-3 border border-accent-cyan/40 rounded overflow-hidden">
+      {/* Recommended action header */}
+      <div className="px-3 py-2.5 bg-accent-cyan/10 border-b border-accent-cyan/30">
+        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-widest text-accent-cyan mb-1">
+          RECOMMENDED INTERVENTION
+        </div>
+        {topCut ? (
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="text-[12px] font-mono text-foreground truncate">
+              Sever <span className="text-accent-cyan">{topCut.target.label}</span>
+            </div>
+            <div className="text-[12px] font-mono tabular-nums text-accent-green shrink-0">
+              −{reduction}% damage
+            </div>
+          </div>
+        ) : (
+          <div className="text-[11px] font-mono text-text-muted">
+            No single-edge cut improved the projected outcome
+            {interdiction?.fallbackReason ? ` (${interdiction.fallbackReason})` : ""}.
+          </div>
+        )}
+        {interdiction && (
+          <div className="text-[9px] font-mono text-text-muted mt-1 tabular-nums">
+            projected cascade damage {interdiction.baselineDamage} → {interdiction.bestDamage}
+          </div>
+        )}
+      </div>
+
+      {/* Before / after grid */}
+      <div className="grid grid-cols-3 text-[10px] font-mono">
+        <div className="px-3 py-1.5 text-text-muted" />
+        <div className="px-3 py-1.5 text-text-muted tracking-wider text-right">DO NOTHING</div>
+        <div className="px-3 py-1.5 text-accent-cyan tracking-wider text-right">INTERVENE</div>
+
+        <PayoffRow
+          label="Final status"
+          baseline={
+            <span style={{ color: getStatusColor(baseline.finalStatus) }}>
+              {baseline.finalStatus}
+            </span>
+          }
+          intervention={
+            <span style={{ color: getStatusColor(intervention.finalStatus) }}>
+              {intervention.finalStatus}
+            </span>
+          }
+        />
+        <PayoffRow
+          label="Ω-buffer (end)"
+          baseline={`${baseline.finalBuffer}`}
+          intervention={`${intervention.finalBuffer}`}
+          delta={deltas ? formatDelta(deltas.bufferGain, "") : undefined}
+          deltaGood={(deltas?.bufferGain ?? 0) > 0}
+        />
+        <PayoffRow
+          label="Peak nodes hit"
+          baseline={`${baseline.peakActivated}`}
+          intervention={`${intervention.peakActivated}`}
+          delta={deltas ? formatDelta(-deltas.fewerActivated, "") : undefined}
+          deltaGood={(deltas?.fewerActivated ?? 0) > 0}
+        />
+        <PayoffRow
+          label="Time to failure"
+          baseline={`${baseline.ttfDays}d`}
+          intervention={`${intervention.ttfDays}d`}
+          delta={deltas ? formatDelta(deltas.extraDaysToFailure, "d") : undefined}
+          deltaGood={(deltas?.extraDaysToFailure ?? 0) > 0}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PayoffRow({
+  label,
+  baseline,
+  intervention,
+  delta,
+  deltaGood,
+}: {
+  label: string;
+  baseline: ReactNode;
+  intervention: ReactNode;
+  delta?: string;
+  deltaGood?: boolean;
+}) {
+  return (
+    <>
+      <div className="px-3 py-1.5 text-text-muted border-t border-border/60">{label}</div>
+      <div className="px-3 py-1.5 text-foreground tabular-nums text-right border-t border-border/60">
+        {baseline}
+      </div>
+      <div className="px-3 py-1.5 text-foreground tabular-nums text-right border-t border-border/60">
+        {intervention}
+        {delta && (
+          <span
+            className={`ml-1.5 ${deltaGood ? "text-accent-green" : "text-text-muted"}`}
+          >
+            {delta}
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+function formatDelta(value: number, unit: string): string {
+  if (value === 0) return "";
+  const sign = value > 0 ? "+" : "";
+  return `(${sign}${value}${unit})`;
+}
+
 /**
  * Mounted at the app shell. Shows the player when activeDemoFlowId is set.
- * Lazy-mount so when no flow is active there's zero overhead.
  */
 export function DemoFlowPlayerHost() {
   const activeDemoFlowId = useApexStore((s) => s.activeDemoFlowId);
@@ -236,9 +524,7 @@ export function DemoFlowPlayerHost() {
       onClose={() => {
         setActiveDemoFlowId(null);
         // Reopen the DomainSelector so the user lands back at the picker
-        // instead of an empty canvas. Without this the Player's cleanup
-        // restores to whatever state existed pre-demo — which is empty
-        // when the user entered straight from the picker.
+        // instead of an empty canvas.
         setDomainSelectorOpen(true);
       }}
     />

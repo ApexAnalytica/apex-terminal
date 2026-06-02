@@ -1,9 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useApexStore } from "@/stores/useApexStore";
 import { useTextSize, type TextSize } from "@/hooks/useTextSize";
+
+// Lazy-loaded — pulls react-markdown + remark-gfm (~30 KB combined).
+// Only lands when the user clicks "Documentation" in the menu, so it
+// stays off the eager bundle.
+const DocumentationDrawer = dynamic(
+  () => import("./DocumentationDrawer"),
+  { ssr: false },
+);
 
 const TEXT_OPTIONS: Array<{ value: TextSize; label: string; title: string }> = [
   { value: "sm", label: "S", title: "Small text" },
@@ -53,6 +62,7 @@ export default function SettingsMenu() {
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +199,17 @@ export default function SettingsMenu() {
               <span className="text-accent-cyan/70 w-3.5 text-center">?</span>
               Tutorial
             </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setDocsOpen(true);
+                setOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] font-mono text-text-muted hover:text-accent-cyan hover:bg-accent-cyan/5 transition-colors"
+            >
+              <span className="text-accent-cyan/70 w-3.5 text-center">§</span>
+              Documentation
+            </button>
           </div>
 
           {/* Sign out */}
@@ -214,6 +235,7 @@ export default function SettingsMenu() {
           </div>
         </div>
       )}
+      <DocumentationDrawer open={docsOpen} onClose={() => setDocsOpen(false)} />
     </div>
   );
 }

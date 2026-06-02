@@ -65,3 +65,9 @@ __pycache__/
 # under /research/runs/, also local-only.
 /research/datasets/*/
 /research/runs/
+
+# In-app documentation reference — generated at build time by
+# scripts/sync-public-docs.mjs from docs/*.md so the DocumentationDrawer
+# component can fetch them as static assets. Source of truth lives in
+# docs/; these are copies regenerated on every build.
+/public/docs/

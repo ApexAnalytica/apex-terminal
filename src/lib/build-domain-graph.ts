@@ -15,6 +15,8 @@ import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
 import { mergeGraphs } from "@/lib/import/merge";
 import type { CausalGraph } from "@/lib/types";
 import { DOMAIN_CARDS, type DomainCard } from "@/lib/domains";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
+import { recomputeComposite } from "@/lib/omega-weighting";
 
 // Static node counts per dataset — exposed so the picker can render
 // "X nodes will load" previews without forcing the data through
@@ -63,6 +65,16 @@ export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
     const { graph: merged } = mergeGraphs(graph, { nodes: [], edges: BRIDGE_EDGES });
     graph = merged;
   }
+
+  // Apply the active domain profile's pillar weighting. No-op for
+  // "authored" profiles (Geopolitical, T1D keep their hand-tuned
+  // composites); for "recomputed" profiles (AI-Safety) every node's
+  // composite is re-derived from its pillars under the profile's weights,
+  // so the skew reaches every downstream consumer via `graphData`.
+  // resolveDomainProfile falls back to Geopolitical (authored) for the
+  // empty / default selection, so the default load path is unchanged.
+  const profile = resolveDomainProfile(domainIds);
+  graph = recomputeComposite(graph, profile);
 
   return graph;
 }

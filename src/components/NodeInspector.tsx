@@ -7,7 +7,7 @@ import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
-import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
+import { resolveDomainProfile, formatWeights, type PillarKey } from "@/lib/domain-profiles";
 import { chiStar } from "@/lib/estimators/chi-star";
 import { graphSignature } from "@/lib/graph-layout-2d";
 import { buildContextualReview } from "@/lib/contextual-review";
@@ -521,6 +521,21 @@ export default function NodeInspector() {
                 selectedKey={expandedPillar}
                 onSelect={(k) => setExpandedPillar(expandedPillar === k ? null : k)}
               />
+              {/* Audit trail when the active profile re-weighted this node's
+                  composite (compositeMode: "recomputed", e.g. AI-Safety on the
+                  borrowed `main` graph) — surfaces the original authored score
+                  so the reweighting isn't silent. */}
+              {node.omegaFragility.baselineComposite != null &&
+                node.omegaFragility.baselineComposite !== node.omegaFragility.composite && (
+                  <div className="flex justify-center mt-1">
+                    <span
+                      className="text-[7px] font-mono text-accent-amber/80 tracking-wider cursor-help"
+                      title={`Re-weighted under the ${profile.displayName} profile (${formatWeights(profile.weights)}). Authored / default-weighted score was ${node.omegaFragility.baselineComposite.toFixed(1)}.`}
+                    >
+                      ↻ REWEIGHTED FROM {node.omegaFragility.baselineComposite.toFixed(1)} · {profile.displayName.toUpperCase()}
+                    </span>
+                  </div>
+                )}
               <div className="flex justify-center mt-1">
                 <button
                   onClick={() => setShowMethodology((v) => !v)}

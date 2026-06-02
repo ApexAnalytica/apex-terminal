@@ -1,4 +1,5 @@
-import { CausalNode, CausalEdge, DEFAULT_OMEGA_WEIGHTS } from "@/lib/types";
+import { CausalNode, CausalEdge, DEFAULT_OMEGA_WEIGHTS, OmegaPillarWeights } from "@/lib/types";
+import { weightedComposite } from "@/lib/omega-weighting";
 
 interface EnrichResult {
   nodes: CausalNode[];
@@ -109,7 +110,11 @@ function isDefault(v: number): boolean {
  *   C (Cascade Load)         → Spirtes topology + Pareto simulation depth
  *   T (Tail Depth)           → Pareto: tail statistics from cascade simulation
  */
-function computeOmegaScores(nodes: CausalNode[], edges: CausalEdge[]): CausalNode[] {
+function computeOmegaScores(
+  nodes: CausalNode[],
+  edges: CausalEdge[],
+  weights: OmegaPillarWeights = DEFAULT_OMEGA_WEIGHTS,
+): CausalNode[] {
   // Build degree maps
   const inDegree = new Map<string, number>();
   const outDegree = new Map<string, number>();
@@ -191,8 +196,6 @@ function computeOmegaScores(nodes: CausalNode[], edges: CausalEdge[]): CausalNod
     return clamp(j, 1, 10);
   }
 
-  const w = DEFAULT_OMEGA_WEIGHTS;
-
   return nodes.map((node) => {
     const omega = { ...node.omegaFragility };
     const inDeg = inDegree.get(node.id) ?? 0;
@@ -243,15 +246,11 @@ function computeOmegaScores(nodes: CausalNode[], edges: CausalEdge[]): CausalNod
       omega.tailDepth = clamp(t, 1, 10);
     }
 
-    // ΩF composite: configurable weighted average
+    // ΩF composite: configurable weighted average (shared formula —
+    // see weightedComposite in omega-weighting.ts, also used by the
+    // runtime profile recompute so the two can't diverge).
     if (isDefault(omega.composite)) {
-      omega.composite = Math.round(
-        (w.irreplaceability * omega.irreplaceability +
-          w.restorationLatency * omega.restorationLatency +
-          w.jurisdictionalHazard * omega.jurisdictionalHazard +
-          w.cascadeLoad * omega.cascadeLoad +
-          w.tailDepth * omega.tailDepth) * 10
-      ) / 10;
+      omega.composite = weightedComposite(omega, weights);
     }
 
     return { ...node, omegaFragility: omega };
@@ -280,7 +279,11 @@ function normalizeConcentration(nodes: CausalNode[]): CausalNode[] {
   });
 }
 
-export function enrichGraph(nodes: CausalNode[], edges: CausalEdge[]): EnrichResult {
+export function enrichGraph(
+  nodes: CausalNode[],
+  edges: CausalEdge[],
+  weights: OmegaPillarWeights = DEFAULT_OMEGA_WEIGHTS,
+): EnrichResult {
   // Normalize concentration values before scoring
   const normalizedNodes = normalizeConcentration(nodes);
 
@@ -288,8 +291,11 @@ export function enrichGraph(nodes: CausalNode[], edges: CausalEdge[]): EnrichRes
   const { edges: inferredEdges, warnings } = inferEdges(normalizedNodes, edges);
   const allEdges = [...edges, ...inferredEdges];
 
-  // Compute omega scores using full topology (original + inferred edges)
-  const enrichedNodes = computeOmegaScores(normalizedNodes, allEdges);
+  // Compute omega scores using full topology (original + inferred edges).
+  // `weights` lets an import under a non-default profile score against that
+  // profile's pillar weighting; defaults to the platform default so the
+  // common import path is unchanged.
+  const enrichedNodes = computeOmegaScores(normalizedNodes, allEdges, weights);
 
   return {
     nodes: enrichedNodes,

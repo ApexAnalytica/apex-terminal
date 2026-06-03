@@ -253,6 +253,127 @@ defineTool({
   },
 });
 
+// ─── Temporal / timeline ────────────────────────────────────────
+
+defineTool({
+  name: "set_time",
+  description:
+    "Move the timeline scrubber to a point in time. Pass an ISO-8601 date (e.g. 2024-07-01); out-of-range dates clamp to the available window.",
+  guidance:
+    "Use when the user names a specific moment ('go to January 2024', 'jump to Q3 2024', 'show me last March'). Convert their phrasing to an ISO date yourself and pass date=YYYY-MM-DD. If the view is currently live and they want to inspect the past, also emit set_live:on=false. Do NOT state the landing position in prose — the SYS result line confirms where the scrubber actually settled after clamping.",
+  params: {
+    date: { type: "string", required: true, description: "ISO-8601 date, e.g. 2024-07-01" },
+  },
+  legacyParam: "date",
+  handler: ({ date }, ctx) => {
+    const store = ctx.getStore();
+    const ts = Date.parse(date);
+    if (Number.isNaN(ts)) {
+      return `Could not parse date "${date}". Use an ISO date like 2024-07-01.`;
+    }
+    const range = store.timelineRange;
+    const target =
+      range && typeof range.start === "number" && typeof range.end === "number"
+        ? Math.max(range.start, Math.min(range.end, ts))
+        : ts;
+    store.setTimelinePosition(target);
+    return `Timeline moved to ${new Date(target).toISOString().slice(0, 10)}`;
+  },
+});
+
+defineTool({
+  name: "set_time_range",
+  description:
+    "Set the visible timeline window. Pass ISO-8601 start and end dates (start must precede end).",
+  guidance:
+    "Use for 'zoom into 2024', 'show me Jan through March', 'widen to the full history'. Convert to ISO dates and pass start=YYYY-MM-DD,end=YYYY-MM-DD.",
+  params: {
+    start: { type: "string", required: true, description: "ISO-8601 start date" },
+    end: { type: "string", required: true, description: "ISO-8601 end date" },
+  },
+  handler: ({ start, end }, ctx) => {
+    const s = Date.parse(start);
+    const e = Date.parse(end);
+    if (Number.isNaN(s) || Number.isNaN(e)) {
+      return `Could not parse range "${start}".."${end}". Use ISO dates like 2024-01-01.`;
+    }
+    if (s >= e) {
+      return `Invalid range: start (${start}) must be before end (${end}).`;
+    }
+    ctx.getStore().setTimelineRange({ start: s, end: e });
+    return `Timeline window set to ${new Date(s).toISOString().slice(0, 10)} → ${new Date(e).toISOString().slice(0, 10)}`;
+  },
+});
+
+defineTool({
+  name: "set_time_granularity",
+  description: "Set the timeline resolution (zoom level of the time axis).",
+  params: {
+    granularity: {
+      type: "enum",
+      values: ["hour", "day", "week", "month", "year", "5year", "all"] as const,
+      required: true,
+    },
+  },
+  legacyParam: "granularity",
+  handler: ({ granularity }, ctx) => {
+    ctx.getStore().setTimelineGranularity(granularity);
+    return `Timeline granularity set to: ${granularity}`;
+  },
+});
+
+defineTool({
+  name: "set_live",
+  description:
+    "Follow real-time (on) or freeze the timeline at the current point (off).",
+  guidance:
+    "'go live' / 'resume live updates' → on=true. 'freeze' / 'pause the feed' / 'stop following live' → on=false.",
+  params: {
+    on: { type: "boolean", required: true, description: "true = follow real-time; false = freeze" },
+  },
+  legacyParam: "on",
+  handler: ({ on }, ctx) => {
+    ctx.getStore().setIsLive(on);
+    return on ? "Now following real-time" : "Timeline frozen (live off)";
+  },
+});
+
+defineTool({
+  name: "set_active_timeline",
+  description:
+    "Switch the active cascade timeline between baseline and intervention. Resets the replay to epoch 0.",
+  guidance:
+    "'show the baseline' → baseline. 'show the intervention timeline' / 'with my interdiction applied' → intervention.",
+  params: {
+    timeline: { type: "enum", values: ["baseline", "intervention"] as const, required: true },
+  },
+  legacyParam: "timeline",
+  handler: ({ timeline }, ctx) => {
+    ctx.getStore().setActiveTimeline(timeline);
+    return `Active timeline: ${timeline} (epoch reset to 0)`;
+  },
+});
+
+defineTool({
+  name: "step_epoch",
+  description:
+    "Step the cascade replay by N epochs (frames). Negative steps backward. Pauses playback.",
+  guidance:
+    "'step forward' → delta=1. 'go back two frames' → delta=-2. 'advance the cascade' → delta=1. For continuous playback use start_replay instead.",
+  params: {
+    delta: { type: "number", required: true, description: "Epochs to step; negative = backward" },
+  },
+  legacyParam: "delta",
+  handler: ({ delta }, ctx) => {
+    const store = ctx.getStore();
+    store.stepEpoch(delta);
+    const epoch = ctx.getStore().currentEpoch;
+    return typeof epoch === "number"
+      ? `Stepped to epoch ${epoch}`
+      : `Stepped ${delta >= 0 ? "+" : ""}${delta} epoch(s)`;
+  },
+});
+
 // ─── Truth filter ───────────────────────────────────────────────
 
 defineTool({

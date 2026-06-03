@@ -28,10 +28,11 @@
 // disclosure), not in always-on paragraphs. The forecast and the active
 // cut set are never hidden behind a click — only the *explanation* is.
 //
-// VX880 stays as a collapsible secondary section (domain-specific trial
-// presets; off the critical path for most sessions).
+// VX880 is a domain-gated secondary section — it renders ONLY when a
+// t1d-* domain is active (T1D-specific trial presets; an out-of-place
+// artifact in any other session, per founder live-test).
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import SectionHeader from "./SectionHeader";
 import ScenarioInput from "../ScenarioInput";
@@ -84,6 +85,26 @@ export default function PearlWorkspace({
   const resetAblation = useApexStore((s) => s.resetAblation);
   const startAblationReplay = useApexStore((s) => s.startAblationReplay);
   const lastInterdictionResult = useApexStore((s) => s.lastInterdictionResult);
+  const setAblationActive = useApexStore((s) => s.setAblationActive);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+
+  // VX-880 trial presets are T1D-specific — only surface them when a
+  // t1d-* domain is active (mirrors ModulePanel's TissueCohortView gate).
+  // The `t1d-` prefix check avoids pulling domain-profiles into the bundle.
+  const isT1DDomain = useMemo(
+    () => selectedDomains.some((id) => id.startsWith("t1d-")),
+    [selectedDomains],
+  );
+
+  // The Manual tab IS canvas ablation: selecting it puts the canvas into
+  // click-to-cut mode so the analyst just clicks nodes/edges — no hidden
+  // "ENTER ABLATION MODE" step. Leaving the tab (or unmounting PEARL)
+  // turns the click-mode off NON-destructively via `setAblationActive`
+  // (NOT `setAblationMode`, which would wipe the cuts already made).
+  useEffect(() => {
+    setAblationActive(method === "manual");
+  }, [method, setAblationActive]);
+  useEffect(() => () => setAblationActive(false), [setAblationActive]);
 
   // Resolve the raw id lists into human labels. Edge labels read
   // "Source → Target" off the node table; if an id has gone stale
@@ -127,14 +148,9 @@ export default function PearlWorkspace({
 
   return (
     <div data-tour="pearl-workspace" className="space-y-3">
-      {/* One-line orientation. The adviser council pushed back hard on
-          removing ALL guidance: "operationalize" is a workflow-legibility
-          gap, not only a word-count one. This single plain-language line
-          names the loop and stays visible; concept-level detail still
-          lives behind the `?` popovers per the original brief. */}
-      <p className="text-[10px] font-mono text-text-muted leading-snug">
-        Pick connections to cut, run the cascade, then read the forecast.
-      </p>
+      {/* Per founder live-test ("more buttons than words; explanations all
+          collapsible"), the always-visible orientation line was folded into
+          the DEFINE CUTS `?` below. Zero prose before the first control. */}
 
       {/* ── Zone 1 — DEFINE CUTS ─────────────────────────────── */}
       <section className="border border-accent-amber/25 rounded bg-accent-amber/5 p-3 space-y-2">
@@ -156,6 +172,10 @@ export default function PearlWorkspace({
               <br />
               <b>Manual</b> — click nodes or edges on the canvas to cut
               them yourself.
+              <br />
+              <br />
+              Then <b>Run cascade</b> in ACTIVE CUTS and read the{" "}
+              <b>Forecast</b> below.
             </>
           }
         />
@@ -219,7 +239,16 @@ export default function PearlWorkspace({
             id="cut-panel-solve"
             aria-labelledby="cut-tab-solve"
             hidden={method !== "solve"}
+            className="space-y-2"
           >
+            {/* Founder: "auto-solve — I have no idea what that does."
+                One visible plain-language line (Auto-solve can't be an icon —
+                its concept has no real-world analogue). */}
+            <p className="text-[8px] font-mono text-text-muted leading-snug">
+              Finds the fewest cuts that blunt the worst-case cascade.
+              {" "}<b>Budget</b> = how many cuts it may use; <b>mode</b> = what
+              it may cut (edges, nodes, or both).
+            </p>
             <InterdictionPanel embedded />
           </div>
           <div
@@ -313,7 +342,11 @@ export default function PearlWorkspace({
         <MonteCarloForecast expanded={expanded} embedded />
       </section>
 
-      {/* ── VX880 — collapsible secondary ────────────────────── */}
+      {/* ── VX880 — domain-gated secondary (T1D sessions only) ──
+          Founder: "VX-880 at the bottom seems to be an artifact from the
+          T1D details." It is — it now renders only when a t1d-* domain is
+          active, so non-T1D sessions never see it. */}
+      {isT1DDomain && (
       <section className="border border-border/60 rounded bg-surface/20 p-3 space-y-2">
         <SectionHeader
           title="VX-880 TRIAL"
@@ -331,6 +364,7 @@ export default function PearlWorkspace({
         />
         {vx880Open && <VX880TrialPanel />}
       </section>
+      )}
     </div>
   );
 }

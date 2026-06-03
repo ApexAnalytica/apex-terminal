@@ -537,6 +537,69 @@ export default function CausalDAG3D() {
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const temporalData = useApexStore((s) => s.temporalData);
 
+  // Progressive node-mount ramp. r3f's React reconciler mounts every
+  // <DAGNode3D /> in a single commit; each child creates a THREE.Mesh
+  // + materials + a handful of sub-meshes (selection ring, outline,
+  // glow). For a 6-domain / ~200-node launch that single commit costs
+  // ~1.5–2s of frozen tab — the "LAUNCH WORKSPACE freezes" bug the
+  // user keeps reporting.
+  //
+  // Fix: render only `graphData.nodes.slice(0, visibleNodeCount)` and
+  // ramp the count from a small initial batch up to total over a few
+  // frames via requestAnimationFrame. Each frame mounts ~60 orbs which
+  // costs ~10–15 ms — well within the 16 ms frame budget so input
+  // stays responsive while the workspace materializes.
+  //
+  // Edges are filtered to those whose BOTH endpoints have already
+  // mounted (visibleNodeIds set lookup) so we don't render dangling
+  // half-edges mid-ramp.
+  //
+  // Reset key: graphData.nodes reference. A new graph load (domain
+  // swap, demo flow, snapshot apply) restarts the ramp from the
+  // initial batch.
+  const NODE_RAMP_INITIAL = 30;
+  const NODE_RAMP_BATCH = 60;
+  const [visibleNodeCount, setVisibleNodeCount] = useState<number>(() =>
+    Math.min(NODE_RAMP_INITIAL, graphData.nodes.length),
+  );
+  useEffect(() => {
+    // Reset to the initial batch whenever the node set itself swaps.
+    // setState-in-effect here is the whole point: this effect's job is
+    // to ramp visibleNodeCount in response to an external state change
+    // (graphData.nodes reference swap), which is the rule's intended
+    // exception. The setVisibleNodeCount inside `step()` below is
+    // functional-update, also outside React's render path.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisibleNodeCount(Math.min(NODE_RAMP_INITIAL, graphData.nodes.length));
+    if (graphData.nodes.length <= NODE_RAMP_INITIAL) return;
+    let rafId = 0;
+    let cancelled = false;
+    const step = () => {
+      if (cancelled) return;
+      setVisibleNodeCount((cur) => {
+        const total = graphData.nodes.length;
+        if (cur >= total) return cur;
+        const next = Math.min(cur + NODE_RAMP_BATCH, total);
+        if (next < total) rafId = requestAnimationFrame(step);
+        return next;
+      });
+    };
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [graphData.nodes]);
+
+  const visibleNodeIds = useMemo(() => {
+    const s = new Set<string>();
+    const limit = Math.min(visibleNodeCount, graphData.nodes.length);
+    for (let i = 0; i < limit; i++) s.add(graphData.nodes[i].id);
+    return s;
+  }, [graphData.nodes, visibleNodeCount]);
+  const isProgressiveMounting =
+    visibleNodeCount < graphData.nodes.length;
+
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [shiftDragging, setShiftDragging] = useState(false);
@@ -1229,7 +1292,11 @@ export default function CausalDAG3D() {
           <pointLight position={[0, 0, -80]} intensity={0.3} color="#e040fb" />
 
           {/* Nodes */}
-          {graphData.nodes.map((node) => {
+          {graphData.nodes.map((node, idx) => {
+            // Progressive mount gate — skip orbs not yet in the ramped-in
+            // window. Cheap O(1) check, no Set lookup needed because the
+            // visibility cutoff is contiguous from index 0.
+            if (idx >= visibleNodeCount) return null;
             const pos = posMap[node.id];
             if (!pos) return null;
 
@@ -1289,6 +1356,15 @@ export default function CausalDAG3D() {
 
           {/* Edges */}
           {graphData.edges.map((edge) => {
+            // Progressive mount gate — only render an edge once BOTH
+            // endpoints have come in. Avoids dangling half-edges during
+            // the launch ramp (would otherwise render from a mounted
+            // source into empty space toward a not-yet-mounted target).
+            if (
+              !visibleNodeIds.has(edge.source) ||
+              !visibleNodeIds.has(edge.target)
+            )
+              return null;
             const srcPos = posMap[edge.source];
             const tgtPos = posMap[edge.target];
             if (!srcPos || !tgtPos) return null;
@@ -1370,6 +1446,28 @@ export default function CausalDAG3D() {
           />
       </Canvas>
       </DAGErrorBoundary>
+      {/* Launch overlay — paints over the canvas while progressive mount
+          is in flight. Without this, large multi-domain launches read as
+          a frozen tab (the canvas mounts piece by piece but the gap is
+          ~50–100ms with the ramp; without the ramp it was 1.5–2s of true
+          freeze). Auto-dismisses once visibleNodeCount catches up to
+          total. Pointer events disabled so it doesn't intercept clicks
+          on the already-mounted orbs underneath. */}
+      {isProgressiveMounting && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none bg-background/40 backdrop-blur-[1px]"
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-widest text-accent-cyan animate-pulse">
+              MATERIALIZING WORKSPACE
+            </div>
+            <div className="text-[8px] font-mono text-text-muted tabular-nums">
+              {visibleNodeCount} / {graphData.nodes.length} nodes
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {selectedEdge && (
           <EdgeInspector

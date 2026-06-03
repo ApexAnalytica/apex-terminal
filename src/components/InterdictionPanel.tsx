@@ -9,7 +9,15 @@ import {
 
 type InterdictionMode = "edge" | "node" | "both";
 
-export default function InterdictionPanel() {
+// `embedded` drops the panel's own "CASCADE DEFENSE" header + the
+// minimax subtitle (the redesigned PEARL workspace supplies the title
+// and a plain-language `?`), and removes the top divider since the
+// workspace tab already frames it.
+export default function InterdictionPanel({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const graphData = useApexStore((s) => s.graphData);
   const shocks = useApexStore((s) => s.shocks);
   const severedEdges = useApexStore((s) => s.severedEdges);
@@ -87,13 +95,17 @@ export default function InterdictionPanel() {
   );
 
   return (
-    <div className="space-y-2 pt-3 border-t border-border">
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
-        CASCADE DEFENSE
-      </div>
-      <div className="text-[8px] font-mono text-text-muted">
-        Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
-      </div>
+    <div className={embedded ? "space-y-2" : "space-y-2 pt-3 border-t border-border"}>
+      {!embedded && (
+        <>
+          <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
+            CASCADE DEFENSE
+          </div>
+          <div className="text-[8px] font-mono text-text-muted">
+            Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
+          </div>
+        </>
+      )}
 
       {/* Controls */}
       <div className="flex items-center gap-2">
@@ -152,7 +164,9 @@ export default function InterdictionPanel() {
 
       {!canRun && (
         <div className="text-[8px] font-mono text-text-muted italic">
-          Inject shock scenarios above first, then solve for optimal defenses
+          {embedded
+            ? "Add a shock (via Describe) first, then solve for optimal defenses"
+            : "Inject shock scenarios above first, then solve for optimal defenses"}
         </div>
       )}
 

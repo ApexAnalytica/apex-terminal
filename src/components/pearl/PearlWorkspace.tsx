@@ -13,10 +13,10 @@
 // every action is a pre-existing store action. The redesign is pure
 // information architecture.
 //
-//   Zone 1 — DEFINE CUTS    how you pick what to remove. One segmented
-//                            control routes between the three existing
-//                            entry methods (Describe / Auto-solve /
-//                            Manual) so only one is on screen at a time.
+//   Zone 1 — DEFINE CUTS    how you pick what to remove. Two modes via a
+//                            segmented control: FIND CUTS (the system
+//                            picks — merged Describe+Auto-solve, one SOLVE
+//                            button) vs MANUAL (you pick — canvas ablation).
 //   Zone 2 — ACTIVE CUTS    what is currently removed, in plain labels,
 //                            with Clear-all + Run-cascade. Always
 //                            visible — this is the working set.
@@ -35,14 +35,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import SectionHeader from "./SectionHeader";
-import ScenarioInput from "../ScenarioInput";
-import InterdictionPanel from "../InterdictionPanel";
+import FindCutsPanel from "./FindCutsPanel";
 import AblationPanel from "../AblationPanel";
 import CopilotInterdictionResults from "../modules/CopilotInterdictionResults";
 import MonteCarloForecast from "../MonteCarloForecast";
 import VX880TrialPanel from "../VX880TrialPanel";
 
-type CutMethod = "describe" | "solve" | "manual";
+// Two modes, not three. The system picks (FIND CUTS — the merged
+// Describe+Auto-solve flow) vs. you pick (MANUAL — canvas ablation).
+// "Describe" was never a peer of "Auto-solve"; it was its NL front-end.
+type CutMethod = "find" | "manual";
 
 type CutItem = {
   key: string;
@@ -52,14 +54,9 @@ type CutItem = {
 
 const METHOD_TABS: { id: CutMethod; label: string; hint: string }[] = [
   {
-    id: "describe",
-    label: "DESCRIBE",
-    hint: "Type a scenario in plain English; the copilot picks the cuts.",
-  },
-  {
-    id: "solve",
-    label: "AUTO-SOLVE",
-    hint: "Let the solver find the cheapest cuts that minimise damage.",
+    id: "find",
+    label: "FIND CUTS",
+    hint: "Describe a scenario (or just set the solver), then SOLVE — the system proposes the cuts.",
   },
   {
     id: "manual",
@@ -74,7 +71,7 @@ export default function PearlWorkspace({
   /** When true the forecast chart renders at full height. */
   expanded?: boolean;
 }) {
-  const [method, setMethod] = useState<CutMethod>("describe");
+  const [method, setMethod] = useState<CutMethod>("find");
   const [vx880Open, setVx880Open] = useState(false);
 
   const graphData = useApexStore((s) => s.graphData);
@@ -161,17 +158,15 @@ export default function PearlWorkspace({
             <>
               A cut removes a connection (or a node and all its
               connections) from the graph, then the cascade is re-run to
-              see what changes. Pick cuts three ways:
+              see what changes. Two ways to pick:
               <br />
               <br />
-              <b>Describe</b> — say what you fear in plain English; the
-              copilot translates it into shocks and proposes cuts.
+              <b>Find cuts</b> — the system picks. Describe a scenario in
+              plain English, or just press SOLVE, and the solver proposes
+              the cheapest cuts that blunt worst-case damage.
               <br />
-              <b>Auto-solve</b> — the solver searches for the cheapest set
-              of cuts that minimises worst-case damage.
-              <br />
-              <b>Manual</b> — click nodes or edges on the canvas to cut
-              them yourself.
+              <b>Manual</b> — you pick. Click nodes or edges on the canvas
+              to cut them yourself.
               <br />
               <br />
               Then <b>Run cascade</b> in ACTIVE CUTS and read the{" "}
@@ -220,36 +215,18 @@ export default function PearlWorkspace({
           })}
         </div>
 
-        {/* Tab body — all three panels stay mounted (hidden when inactive)
-            so switching tabs never discards in-progress scenario text or a
-            computed solver result (each panel holds local state). */}
+        {/* Tab body — both panels stay mounted (hidden when inactive) so
+            switching modes never discards in-progress text or a result. */}
         <div className="pt-1">
           <div
             role="tabpanel"
-            id="cut-panel-describe"
-            aria-labelledby="cut-tab-describe"
-            hidden={method !== "describe"}
+            id="cut-panel-find"
+            aria-labelledby="cut-tab-find"
+            hidden={method !== "find"}
             className="space-y-2"
           >
-            <ScenarioInput embedded />
+            <FindCutsPanel />
             {lastInterdictionResult && <CopilotInterdictionResults />}
-          </div>
-          <div
-            role="tabpanel"
-            id="cut-panel-solve"
-            aria-labelledby="cut-tab-solve"
-            hidden={method !== "solve"}
-            className="space-y-2"
-          >
-            {/* Founder: "auto-solve — I have no idea what that does."
-                One visible plain-language line (Auto-solve can't be an icon —
-                its concept has no real-world analogue). */}
-            <p className="text-[8px] font-mono text-text-muted leading-snug">
-              Finds the fewest cuts that blunt the worst-case cascade.
-              {" "}<b>Budget</b> = how many cuts it may use; <b>mode</b> = what
-              it may cut (edges, nodes, or both).
-            </p>
-            <InterdictionPanel embedded />
           </div>
           <div
             role="tabpanel"

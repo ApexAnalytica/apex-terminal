@@ -92,7 +92,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "manufacturing",
-        label: "Fertilizer & Agrochemical",
+        label: "Agrochemical Systems",
         icon: "factory",
         color: "#448aff",
         colorVar: "var(--accent-blue)",
@@ -102,7 +102,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "supply-chain",
-        label: "Supply Chain Shock Risk",
+        label: "Supply Chain Systems",
         icon: "chain",
         color: "#00e5ff",
         colorVar: "var(--accent-cyan)",
@@ -118,7 +118,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "financial-contagion",
-        label: "Financial Contagion Risk",
+        label: "Financial Contagion Systems",
         icon: "bank",
         color: "#ff6d00",
         colorVar: "var(--accent-orange)",
@@ -128,7 +128,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "sovereign-risk",
-        label: "Emerging Market Sovereign Risk",
+        label: "Sovereign Risk Systems",
         icon: "globe",
         color: "#ffab00",
         colorVar: "var(--accent-amber)",
@@ -144,7 +144,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "infrastructure",
-        label: "Infrastructure Resilience",
+        label: "Infrastructure Systems",
         icon: "cable",
         color: "#7c4dff",
         colorVar: "var(--accent-purple)",
@@ -154,7 +154,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "defense-isr",
-        label: "Defense & ISR",
+        label: "Defense Systems",
         icon: "shield",
         color: "#00e676",
         colorVar: "var(--accent-green)",
@@ -170,7 +170,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "macro-labor",
-        label: "Labor, Growth & Housing",
+        label: "Labor & Growth Systems",
         icon: "chart-bar",
         color: "#40c4ff",
         colorVar: "var(--accent-cyan)",
@@ -180,7 +180,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "macro-inflation",
-        label: "Inflation & Policy",
+        label: "Monetary Policy Systems",
         icon: "trending",
         color: "#ff80ab",
         colorVar: "var(--accent-pink)",
@@ -196,7 +196,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "t1d-beta-cell",
-        label: "T1D β-Cell Restoration",
+        label: "β-Cell Regeneration Systems",
         icon: "dna",
         color: "#40c4ff",
         colorVar: "var(--accent-blue)",
@@ -206,7 +206,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
       },
       {
         id: "t1d-vx880",
-        label: "T1D Stem-Cell Transplant (VX-880)",
+        label: "Stem-Cell Therapy Systems (VX-880)",
         icon: "syringe",
         color: "#40c4ff",
         colorVar: "var(--accent-blue)",
@@ -222,7 +222,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "ai-safety-ids",
-        label: "AI Safety / Endogenous Catastrophe",
+        label: "AI Safety Systems",
         icon: "brain",
         color: "#7B68EE",
         colorVar: "var(--accent-violet)",
@@ -238,7 +238,7 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     domains: [
       {
         id: "frontier-science",
-        label: "Frontier Science",
+        label: "Frontier Research Systems",
         icon: "atom",
         color: "#e040fb",
         colorVar: "var(--accent-magenta)",

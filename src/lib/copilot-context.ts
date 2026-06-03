@@ -1,4 +1,5 @@
 import { CausalGraph, CausalNode, CausalEdge } from "./types";
+import { computeSystemFragility } from "./omega-system";
 import type { SystemStateSnapshot } from "./snapshots/types";
 import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
@@ -97,6 +98,19 @@ export function serializeGraphContext(
   lines.push(
     `Inconsistent edges: ${graph.metadata.inconsistentEdges} | ` +
       `Restricted nodes: ${graph.metadata.restrictedNodes}`
+  );
+
+  // System-level Ω-Fragility — the network-wide aggregations so the copilot
+  // can answer "how fragile is the whole system?" rather than only quoting
+  // per-node Ω. Mirrors the CD-Ω monitor header (computeSystemFragility).
+  const sys = computeSystemFragility(graph);
+  lines.push("");
+  lines.push("=== SYSTEM FRAGILITY (ΩSF / ΩSX) ===");
+  lines.push(
+    `ΩSF (throughput-weighted): ${sys.omegaSF.toFixed(1)} | ` +
+      `ΩSX (exposure-weighted by concentration): ${sys.omegaSX.toFixed(1)} | ` +
+      `Contagion radius (nodes Ω≥7): ${sys.contagionRadius} | ` +
+      `Buffer horizon: ${sys.bufferHorizon} epochs`
   );
 
   // Selected node detail

@@ -61,6 +61,13 @@ const ScenarioInput = dynamic(() => import("./ScenarioInput"), {
 const AblationPanel = dynamic(() => import("./AblationPanel"), {
   ssr: false,
 });
+// Redesigned PEARL surface (3-zone IA). Mounted behind the NEW⇄CLASSIC
+// toggle so the classic stack stays reachable while the redesign is
+// reviewed; own chunk so the classic path never pays for it.
+const PearlWorkspace = dynamic(() => import("./pearl/PearlWorkspace"), {
+  ssr: false,
+  loading: () => PANEL_LOADER,
+});
 // Newly extracted from this file — see `./modules/*` for the moved
 // definitions. Pearl + Tarski + Pareto tabs each get their own chunk.
 const TarskiPanel = dynamic(
@@ -104,6 +111,32 @@ export default function ModulePanel() {
   );
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
   const isWide = expandedChart !== null;
+
+  // PEARL view mode — "new" (redesigned 3-zone workspace) vs "classic"
+  // (the original stacked panels). Persisted so a reviewer's choice
+  // survives reloads while they flip between the two. Defaults to NEW
+  // for the mockup; SSR starts on a fixed value to avoid hydration drift
+  // and reconciles to localStorage in an effect.
+  const [pearlView, setPearlView] = useState<"new" | "classic">("new");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("pearl:view");
+      if (saved === "classic" || saved === "new") setPearlView(saved);
+    } catch {
+      /* localStorage unavailable (private mode / SSR) — keep default */
+    }
+  }, []);
+  const togglePearlView = () => {
+    setPearlView((v) => {
+      const next = v === "new" ? "classic" : "new";
+      try {
+        window.localStorage.setItem("pearl:view", next);
+      } catch {
+        /* ignore persistence failure */
+      }
+      return next;
+    });
+  };
 
   // Collapse panel when switching modules
   useEffect(() => {
@@ -171,18 +204,37 @@ export default function ModulePanel() {
 
         {activeModule === "pearl" && (
           <div className="p-4 space-y-3">
-            <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-              Intervention surface. Describe a scenario, run the solver to
-              find candidate cuts, or pick your own cuts manually. The Monte
-              Carlo forecast auto-simulates the counterfactual {"\u03A9"}-buffer
-              trajectory under whatever cuts are active.
+            {/* NEW\u21C4CLASSIC toggle \u2014 temporary review affordance while the
+                redesigned workspace is evaluated against the classic stack. */}
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={togglePearlView}
+                title="Switch between the redesigned workspace and the classic stacked panels"
+                className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-2 py-0.5 rounded border border-border text-text-muted hover:text-foreground hover:border-text-muted/60 transition-colors"
+              >
+                {pearlView === "new" ? "VIEW: NEW \u2014 SWITCH TO CLASSIC" : "VIEW: CLASSIC \u2014 SWITCH TO NEW"}
+              </button>
             </div>
-            <ScenarioInput />
-            <InterdictionPanel />
-            <CopilotInterdictionResults />
-            <AblationPanel />
-            <VX880TrialPanel />
-            <MonteCarloForecast expanded={expandedChart === "pearl"} />
+
+            {pearlView === "new" ? (
+              <PearlWorkspace expanded={expandedChart === "pearl"} />
+            ) : (
+              <>
+                <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
+                  Intervention surface. Describe a scenario, run the solver to
+                  find candidate cuts, or pick your own cuts manually. The Monte
+                  Carlo forecast auto-simulates the counterfactual {"\u03A9"}-buffer
+                  trajectory under whatever cuts are active.
+                </div>
+                <ScenarioInput />
+                <InterdictionPanel />
+                <CopilotInterdictionResults />
+                <AblationPanel />
+                <VX880TrialPanel />
+                <MonteCarloForecast expanded={expandedChart === "pearl"} />
+              </>
+            )}
           </div>
         )}
 

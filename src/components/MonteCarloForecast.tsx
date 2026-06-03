@@ -318,8 +318,16 @@ function NodeSparkline({
 // ─── Main Component ────────────────────────────────────────────
 export default function MonteCarloForecast({
   expanded = false,
+  embedded = false,
 }: {
   expanded?: boolean;
+  // `embedded` drops this component's own title + the always-on
+  // "Stochastic simulation…" blurb. The redesigned PEARL workspace
+  // supplies the FORECAST SectionHeader (with a `?`) instead, so
+  // printing them here would re-introduce the prose the redesign
+  // exists to remove. The "Waiting for cuts" empty state stays — it
+  // earns its words. Classic PEARL passes nothing → header preserved.
+  embedded?: boolean;
 } = {}) {
   const {
     interventionTarget,
@@ -468,6 +476,8 @@ export default function MonteCarloForecast({
 
   return (
     <div className="space-y-2">
+      {!embedded && (
+      <>
       <div className="font-[family-name:var(--font-michroma)] text-[9px] tracking-wider text-accent-cyan">
         MONTE CARLO FORECAST
       </div>
@@ -477,6 +487,8 @@ export default function MonteCarloForecast({
         . Auto-runs whenever interdiction cuts or configuration change
         {" \u2014 "}no manual trigger.
       </div>
+      </>
+      )}
 
       {hasInterdiction && effectiveTarget && targetNode && (
         <div className="p-2 rounded border border-accent-amber/30 bg-accent-amber/5 space-y-0.5">

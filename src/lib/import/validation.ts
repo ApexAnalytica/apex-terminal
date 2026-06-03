@@ -1,4 +1,4 @@
-import { CausalGraph, NodeCategory, EdgeType } from "@/lib/types";
+import { CausalGraph, NodeCategory, EdgeType, DEFAULT_OMEGA_WEIGHTS, OmegaPillarWeights } from "@/lib/types";
 import { ParsedGraph, ValidationIssue, ValidationResult } from "./types";
 import { applyNodeDefaults, applyEdgeDefaults } from "./defaults";
 import { enrichGraph } from "./enrich";
@@ -22,7 +22,8 @@ const VALID_EDGE_TYPES: Set<string> = new Set<EdgeType>([
 
 export function validateParsedGraph(
   parsed: ParsedGraph,
-  existingGraph: CausalGraph
+  existingGraph: CausalGraph,
+  weights: OmegaPillarWeights = DEFAULT_OMEGA_WEIGHTS,
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
 
@@ -202,7 +203,7 @@ export function validateParsedGraph(
 
   // ─── Post-import enrichment: auto-edges & omega scoring ─────
   const { nodes: resolvedNodes, edges: resolvedEdges, warnings: enrichWarnings } =
-    enrichGraph(defaultedNodes, defaultedEdges);
+    enrichGraph(defaultedNodes, defaultedEdges, weights);
 
   for (const warning of enrichWarnings) {
     issues.push({

@@ -63,6 +63,17 @@ export interface TerminalLine {
 // ─── Omega-Fragility Profile ────────────────────────────────────
 export interface OmegaFragilityProfile {
   composite: number;              // ΩF 0-10 headline fragility score
+  /**
+   * The hand-authored / default-weighted composite this node carried
+   * before an active domain profile re-weighted it (see
+   * `recomputeComposite` in src/lib/omega-weighting.ts). Set ONLY when a
+   * profile with `compositeMode: "recomputed"` (e.g. AI-Safety) has
+   * overwritten `composite` with its own pillar weighting. Lets the
+   * inspector surface "reweighted from X.X" so the change stays auditable
+   * and the original tuned score isn't silently lost. Undefined means the
+   * displayed `composite` is the authored/default value itself.
+   */
+  baselineComposite?: number;
   irreplaceability: number;       // I  0-10 how impossible to substitute (capacity share, tech exclusivity)
   restorationLatency: number;     // R  0-10 time to restore equivalent capacity after catastrophic failure
   jurisdictionalHazard: number;   // J  0-10 sanctions, conflict, export controls, regulatory exposure

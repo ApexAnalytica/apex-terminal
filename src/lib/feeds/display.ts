@@ -91,12 +91,33 @@ const KIND_FORMATTERS: Record<string, (p: LiveDataPoint) => FormattedLiveSignal>
   },
   sanctions: (p) => {
     // source format: "OFAC SDN — Iran: IRAN, IRAN-EO13599, …"
-    const countryMatch = /—\s*([^:]+):/.exec(p.source);
+    // `[^:—]` (no em-dash) so a mock-fallback source like
+    // "OFAC SDN (mock — upstream unreachable) — Iran: …" still resolves the
+    // country segment right before the colon rather than the inner em-dash.
+    const countryMatch = /—\s*([^:—]+):/.exec(p.source);
     const country = countryMatch?.[1]?.trim() ?? "active";
     return {
       shortLabel: shortLabelFromSource(p.source),
       primaryValue: country,
       qualifier: `${p.value} prog`,
+    };
+  },
+  /** OpenSanctions consolidated per-jurisdiction target count. `value` is the
+   *  number of deduplicated sanctioned targets registered to the country and
+   *  `capacity` is the dataset-wide total (so ratio = global share). Kept a
+   *  distinct kind from OFAC `sanctions` so a node can carry BOTH the US-only
+   *  OFAC program count and the consolidated global target count at once.
+   *  source format: "OpenSanctions consolidated (v…) — Russia: 21333 sanctioned targets" */
+  watchlist: (p) => {
+    // `[^:—]` (no em-dash) so the mock-fallback source
+    // "OpenSanctions consolidated (mock — upstream unreachable) — Iran: …"
+    // resolves "Iran" rather than spanning the inner em-dash.
+    const countryMatch = /—\s*([^:—]+):/.exec(p.source);
+    const country = countryMatch?.[1]?.trim() ?? "listed";
+    return {
+      shortLabel: shortLabelFromSource(p.source),
+      primaryValue: country,
+      qualifier: `${p.value.toLocaleString()} listed`,
     };
   },
   /** Generic macro/financial indicator. Renders "5.25%", "1430K", "102.4"

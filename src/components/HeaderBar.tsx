@@ -1,12 +1,8 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useApexStore } from "@/stores/useApexStore";
-import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
-import CDOmegaMonitor from "./CDOmegaMonitor";
-import ImportButton from "./import/ImportButton";
-import TextSizeToggle from "./TextSizeToggle";
+import WorkspaceContextBar from "./WorkspaceContextBar";
+import SettingsMenu from "./SettingsMenu";
 import { ModuleId } from "@/lib/types";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import DomainIcon from "./DomainIcon";
@@ -23,39 +19,10 @@ const MODULE_TABS = GEOPOLITICAL_TABS.map((m) => ({
 }));
 
 export default function HeaderBar() {
-  const { activeModule, setActiveModule, shocks, replayActive, currentEpoch, baselineEpochs, interventionEpochs, activeTimeline, setTourActive, selectedDomains, setDomainSelectorOpen } = useApexStore();
-  const baseState = useMemo(() => computeOmegaState(shocks), [shocks]);
-
-  // During replay, override omega state with current epoch's values
-  const replayEpochs = activeTimeline === "baseline" ? baselineEpochs : interventionEpochs;
-  const currentSnapshot = replayActive && replayEpochs.length > 0 ? replayEpochs[currentEpoch] ?? null : null;
-
-  const state = useMemo(() => {
-    if (currentSnapshot) {
-      return {
-        buffer: currentSnapshot.omegaBuffer,
-        shocks,
-        status: currentSnapshot.omegaStatus,
-        lastUpdate: Date.now(),
-      };
-    }
-    return baseState;
-  }, [currentSnapshot, baseState, shocks]);
-
-  const doomsday = useMemo(() => computeDoomsdayState(shocks, state.buffer), [shocks, state.buffer]);
-  const alertLevel = useMemo(() => computeAlertLevel(state.status, doomsday), [state.status, doomsday]);
-  const router = useRouter();
-  const handleSignOut = useCallback(async () => {
-    // Lazy-import supabase client so the @supabase/ssr chunk stays off
-    // the eager bundle. The only place HeaderBar uses it is this
-    // sign-out callback — an explicit user click that can afford the
-    // extra microtask.
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }, [router]);
+  const activeModule = useApexStore((s) => s.activeModule);
+  const setActiveModule = useApexStore((s) => s.setActiveModule);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
 
   return (
     <header className="flex items-center justify-between px-3 md:px-6 h-14 border-b border-border bg-surface-elevated relative scanlines overflow-visible">
@@ -127,44 +94,14 @@ export default function HeaderBar() {
         </div>
       </div>
 
-      {/* Center: CDΩ Monitor — allowed to shrink and clip when viewport is narrow */}
-      <div className="min-w-0 overflow-hidden">
-        <CDOmegaMonitor state={state} doomsday={doomsday} alertLevel={alertLevel} />
+      {/* Center: workspace context — allowed to shrink and clip when narrow */}
+      <div className="min-w-0 overflow-hidden flex justify-center px-2">
+        <WorkspaceContextBar />
       </div>
 
-      {/* Right: Meta — z-10 so it always sits above the center section */}
+      {/* Right: single settings dropdown — z-10 so it sits above the center */}
       <div className="flex items-center gap-1.5 md:gap-3 shrink-0 z-10 bg-surface-elevated">
-        <ImportButton />
-        <TextSizeToggle />
-        <button
-          onClick={() => setTourActive(true)}
-          className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"
-          title="Feature Tour"
-        >
-          ?
-        </button>
-        <div className="h-8 w-px bg-border hidden xl:block" />
-        <div className="hidden xl:flex flex-col items-end">
-          <span className="text-[9px] text-text-muted font-mono tracking-wider">
-            TECH 2.0
-          </span>
-          <span className="text-[9px] text-text-muted font-mono">
-            CAUSAL DERIVATION
-          </span>
-        </div>
-        <div className="h-8 w-px bg-border hidden md:block" />
-        <button
-          onClick={handleSignOut}
-          className="hidden md:flex flex-col items-end group cursor-pointer shrink-0"
-          title="Sign out"
-        >
-          <span className="text-[9px] text-text-muted font-mono tracking-wider group-hover:text-accent-red transition-colors">
-            SESSION
-          </span>
-          <span className="text-[9px] text-accent-green font-mono group-hover:text-accent-red transition-colors">
-            SIGN OUT
-          </span>
-        </button>
+        <SettingsMenu />
       </div>
     </header>
   );

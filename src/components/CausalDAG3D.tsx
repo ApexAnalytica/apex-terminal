@@ -26,6 +26,7 @@ import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTick } from "@/lib/useReplayTick";
 import { AnimatePresence } from "framer-motion";
 import { EpochSnapshot, CausalEdge } from "@/lib/types";
+import { mark, measureBetween } from "@/lib/perf/instrument";
 
 // Error boundary to catch WebGL context loss and recover
 class DAGErrorBoundary extends React.Component<
@@ -529,6 +530,12 @@ export default function CausalDAG3D() {
   const interventionEpochs = useApexStore((s) => s.interventionEpochs);
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isLive = useApexStore((s) => s.isLive);
+  // Timeline scrub state + per-node temporal history. Both feed the
+  // posMap memo below so historical scrubbing reads omega-at-the-
+  // scrubbed-time instead of always-current omega (the bug the user
+  // reported as "scrubbing doesn't do the migration thing anymore").
+  const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const temporalData = useApexStore((s) => s.temporalData);
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -757,30 +764,53 @@ export default function CausalDAG3D() {
   //   Movement is driven by absolute omega level (not delta), ensuring visible change.
   // During LIVE: return base positions (no movement).
   const posMap = useMemo(() => {
-    // Live mode — no animation
-    if (isLive && !currentSnapshot) return basePosMap;
-
     const map: Record<string, [number, number, number]> = {};
 
-    // Get stress for each node (0 to 1 scale)
+    // Get stress for each node (0 to 1 scale).
+    //
+    // Three sources, in priority order:
+    //  1. Active cascade replay → currentSnapshot.shockIntensity. Sharp,
+    //     intervention-driven motion.
+    //  2. Historical scrub (timeline dragged off "now") → omega-at-the-
+    //     scrubbed-time from temporalData.nodes[id].history. Live feed
+    //     data writes into this history every tick, so scrubbing back
+     //     reads the real past, not the current-adjusted omega.
+    //  3. Live mode → node.omegaFragility.composite, which is the
+    //     feed-adjusted live value (applyOmegaLiveAdjustments). Slow
+    //     drift as real-world data ticks in.
+    //
+    // All three paths funnel through the same omega → stress curve so
+    // the displacement code below doesn't have to branch.
     const getStress = (nodeId: string): number => {
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[nodeId];
         return state ? state.shockIntensity : 0;
       }
-      // Historical mode: use the temporal omega value directly
-      // High omega (>4) = stressed, pulls inward
-      // Low omega (<4) = relaxed, pushes outward
-      // Use O(1) nodeById lookup (item #10) instead of O(N) find
       const node = nodeById.get(nodeId);
       if (!node) return 0;
-      const omega = node.omegaFragility.composite;
+      let omega = node.omegaFragility.composite;
+      if (!isLive) {
+        // Historical scrub: look up the closest temporal sample at or
+        // before the scrubbed timestamp. Fall through to current omega
+        // if the node has no history (newly-added domains, etc.).
+        const history = temporalData?.nodes.get(nodeId)?.history;
+        if (history && history.length > 0) {
+          let lo = 0;
+          let hi = history.length - 1;
+          // Binary search for the rightmost timestamp ≤ target.
+          while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (history[mid].timestamp <= timelinePosition) lo = mid;
+            else hi = mid - 1;
+          }
+          omega = history[lo].omegaComposite;
+        }
+      }
       // Map omega → [-1, +1] stress with a steeper curve around the
-      // mid-band so synthetic temporal data's typical ±0.5 drift
-      // around omega 5-7 actually moves the orb. Old `(omega-5)/4`
-      // produced stress 0.25-0.5 at typical levels; new ramp puts
-      // it at 0.5-0.75 — paired with the 2D CONTRACTION push, the
-      // dial scrub finally reads as "the cluster is breathing."
+      // mid-band so typical ±0.5 drift around omega 5-7 actually
+      // moves the orb. The displacement magnitudes (PULL_MAX / PUSH_MAX
+      // below) are deliberately small in live mode — the breath should
+      // be subtle so the user notices it as motion, not jitter.
       return Math.max(-1, Math.min(1, (omega - 4) / 3));
     };
 
@@ -883,7 +913,16 @@ export default function CausalDAG3D() {
 
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive, nodeById]);
+  }, [
+    basePosMap,
+    currentSnapshot,
+    neighbors,
+    omegaKey,
+    isLive,
+    nodeById,
+    timelinePosition,
+    temporalData,
+  ]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 
@@ -1146,15 +1185,29 @@ export default function CausalDAG3D() {
         />
       )}
       <DAGErrorBoundary>
-      {/* frameloop="demand" stops the render loop when idle — invalidate() is called
-          on every interaction event so nothing visible is lost (item #1). */}
+      {/* frameloop="always" so the orb idle-breath in DAGNode3D's useFrame
+          renders continuously, matching 2D/map view behaviour. Was
+          "demand" — a battery-saving optimization that froze the orbs
+          between mouse moves and read as a dead canvas. The
+          invalidate()-based StoreInvalidator / ReplayInvalidator below
+          remain harmless no-ops in always mode and stay for low-cost
+          safety against any future flip back to demand. */}
       <Canvas
         key={canvasKey}
-        frameloop="demand"
+        frameloop="always"
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
+          // Launch instrumentation: r3f calls onCreated once the Canvas
+          // is mounted and the GL context is live but before the first
+          // frame paints. Pair with the "launch:moduleLoad" mark in
+          // page.tsx to give a full module-load → canvas-ready number.
+          // Subsequent canvas remounts (key change) re-fire; the
+          // aggregator rolls them into the same bucket which is fine —
+          // remount cost is itself worth tracking.
+          mark("launch:firstFrame");
+          measureBetween("launch", "launch:moduleLoad", "launch:firstFrame");
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();

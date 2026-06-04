@@ -381,6 +381,40 @@ export interface CausalGraph {
   metadata: GraphMetadata;
 }
 
+/**
+ * An INFERRED LATENT node — a hidden common cause the model posits to
+ * explain dependencies among observed nodes that no observed node accounts
+ * for (Dr. Pita's "synthetic node" #1: missing from the MAP, not the
+ * territory). Derived on demand from the `confounded`/FCI latent-common-
+ * cause signal (see `deriveLatentNodes`); it is DELIBERATELY:
+ *
+ *   - NOT a `CausalNode` — it has no measured ΩF, category, or metadata,
+ *     because we don't observe it. Forcing it into the node shape would
+ *     invite the UI to render fake fragility scores for a thing we can't see.
+ *   - NOT stored on `CausalGraph.nodes` — it is computed when the analyst
+ *     opts in, so it can never leak into cascade simulation, ΩF, or the
+ *     system metrics (ΩSF/ΩSX/contagion). Read-only annotation only.
+ *
+ * It earns promotion from the dashed `confounded` edge ONLY when it is the
+ * common cause of 3+ observed nodes (a pairwise hidden cause stays an edge).
+ * Always framed as a hypothesis, never asserted as real (honours the
+ * "nothing synthetic under a real-data label" directive via a persistent
+ * INFERRED badge + provenance tooltip at the render layer).
+ */
+export interface LatentNode {
+  id: string;
+  /** Observed node ids this inferred latent is the common cause of (≥3). */
+  explains: string[];
+  /** How it was inferred. */
+  method: "confounded-cluster" | "fci";
+  /** Inference strength 0-1 (e.g. mean confidence of the source signals). */
+  strength: number;
+  /** Hypothesis-framed label — never an assertion of what the latent IS. */
+  label: string;
+  /** Render position (centroid of explained nodes); set by the render layer. */
+  position3d?: { x: number; y: number; z: number };
+}
+
 // ─── Copilot ─────────────────────────────────────────────────────
 export type CopilotRole = "system" | "user" | "assistant";
 

@@ -413,6 +413,12 @@ export interface ApexState {
   setAblationMode: (on: boolean) => void;
   toggleAblatedNode: (nodeId: string) => void;
   toggleAblatedEdge: (edgeId: string) => void;
+
+  // Inferred latent nodes (Dr. Pita synthetic-node #1) — opt-in, default OFF.
+  // Read-only overlay derived on demand via deriveLatentNodes; never stored
+  // on the graph, never enters cascade / ΩF / system metrics.
+  showLatentNodes: boolean;
+  setShowLatentNodes: (on: boolean) => void;
   resetAblation: () => void;
   startAblationReplay: () => void;
 
@@ -1233,6 +1239,10 @@ export const useApexStore = create<ApexState>((set, get) => ({
     ...(on ? { scissorsMode: false } : {}),
     ...(!on ? { ablatedNodeIds: [], ablatedEdgeIds: [] } : {}),
   })),
+
+  // Inferred latent-node overlay toggle (opt-in, default OFF).
+  showLatentNodes: false,
+  setShowLatentNodes: (on) => set({ showLatentNodes: on }),
   toggleAblatedNode: (nodeId) =>
     set((s) => {
       const removing = s.ablatedNodeIds.includes(nodeId);

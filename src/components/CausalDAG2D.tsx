@@ -24,6 +24,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import { deriveLatentNodes } from "@/lib/latent-nodes";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
@@ -476,7 +477,94 @@ function EdgeInspector({
   );
 }
 
-const nodeTypes = { causal: CausalNode2D };
+/**
+ * Inferred-latent ghost glyph (Dr. Pita synthetic-node #1). Deliberately
+ * looks UNLIKE a real node: dashed magenta ring, no fill, no ΩF score, a "?"
+ * and a persistent INFERRED badge. Hover discloses full provenance. Never
+ * carries omega data — it's a hypothesis, not an observation.
+ */
+interface LatentNode2DData {
+  label: string;
+  members: string;
+  strength: number;
+}
+function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
+  return (
+    <div
+      title={`INFERRED LATENT — not observed.\n${data.label}\nMembers: ${data.members}\nInference strength: ${data.strength}\nDerived from confounded structure (FCI-style latent common cause), not real data.`}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: "50%",
+        border: "2px dashed #e040fb",
+        background: "rgba(224,64,251,0.07)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        cursor: "help",
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      <span style={{ color: "#e040fb", fontSize: 16, fontWeight: 700, lineHeight: 1, opacity: 0.85 }}>?</span>
+      <div
+        style={{
+          position: "absolute",
+          top: -13,
+          left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: 7,
+          letterSpacing: "0.08em",
+          fontFamily: "monospace",
+          color: "#e040fb",
+          background: "rgba(0,0,0,0.65)",
+          padding: "1px 4px",
+          borderRadius: 2,
+          whiteSpace: "nowrap",
+          border: "1px solid rgba(224,64,251,0.45)",
+          pointerEvents: "none",
+        }}
+      >
+        INFERRED
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A member node pulled into the current (filtered) view because an inferred
+ * latent binds it — i.e. cross-domain structure the domain filter was hiding.
+ * Rendered as a small dashed-magenta chip, clearly marked as brought in by the
+ * latent (not a normal node in this view), read-only. Disappears on toggle-off.
+ */
+function LatentMember2D({ data }: NodeProps<{ label: string }>) {
+  return (
+    <div
+      title={`Pulled into view by an inferred latent — this node lives in another domain but shares the hidden common cause.`}
+      style={{
+        padding: "2px 6px",
+        borderRadius: 4,
+        border: "1px dashed rgba(224,64,251,0.7)",
+        background: "rgba(224,64,251,0.06)",
+        color: "#e7b8f5",
+        fontSize: 8,
+        fontFamily: "monospace",
+        whiteSpace: "nowrap",
+        position: "relative",
+        cursor: "help",
+        opacity: 0.92,
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      {data.label}
+      <span style={{ marginLeft: 4, fontSize: 6, color: "#e040fb", letterSpacing: "0.05em" }}>via latent</span>
+    </div>
+  );
+}
+
+const nodeTypes = { causal: CausalNode2D, latent: LatentNode2D, latentMember: LatentMember2D };
 
 /**
  * Custom edge component that subscribes to hover/selection state itself
@@ -766,6 +854,11 @@ function CausalDAG2DInner() {
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
   const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
+  const showLatentNodes = useApexStore((s) => s.showLatentNodes);
+  // Latents derive from the FULL (unfiltered) store graph, not the filtered
+  // view — confounded clusters are inherently cross-domain, so a single-domain
+  // filter would hide the very structure the feature exists to reveal.
+  const fullGraphForLatent = useApexStore((s) => s.graphData);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
@@ -1427,6 +1520,101 @@ function CausalDAG2DInner() {
   // recompute themselves from these. Memoised so context-only consumers
   // (CausalNode2D, EmphasizedEdge) don't re-run their useMemo on parent
   // re-render when the values are equal.
+  // Inferred-latent overlay (Dr. Pita synthetic-node #1). Injected into the
+  // React Flow arrays ONLY when the analyst opts in — the store graph
+  // (graphData) is never mutated, so latent nodes can't enter cascade / ΩF /
+  // system metrics. Glyph sits at the centroid of the members it explains,
+  // with faint dashed tethers to each member.
+  const latentOverlay = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
+    if (!showLatentNodes) return { nodes: [], edges: [] };
+    // Derive from the FULL store graph so cross-domain confounded clusters
+    // aren't hidden by the active domain filter (the structure the feature exists
+    // to reveal). Members not in the current view are pulled in as marked chips.
+    const latents = deriveLatentNodes(fullGraphForLatent);
+    if (latents.length === 0) return { nodes: [], edges: [] };
+    const labelOf = new Map(
+      fullGraphForLatent.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id] as const),
+    );
+
+    // Fallback anchor when none of a latent's members are in the current view:
+    // above the centroid of whatever IS on screen.
+    let vcx = 0, vcy = 0, vk = 0;
+    nodePositions.forEach((p) => { vcx += p.x; vcy += p.y; vk++; });
+    const viewCx = vk ? vcx / vk : 0;
+    const viewCy = vk ? vcy / vk : 0;
+
+    const lNodes: Node[] = [];
+    const lEdges: Edge[] = [];
+    const PULL_RADIUS = 110;
+    const tether = (latId: string, targetId: string) =>
+      lEdges.push({
+        id: `${latId}__tether__${targetId}`,
+        source: latId,
+        target: targetId,
+        type: "default",
+        style: { stroke: "#e040fb", strokeDasharray: "3 3", strokeWidth: 1, opacity: 0.45 },
+      });
+
+    latents.forEach((lat, latIdx) => {
+      const visible = lat.explains.filter((m) => nodePositions.has(m));
+      const missing = lat.explains.filter((m) => !nodePositions.has(m));
+
+      // Glyph anchor: centroid of visible members, else offset above the view
+      // centroid (per-latent offset so multiple latents don't stack).
+      let ax: number, ay: number;
+      if (visible.length) {
+        let cx = 0, cy = 0;
+        for (const m of visible) { const p = nodePositions.get(m)!; cx += p.x; cy += p.y; }
+        ax = cx / visible.length; ay = cy / visible.length;
+      } else {
+        ax = viewCx + latIdx * 240;
+        ay = viewCy - 260;
+      }
+
+      lNodes.push({
+        id: lat.id,
+        type: "latent",
+        position: { x: ax, y: ay },
+        data: {
+          label: lat.label,
+          members: lat.explains.map((id) => labelOf.get(id) ?? id).join(", "),
+          strength: lat.strength,
+        },
+        draggable: false,
+        selectable: false,
+      });
+
+      // Visible members: tether to their existing node.
+      for (const m of visible) tether(lat.id, m);
+
+      // Missing (cross-domain) members: pull in as marked chips around the glyph.
+      missing.forEach((m, i) => {
+        const ang = (2 * Math.PI * i) / Math.max(1, missing.length);
+        const mid = `${lat.id}__member__${m}`;
+        lNodes.push({
+          id: mid,
+          type: "latentMember",
+          position: { x: ax + Math.cos(ang) * PULL_RADIUS, y: ay + Math.sin(ang) * PULL_RADIUS },
+          data: { label: labelOf.get(m) ?? m },
+          draggable: false,
+          selectable: false,
+        });
+        tether(lat.id, mid);
+      });
+    });
+
+    return { nodes: lNodes, edges: lEdges };
+  }, [showLatentNodes, fullGraphForLatent, nodePositions]);
+
+  const renderNodes = useMemo(
+    () => (latentOverlay.nodes.length ? visibleNodes.concat(latentOverlay.nodes) : visibleNodes),
+    [visibleNodes, latentOverlay.nodes],
+  );
+  const renderEdges = useMemo(
+    () => (latentOverlay.edges.length ? (visibleEdges as Edge[]).concat(latentOverlay.edges) : (visibleEdges as Edge[])),
+    [visibleEdges, latentOverlay.edges],
+  );
+
   const dag2dContextValue = useMemo<Dag2DContextValue>(
     () => ({
       adjacency,
@@ -1443,8 +1631,8 @@ function CausalDAG2DInner() {
       <DAGOverlay />
       <div ref={flowWrapperRef} className="absolute inset-0">
         <ReactFlow
-          nodes={visibleNodes}
-          edges={visibleEdges}
+          nodes={renderNodes}
+          edges={renderEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onInit={onInit}

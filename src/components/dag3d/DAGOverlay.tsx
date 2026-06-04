@@ -336,6 +336,8 @@ export default function DAGOverlay() {
   const setViewMode = useApexStore((s) => s.setViewMode);
   const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
   const toggleEdgeTypeVisibility = useApexStore((s) => s.toggleEdgeTypeVisibility);
+  const showLatentNodes = useApexStore((s) => s.showLatentNodes);
+  const setShowLatentNodes = useApexStore((s) => s.setShowLatentNodes);
   const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
   const setNodeSizeMetric = useApexStore((s) => s.setNodeSizeMetric);
   const truthFilter = useApexStore((s) => s.truthFilter);
@@ -545,6 +547,29 @@ export default function DAGOverlay() {
               );
             })}
           </div>
+        )}
+
+        {/* Inferred-latent overlay toggle (Dr. Pita synthetic-node #1).
+            Opt-in, default OFF. 2D only for now (3D render is a fast-follow).
+            Surfaces hidden common causes the model posits from confounded
+            structure — read-only, never enters cascade/ΩF/metrics. */}
+        {viewMode === "2d" && (
+          <button
+            onClick={() => setShowLatentNodes(!showLatentNodes)}
+            className="px-1.5 py-1 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded border border-border transition-colors"
+            style={{
+              backgroundColor: showLatentNodes ? "#e040fb15" : "transparent",
+              color: showLatentNodes ? "#e040fb" : "var(--text-muted)",
+              opacity: showLatentNodes ? 1 : 0.6,
+            }}
+            title={
+              showLatentNodes
+                ? "Hide inferred latent nodes"
+                : "Show inferred latent nodes — hidden common causes the model posits from confounded structure (read-only, not real data)"
+            }
+          >
+            ◌ LATENT
+          </button>
         )}
         {/* Encoding legend — visible in 3D and 2D where the visual
             primitive is a sized, coloured node with edges. MAP and TOPO

@@ -2,6 +2,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import TrustedInviteCard from "./TrustedInviteCard";
+import {
+  analyzeCapabilityGaps,
+  type GapInputRow,
+} from "@/lib/copilot/capability-gaps";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +29,7 @@ export default async function AdminLandingPage() {
     Date.now() + 30 * 24 * 60 * 60 * 1000
   ).toISOString();
 
-  const [profilesAll, profilesDueSoon, leadsNew, feedbackNew] =
+  const [profilesAll, profilesDueSoon, leadsNew, feedbackNew, gapTraces] =
     await Promise.all([
       supabase.from("profiles").select("*", { count: "exact", head: true }),
       supabase
@@ -41,7 +45,18 @@ export default async function AdminLandingPage() {
         .from("feedback")
         .select("*", { count: "exact", head: true })
         .eq("status", "new"),
+      // Bounded sample of recent copilot turns for the COPILOT GAPS card
+      // headline stat. The full analysis lives on /admin/copilot-gaps.
+      supabase
+        .from("copilot_traces")
+        .select("user_message, display_text, tool_calls")
+        .order("created_at", { ascending: false })
+        .limit(1000),
     ]);
+
+  const gapReport = analyzeCapabilityGaps(
+    (gapTraces.data ?? []) as GapInputRow[],
+  );
 
   const cards: AdminCard[] = [
     {
@@ -81,6 +96,24 @@ export default async function AdminLandingPage() {
           label: "new",
           value: feedbackNew.count ?? 0,
           tone: (feedbackNew.count ?? 0) > 0 ? "warn" : "default",
+        },
+      ],
+    },
+    {
+      href: "/admin/copilot-gaps",
+      title: "COPILOT GAPS",
+      blurb:
+        "Actions users asked the copilot to do that it couldn't. Auto-mined backlog of what to build next.",
+      stats: [
+        {
+          label: "refused",
+          value: gapReport.explicit_refusal_count,
+          tone: gapReport.explicit_refusal_count > 0 ? "warn" : "default",
+        },
+        {
+          label: "suspected",
+          value: gapReport.suspected_gap_count,
+          tone: gapReport.suspected_gap_count > 0 ? "warn" : "default",
         },
       ],
     },

@@ -253,6 +253,127 @@ defineTool({
   },
 });
 
+// ─── Temporal / timeline ────────────────────────────────────────
+
+defineTool({
+  name: "set_time",
+  description:
+    "Move the timeline scrubber to a point in time. Pass an ISO-8601 date (e.g. 2024-07-01); out-of-range dates clamp to the available window.",
+  guidance:
+    "Use when the user names a specific moment ('go to January 2024', 'jump to Q3 2024', 'show me last March'). Convert their phrasing to an ISO date yourself and pass date=YYYY-MM-DD. If the view is currently live and they want to inspect the past, also emit set_live:on=false. Do NOT state the landing position in prose — the SYS result line confirms where the scrubber actually settled after clamping.",
+  params: {
+    date: { type: "string", required: true, description: "ISO-8601 date, e.g. 2024-07-01" },
+  },
+  legacyParam: "date",
+  handler: ({ date }, ctx) => {
+    const store = ctx.getStore();
+    const ts = Date.parse(date);
+    if (Number.isNaN(ts)) {
+      return `Could not parse date "${date}". Use an ISO date like 2024-07-01.`;
+    }
+    const range = store.timelineRange;
+    const target =
+      range && typeof range.start === "number" && typeof range.end === "number"
+        ? Math.max(range.start, Math.min(range.end, ts))
+        : ts;
+    store.setTimelinePosition(target);
+    return `Timeline moved to ${new Date(target).toISOString().slice(0, 10)}`;
+  },
+});
+
+defineTool({
+  name: "set_time_range",
+  description:
+    "Set the visible timeline window. Pass ISO-8601 start and end dates (start must precede end).",
+  guidance:
+    "Use for 'zoom into 2024', 'show me Jan through March', 'widen to the full history'. Convert to ISO dates and pass start=YYYY-MM-DD,end=YYYY-MM-DD.",
+  params: {
+    start: { type: "string", required: true, description: "ISO-8601 start date" },
+    end: { type: "string", required: true, description: "ISO-8601 end date" },
+  },
+  handler: ({ start, end }, ctx) => {
+    const s = Date.parse(start);
+    const e = Date.parse(end);
+    if (Number.isNaN(s) || Number.isNaN(e)) {
+      return `Could not parse range "${start}".."${end}". Use ISO dates like 2024-01-01.`;
+    }
+    if (s >= e) {
+      return `Invalid range: start (${start}) must be before end (${end}).`;
+    }
+    ctx.getStore().setTimelineRange({ start: s, end: e });
+    return `Timeline window set to ${new Date(s).toISOString().slice(0, 10)} → ${new Date(e).toISOString().slice(0, 10)}`;
+  },
+});
+
+defineTool({
+  name: "set_time_granularity",
+  description: "Set the timeline resolution (zoom level of the time axis).",
+  params: {
+    granularity: {
+      type: "enum",
+      values: ["hour", "day", "week", "month", "year", "5year", "all"] as const,
+      required: true,
+    },
+  },
+  legacyParam: "granularity",
+  handler: ({ granularity }, ctx) => {
+    ctx.getStore().setTimelineGranularity(granularity);
+    return `Timeline granularity set to: ${granularity}`;
+  },
+});
+
+defineTool({
+  name: "set_live",
+  description:
+    "Follow real-time (on) or freeze the timeline at the current point (off).",
+  guidance:
+    "'go live' / 'resume live updates' → on=true. 'freeze' / 'pause the feed' / 'stop following live' → on=false.",
+  params: {
+    on: { type: "boolean", required: true, description: "true = follow real-time; false = freeze" },
+  },
+  legacyParam: "on",
+  handler: ({ on }, ctx) => {
+    ctx.getStore().setIsLive(on);
+    return on ? "Now following real-time" : "Timeline frozen (live off)";
+  },
+});
+
+defineTool({
+  name: "set_active_timeline",
+  description:
+    "Switch the active cascade timeline between baseline and intervention. Resets the replay to epoch 0.",
+  guidance:
+    "'show the baseline' → baseline. 'show the intervention timeline' / 'with my interdiction applied' → intervention.",
+  params: {
+    timeline: { type: "enum", values: ["baseline", "intervention"] as const, required: true },
+  },
+  legacyParam: "timeline",
+  handler: ({ timeline }, ctx) => {
+    ctx.getStore().setActiveTimeline(timeline);
+    return `Active timeline: ${timeline} (epoch reset to 0)`;
+  },
+});
+
+defineTool({
+  name: "step_epoch",
+  description:
+    "Step the cascade replay by N epochs (frames). Negative steps backward. Pauses playback.",
+  guidance:
+    "'step forward' → delta=1. 'go back two frames' → delta=-2. 'advance the cascade' → delta=1. For continuous playback use start_replay instead.",
+  params: {
+    delta: { type: "number", required: true, description: "Epochs to step; negative = backward" },
+  },
+  legacyParam: "delta",
+  handler: ({ delta }, ctx) => {
+    const store = ctx.getStore();
+    store.stepEpoch(delta);
+    const epoch = ctx.getStore().currentEpoch;
+    return typeof epoch === "number"
+      ? `Stepped to epoch ${epoch}`
+      : `Stepped ${delta >= 0 ? "+" : ""}${delta} epoch(s)`;
+  },
+});
+
 // ─── Truth filter ───────────────────────────────────────────────
 
 defineTool({
@@ -629,6 +750,71 @@ defineTool({
       `Tarski validation complete: ${report.inconsistentEdgeIds.size} inconsistent edge(s), ` +
       `${report.restrictedNodeIds.size} restricted node(s), ${report.proofTraces.length} proof trace(s).`
     );
+  },
+});
+
+defineTool({
+  name: "enable_axioms",
+  description:
+    "Choose which Tarski axioms are ACTIVE, then re-run validation so the graph re-renders the resulting inconsistent edges / restricted nodes. Pass axiom ids (A-01|R-01|H-02) or name fragments. This REPLACES the active set (not additive).",
+  guidance:
+    "Use when the user wants to focus the Tarski lens on a specific axiom set: 'check only temporal priority and the chokepoint axioms', 'turn on the T1D axioms', 'arbitrarily pick three axioms and show how they render'. The full catalog (ids + names) is in === TARSKI AXIOMS === in the live context — pick ids from there. Don't pre-state the resulting counts; the SYS result line confirms what was enabled and how it rendered.",
+  params: {
+    axioms: {
+      type: "string[]",
+      required: true,
+      description: "Axiom ids or name fragments separated by | (e.g. A-01|R-01|H-02)",
+    },
+  },
+  legacyParam: "axioms",
+  handler: async ({ axioms }, ctx) => {
+    const store = ctx.getStore();
+    const { AXIOM_LIBRARY } = await import("../tarski-data");
+    const resolved = new Set<string>();
+    const unmatched: string[] = [];
+    for (const a of axioms) {
+      const q = a.trim().toLowerCase();
+      if (!q) continue;
+      const hit = AXIOM_LIBRARY.find(
+        (ax) => ax.id.toLowerCase() === q || ax.name.toLowerCase().includes(q),
+      );
+      if (hit) resolved.add(hit.id);
+      else unmatched.push(a);
+    }
+    if (resolved.size === 0) {
+      return `No axioms matched ${axioms.join(", ")}. Use ids like A-01, R-01, H-02 (see === TARSKI AXIOMS ===).`;
+    }
+    store.setEnabledAxioms(resolved);
+    store.runTarskiWithAxioms();
+    const names = [...resolved]
+      .map((id) => {
+        const ax = AXIOM_LIBRARY.find((a) => a.id === id);
+        return ax ? `${ax.id} ${ax.name}` : id;
+      })
+      .join(", ");
+    const note = unmatched.length > 0 ? ` (no match: ${unmatched.join(", ")})` : "";
+    const report = ctx.getStore().tarskiReport;
+    const rendered = report
+      ? ` → ${report.inconsistentEdgeIds.size} inconsistent edge(s), ${report.restrictedNodeIds.size} restricted node(s)`
+      : "";
+    return `Enabled ${resolved.size} axiom(s): ${names}${note}${rendered}`;
+  },
+});
+
+defineTool({
+  name: "set_axiom_level",
+  description:
+    "Filter active Tarski axioms by level, then re-run validation. all = every level; 0 = core; 1 = regional; 2 = higher-order.",
+  params: {
+    level: { type: "enum", values: ["all", "0", "1", "2"] as const, required: true },
+  },
+  legacyParam: "level",
+  handler: ({ level }, ctx) => {
+    const store = ctx.getStore();
+    const f: "all" | 0 | 1 | 2 = level === "all" ? "all" : (Number(level) as 0 | 1 | 2);
+    store.setAxiomLevelFilter(f);
+    store.runTarskiWithAxioms();
+    return `Axiom level filter set to: ${level}`;
   },
 });
 

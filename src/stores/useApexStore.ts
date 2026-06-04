@@ -411,6 +411,15 @@ export interface ApexState {
   ablatedNodeIds: string[];
   ablatedEdgeIds: string[];
   setAblationMode: (on: boolean) => void;
+  /**
+   * Toggle the canvas ablation CLICK-MODE without clearing the existing
+   * cut set. `setAblationMode(false)` wipes `ablatedNodeIds`/`ablatedEdgeIds`
+   * (intended for the classic "exit & discard" flow); the redesigned PEARL
+   * workspace binds the Manual tab to this NON-destructive variant so
+   * leaving the tab stops the canvas hijacking clicks WITHOUT losing the
+   * cuts the analyst already made.
+   */
+  setAblationActive: (on: boolean) => void;
   toggleAblatedNode: (nodeId: string) => void;
   toggleAblatedEdge: (edgeId: string) => void;
 
@@ -1243,6 +1252,15 @@ export const useApexStore = create<ApexState>((set, get) => ({
   // Inferred latent-node overlay toggle (opt-in, default OFF).
   showLatentNodes: false,
   setShowLatentNodes: (on) => set({ showLatentNodes: on }),
+
+  // Non-destructive: flips the canvas click-mode only; never clears the
+  // cut set. Used by the redesigned PEARL Manual tab so switching tabs
+  // (or leaving PEARL) can safely stop canvas-hijacking without deleting
+  // the analyst's ablations.
+  setAblationActive: (on) => set((s) => ({
+    ablationMode: on,
+    ...(on ? { scissorsMode: false } : {}),
+  })),
   toggleAblatedNode: (nodeId) =>
     set((s) => {
       const removing = s.ablatedNodeIds.includes(nodeId);

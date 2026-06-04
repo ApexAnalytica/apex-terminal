@@ -107,10 +107,17 @@ export default function InterdictionPanel({
         </>
       )}
 
-      {/* Controls */}
-      <div className="flex items-center gap-2">
+      {/* Controls — wrap so the BUDGET + MODE pills never overflow the
+          fixed 320px PEARL panel (founder live-test: "budget buttons
+          extend out beyond the actual window"). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-1">
-          <span className="text-[8px] font-mono text-text-muted">BUDGET:</span>
+          <span
+            className="text-[8px] font-mono text-text-muted"
+            title="Maximum number of cuts the solver may apply (1–5; it skips 4 by design)"
+          >
+            BUDGET:
+          </span>
           {[1, 2, 3, 5].map((b) => (
             <button
               key={b}

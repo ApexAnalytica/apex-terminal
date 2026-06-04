@@ -100,6 +100,15 @@ export function serializeGraphContext(
       `Restricted nodes: ${graph.metadata.restrictedNodes}`
   );
 
+  // Tarski axiom catalog — the full set of selectable axiom ids so the
+  // copilot can drive enable_axioms / set_axiom_level. Without this the
+  // model only ever sees axioms that already appear in a violation.
+  lines.push("");
+  lines.push("=== TARSKI AXIOMS (catalog — ids for enable_axioms) ===");
+  for (const ax of AXIOM_LIBRARY) {
+    lines.push(`  ${ax.id} (L${ax.level}) ${ax.name}`);
+  }
+
   // System-level Ω-Fragility — the network-wide aggregations so the copilot
   // can answer "how fragile is the whole system?" rather than only quoting
   // per-node Ω. Mirrors the CD-Ω monitor header (computeSystemFragility).

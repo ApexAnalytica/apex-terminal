@@ -78,7 +78,24 @@ export default function AblationPanel({
         </>
       )}
 
+      {/* Embedded in the redesigned PEARL Manual tab: that tab auto-enters
+          ablation mode (PearlWorkspace effect), so the explicit ENTER/EXIT
+          button is redundant here — replace it with a live status hint. */}
+      {embedded && (
+        <div
+          className="text-[8px] font-mono leading-snug"
+          style={{
+            color: ablationMode ? "var(--accent-cyan)" : "var(--text-muted)",
+          }}
+        >
+          {ablationMode
+            ? "Canvas is live — click any node or edge to cut it, then Run cascade below."
+            : "Switch to this tab to start selecting nodes / edges on the canvas."}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 flex-wrap">
+        {!embedded && (
         <button
           type="button"
           onClick={() => setAblationMode(!ablationMode)}
@@ -95,6 +112,7 @@ export default function AblationPanel({
         >
           {ablationMode ? "EXIT ABLATION MODE" : "ENTER ABLATION MODE"}
         </button>
+        )}
 
         <button
           type="button"

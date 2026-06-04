@@ -632,6 +632,71 @@ defineTool({
   },
 });
 
+defineTool({
+  name: "enable_axioms",
+  description:
+    "Choose which Tarski axioms are ACTIVE, then re-run validation so the graph re-renders the resulting inconsistent edges / restricted nodes. Pass axiom ids (A-01|R-01|H-02) or name fragments. This REPLACES the active set (not additive).",
+  guidance:
+    "Use when the user wants to focus the Tarski lens on a specific axiom set: 'check only temporal priority and the chokepoint axioms', 'turn on the T1D axioms', 'arbitrarily pick three axioms and show how they render'. The full catalog (ids + names) is in === TARSKI AXIOMS === in the live context — pick ids from there. Don't pre-state the resulting counts; the SYS result line confirms what was enabled and how it rendered.",
+  params: {
+    axioms: {
+      type: "string[]",
+      required: true,
+      description: "Axiom ids or name fragments separated by | (e.g. A-01|R-01|H-02)",
+    },
+  },
+  legacyParam: "axioms",
+  handler: async ({ axioms }, ctx) => {
+    const store = ctx.getStore();
+    const { AXIOM_LIBRARY } = await import("../tarski-data");
+    const resolved = new Set<string>();
+    const unmatched: string[] = [];
+    for (const a of axioms) {
+      const q = a.trim().toLowerCase();
+      if (!q) continue;
+      const hit = AXIOM_LIBRARY.find(
+        (ax) => ax.id.toLowerCase() === q || ax.name.toLowerCase().includes(q),
+      );
+      if (hit) resolved.add(hit.id);
+      else unmatched.push(a);
+    }
+    if (resolved.size === 0) {
+      return `No axioms matched ${axioms.join(", ")}. Use ids like A-01, R-01, H-02 (see === TARSKI AXIOMS ===).`;
+    }
+    store.setEnabledAxioms(resolved);
+    store.runTarskiWithAxioms();
+    const names = [...resolved]
+      .map((id) => {
+        const ax = AXIOM_LIBRARY.find((a) => a.id === id);
+        return ax ? `${ax.id} ${ax.name}` : id;
+      })
+      .join(", ");
+    const note = unmatched.length > 0 ? ` (no match: ${unmatched.join(", ")})` : "";
+    const report = ctx.getStore().tarskiReport;
+    const rendered = report
+      ? ` → ${report.inconsistentEdgeIds.size} inconsistent edge(s), ${report.restrictedNodeIds.size} restricted node(s)`
+      : "";
+    return `Enabled ${resolved.size} axiom(s): ${names}${note}${rendered}`;
+  },
+});
+
+defineTool({
+  name: "set_axiom_level",
+  description:
+    "Filter active Tarski axioms by level, then re-run validation. all = every level; 0 = core; 1 = regional; 2 = higher-order.",
+  params: {
+    level: { type: "enum", values: ["all", "0", "1", "2"] as const, required: true },
+  },
+  legacyParam: "level",
+  handler: ({ level }, ctx) => {
+    const store = ctx.getStore();
+    const f: "all" | 0 | 1 | 2 = level === "all" ? "all" : (Number(level) as 0 | 1 | 2);
+    store.setAxiomLevelFilter(f);
+    store.runTarskiWithAxioms();
+    return `Axiom level filter set to: ${level}`;
+  },
+});
+
 // ─── Visualization controls ─────────────────────────────────────
 
 defineTool({

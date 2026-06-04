@@ -336,4 +336,34 @@ export const SEED_CASES: TestCase[] = [
     forbidden_in_response: [/\d+\s*°|sunny|cloudy|rain(\s|y|ing)|temperature/i],
     tags: ["refusal", "no-tool", "off-topic"],
   },
+
+  // ─── Tarski axiom configuration ────────────────────────────────
+
+  {
+    id: "enable_axioms_subset",
+    description:
+      "User wants the Tarski lens focused on specific axioms — enable_axioms with those ids/names.",
+    user_message: "turn on just the temporal priority and chokepoint axioms and re-validate",
+    graph_fixture: "geopolitical_main",
+    // The exact id set is model-chosen from the catalog — assert the tool fires.
+    accepted_tool_calls: [{ name: "enable_axioms" }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
+  {
+    id: "enable_axioms_arbitrary_three",
+    description:
+      "User asks to arbitrarily pick three axioms and show how they render (the live-demo case).",
+    user_message: "arbitrarily select three axioms and show me how they render on the graph",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "enable_axioms" }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
+  {
+    id: "set_axiom_level_core",
+    description: "User asks to restrict to core (level-0) axioms — set_axiom_level:0.",
+    user_message: "only apply the core level-0 axioms",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_axiom_level", params_match: { level: "0" } }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
 ];

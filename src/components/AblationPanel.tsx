@@ -31,7 +31,15 @@
 
 import { useApexStore } from "@/stores/useApexStore";
 
-export default function AblationPanel() {
+// `embedded` drops the panel's own header (title + cut count) and the
+// inline how-to paragraph; in the redesigned PEARL workspace the shared
+// SectionHeader carries the title, the cut count, and the how-to behind
+// a `?`. The action buttons keep their own `title` tooltips either way.
+export default function AblationPanel({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const ablationMode = useApexStore((s) => s.ablationMode);
   const ablatedNodeIds = useApexStore((s) => s.ablatedNodeIds);
   const ablatedEdgeIds = useApexStore((s) => s.ablatedEdgeIds);
@@ -47,22 +55,47 @@ export default function AblationPanel() {
   return (
     <div
       data-tour="ablation-panel"
-      className="border border-accent-cyan/30 rounded bg-accent-cyan/5 p-3 space-y-2"
+      className={
+        embedded
+          ? "space-y-2"
+          : "border border-accent-cyan/30 rounded bg-accent-cyan/5 p-3 space-y-2"
+      }
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
-          ABLATION {"—"} MANUAL CUTS
-        </span>
-        <span className="text-[7px] font-mono text-text-muted">
-          {hasAblations ? `${nNodes} node${nNodes === 1 ? "" : "s"} · ${nEdges} edge${nEdges === 1 ? "" : "s"}` : "no cuts"}
-        </span>
-      </div>
+      {!embedded && (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+              ABLATION {"—"} MANUAL CUTS
+            </span>
+            <span className="text-[7px] font-mono text-text-muted">
+              {hasAblations ? `${nNodes} node${nNodes === 1 ? "" : "s"} · ${nEdges} edge${nEdges === 1 ? "" : "s"}` : "no cuts"}
+            </span>
+          </div>
 
-      <div className="text-[8px] font-mono text-text-muted leading-relaxed">
-        Pick nodes or edges to delete from the cascade. Toggle ABLATION MODE on, then click any node or edge on the canvas to add it to the cut set. Run the cascade to see what changes.
-      </div>
+          <div className="text-[8px] font-mono text-text-muted leading-relaxed">
+            Pick nodes or edges to delete from the cascade. Toggle ABLATION MODE on, then click any node or edge on the canvas to add it to the cut set. Run the cascade to see what changes.
+          </div>
+        </>
+      )}
+
+      {/* Embedded in the redesigned PEARL Manual tab: that tab auto-enters
+          ablation mode (PearlWorkspace effect), so the explicit ENTER/EXIT
+          button is redundant here — replace it with a live status hint. */}
+      {embedded && (
+        <div
+          className="text-[8px] font-mono leading-snug"
+          style={{
+            color: ablationMode ? "var(--accent-cyan)" : "var(--text-muted)",
+          }}
+        >
+          {ablationMode
+            ? "Canvas is live — click any node or edge to cut it, then Run cascade below."
+            : "Switch to this tab to start selecting nodes / edges on the canvas."}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 flex-wrap">
+        {!embedded && (
         <button
           type="button"
           onClick={() => setAblationMode(!ablationMode)}
@@ -79,6 +112,7 @@ export default function AblationPanel() {
         >
           {ablationMode ? "EXIT ABLATION MODE" : "ENTER ABLATION MODE"}
         </button>
+        )}
 
         <button
           type="button"

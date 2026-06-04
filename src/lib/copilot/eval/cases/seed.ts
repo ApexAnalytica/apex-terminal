@@ -397,4 +397,49 @@ export const SEED_CASES: TestCase[] = [
     accepted_tool_calls: [{ name: "step_epoch", params_match: { delta: /^1$/ } }],
     tags: ["tool-selection", "temporal", "replay"],
   },
+
+  // ─── Tarski axiom configuration ────────────────────────────────
+
+  {
+    id: "enable_axioms_subset",
+    description:
+      "User wants the Tarski lens focused on specific axioms — enable_axioms with those ids/names.",
+    user_message: "turn on just the temporal priority and chokepoint axioms and re-validate",
+    graph_fixture: "geopolitical_main",
+    // The exact id set is model-chosen from the catalog — assert the tool fires.
+    accepted_tool_calls: [{ name: "enable_axioms" }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
+  {
+    id: "enable_axioms_arbitrary_three",
+    description:
+      "User asks to arbitrarily pick three axioms and show how they render (the live-demo case).",
+    user_message: "arbitrarily select three axioms and show me how they render on the graph",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "enable_axioms" }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
+  {
+    id: "set_axiom_level_core",
+    description: "User asks to restrict to core (level-0) axioms — set_axiom_level:0.",
+    user_message: "only apply the core level-0 axioms",
+    graph_fixture: "geopolitical_main",
+    accepted_tool_calls: [{ name: "set_axiom_level", params_match: { level: "0" } }],
+    tags: ["tool-selection", "tarski", "axioms"],
+  },
+
+  // ─── Capability-gap honesty (no silent no-op) ──────────────────
+
+  {
+    id: "unsupported_action_honest_refusal",
+    description:
+      "User asks for an action with NO matching tool — the copilot should plainly say it can't, not silently no-op, fake success, or flail with an unrelated tool.",
+    user_message: "export the current graph as a PDF and save it to my desktop",
+    graph_fixture: "geopolitical_main",
+    forbid_tool_calls: true,
+    required_in_response: [
+      /(can'?t|cannot|unable|not able|don'?t (?:have|support)|no (?:tool|control|way)|isn'?t something i can)/i,
+    ],
+    tags: ["refusal", "no-tool", "capability-gap"],
+  },
 ];

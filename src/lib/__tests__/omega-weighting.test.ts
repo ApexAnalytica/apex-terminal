@@ -110,6 +110,21 @@ describe("profile weight integrity", () => {
     // cascade + tail dominate
     expect(AI_SAFETY_PROFILE.weights.cascadeLoad + AI_SAFETY_PROFILE.weights.tailDepth).toBeCloseTo(0.6, 10);
   });
+
+  it("AI-Safety honors the dissertation-sourced rank-order C ≈ T > R > I ≈ J", () => {
+    // Per Ghauri (2025): cascade-bridge attention predicts endogenous failure
+    // far more strongly than generic connectivity (ρ(FR,BES) ≈ 0.76 vs
+    // ρ(FR,HES) ≈ 0.25, Ch 8 Table 8.1), and CVaR under distributional
+    // ambiguity is the governing tail metric (Ch 3). That evidence sources the
+    // ORDER, not the magnitudes — so this guard asserts the ranking (C, T are
+    // the two largest; R exceeds I and J), which is the part the dissertation
+    // actually justifies.
+    const w = AI_SAFETY_PROFILE.weights;
+    expect(Math.min(w.cascadeLoad, w.tailDepth)).toBeGreaterThan(w.restorationLatency);
+    expect(w.restorationLatency).toBeGreaterThanOrEqual(w.irreplaceability);
+    expect(w.restorationLatency).toBeGreaterThanOrEqual(w.jurisdictionalHazard);
+    expect(w.cascadeLoad + w.tailDepth).toBeGreaterThan(0.5);
+  });
 });
 
 describe("recomputeComposite", () => {

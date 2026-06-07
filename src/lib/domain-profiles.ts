@@ -73,7 +73,8 @@ export interface DomainProfile {
    * (`formatWeights`) read from here, so the displayed numbers can never
    * drift from the math again. Default domains carry
    * `DEFAULT_OMEGA_WEIGHTS`; domains with a deliberate skew (AI-Safety
-   * → cascade + tail, per Ghauri 2025) override it.
+   * → cascade + tail — direction sourced from Ghauri 2025, magnitudes by
+   * design) override it.
    */
   weights: OmegaPillarWeights;
   /**
@@ -439,11 +440,20 @@ const AI_SAFETY_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
   },
 };
 
-// AI-Safety skews toward Cascade + Tail — endogenous failure (catastrophic
-// forgetting, χ⋆-bridge cascade, adversarial drift) is dominated by those
-// two pillars per Ghauri (2025). It has no nodes of its own (the
-// `ai-safety-ids` card overlays the `main` graph), so the borrowed authored
-// composites reflect the GEOPOLITICAL weighting; `compositeMode:
+// AI-Safety deliberately diverges from the platform default that Geopolitical
+// and T1D keep (their authored composites were tuned against the default, so
+// staying there preserves cross-domain comparability). The skew toward Cascade
+// (C) and Tail (T) is sourced IN DIRECTION from Ghauri (2025): cascade-bridge
+// attention predicts endogenous failure far more strongly than generic
+// connectivity (ρ(FR,BES) ≈ 0.76 vs ρ(FR,HES) ≈ 0.25, Ch 8 Table 8.1; the χ⋆
+// bridge set drives ~80% of attainable CVaR reduction, Ch 7), and CVaR under
+// Wasserstein-1 ambiguity is the framework's governing tail metric (Ch 3).
+// That evidence fixes the RANK-ORDER (C ≈ T > R > I ≈ J) — NOT the magnitudes:
+// the values below are a deliberate domain design choice, not an empirical
+// calibration (the dissertation calibrates per-pillar estimators — CVaR→T,
+// χ⋆→C, FR→R — not a five-pillar mixture). AI-Safety has no nodes of its own
+// (the `ai-safety-ids` card overlays the `main` graph), so the borrowed
+// authored composites reflect the GEOPOLITICAL weighting; `compositeMode:
 // "recomputed"` re-derives them under this skew at graph-build time.
 const AI_SAFETY_WEIGHTS: OmegaPillarWeights = {
   irreplaceability: 0.10,
@@ -454,7 +464,7 @@ const AI_SAFETY_WEIGHTS: OmegaPillarWeights = {
 };
 
 const AI_SAFETY_METHODOLOGY =
-  `The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. AI-domain weights skew toward cascade and tail — the dominant endogenous failure modes per Ghauri (2025): ${formatWeights(AI_SAFETY_WEIGHTS)}. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.`;
+  `The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. The weighting skews toward cascade (C) and tail (T): ${formatWeights(AI_SAFETY_WEIGHTS)}. This rank-order follows Ghauri (2025) — cascade-bridge attention predicts endogenous failure far more strongly than generic connectivity (ρ ≈ 0.76 vs ≈ 0.25), and CVaR under distributional ambiguity is the governing tail metric — while the specific magnitudes are a domain design choice rather than an empirical calibration. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.`;
 
 export const AI_SAFETY_PROFILE: DomainProfile = {
   id: "ai-safety",

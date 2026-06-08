@@ -411,6 +411,30 @@ export interface LatentNode {
   strength: number;
   /** Hypothesis-framed label — never an assertion of what the latent IS. */
   label: string;
+  /**
+   * The hypothesised channel/driver, surfaced verbatim from the
+   * `physicalMechanism` of the cluster's confounded edges (an author-stated
+   * mechanism, e.g. "Gulf route disruption raises freight cost"). Turns the
+   * glyph from "?" into a named hypothesis. NOT an empirically identified
+   * variable — it's the channel the graph author asserted.
+   */
+  hypothesizedDriver?: string;
+  /**
+   * Real-data consistency check on the hypothesis (NOT a discovery claim):
+   * do the member nodes that carry live time-series actually co-move, as a
+   * shared hidden driver would predict? Computed from `liveData.history`.
+   *   - "supported"    : enough aligned data AND members co-move (|r| ≥ thresh)
+   *   - "inconsistent" : enough aligned data BUT members don't co-move
+   *   - "insufficient" : not enough live/aligned data to judge
+   * `statistic` is the mean pairwise correlation; `liveMembers` is how many
+   * members had usable series. Absent ⇒ support not computed.
+   */
+  dataSupport?: {
+    status: "supported" | "inconsistent" | "insufficient";
+    statistic?: number;
+    method?: "pairwise-correlation";
+    liveMembers: number;
+  };
   /** Render position (centroid of explained nodes); set by the render layer. */
   position3d?: { x: number; y: number; z: number };
 }

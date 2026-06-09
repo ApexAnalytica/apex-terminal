@@ -487,47 +487,112 @@ interface LatentNode2DData {
   label: string;
   members: string;
   strength: number;
+  /** Author-stated channel (verbatim physicalMechanism), not a named variable. */
+  driver?: string;
+  /** Real-data consistency check on the shared-driver hypothesis. */
+  support?: {
+    status: "supported" | "inconsistent" | "insufficient";
+    statistic?: number;
+    liveMembers: number;
+  };
 }
 function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
+  const sup = data.support;
+  const supColor =
+    sup?.status === "supported" ? "#00e676"
+      : sup?.status === "inconsistent" ? "#ff1744"
+        : "#9aa0a6";
+  const supText =
+    !sup ? null
+      : sup.status === "supported" ? `DATA ✓ r=${sup.statistic ?? "?"}`
+        : sup.status === "inconsistent" ? `DATA ✗ r=${sup.statistic ?? "?"}`
+          : "NO LIVE DATA";
+  const tooltip =
+    `INFERRED LATENT — not observed.\n` +
+    `${data.label}\n` +
+    (data.driver ? `Hypothesised channel: ${data.driver}\n` : "") +
+    `Members: ${data.members}\n` +
+    `Data check: ${supText ?? "n/a"}` +
+    (sup ? ` (${sup.liveMembers} live member${sup.liveMembers === 1 ? "" : "s"})` : "") +
+    `\nA hypothesis from authored confounded structure, checked against live data where available — not an empirical discovery.`;
   return (
-    <div
-      title={`INFERRED LATENT — not observed.\n${data.label}\nMembers: ${data.members}\nInference strength: ${data.strength}\nDerived from confounded structure (FCI-style latent common cause), not real data.`}
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: "50%",
-        border: "2px dashed #e040fb",
-        background: "rgba(224,64,251,0.07)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-        cursor: "help",
-      }}
-    >
-      <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
-      <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
-      <span style={{ color: "#e040fb", fontSize: 16, fontWeight: 700, lineHeight: 1, opacity: 0.85 }}>?</span>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "help" }} title={tooltip}>
       <div
         style={{
-          position: "absolute",
-          top: -13,
-          left: "50%",
-          transform: "translateX(-50%)",
-          fontSize: 7,
-          letterSpacing: "0.08em",
-          fontFamily: "monospace",
-          color: "#e040fb",
-          background: "rgba(0,0,0,0.65)",
-          padding: "1px 4px",
-          borderRadius: 2,
-          whiteSpace: "nowrap",
-          border: "1px solid rgba(224,64,251,0.45)",
-          pointerEvents: "none",
+          width: 40,
+          height: 40,
+          borderRadius: "50%",
+          border: "2px dashed #e040fb",
+          background: "rgba(224,64,251,0.07)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
         }}
       >
-        INFERRED
+        <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+        <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+        <span style={{ color: "#e040fb", fontSize: 16, fontWeight: 700, lineHeight: 1, opacity: 0.85 }}>?</span>
+        <div
+          style={{
+            position: "absolute",
+            top: -13,
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 7,
+            letterSpacing: "0.08em",
+            fontFamily: "monospace",
+            color: "#e040fb",
+            background: "rgba(0,0,0,0.65)",
+            padding: "1px 4px",
+            borderRadius: 2,
+            whiteSpace: "nowrap",
+            border: "1px solid rgba(224,64,251,0.45)",
+            pointerEvents: "none",
+          }}
+        >
+          INFERRED
+        </div>
       </div>
+      {data.driver && (
+        <div
+          style={{
+            marginTop: 3,
+            maxWidth: 124,
+            fontSize: 7,
+            fontFamily: "monospace",
+            color: "#e7b8f5",
+            textAlign: "center",
+            lineHeight: 1.15,
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            pointerEvents: "none",
+          }}
+        >
+          {data.driver}
+        </div>
+      )}
+      {supText && (
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 7,
+            fontFamily: "monospace",
+            fontWeight: 700,
+            color: supColor,
+            border: `1px solid ${supColor}55`,
+            background: `${supColor}14`,
+            borderRadius: 2,
+            padding: "0 3px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {supText}
+        </div>
+      )}
     </div>
   );
 }
@@ -1579,6 +1644,8 @@ function CausalDAG2DInner() {
           label: lat.label,
           members: lat.explains.map((id) => labelOf.get(id) ?? id).join(", "),
           strength: lat.strength,
+          driver: lat.hypothesizedDriver,
+          support: lat.dataSupport,
         },
         draggable: false,
         selectable: false,

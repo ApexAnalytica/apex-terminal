@@ -435,6 +435,28 @@ export interface LatentNode {
     method?: "pairwise-correlation";
     liveMembers: number;
   };
+  /**
+   * Discovery-readiness assessment: can this latent ever be *discovered* from
+   * real data (vs the current authored hypothesis), and if not, what data is
+   * missing? Turns "insufficient" into an actionable acquisition spec — the
+   * prerequisite for honest FCI latent discovery (Phase 2).
+   *   - "ready"   : every member observed + enough date-aligned points for a
+   *                 credible CI test (≥ DISCOVERY_MIN_POINTS)
+   *   - "partial" : every member observed but underpowered (too few aligned pts)
+   *   - "blocked" : a member is unobserved, or alignment is far too sparse
+   * `limitingFactor` names the binding gap; `recommendation` is the concrete
+   * "to discover this for real, acquire X" instruction.
+   */
+  discoveryReadiness?: {
+    status: "ready" | "partial" | "blocked";
+    liveMembers: number;
+    totalMembers: number;
+    maxAlignedPoints: number;
+    /** Member ids that carry no live feed (need instrumentation). */
+    missingFeeds: string[];
+    limitingFactor: "coverage" | "frequency" | "none";
+    recommendation: string;
+  };
   /** Render position (centroid of explained nodes); set by the render layer. */
   position3d?: { x: number; y: number; z: number };
 }

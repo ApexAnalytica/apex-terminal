@@ -113,6 +113,121 @@ export function computeLatentSupport(
   };
 }
 
+/** Min date-aligned points for a credibly-powered CI test (rough floor). */
+export const DISCOVERY_MIN_POINTS = 30;
+
+const CADENCE_RANK: Record<string, number> = {
+  daily: 1, weekly: 2, monthly: 3, quarterly: 4, annual: 5, irregular: 6,
+};
+
+/** Rough sampling cadence from a series' median date-gap (days). */
+function inferCadence(series: Map<string, number>): string {
+  const dates = [...series.keys()].sort();
+  if (dates.length < 2) return "irregular";
+  const gaps: number[] = [];
+  for (let i = 1; i < dates.length; i++) {
+    const d0 = Date.parse(`${dates[i - 1]}T00:00:00Z`);
+    const d1 = Date.parse(`${dates[i]}T00:00:00Z`);
+    if (!Number.isNaN(d0) && !Number.isNaN(d1)) gaps.push((d1 - d0) / 86_400_000);
+  }
+  if (gaps.length === 0) return "irregular";
+  gaps.sort((a, b) => a - b);
+  const med = gaps[Math.floor(gaps.length / 2)];
+  if (med <= 3) return "daily";
+  if (med <= 10) return "weekly";
+  if (med <= 45) return "monthly";
+  if (med <= 135) return "quarterly";
+  if (med <= 450) return "annual";
+  return "irregular";
+}
+
+/**
+ * Discovery-readiness: could this latent be *discovered* from real data (vs the
+ * authored hypothesis), and if not, what data is missing? The honest
+ * prerequisite for FCI latent discovery — converts "insufficient" into a
+ * concrete acquisition spec. Pure; reads `liveData` only.
+ */
+export function assessDiscoveryReadiness(
+  memberIds: string[],
+  graph: CausalGraph,
+): NonNullable<LatentNode["discoveryReadiness"]> {
+  const labelOf = new Map(
+    graph.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id]),
+  );
+  const seriesById = new Map<string, Map<string, number>>();
+  const missingFeeds: string[] = [];
+  for (const id of memberIds) {
+    const node = graph.nodes.find((n) => n.id === id);
+    const s = node ? liveSeries(node) : null;
+    if (s) seriesById.set(id, s);
+    else missingFeeds.push(id);
+  }
+  const liveMembers = seriesById.size;
+  const totalMembers = memberIds.length;
+
+  // Best pairwise date-aligned sample size — the n a CI test would actually get.
+  let maxAligned = 0;
+  const ids = [...seriesById.keys()];
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = seriesById.get(ids[i])!;
+      const b = seriesById.get(ids[j])!;
+      let n = 0;
+      for (const d of a.keys()) if (b.has(d)) n++;
+      if (n > maxAligned) maxAligned = n;
+    }
+  }
+
+  // Slowest live member — names the alignment-limiting cadence in the rec.
+  let slowest: { label: string; cadence: string } | null = null;
+  for (const [id, s] of seriesById) {
+    const c = inferCadence(s);
+    if (!slowest || CADENCE_RANK[c] > CADENCE_RANK[slowest.cadence]) {
+      slowest = { label: labelOf.get(id) ?? id, cadence: c };
+    }
+  }
+  const freqNote =
+    slowest && CADENCE_RANK[slowest.cadence] >= CADENCE_RANK.quarterly
+      ? ` (limited by the ${slowest.cadence} cadence of ${slowest.label})`
+      : "";
+
+  if (missingFeeds.length > 0) {
+    const labels = missingFeeds.map((id) => labelOf.get(id) ?? id);
+    return {
+      status: "blocked",
+      liveMembers, totalMembers, maxAlignedPoints: maxAligned,
+      missingFeeds,
+      limitingFactor: "coverage",
+      recommendation: `Acquire a live feed for ${labels.join(", ")} (currently modeled). FCI can only test members it can observe.`,
+    };
+  }
+  if (maxAligned >= DISCOVERY_MIN_POINTS) {
+    return {
+      status: "ready",
+      liveMembers, totalMembers, maxAlignedPoints: maxAligned,
+      missingFeeds: [],
+      limitingFactor: "none",
+      recommendation: `Ready: ${maxAligned} date-aligned points across all ${totalMembers} members — FCI latent discovery is statistically viable.`,
+    };
+  }
+  if (maxAligned >= SUPPORT_MIN_ALIGNED) {
+    return {
+      status: "partial",
+      liveMembers, totalMembers, maxAlignedPoints: maxAligned,
+      missingFeeds: [],
+      limitingFactor: "frequency",
+      recommendation: `Underpowered: only ${maxAligned} aligned points${freqNote}. Upgrade to a higher-frequency feed (or accrue more history) to reach ≥${DISCOVERY_MIN_POINTS}.`,
+    };
+  }
+  return {
+    status: "blocked",
+    liveMembers, totalMembers, maxAlignedPoints: maxAligned,
+    missingFeeds: [],
+    limitingFactor: "frequency",
+    recommendation: `Too few aligned points (${maxAligned})${freqNote}. Need higher-frequency, longer-overlapping feeds (target ≥${DISCOVERY_MIN_POINTS}).`,
+  };
+}
+
 export function deriveLatentNodes(graph: CausalGraph): LatentNode[] {
   // Each confounded (non-severed) edge = "these two observed nodes share a
   // latent common cause."
@@ -201,6 +316,8 @@ export function deriveLatentNodes(graph: CausalGraph): LatentNode[] {
       hypothesizedDriver: driverEdge?.physicalMechanism,
       // Real-data consistency check (NOT discovery): do the live members co-move?
       dataSupport: computeLatentSupport(members, graph),
+      // What data is needed to *discover* this latent for real (FCI Phase 2).
+      discoveryReadiness: assessDiscoveryReadiness(members, graph),
     });
   }
 

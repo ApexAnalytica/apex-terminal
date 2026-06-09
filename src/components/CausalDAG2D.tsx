@@ -495,6 +495,12 @@ interface LatentNode2DData {
     statistic?: number;
     liveMembers: number;
   };
+  /** Discovery-readiness: what data is needed to discover this for real. */
+  readiness?: {
+    status: "ready" | "partial" | "blocked";
+    recommendation: string;
+    limitingFactor: "coverage" | "frequency" | "none";
+  };
 }
 function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
   const sup = data.support;
@@ -514,6 +520,7 @@ function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
     `Members: ${data.members}\n` +
     `Data check: ${supText ?? "n/a"}` +
     (sup ? ` (${sup.liveMembers} live member${sup.liveMembers === 1 ? "" : "s"})` : "") +
+    (data.readiness ? `\nDiscovery readiness: ${data.readiness.status.toUpperCase()} — ${data.readiness.recommendation}` : "") +
     `\nA hypothesis from authored confounded structure, checked against live data where available — not an empirical discovery.`;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "help" }} title={tooltip}>
@@ -1646,6 +1653,7 @@ function CausalDAG2DInner() {
           strength: lat.strength,
           driver: lat.hypothesizedDriver,
           support: lat.dataSupport,
+          readiness: lat.discoveryReadiness,
         },
         draggable: false,
         selectable: false,

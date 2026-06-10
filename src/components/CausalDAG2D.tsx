@@ -1407,6 +1407,7 @@ function CausalDAG2DInner() {
   );
 
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const setSelectedLatentId = useApexStore((s) => s.setSelectedLatentId);
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   // Ablation mode is global — when on, clicks across every visual
@@ -1510,25 +1511,36 @@ function CausalDAG2DInner() {
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
+      const id = rfNode.id;
+      // Latent glyph → open the LatentInspector via its own selection channel
+      // (never selectedNode — latent ids don't resolve as real nodes).
+      if (id.startsWith("latent__") && !id.includes("__member__")) {
+        setSelectedLatentId(id);
+        return;
+      }
+      // Pulled-in member chip → pivot into the REAL node it stands for.
+      const memberMatch = id.match(/^latent__.*__member__(.+)$/);
+      const targetId = memberMatch ? memberMatch[1] : id;
       setSelectedEdge(null);
       // In ablation mode, clicks toggle ablation instead of moving the
       // selection. Matches the 3D / Map / Relief behaviour so the
       // affordance is identical regardless of which view the user
       // happens to be in.
       if (ablationMode) {
-        toggleAblatedNode(rfNode.id);
+        toggleAblatedNode(targetId);
       } else {
-        setSelectedNode(rfNode.id);
+        setSelectedNode(targetId);
       }
     },
-    [setSelectedNode, ablationMode, toggleAblatedNode]
+    [setSelectedNode, setSelectedLatentId, ablationMode, toggleAblatedNode]
   );
 
   const onPaneClick = useCallback(() => {
     setSelectedEdge(null);
     setSelectedNode(null);
+    setSelectedLatentId(null);
     setHoveredNodeId(null);
-  }, [setSelectedNode]);
+  }, [setSelectedNode, setSelectedLatentId]);
 
   const onNodeMouseEnter: NodeMouseHandler = useCallback((_event, rfNode) => {
     setHoveredNodeId(rfNode.id);

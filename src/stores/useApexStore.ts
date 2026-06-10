@@ -322,6 +322,13 @@ export interface ApexState {
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
 
+  // Inferred-latent selection — a SEPARATE channel from selectedNode so latent
+  // overlay ids (latent__…) never reach the node-selection consumers
+  // (NodeInspector / 3D highlight / copilot focus / temporal). Mutually
+  // exclusive with node + edge selection.
+  selectedLatentId: string | null;
+  setSelectedLatentId: (id: string | null) => void;
+
   // Which pillar (if any) is expanded inside NodeInspector. Lifted from
   // NodeInspector local state to the store so the onboarding tour can
   // gate the "click a pillar vertex" step on real interaction (the
@@ -1010,10 +1017,23 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSelectedNode: (nodeId) =>
     set((s) => ({
       selectedNode: nodeId,
+      // Selecting a real node closes any open latent inspector.
+      selectedLatentId: nodeId ? null : s.selectedLatentId,
       // Reset the expanded pillar when the selected node changes; the
       // explanation card belongs to the previous node and would read
       // misleadingly against fresh ΩF values.
       expandedPillar: nodeId === s.selectedNode ? s.expandedPillar : null,
+    })),
+
+  // Inferred-latent selection (separate channel; mutually exclusive with
+  // node + edge selection so latent ids never leak into node consumers).
+  selectedLatentId: null,
+  setSelectedLatentId: (id) =>
+    set((s) => ({
+      selectedLatentId: id,
+      // Opening a latent clears node + edge; clearing it (null) leaves them.
+      selectedNode: id ? null : s.selectedNode,
+      selectedEdgeId: id ? null : s.selectedEdgeId,
     })),
 
   expandedPillar: null,
@@ -1162,7 +1182,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // Selected edge
   selectedEdgeId: null,
-  setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
+  setSelectedEdgeId: (edgeId) =>
+    set((s) => ({
+      selectedEdgeId: edgeId,
+      // Selecting an edge closes any open latent inspector.
+      selectedLatentId: edgeId ? null : s.selectedLatentId,
+    })),
   promoteAutoBridge: (edgeId) => {
     let needsTarskiRevalidation = false;
     set((s) => {

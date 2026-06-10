@@ -43,6 +43,10 @@ const NodeInspector = dynamic(
   () => import("./NodeInspector"),
   { ssr: false },
 );
+const LatentInspector = dynamic(
+  () => import("./LatentInspector"),
+  { ssr: false },
+);
 const MonteCarloForecast = dynamic(
   () => import("./MonteCarloForecast"),
   { ssr: false, loading: () => PANEL_LOADER },
@@ -98,6 +102,7 @@ export default function ModulePanel() {
   // component renders null without a selection, so deferring the chunk
   // costs nothing on first paint.
   const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedLatentId = useApexStore((s) => s.selectedLatentId);
   // Scientist-mode aware: Tissue Cohort view mounts only when a T1D
   // domain is loaded, so it doesn't pollute non-life-sciences flows.
   // Direct prefix check rather than `resolveDomainProfile(...).id === "t1d"`
@@ -183,6 +188,7 @@ export default function ModulePanel() {
       {/* Node Inspector (persistent across modules; lazy-loaded — only
           mounts once a node is selected since it renders null otherwise) */}
       {selectedNode && <NodeInspector />}
+      {selectedLatentId && <LatentInspector />}
 
       {/* Module Content — pb-16 reserves space for the fixed FEEDBACK button
           so the bottom of the last panel never sits under it at full scroll. */}

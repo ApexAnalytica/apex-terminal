@@ -136,7 +136,7 @@ export default function FindCutsPanel() {
           }
         }}
         placeholder={placeholder}
-        rows={2}
+        rows={3}
         className="w-full text-[9px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-foreground leading-relaxed resize-none focus:outline-none focus:border-accent-amber/60"
       />
 

@@ -49,6 +49,12 @@ function GearIcon() {
 export default function SettingsMenu() {
   const setImportModalOpen = useApexStore((s) => s.setImportModalOpen);
   const setTourActive = useApexStore((s) => s.setTourActive);
+  // Pulled so handleSignOut can wipe any LLM API keys the user pasted
+  // into the import / news / column-mapper panels. Keys live only in
+  // memory but a shared-machine logout that didn't clear them would
+  // leave them readable to the next session via DevTools console.
+  const setClaudeApiKey = useApexStore((s) => s.setClaudeApiKey);
+  const setGeminiApiKey = useApexStore((s) => s.setGeminiApiKey);
   const { size, setSize } = useTextSize();
   const router = useRouter();
 
@@ -94,11 +100,18 @@ export default function SettingsMenu() {
   }, [open, email]);
 
   const handleSignOut = useCallback(async () => {
+    // Wipe LLM keys from the in-memory store BEFORE the auth call so
+    // the keys can't ride along in any straggling network requests
+    // that fire during the auth tear-down (the auth state change
+    // triggers re-render of the LLM-using panels). Idempotent and
+    // safe even if the keys were already empty.
+    setClaudeApiKey("");
+    setGeminiApiKey("");
     const { createClient } = await import("@/lib/supabase/client");
     await createClient().auth.signOut();
     router.push("/login");
     router.refresh();
-  }, [router]);
+  }, [router, setClaudeApiKey, setGeminiApiKey]);
 
   return (
     <div className="relative shrink-0" ref={rootRef}>

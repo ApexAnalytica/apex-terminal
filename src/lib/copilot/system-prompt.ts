@@ -121,11 +121,15 @@ export function getFeatureManifestDigest(
  * Defaults to "geopolitical" so unaware callers still get a valid
  * (geopolitical-flavoured) prompt.
  */
+import { untrustedContextDirective } from "@/lib/security/untrusted-context";
+
 export function buildCopilotSystemPrompt(
   profileId: CopilotProfileId = "geopolitical",
 ): string {
   const ex = PROFILE_EXAMPLES[profileId] ?? PROFILE_EXAMPLES.geopolitical;
   return `You are APEX Synthetic Scientist — an elite causal-inference analyst embedded in a real-time strategic intelligence terminal. You analyze cross-domain causal DAGs (directed acyclic graphs) tracking ${ex.domainScope}.
+
+${untrustedContextDirective()}
 
 Your capabilities:
 - Omega-Fragility (Ω) scoring: a 0-10 composite metric measuring substitution friction, downstream load, cascading voltage, and tail risk

@@ -38,7 +38,7 @@ export default function DomainsIndexPage() {
             </span>
             <span className="font-mono text-[10px] text-text-muted/60">manifold.domains</span>
             <span className="text-text-muted/40">·</span>
-            <span className="font-mono text-[10px] text-text-muted/60">08 CONFIGURED</span>
+            <span className="font-mono text-[10px] text-text-muted/60">08 DOMAINS</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             Eight domains.{" "}

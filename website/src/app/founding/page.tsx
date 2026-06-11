@@ -6,8 +6,7 @@ import { OFFERS, offerCheckoutHref, isPlaceholderUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Founding 10 · Apex Analytica",
-  description:
-    "Ten seats at founding pricing — $1,500 for year one, locked at $9,000/year forever. Six left.",
+  description: `Ten seats at founding pricing — $1,500 for year one, locked at $9,000/year forever. ${OFFERS.foundingSeatsLeft} left.`,
 };
 
 /**
@@ -203,7 +202,7 @@ export default function FoundingPage() {
             <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.06em] text-foreground leading-[1.25]">
               {soldOut
                 ? "All seats claimed."
-                : "Six left. Then this offer is closed."}
+                : `${seatsLeft} left. Then this offer is closed.`}
             </h3>
             <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
               {/* COPY: closing paragraph from the source doc. */}

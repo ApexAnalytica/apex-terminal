@@ -11,6 +11,7 @@ import {
   type DomainContent,
   type Persona,
 } from "@/lib/domains";
+import { ENGINE_META } from "@/lib/claims";
 
 const PILLAR_NAMES: Record<string, string> = {
   I: "IRREPLACEABILITY",
@@ -20,19 +21,15 @@ const PILLAR_NAMES: Record<string, string> = {
   T: "TAIL DEPTH",
 };
 
-const ENGINE_ROLE: Record<string, string> = {
-  SPIRTES: "STRUCTURE DISCOVERY",
-  TARSKI: "FORMAL VERIFICATION",
-  PEARL: "COUNTERFACTUAL ENGINE",
-  PARETO: "CASCADE & TAIL SIMULATION",
-};
+// Engine roles + colors come from the canonical claims module so the
+// domain pages can't drift from /product and /framework.
+const ENGINE_ROLE: Record<string, string> = Object.fromEntries(
+  ENGINE_META.map((e) => [e.name, e.role.toUpperCase()]),
+);
 
-const ENGINE_COLOR: Record<string, Color> = {
-  SPIRTES: "cyan",
-  TARSKI: "amber",
-  PEARL: "purple",
-  PARETO: "orange",
-};
+const ENGINE_COLOR: Record<string, Color> = Object.fromEntries(
+  ENGINE_META.map((e) => [e.name, e.color as Color]),
+);
 
 /**
  * Domain-flavored Mini-Audit CTA copy. Each entry pairs a per-slug

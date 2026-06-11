@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Team · Apex Analytica",
+  description:
+    "The team behind Apex Analytica — an interdisciplinary group building causal risk intelligence for critical systems.",
+};
 
 const TEAM = [
   {
@@ -114,7 +121,7 @@ export default function TeamPage() {
           </h1>
           <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
             An interdisciplinary team building causal risk intelligence for
-            capital markets in an era of escalating catastrophes.
+            critical systems in an era of escalating catastrophes.
           </p>
         </div>
       </section>
@@ -152,9 +159,9 @@ export default function TeamPage() {
       {/* Partners */}
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
-          label="// PARTNERS"
+          label="// AFFILIATIONS"
           path="apex.partners"
-          right="03 ALLIANCES"
+          right="AWS · JHU · NVIDIA"
           color="green"
         />
         <div className="grid gap-px bg-border border border-border rounded-lg overflow-hidden md:grid-cols-3">

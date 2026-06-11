@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Contact · Apex Analytica",
+  description:
+    "Platform access, partnerships, research collaboration, or general inquiry — pick a path or email us directly.",
+};
 
 const ACCESS_OPTIONS = [
   {

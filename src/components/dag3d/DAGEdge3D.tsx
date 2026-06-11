@@ -139,11 +139,18 @@ function DAGEdge3DInner({
     );
   }, [edge.id]);
 
-  const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
+  // Extracted into locals to satisfy react-hooks/exhaustive-deps — the
+  // lint can't statically reason about array-element dep expressions.
+  const sx = sourcePos[0];
+  const sy = sourcePos[1];
+  const sz = sourcePos[2];
+  const tx = targetPos[0];
+  const ty = targetPos[1];
+  const tz = targetPos[2];
 
   const { curvePoints, midpoint, curve, chiTrackTop, chiTrackBottom } = useMemo(() => {
-    const src = new THREE.Vector3(...sourcePos);
-    const tgt = new THREE.Vector3(...targetPos);
+    const src = new THREE.Vector3(sx, sy, sz);
+    const tgt = new THREE.Vector3(tx, ty, tz);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
     mid.add(curveOffset);
 
@@ -152,7 +159,13 @@ function DAGEdge3DInner({
     const pts = c.getPoints(N);
     const midPt = c.getPoint(0.5);
 
-    // χ★ parallel-track offsets. For each point on the curve, compute
+    // χ★ parallel-track offsets. Skipped when this edge isn't in χ★ —
+    // the chiTrackTier guard further down hides the tracks anyway, so
+    // computing them for the ~95% of edges that aren't in χ★ was pure
+    // waste. For a 300-edge graph with maybe 10 in χ★, that's ~9,000
+    // cross products + Vector3 allocations skipped per layout step.
+    //
+    // When the edge IS in χ★: for each point on the curve, compute
     // the tangent there, cross with world-up to get a "side" vector
     // perpendicular to the curve in the horizontal plane, then offset
     // by ±CHI_TRACK_OFFSET along it. The result is two parallel
@@ -160,24 +173,28 @@ function DAGEdge3DInner({
     // train-tracks from the standard top-down camera angle. Fallback
     // when the tangent is parallel to up (rare; vertical edges):
     // use world-X as the reference perpendicular.
-    const CHI_TRACK_OFFSET = 0.85;
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const worldX = new THREE.Vector3(1, 0, 0);
-    const top: [number, number, number][] = [];
-    const bottom: [number, number, number][] = [];
-    for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const p = pts[i];
-      const tangent = c.getTangent(t);
-      // side = tangent × up, normalised. If tangent is parallel to up
-      // (cross is ~zero), use tangent × worldX as fallback.
-      const side = new THREE.Vector3().crossVectors(tangent, worldUp);
-      if (side.lengthSq() < 1e-6) {
-        side.crossVectors(tangent, worldX);
+    let top: [number, number, number][] | null = null;
+    let bottom: [number, number, number][] | null = null;
+    if (chiStarTier) {
+      const CHI_TRACK_OFFSET = 0.85;
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      const worldX = new THREE.Vector3(1, 0, 0);
+      top = [];
+      bottom = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const p = pts[i];
+        const tangent = c.getTangent(t);
+        // side = tangent × up, normalised. If tangent is parallel to up
+        // (cross is ~zero), use tangent × worldX as fallback.
+        const side = new THREE.Vector3().crossVectors(tangent, worldUp);
+        if (side.lengthSq() < 1e-6) {
+          side.crossVectors(tangent, worldX);
+        }
+        side.normalize().multiplyScalar(CHI_TRACK_OFFSET);
+        top.push([p.x + side.x, p.y + side.y, p.z + side.z]);
+        bottom.push([p.x - side.x, p.y - side.y, p.z - side.z]);
       }
-      side.normalize().multiplyScalar(CHI_TRACK_OFFSET);
-      top.push([p.x + side.x, p.y + side.y, p.z + side.z]);
-      bottom.push([p.x - side.x, p.y - side.y, p.z - side.z]);
     }
 
     return {
@@ -187,8 +204,15 @@ function DAGEdge3DInner({
       chiTrackTop: top,
       chiTrackBottom: bottom,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posKey, curveOffset]);
+    // Primitive position deps replace the previous `posKey` string
+    // composed of these same six numbers. The string was rebuilt on
+    // every parent render — ~1300 fresh template-literal allocations
+    // per layout on a 300-edge graph — but useMemo only used it for
+    // an Object.is comparison anyway. Direct primitive comparison
+    // achieves the same gating without the allocation. chiStarTier
+    // joins the deps so a topology change that flips an edge into
+    // (or out of) χ★ recomputes the tracks.
+  }, [sx, sy, sz, tx, ty, tz, curveOffset, chiStarTier]);
 
   // Edge type determines rendering style
   const isTemporalFlow = edge.type === "temporal";
@@ -308,7 +332,7 @@ function DAGEdge3DInner({
           not a halo. Solid for strict bridges, dashed for top-BES.
           Skipped on severed / ablated edges (their own markers take
           priority). */}
-      {chiStarTier && !isSevered && !isAblated && (
+      {chiStarTier && chiTrackTop && chiTrackBottom && !isSevered && !isAblated && (
         <>
           <Line
             points={chiTrackTop}

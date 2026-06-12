@@ -37,7 +37,6 @@ export default function NotFound() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// KNOWN NODES"
-          path="apex.routing.index"
           right="PICK ONE"
         />
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">

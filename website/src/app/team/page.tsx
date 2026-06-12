@@ -113,7 +113,6 @@ export default function TeamPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-purple/90">
               // TEAM
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">apex.people</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             The people behind{" "}
@@ -130,7 +129,6 @@ export default function TeamPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// LEADERSHIP"
-          path="apex.team"
           right={`${TEAM.length} MEMBERS`}
           color="cyan"
         />
@@ -145,7 +143,6 @@ export default function TeamPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ADVISORS"
-          path="apex.advisors"
           right={`${ADVISORS.length} ADVISORS`}
           color="amber"
         />
@@ -160,7 +157,6 @@ export default function TeamPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// AFFILIATIONS"
-          path="apex.partners"
           right="AWS · JHU · NVIDIA"
           color="green"
         />

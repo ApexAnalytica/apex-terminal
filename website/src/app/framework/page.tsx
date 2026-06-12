@@ -73,7 +73,6 @@ export default function FrameworkPage() {
                 <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-amber/90">
                   // FRAMEWORK
                 </span>
-                <span className="font-mono text-[10px] text-text-muted/60">manifold.omega_f</span>
               </div>
               <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground">
                 A canonical scoring framework for{" "}
@@ -103,9 +102,6 @@ export default function FrameworkPage() {
                       ΩF PROFILE · SAMPLE NODE
                     </span>
                   </div>
-                  <span className="font-mono text-[9px] tracking-wider text-text-muted/70">
-                    NODE_ID 0x7A3E
-                  </span>
                 </div>
                 <div className="aspect-square w-full max-w-md mx-auto">
                   <OmegaRadar />
@@ -120,7 +116,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// FROM DATA TO PILLARS"
-          path="manifold.engines"
           right="4 ENGINES → 5 PILLARS"
           color="amber"
         />
@@ -177,7 +172,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// THE FIVE PILLARS"
-          path="manifold.omega_f.pillars"
           right="I · R · J · C · T"
           color="cyan"
         />
@@ -231,7 +225,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ONE CANONICAL WEIGHTING"
-          path="manifold.omega_f.weights"
           right="Σw = 1.0"
           color="cyan"
         />
@@ -255,7 +248,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHAT THE SCORE DRIVES"
-          path="manifold.omega_system"
           right="ΩSF · CONTAGION · BUFFER"
           color="purple"
         />

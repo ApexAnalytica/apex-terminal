@@ -109,7 +109,6 @@ export default function ProductPage() {
                 <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
                   // PRODUCT
                 </span>
-                <span className="font-mono text-[10px] text-text-muted/60">manifold.engines</span>
               </div>
               <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground">
                 Four engines.
@@ -131,9 +130,6 @@ export default function ProductPage() {
                     FOUR ENGINES · ONE SHARED GRAPH
                   </span>
                 </div>
-                <span className="font-mono text-[9px] tracking-wider text-text-muted/70">
-                  RUN_ID 0x4C19
-                </span>
               </div>
               <div className="aspect-[2/1] w-full">
                 <EngineGraph />
@@ -147,7 +143,6 @@ export default function ProductPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ARCHITECTURE"
-          path="manifold.flow"
           right="DATA → SCORED GRAPH → 4 ENGINES → Ω OUTPUT"
           color="cyan"
         />
@@ -162,7 +157,6 @@ export default function ProductPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// THE ENGINES"
-          path="manifold.engines.detail"
           right="04 CORES"
           color="purple"
         />
@@ -224,7 +218,6 @@ export default function ProductPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// COPILOT"
-          path="manifold.control"
           right="CHAT · VOICE · TRACEABLE"
           color="cyan"
         />
@@ -264,7 +257,6 @@ export default function ProductPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// CONFIGURABILITY"
-          path="manifold.domain_stacks"
           right="ENGINES PER DOMAIN"
           color="green"
         />

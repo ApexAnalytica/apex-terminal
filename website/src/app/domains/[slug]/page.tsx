@@ -108,7 +108,6 @@ export default async function DomainPage({
             <span className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] ${c.text}`}>
               // {d.name.toUpperCase()}
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">manifold.{d.slug}</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             <span className={`${c.text} ${c.glow}`}>{d.name}.</span>
@@ -123,7 +122,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// THE PROBLEM"
-          path={`manifold.${d.slug}.problem`}
           right="WHAT YOU WALK IN WITH"
           color={d.color}
         />
@@ -140,7 +138,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// HOW MANIFOLD MAPS IT"
-          path={`manifold.${d.slug}.graph`}
           right="CAUSAL TOPOLOGY"
           color="cyan"
         />
@@ -180,7 +177,6 @@ export default async function DomainPage({
         <Section className="py-10 md:py-14 border-t border-border">
           <TerminalHeader
             label="// WHO THIS IS FOR"
-            path={`manifold.${d.slug}.personas`}
             right={`${d.personas.length} ROLES`}
             color="amber"
           />
@@ -196,7 +192,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ENGINES IN PLAY"
-          path={`manifold.${d.slug}.engines`}
           right={`${d.engines.length} OF 4`}
           color="purple"
         />
@@ -234,7 +229,6 @@ export default async function DomainPage({
         <Section className="py-10 md:py-14 border-t border-border">
           <TerminalHeader
             label="// SIGNALS WE INGEST"
-            path={`manifold.${d.slug}.signals`}
             right={`${d.signals.length} STREAMS`}
             color="green"
           />
@@ -342,7 +336,6 @@ function SampleReadout({ domain }: { domain: DomainContent }) {
     <Section className="py-10 md:py-14 border-t border-border">
       <TerminalHeader
         label="// SAMPLE READOUT"
-        path={`manifold.${domain.slug}.sample`}
         right={node.label}
         color="cyan"
       />

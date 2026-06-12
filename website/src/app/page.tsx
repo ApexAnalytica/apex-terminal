@@ -154,7 +154,7 @@ export default function Home() {
 
       {/* ───────── // DOMAINS ───────── */}
       <Section id="domains" className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="08 DOMAINS · CLICK TO EXPLORE" />
+        <TerminalHeader label="// DOMAINS" right="08 DOMAINS · CLICK TO EXPLORE" />
 
         <p className="mb-5 text-[13px] md:text-sm font-mono text-text-muted leading-relaxed max-w-2xl">
           Find your domain. Each one explains the problem Manifold solves
@@ -194,7 +194,7 @@ export default function Home() {
 
       {/* ───────── // CAPABILITIES ───────── */}
       <Section className="pt-14 pb-10 md:pt-16 md:pb-12 border-t border-border">
-        <TerminalHeader label="// CAPABILITIES" path="manifold.what" right="3 STAGES" />
+        <TerminalHeader label="// CAPABILITIES" right="3 STAGES" />
         <div className="grid gap-3 md:grid-cols-3">
           <CapabilityTile {...CAPABILITIES[0]} visual={<MiniMap />} />
           <CapabilityTile {...CAPABILITIES[1]} visual={<MiniRadar />} />
@@ -204,7 +204,7 @@ export default function Home() {
 
       {/* ───────── // ENGINES ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// ENGINES" path="manifold.engines" right="04 CORES" />
+        <TerminalHeader label="// ENGINES" right="04 CORES" />
 
         {/* Pipeline strip */}
         <div className="relative bg-surface/60 border border-border rounded-lg overflow-hidden">
@@ -227,7 +227,7 @@ export default function Home() {
 
       {/* ───────── // SAMPLE READOUT ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// READOUT" path="manifold.node[0x7A3E]" right="SAMPLE · MANUFACTURING" />
+        <TerminalHeader label="// READOUT" right="SAMPLE · MANUFACTURING" />
 
         <div className="mb-6 max-w-2xl">
           <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.04em] text-foreground leading-snug">
@@ -240,7 +240,7 @@ export default function Home() {
 
       {/* ───────── // FORMULA ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// FORMULA" path="manifold.omega_f" right="HOW THE SCORE WORKS" />
+        <TerminalHeader label="// FORMULA" right="HOW THE SCORE WORKS" />
 
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
           <FormulaTile />

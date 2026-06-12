@@ -52,10 +52,6 @@ export default function FoundingPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // FOUNDING 10
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">
-              apex.founding
-            </span>
-            <span className="text-text-muted/40">·</span>
             <SeatBadge seatsLeft={seatsLeft} totalSeats={totalSeats} />
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
@@ -104,7 +100,6 @@ export default function FoundingPage() {
       <Section id="what-you-get" className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHAT YOU GET"
-          path="apex.founding.includes"
           right="LIFETIME LOCK"
         />
         <div className="grid gap-3 md:grid-cols-3">
@@ -140,7 +135,6 @@ export default function FoundingPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHY NOW"
-          path="apex.founding.thesis"
           right="TIME-BOUND"
           color="amber"
         />
@@ -172,7 +166,6 @@ export default function FoundingPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// FAQ"
-          path="apex.founding.faq"
           right="COMMON QUESTIONS"
           color="purple"
         />

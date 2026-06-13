@@ -32,7 +32,7 @@ import { chiStar } from "@/lib/estimators/chi-star";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
-import type { CausalEdge, EpochSnapshot } from "@/lib/types";
+import type { CausalEdge, EpochSnapshot, LatentNode } from "@/lib/types";
 import {
   create2DLiveSimulation,
   graphSignature,
@@ -478,6 +478,161 @@ function EdgeInspector({
 }
 
 /**
+ * In-canvas inspector popup for an INFERRED LATENT — same floating design
+ * as the CAUSAL LINK INSPECTOR above so latents feel like first-class
+ * citizens of the canvas. Structured evidence → data check → action; member
+ * chips pivot into the real node, evidence rows open the edge popup.
+ */
+function LatentInspector2D({
+  latent,
+  labelOf,
+  evidenceEdges,
+  onClose,
+  onOpenNode,
+  onOpenEdge,
+}: {
+  latent: LatentNode;
+  labelOf: Map<string, string>;
+  evidenceEdges: CausalEdge[];
+  onClose: () => void;
+  onOpenNode: (id: string) => void;
+  onOpenEdge: (edge: CausalEdge) => void;
+}) {
+  const MAGENTA = "#e040fb";
+  const sup = latent.dataSupport;
+  const rdy = latent.discoveryReadiness;
+  const supColor =
+    sup?.status === "supported" ? "#00e676"
+      : sup?.status === "inconsistent" ? "#ff1744"
+        : "#9aa0a6";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.15 }}
+      className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-[460px] max-h-[60%] overflow-y-auto rounded border border-border bg-background/95 backdrop-blur-sm shadow-2xl"
+      style={{ boxShadow: `0 0 20px ${MAGENTA}15`, borderColor: `${MAGENTA}55` }}
+    >
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur-sm">
+        <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-[0.15em]" style={{ color: MAGENTA }}>
+          ◌ INFERRED LATENT INSPECTOR
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-text-muted hover:text-foreground transition-colors"
+        >
+          ESC
+        </button>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        <div className="text-[10px] font-mono text-foreground/90">{latent.label}</div>
+        <div className="text-[8px] font-mono text-text-muted italic leading-relaxed">
+          Inferred from authored confounded structure, checked against live data
+          where available — not an empirical discovery.
+        </div>
+
+        {latent.hypothesizedDriver && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              HYPOTHESISED CHANNEL
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              {latent.hypothesizedDriver}
+            </div>
+          </div>
+        )}
+
+        {/* Stats row — mirrors the edge popup's TYPE/WEIGHT/... row */}
+        <div className="flex gap-4">
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">DATA CHECK</div>
+            <div className="text-[10px] font-mono mt-0.5" style={{ color: supColor }}>
+              {(sup?.status ?? "n/a").toUpperCase()}
+            </div>
+          </div>
+          {sup?.statistic != null && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">MEAN r</div>
+              <div className="text-[10px] font-mono text-foreground mt-0.5">{sup.statistic}</div>
+            </div>
+          )}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">LIVE MEMBERS</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {sup?.liveMembers ?? 0}/{latent.explains.length}
+            </div>
+          </div>
+          {rdy && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">ALIGNED PTS</div>
+              <div className="text-[10px] font-mono text-foreground mt-0.5">{rdy.maxAlignedPoints}</div>
+            </div>
+          )}
+        </div>
+
+        {rdy && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              DISCOVERY READINESS — {rdy.status.toUpperCase()}
+            </div>
+            <div className="text-[10px] font-mono text-foreground/80 leading-relaxed">
+              {rdy.recommendation}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+            MEMBERS ({latent.explains.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {latent.explains.map((id) => (
+              <button
+                key={id}
+                onClick={() => onOpenNode(id)}
+                className="px-1.5 py-0.5 rounded border border-border bg-surface text-[10px] font-mono text-foreground/90 hover:border-accent-cyan/50 hover:text-accent-cyan transition-colors"
+                title={`Open ${labelOf.get(id) ?? id} in the node inspector`}
+              >
+                {labelOf.get(id) ?? id}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {evidenceEdges.length > 0 && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              EVIDENCE — CONFOUNDED EDGES ({evidenceEdges.length})
+            </div>
+            <div className="space-y-1">
+              {evidenceEdges.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => onOpenEdge(e)}
+                  className="w-full text-left rounded border border-border bg-surface px-2 py-1 hover:border-accent-cyan/50 transition-colors"
+                  title="Open in the link inspector"
+                >
+                  <div className="text-[10px] font-mono text-foreground/90">
+                    {labelOf.get(e.source) ?? e.source} ↔ {labelOf.get(e.target) ?? e.target}
+                    <span className="text-text-muted"> · conf {e.confidence.toFixed(2)}</span>
+                  </div>
+                  {e.physicalMechanism && (
+                    <div className="mt-0.5 text-[8px] font-mono text-text-muted leading-relaxed">
+                      {e.physicalMechanism}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
  * Inferred-latent ghost glyph (Dr. Pita synthetic-node #1). Deliberately
  * looks UNLIKE a real node: dashed magenta ring, no fill, no ΩF score, a "?"
  * and a persistent INFERRED badge. Hover discloses full provenance. Never
@@ -502,7 +657,8 @@ interface LatentNode2DData {
     limitingFactor: "coverage" | "frequency" | "none";
   };
 }
-function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
+function LatentNode2D({ id, data }: NodeProps<LatentNode2DData>) {
+  const isSelected = useApexStore((s) => s.selectedLatentId === id);
   const sup = data.support;
   const supColor =
     sup?.status === "supported" ? "#00e676"
@@ -523,14 +679,18 @@ function LatentNode2D({ data }: NodeProps<LatentNode2DData>) {
     (data.readiness ? `\nDiscovery readiness: ${data.readiness.status.toUpperCase()} — ${data.readiness.recommendation}` : "") +
     `\nA hypothesis from authored confounded structure, checked against live data where available — not an empirical discovery.`;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "help" }} title={tooltip}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} title={tooltip}>
       <div
         style={{
           width: 40,
           height: 40,
           borderRadius: "50%",
-          border: "2px dashed #e040fb",
-          background: "rgba(224,64,251,0.07)",
+          // Dashed = unselected hypothesis; selected gets a solid ring + glow,
+          // the same affordance real nodes show when picked.
+          border: `2px ${isSelected ? "solid" : "dashed"} #e040fb`,
+          background: isSelected ? "rgba(224,64,251,0.16)" : "rgba(224,64,251,0.07)",
+          boxShadow: isSelected ? "0 0 14px rgba(224,64,251,0.55)" : "none",
+          transition: "box-shadow 150ms ease-out, background 150ms ease-out",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -1396,16 +1556,6 @@ function CausalDAG2DInner() {
 
   const onInit = useCallback(() => {}, []);
 
-  const onEdgeClick: EdgeMouseHandler = useCallback(
-    (_event, rfEdge) => {
-      const causalEdge = edgeById.get(rfEdge.id);
-      if (causalEdge) {
-        setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
-      }
-    },
-    [edgeById]
-  );
-
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
   const setSelectedLatentId = useApexStore((s) => s.setSelectedLatentId);
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
@@ -1417,6 +1567,26 @@ function CausalDAG2DInner() {
   // declared earlier — re-deriving here would shadow it.)
   const ablationMode = useApexStore((s) => s.ablationMode);
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
+
+  const onEdgeClick: EdgeMouseHandler = useCallback(
+    (_event, rfEdge) => {
+      // Latent tether (latent__X__tether__Y) → open the latent inspector;
+      // tethers aren't causal edges, so edgeById would silently miss them.
+      const tetherMatch = rfEdge.id.match(/^(latent__.+?)__tether__/);
+      if (tetherMatch) {
+        setSelectedEdge(null);
+        setSelectedLatentId(tetherMatch[1]);
+        return;
+      }
+      const causalEdge = edgeById.get(rfEdge.id);
+      if (causalEdge) {
+        // Opening a real edge closes the latent popup (both float bottom-center).
+        setSelectedLatentId(null);
+        setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
+      }
+    },
+    [edgeById, setSelectedLatentId]
+  );
 
   // Hand-rolled shift+drag marquee. We bypass React Flow's built-in
   // selection (which is unreliable when combined with panOnDrag) and
@@ -1513,8 +1683,10 @@ function CausalDAG2DInner() {
     (_event, rfNode) => {
       const id = rfNode.id;
       // Latent glyph → open the LatentInspector via its own selection channel
-      // (never selectedNode — latent ids don't resolve as real nodes).
+      // (never selectedNode — latent ids don't resolve as real nodes). Close
+      // the local edge popup too: both float at the canvas bottom-center.
       if (id.startsWith("latent__") && !id.includes("__member__")) {
+        setSelectedEdge(null);
         setSelectedLatentId(id);
         return;
       }
@@ -1620,12 +1792,29 @@ function CausalDAG2DInner() {
       fullGraphForLatent.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id] as const),
     );
 
-    // Fallback anchor when none of a latent's members are in the current view:
-    // above the centroid of whatever IS on screen.
+    // Fallback anchor when none of a latent's members are in the current view.
+    // Anchor INSIDE the visible-node bounding box (not floated above it) so the
+    // glyph always lands on-screen and stays clickable — the fitView padding
+    // (0.3) keeps the bbox well within the canvas, whereas the old `viewCy - 260`
+    // offset overshot above the fitted viewport and the glyph became unreachable.
     let vcx = 0, vcy = 0, vk = 0;
-    nodePositions.forEach((p) => { vcx += p.x; vcy += p.y; vk++; });
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodePositions.forEach((p) => {
+      vcx += p.x; vcy += p.y; vk++;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
     const viewCx = vk ? vcx / vk : 0;
     const viewCy = vk ? vcy / vk : 0;
+    const bboxW = vk ? maxX - minX : 0;
+    const bboxH = vk ? maxY - minY : 0;
+    // Spread off-view latents horizontally across the top of the bbox.
+    const offViewCount = latents.filter(
+      (l) => !l.explains.some((m) => nodePositions.has(m)),
+    ).length;
+    let offIdx = 0;
 
     const lNodes: Node[] = [];
     const lEdges: Edge[] = [];
@@ -1639,7 +1828,7 @@ function CausalDAG2DInner() {
         style: { stroke: "#e040fb", strokeDasharray: "3 3", strokeWidth: 1, opacity: 0.45 },
       });
 
-    latents.forEach((lat, latIdx) => {
+    latents.forEach((lat) => {
       const visible = lat.explains.filter((m) => nodePositions.has(m));
       const missing = lat.explains.filter((m) => !nodePositions.has(m));
 
@@ -1651,8 +1840,12 @@ function CausalDAG2DInner() {
         for (const m of visible) { const p = nodePositions.get(m)!; cx += p.x; cy += p.y; }
         ax = cx / visible.length; ay = cy / visible.length;
       } else {
-        ax = viewCx + latIdx * 240;
-        ay = viewCy - 260;
+        // Inside the bbox, near the top, spread horizontally so multiple
+        // off-view latents don't stack — always on-screen + clickable.
+        const t = (offIdx + 1) / (offViewCount + 1);
+        ax = vk ? minX + bboxW * t : viewCx + offIdx * 240;
+        ay = vk ? minY + bboxH * 0.12 : viewCy;
+        offIdx++;
       }
 
       lNodes.push({
@@ -1676,7 +1869,9 @@ function CausalDAG2DInner() {
 
       // Missing (cross-domain) members: pull in as marked chips around the glyph.
       missing.forEach((m, i) => {
-        const ang = (2 * Math.PI * i) / Math.max(1, missing.length);
+        // Lower semicircle (0..π) so pulled-in chips fan below/beside the glyph
+        // and stay on-screen even when the glyph sits near the top of the bbox.
+        const ang = Math.PI * ((i + 0.5) / Math.max(1, missing.length));
         const mid = `${lat.id}__member__${m}`;
         lNodes.push({
           id: mid,
@@ -1692,6 +1887,28 @@ function CausalDAG2DInner() {
 
     return { nodes: lNodes, edges: lEdges };
   }, [showLatentNodes, fullGraphForLatent, nodePositions]);
+
+  // Selected latent → in-canvas popup payload (latent + labels + the
+  // confounded evidence edges it was derived from). Recomputed on demand;
+  // latents are never stored.
+  const selectedLatentId = useApexStore((s) => s.selectedLatentId);
+  const selectedLatentInfo = useMemo(() => {
+    if (!selectedLatentId) return null;
+    const latent = deriveLatentNodes(fullGraphForLatent).find((l) => l.id === selectedLatentId);
+    if (!latent) return null;
+    const labelOf = new Map(
+      fullGraphForLatent.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id]),
+    );
+    const members = new Set(latent.explains);
+    const evidence = fullGraphForLatent.edges.filter(
+      (e) =>
+        e.type === "confounded" &&
+        !e.isSevered &&
+        members.has(e.source) &&
+        members.has(e.target),
+    );
+    return { latent, labelOf, evidence };
+  }, [selectedLatentId, fullGraphForLatent]);
 
   const renderNodes = useMemo(
     () => (latentOverlay.nodes.length ? visibleNodes.concat(latentOverlay.nodes) : visibleNodes),
@@ -1767,6 +1984,20 @@ function CausalDAG2DInner() {
         </div>
       )}
       <AnimatePresence>
+        {selectedLatentInfo && (
+          <LatentInspector2D
+            key={selectedLatentInfo.latent.id}
+            latent={selectedLatentInfo.latent}
+            labelOf={selectedLatentInfo.labelOf}
+            evidenceEdges={selectedLatentInfo.evidence}
+            onClose={() => setSelectedLatentId(null)}
+            onOpenNode={setSelectedNode}
+            onOpenEdge={(e) => {
+              setSelectedLatentId(null);
+              setSelectedEdge(e);
+            }}
+          />
+        )}
         {selectedEdge && (
           <EdgeInspector
             key={selectedEdge.id}

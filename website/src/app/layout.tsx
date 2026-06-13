@@ -29,6 +29,14 @@ export const metadata: Metadata = {
     url: "https://apexanalytica.co",
     siteName: "Apex Analytica",
     type: "website",
+    images: [
+      {
+        url: "/mantis.png",
+        width: 1247,
+        height: 1523,
+        alt: "Apex Analytica",
+      },
+    ],
   },
 };
 

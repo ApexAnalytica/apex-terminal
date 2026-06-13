@@ -54,17 +54,17 @@ export function SectionLede({ children }: { children: ReactNode }) {
 }
 
 /**
- * Mosaic-style terminal header — // LABEL · path · right-meta on a thin underline.
+ * Mosaic-style terminal header — // LABEL · right-meta on a thin underline.
  * Replaces the SectionLabel + SectionHeading + SectionLede stripe.
+ * (The decorative pseudo-path slot was removed 2026-06-12 — it read as
+ * filler; keep `right` for genuinely informative chips only.)
  */
 export function TerminalHeader({
   label,
-  path,
   right,
   color = "cyan",
 }: {
   label: string;
-  path?: string;
   right?: string;
   color?: "cyan" | "amber" | "purple" | "green" | "red" | "magenta" | "orange" | "blue";
 }) {
@@ -84,11 +84,6 @@ export function TerminalHeader({
         <span className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.25em] ${map[color]}`}>
           {label}
         </span>
-        {path && (
-          <span className="hidden sm:inline font-mono text-[10px] text-text-muted/60">
-            {path}
-          </span>
-        )}
       </div>
       {right && (
         <span className="font-mono text-[10px] tracking-wider text-text-muted/70">

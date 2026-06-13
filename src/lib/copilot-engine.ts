@@ -1,5 +1,6 @@
 import { CopilotMessage, ModuleId, CausalGraph } from "./types";
 import { serializeGraphContext } from "./copilot-context";
+import { wrapUntrusted } from "./security/untrusted-context";
 import { runTarskiValidation, TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 
 let msgCounter = 0;
@@ -411,9 +412,16 @@ export async function streamLlmQuery(
 
   // For Ollama, call directly from browser to local server (bypasses Vercel)
   if (opts.provider === "ollama") {
+    // Browser-direct path: there's no server route to wrap the
+    // untrusted graph block, so do it here before handing it to the
+    // local model. The /api/copilot route below performs the same
+    // wrap on the server side, so the raw form is what crosses the
+    // wire — never the pre-wrapped form (which would double-wrap and
+    // confuse the sentinel-recognition directive in the system prompt).
+    const wrappedContext = wrapUntrusted(systemContext);
     const ollamaUrl = opts.ollamaUrl || "http://localhost:11434";
     const ollamaMessages = [
-      { role: "system", content: systemContext },
+      { role: "system", content: wrappedContext },
       ...messages.map((m) => ({
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.content,

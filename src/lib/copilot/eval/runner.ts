@@ -25,6 +25,7 @@ import { executeActionsWithTrace } from "../tool-registry";
 // Side-effect import: registers all built-in tools.
 import "../tools";
 import { serializeGraphContext } from "../../copilot-context";
+import { wrapUntrusted } from "../../security/untrusted-context";
 import { evaluateCase } from "./assertions";
 import type { EvalReport, EvalResult, ObservedToolCall, TestCase } from "./types";
 import { buildFixture } from "./cases/seed";
@@ -86,7 +87,7 @@ async function runCase(testCase: TestCase, opts: RunEvalOptions): Promise<EvalRe
     interventionMode: false,
     interventionTarget: null,
   });
-  const fullSystem = `${COPILOT_SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`;
+  const fullSystem = `${COPILOT_SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${wrapUntrusted(systemContext)}`;
 
   const userMessage: UIMessage = {
     id: "u-1",

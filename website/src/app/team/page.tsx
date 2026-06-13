@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Team · Apex Analytica",
+  description:
+    "The team behind Apex Analytica — an interdisciplinary group building causal risk intelligence for critical systems.",
+};
 
 const TEAM = [
   {
@@ -106,7 +113,6 @@ export default function TeamPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-purple/90">
               // TEAM
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">apex.people</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             The people behind{" "}
@@ -114,7 +120,7 @@ export default function TeamPage() {
           </h1>
           <p className="mt-5 text-sm md:text-base font-mono text-text-muted leading-relaxed max-w-2xl">
             An interdisciplinary team building causal risk intelligence for
-            capital markets in an era of escalating catastrophes.
+            critical systems in an era of escalating catastrophes.
           </p>
         </div>
       </section>
@@ -123,7 +129,6 @@ export default function TeamPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// LEADERSHIP"
-          path="apex.team"
           right={`${TEAM.length} MEMBERS`}
           color="cyan"
         />
@@ -138,7 +143,6 @@ export default function TeamPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ADVISORS"
-          path="apex.advisors"
           right={`${ADVISORS.length} ADVISORS`}
           color="amber"
         />
@@ -152,9 +156,8 @@ export default function TeamPage() {
       {/* Partners */}
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
-          label="// PARTNERS"
-          path="apex.partners"
-          right="03 ALLIANCES"
+          label="// AFFILIATIONS"
+          right="AWS · JHU · NVIDIA"
           color="green"
         />
         <div className="grid gap-px bg-border border border-border rounded-lg overflow-hidden md:grid-cols-3">

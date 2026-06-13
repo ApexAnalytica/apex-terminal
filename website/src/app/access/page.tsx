@@ -20,9 +20,6 @@ export default function AccessPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // REQUEST ACCESS
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">
-              apex.access
-            </span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             Request access to{" "}
@@ -40,7 +37,6 @@ export default function AccessPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// SUBMIT"
-          path="apex.access.form"
           right="ROUTED TO INFO@APEXANALYTICA.CO"
         />
         <div className="grid gap-6 md:grid-cols-[1fr_minmax(0,1.4fr)]">

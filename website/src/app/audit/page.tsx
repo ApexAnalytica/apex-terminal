@@ -53,10 +53,6 @@ export default function AuditPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // ΩF MINI-AUDIT
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">
-              apex.audit
-            </span>
-            <span className="text-text-muted/40">·</span>
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 border border-accent-amber/40 bg-accent-amber/5 rounded text-[10px] font-mono text-accent-amber tracking-wider">
               <span className="h-1.5 w-1.5 rounded-full bg-accent-amber pulse-ring" />
               FROM $1,500 · LITE 3-DAY · FULL 5-DAY
@@ -136,7 +132,6 @@ export default function AuditPage() {
       >
         <TerminalHeader
           label="// WHAT YOU GET"
-          path="apex.audit.deliverable"
           right="12-PAGE READOUT"
         />
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -171,7 +166,6 @@ export default function AuditPage() {
       <Section id="tiers" className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// CHOOSE YOUR DEPTH"
-          path="apex.audit.tiers"
           right="TWO PRICE POINTS"
           color="amber"
         />
@@ -296,7 +290,6 @@ export default function AuditPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// SAMPLE READOUT"
-          path="apex.audit.sample"
           right="REDACTED PREVIEW"
           color="amber"
         />
@@ -331,7 +324,6 @@ export default function AuditPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHO YOU'RE WORKING WITH"
-          path="apex.audit.team"
           right="2 OF 3"
           color="purple"
         />
@@ -376,7 +368,6 @@ export default function AuditPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// FAQ"
-          path="apex.audit.faq"
           right="COMMON QUESTIONS"
           color="green"
         />

@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import { SITE } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Contact · Apex Analytica",
+  description:
+    "Platform access, partnerships, research collaboration, or general inquiry — pick a path or email us directly.",
+};
 
 const ACCESS_OPTIONS = [
   {
@@ -45,7 +52,6 @@ export default function ContactPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // CONTACT
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">apex.contact</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             Get in touch with{" "}
@@ -62,7 +68,6 @@ export default function ContactPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// PLATFORM ACCESS"
-          path="apex.access"
           right="2 PATHS"
           color="cyan"
         />
@@ -104,7 +109,6 @@ export default function ContactPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// DIRECT"
-          path="apex.email"
           right="ROUTED BY PURPOSE"
           color="purple"
         />

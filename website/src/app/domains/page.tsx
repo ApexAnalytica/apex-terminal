@@ -36,9 +36,6 @@ export default function DomainsIndexPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // DOMAINS
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">manifold.domains</span>
-            <span className="text-text-muted/40">·</span>
-            <span className="font-mono text-[10px] text-text-muted/60">08 CONFIGURED</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             Eight domains.{" "}
@@ -56,7 +53,6 @@ export default function DomainsIndexPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// PICK A DOMAIN"
-          path="manifold.domains.index"
           right="CLICK ANY TILE"
         />
         <div className="grid gap-4 md:gap-5 md:grid-cols-2 lg:grid-cols-3">

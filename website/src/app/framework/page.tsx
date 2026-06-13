@@ -1,66 +1,56 @@
+import type { Metadata } from "next";
 import { Section, TerminalHeader } from "@/components/ui/Section";
 import CTAButton from "@/components/ui/CTAButton";
 import OmegaRadar from "@/components/visuals/OmegaRadar";
 import { SITE } from "@/lib/site";
+import {
+  ENGINE_META,
+  PILLAR_META,
+  PILLAR_LETTERS,
+  SYSTEM_METRICS,
+  type PillarLetter,
+} from "@/lib/claims";
 
-const PILLARS = [
-  {
-    letter: "I",
-    name: "Irreplaceability",
-    color: "cyan",
-    weight: 0.25,
+export const metadata: Metadata = {
+  title: "Ω-Fragility Framework · Apex Analytica",
+  description:
+    "ΩF is a 0–10 fragility score for any node in a critical system — five pillars, one canonical weighting, comparable across every domain Manifold runs.",
+};
+
+const PILLAR_COPY: Record<PillarLetter, { short: string; long: string }> = {
+  I: {
     short: "How impossible to substitute, technically or commercially.",
     long: "Captures the true cost of substitution: technical compatibility, certification windows, contractual lock-in, and supplier concentration. A node with I=10 cannot be replaced on any meaningful timeline.",
-    backed: "PEARL",
   },
-  {
-    letter: "R",
-    name: "Restoration Latency",
-    color: "green",
-    weight: 0.2,
+  R: {
     short: "Time to restore equivalent capacity after catastrophic failure.",
     long: "Models the recovery clock: lead times, capital requirements, regulatory approvals, and skill availability. A node with R=10 has effectively no near-term recovery path — failure is permanent on operational horizons.",
-    backed: "PEARL",
   },
-  {
-    letter: "J",
-    name: "Jurisdictional Hazard",
-    color: "red",
-    weight: 0.15,
+  J: {
     short: "Sanctions, conflict, export controls, and regulatory exposure.",
     long: "Encodes geopolitical and regulatory exposure: sanctions risk, conflict zones, export controls, dual-use restrictions. A node with J=10 sits at the intersection of multiple hostile regimes or under a single decisive lever.",
-    backed: "TARSKI",
   },
-  {
-    letter: "C",
-    name: "Cascade Load",
-    color: "purple",
-    weight: 0.25,
+  C: {
     short: "Downstream impact depth: GDP, sectors, nonlinear propagation.",
     long: "Quantifies the systemic blast radius: how many downstream nodes lose function, how deep the cascade runs, what nonlinear amplifiers (panic, hoarding, deleveraging) kick in. A node with C=10 is load-bearing for the system itself.",
-    backed: "SPIRTES + PARETO",
   },
-  {
-    letter: "T",
-    name: "Tail Depth",
-    color: "amber",
-    weight: 0.15,
+  T: {
     short: "Distributional depth beyond VaR — fat-tail severity.",
     long: "Goes past Value-at-Risk to characterize the depth of the tail: how bad is the bad case, conditional on being bad. Heavy-tailed processes routinely produce realizations multiple sigmas beyond historical VaR.",
-    backed: "PARETO",
   },
-] as const;
+};
 
-const ENGINES = [
-  { name: "PEARL", subtitle: "Counterfactual Engine", feeds: ["I", "R"] },
-  { name: "TARSKI", subtitle: "Truth Verification", feeds: ["J"] },
-  { name: "SPIRTES", subtitle: "Structure Discovery", feeds: ["C"] },
-  { name: "PARETO", subtitle: "Criticality Warning", feeds: ["C", "T"] },
-] as const;
-
-const pillarColor: Record<string, string> = Object.fromEntries(
-  PILLARS.map((p) => [p.letter, p.color]),
-);
+const PILLARS = PILLAR_LETTERS.map((letter) => ({
+  letter,
+  name: PILLAR_META[letter].name,
+  color: PILLAR_META[letter].color,
+  weight: PILLAR_META[letter].weight,
+  short: PILLAR_COPY[letter].short,
+  long: PILLAR_COPY[letter].long,
+  backed: ENGINE_META.filter((e) => e.feeds.includes(letter))
+    .map((e) => e.name)
+    .join(" + "),
+}));
 
 const colorMap: Record<string, { text: string; border: string; bg: string; soft: string }> = {
   cyan:   { text: "text-accent-cyan",   border: "border-accent-cyan/30",   bg: "bg-accent-cyan",   soft: "bg-accent-cyan/5" },
@@ -83,7 +73,6 @@ export default function FrameworkPage() {
                 <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-amber/90">
                   // FRAMEWORK
                 </span>
-                <span className="font-mono text-[10px] text-text-muted/60">manifold.omega_f</span>
               </div>
               <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground">
                 A canonical scoring framework for{" "}
@@ -113,9 +102,6 @@ export default function FrameworkPage() {
                       ΩF PROFILE · SAMPLE NODE
                     </span>
                   </div>
-                  <span className="font-mono text-[9px] tracking-wider text-text-muted/70">
-                    NODE_ID 0x7A3E
-                  </span>
                 </div>
                 <div className="aspect-square w-full max-w-md mx-auto">
                   <OmegaRadar />
@@ -130,7 +116,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// FROM DATA TO PILLARS"
-          path="manifold.engines"
           right="4 ENGINES → 5 PILLARS"
           color="amber"
         />
@@ -140,7 +125,7 @@ export default function FrameworkPage() {
           consumes — each engine feeds specific pillars.
         </p>
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          {ENGINES.map((e) => (
+          {ENGINE_META.map((e) => (
             <div
               key={e.name}
               className="bg-surface-elevated border border-border rounded-lg p-4 flex flex-col gap-4"
@@ -150,14 +135,14 @@ export default function FrameworkPage() {
                   {e.name}
                 </div>
                 <div className="font-mono text-[10px] tracking-[0.12em] text-text-muted mt-1">
-                  {e.subtitle}
+                  {e.role}
                 </div>
               </div>
               <div className="mt-auto flex items-center gap-2">
                 <span className="font-mono text-[10px] text-text-muted/70">feeds</span>
                 <div className="flex items-center gap-1.5">
                   {e.feeds.map((letter) => {
-                    const c = colorMap[pillarColor[letter]];
+                    const c = colorMap[PILLAR_META[letter].color];
                     return (
                       <span
                         key={letter}
@@ -187,7 +172,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// THE FIVE PILLARS"
-          path="manifold.omega_f.pillars"
           right="I · R · J · C · T"
           color="cyan"
         />
@@ -241,7 +225,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ONE CANONICAL WEIGHTING"
-          path="manifold.omega_f.weights"
           right="Σw = 1.0"
           color="cyan"
         />
@@ -265,7 +248,6 @@ export default function FrameworkPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHAT THE SCORE DRIVES"
-          path="manifold.omega_system"
           right="ΩSF · CONTAGION · BUFFER"
           color="purple"
         />
@@ -275,27 +257,16 @@ export default function FrameworkPage() {
           monitor that tell you how close the whole system is to failure.
         </p>
         <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard
-            symbol="ΩSF"
-            name="System Fragility"
-            color="cyan"
-            formula="∝ Σσᵢ + (100 − buffer)"
-            blurb="Live 0–100 system fragility index. Rises with aggregate shock severity and depleted buffer, and drives the regime band (STABLE → CRASH) in the Ω monitor."
-          />
-          <MetricCard
-            symbol="Ω-Contagion"
-            name="Cascade Reach"
-            color="red"
-            formula="|{j : Lⱼ(failᵢ) > τ}|"
-            blurb="Count of downstream nodes whose loss exceeds threshold τ when node i fails — measured across Monte Carlo cascade runs."
-          />
-          <MetricCard
-            symbol="Ω-Buffer"
-            name="Time to Failure"
-            color="green"
-            formula="365 · (buffer/100)"
-            blurb="Days from the current buffer to systemic failure: 365 nominal, compressing toward 3 at breach. The operational window for response."
-          />
+          {SYSTEM_METRICS.map((m) => (
+            <MetricCard
+              key={m.symbol}
+              symbol={m.symbol}
+              name={m.name}
+              color={m.color}
+              formula={m.formula}
+              blurb={m.blurb}
+            />
+          ))}
         </div>
       </Section>
 

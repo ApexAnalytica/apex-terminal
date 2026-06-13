@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import { NextRequest } from "next/server";
+import { ssrfGuard } from "@/lib/security/ssrf-guard";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -25,6 +26,15 @@ export async function POST(req: NextRequest) {
 
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return jsonError("Only http(s) URLs are supported", 400);
+    }
+
+    // SSRF guard — blocks RFC 1918 / loopback / link-local literals,
+    // the cloud-metadata aliases, .local / .internal suffixes, and
+    // hostnames that resolve into any private range. See
+    // src/lib/security/ssrf-guard.ts for the policy detail.
+    const guard = await ssrfGuard(parsed);
+    if (guard.reason) {
+      return jsonError(guard.reason, 400);
     }
 
     const controller = new AbortController();

@@ -1,9 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useApexStore } from "@/stores/useApexStore";
 import { useTextSize, type TextSize } from "@/hooks/useTextSize";
+
+// Lazy-loaded — pulls react-markdown + remark-gfm (~30 KB combined).
+// Only lands when the user clicks "Documentation" in the menu, so it
+// stays off the eager bundle.
+const DocumentationDrawer = dynamic(
+  () => import("./DocumentationDrawer"),
+  { ssr: false },
+);
 
 const TEXT_OPTIONS: Array<{ value: TextSize; label: string; title: string }> = [
   { value: "sm", label: "S", title: "Small text" },
@@ -49,10 +58,17 @@ function GearIcon() {
 export default function SettingsMenu() {
   const setImportModalOpen = useApexStore((s) => s.setImportModalOpen);
   const setTourActive = useApexStore((s) => s.setTourActive);
+  // Pulled so handleSignOut can wipe any LLM API keys the user pasted
+  // into the import / news / column-mapper panels. Keys live only in
+  // memory but a shared-machine logout that didn't clear them would
+  // leave them readable to the next session via DevTools console.
+  const setClaudeApiKey = useApexStore((s) => s.setClaudeApiKey);
+  const setGeminiApiKey = useApexStore((s) => s.setGeminiApiKey);
   const { size, setSize } = useTextSize();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -94,11 +110,18 @@ export default function SettingsMenu() {
   }, [open, email]);
 
   const handleSignOut = useCallback(async () => {
+    // Wipe LLM keys from the in-memory store BEFORE the auth call so
+    // the keys can't ride along in any straggling network requests
+    // that fire during the auth tear-down (the auth state change
+    // triggers re-render of the LLM-using panels). Idempotent and
+    // safe even if the keys were already empty.
+    setClaudeApiKey("");
+    setGeminiApiKey("");
     const { createClient } = await import("@/lib/supabase/client");
     await createClient().auth.signOut();
     router.push("/login");
     router.refresh();
-  }, [router]);
+  }, [router, setClaudeApiKey, setGeminiApiKey]);
 
   return (
     <div className="relative shrink-0" ref={rootRef}>
@@ -189,6 +212,17 @@ export default function SettingsMenu() {
               <span className="text-accent-cyan/70 w-3.5 text-center">?</span>
               Tutorial
             </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setDocsOpen(true);
+                setOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] font-mono text-text-muted hover:text-accent-cyan hover:bg-accent-cyan/5 transition-colors"
+            >
+              <span className="text-accent-cyan/70 w-3.5 text-center">§</span>
+              Documentation
+            </button>
           </div>
 
           {/* Sign out */}
@@ -214,6 +248,7 @@ export default function SettingsMenu() {
           </div>
         </div>
       )}
+      <DocumentationDrawer open={docsOpen} onClose={() => setDocsOpen(false)} />
     </div>
   );
 }

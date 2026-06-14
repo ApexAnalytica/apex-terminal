@@ -51,6 +51,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.0",
     "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.4.2",
     "eslint": "^9",

@@ -1499,7 +1499,12 @@ function CausalDAG2DInner() {
           source: e.source,
           target: e.target,
           type: "emphasized",
-          animated: isTemporal || propagationSignal > 0.3,
+          // Flow edges animate persistently (marching-ants dash via
+          // reactflow's .animated CSS) so "stuff is actually moving"
+          // reads at rest — same intent as the 3D particle whoosh for
+          // type==="flow". Temporal animates for its lag cue; any edge
+          // animates while a cascade signal is propagating through it.
+          animated: isTemporal || isFlow || propagationSignal > 0.3,
           markerEnd: showArrow
             ? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: baseColor }
             : undefined,

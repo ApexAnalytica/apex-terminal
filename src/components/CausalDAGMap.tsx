@@ -224,6 +224,7 @@ function CausalDAGMapInner() {
   // Build GeoJSON for edges — split into solid and dashed to match 3D conventions:
   //   directed  → cyan (#00e5ff) — solid
   //   temporal  → amber (#ffab00) — solid + animated particle
+  //   flow      → teal (#1de9b6) — solid + animated particle ("material moving")
   //   confounded → orange (#ff6d00) — dashed
   //   inconsistent → red (#ff1744) — dashed  (Tarski)
   //   severed → slate (#78909c) — dashed     (Pearl link-break)
@@ -421,15 +422,28 @@ function CausalDAGMapInner() {
     };
   }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo, visibleEdgeTypes]);
 
-  // Extract temporal edge paths directly from the solid edge GeoJSON features
-  // so particles follow the exact same sampled bezier polyline as the
-  // rendered line. Pre-compute cumulative arc length per vertex so we can
-  // lerp by distance (not by raw vertex index, which would skew speed
-  // through curvature) and so per-frame advance can be a constant in
-  // degrees rather than a fixed phase fraction.
-  const temporalEdgePaths = useMemo(() => {
+  // Extract animated edge paths directly from the solid edge GeoJSON
+  // features so particles follow the exact same sampled bezier polyline
+  // as the rendered line. Two edge types carry a steady "motion" cue:
+  //   - temporal → amber particles (the lag/time signal)
+  //   - flow     → teal particles ("material is actually moving"), the
+  //                MapLibre analog of the 3D particle whoosh + 2D
+  //                marching-ants for type==="flow".
+  // Each path carries its edge color so the particle layer can paint
+  // per-edge (data-driven) rather than a single hardcoded hue.
+  // Pre-compute cumulative arc length per vertex so we can lerp by
+  // distance (not by raw vertex index, which would skew speed through
+  // curvature) and so per-frame advance can be a constant in degrees
+  // rather than a fixed phase fraction. Severed/confounded edges are
+  // dashed (excluded from solidEdgeGeoJSON), and dimmed edges are
+  // filtered by the opacity guard — neither animates.
+  const animatedEdgePaths = useMemo(() => {
     return solidEdgeGeoJSON.features
-      .filter((f) => f.properties?.type === "temporal" && (f.properties?.opacity ?? 1) > 0.1)
+      .filter(
+        (f) =>
+          (f.properties?.type === "temporal" || f.properties?.type === "flow") &&
+          (f.properties?.opacity ?? 1) > 0.1,
+      )
       .map((f) => {
         const points = f.geometry.coordinates as [number, number][];
         const cumDist: number[] = [0];
@@ -440,6 +454,7 @@ function CausalDAGMapInner() {
         }
         return {
           id: f.properties!.id as string,
+          color: (f.properties?.color as string) ?? "#ffab00",
           points,
           cumDist,
           totalLen: cumDist[cumDist.length - 1] ?? 0,
@@ -467,7 +482,7 @@ function CausalDAGMapInner() {
 
   useEffect(() => {
     // Initialize random phases for any new edges
-    temporalEdgePaths.forEach(({ id }) => {
+    animatedEdgePaths.forEach(({ id }) => {
       if (!particlePhases.current.has(id)) {
         particlePhases.current.set(id, Math.random());
       }
@@ -499,9 +514,9 @@ function CausalDAGMapInner() {
 
     let animFrameId: number | null = null;
     const animate = () => {
-      // No temporal edges → push one empty frame and stop the loop
+      // No animated edges → push one empty frame and stop the loop
       // until the next dep change.
-      if (temporalEdgePaths.length === 0) {
+      if (animatedEdgePaths.length === 0) {
         writeData([]);
         animFrameId = null;
         return;
@@ -509,7 +524,7 @@ function CausalDAGMapInner() {
 
       const features: Feature<Point>[] = [];
 
-      for (const edge of temporalEdgePaths) {
+      for (const edge of animatedEdgePaths) {
         let phase = particlePhases.current.get(edge.id) ?? 0;
         // Per-edge dPhase is normalized so the absolute degrees-per-frame
         // stays constant; long edges advance their phase fraction more
@@ -541,7 +556,7 @@ function CausalDAGMapInner() {
           features.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: [lng, lat] },
-            properties: { id: `${edge.id}-p${p}` },
+            properties: { id: `${edge.id}-p${p}`, color: edge.color },
           });
         }
       }
@@ -554,7 +569,7 @@ function CausalDAGMapInner() {
     return () => {
       if (animFrameId !== null) cancelAnimationFrame(animFrameId);
     };
-  }, [temporalEdgePaths]);
+  }, [animatedEdgePaths]);
 
   // Click handler — handles both node and edge clicks
   const onMapClick = useCallback(
@@ -913,18 +928,21 @@ function CausalDAGMapInner() {
           />
         </Source>
 
-        {/* Animated particles flowing along temporal edges — native MapLibre rendering */}
+        {/* Animated particles flowing along temporal + flow edges —
+            native MapLibre rendering. */}
         {/* Particle Source mounts once with a stable empty FC. The
             actual per-frame data is written imperatively into the
             underlying maplibre source via `setData()` — see the
-            `writeData` helper inside the temporal-edge effect. */}
+            `writeData` helper inside the animated-edge effect. Each
+            particle carries its source edge's color, so temporal orbs
+            read amber and flow orbs read teal (`["get", "color"]`). */}
         <Source id={PARTICLE_SOURCE_ID} type="geojson" data={PARTICLE_EMPTY_FC}>
           <Layer
             id="particle-glow"
             type="circle"
             paint={{
               "circle-radius": 6,
-              "circle-color": "#ffab00",
+              "circle-color": ["get", "color"],
               "circle-opacity": 0.25,
               "circle-blur": 1,
             }}
@@ -934,7 +952,7 @@ function CausalDAGMapInner() {
             type="circle"
             paint={{
               "circle-radius": 3,
-              "circle-color": "#ffab00",
+              "circle-color": ["get", "color"],
               "circle-opacity": 0.9,
             }}
           />

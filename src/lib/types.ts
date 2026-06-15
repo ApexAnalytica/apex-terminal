@@ -363,6 +363,16 @@ export interface CausalEdge {
   weightSource?: EdgeAttributeSource;
   /** Where the `confidence` value came from. Same semantics as weightSource. */
   confidenceSource?: EdgeAttributeSource;
+  /**
+   * Registry reference for weight provenance — the id of an entry in the
+   * edge-provenance registry (src/lib/edge-provenance-registry.ts). Lets a
+   * single citation (e.g. "dcct-1993") be authored once and referenced from
+   * many edges instead of re-typed inline on each. Resolved at read time;
+   * an inline `weightSource` takes precedence over the ref if both are set.
+   */
+  weightSourceRef?: string;
+  /** Registry reference for confidence provenance. Same semantics as weightSourceRef. */
+  confidenceSourceRef?: string;
 }
 
 export interface GraphMetadata {

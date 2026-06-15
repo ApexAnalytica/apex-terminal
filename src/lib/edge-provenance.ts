@@ -20,6 +20,13 @@
  * patches, Saudi energy → literature point estimates) happens in
  * follow-up PRs that just *populate* the new fields — no code change in
  * this module is required for that.
+ *
+ * Citations that recur across many edges live in the edge-provenance
+ * *registry* (src/lib/edge-provenance-registry.ts): authored once as a
+ * named catalog entry and referenced from edges by id, instead of re-typed
+ * inline. That module builds on this one's `DEFAULT_AUTHOR_SOURCE` for its
+ * backfill, and `resolveEdgeSource` there supersedes the inline-only
+ * `resolveEdgeAttributeSource` below for callers that also accept refs.
  */
 
 import type {

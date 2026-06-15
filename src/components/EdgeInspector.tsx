@@ -7,8 +7,8 @@ import {
   EDGE_SOURCE_DESCRIPTION,
   EDGE_SOURCE_LABEL,
   hasProvenanceDetail,
-  resolveEdgeAttributeSource,
 } from "@/lib/edge-provenance";
+import { resolveEdgeSource } from "@/lib/edge-provenance-registry";
 import {
   extractAutoBridgeScore,
   bridgeStatus,
@@ -65,11 +65,18 @@ export default function EdgeInspector({
         ? "CONFOUNDED"
         : "DIRECTED";
 
-  // Resolve provenance once. Missing fields fall back to author so the
-  // analyst always sees *some* signal — silence would be a worse UX
-  // than a muted AUTHOR badge.
-  const weightSource = resolveEdgeAttributeSource(edge.weightSource);
-  const confidenceSource = resolveEdgeAttributeSource(edge.confidenceSource);
+  // Resolve provenance once. Inline source wins; else a registry ref is
+  // expanded against the edge-provenance catalog; else missing fields fall
+  // back to author so the analyst always sees *some* signal — silence would
+  // be a worse UX than a muted AUTHOR badge.
+  const weightSource = resolveEdgeSource(
+    edge.weightSource,
+    edge.weightSourceRef,
+  );
+  const confidenceSource = resolveEdgeSource(
+    edge.confidenceSource,
+    edge.confidenceSourceRef,
+  );
 
   return (
     <motion.div

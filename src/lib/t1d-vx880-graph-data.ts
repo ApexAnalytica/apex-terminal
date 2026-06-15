@@ -352,6 +352,8 @@ const EDGES: CausalEdge[] = [
     confidence: 0.75,
     isInconsistent: false,
     physicalMechanism: "DR3/DR4 alleles present islet autoantigens (preproinsulin, GAD65) — HR ~2-3 per risk allele (Nepom/Pugliese)",
+    weightSourceRef: "hla-dr-islet-2023",
+    confidenceSourceRef: "hla-dr-islet-2023",
   },
   {
     id: "vx880_e2",
@@ -412,7 +414,9 @@ const EDGES: CausalEdge[] = [
     type: "directed",
     confidence: 0.85,
     isInconsistent: false,
-    physicalMechanism: "Dose-dependent engraftment: full-dose cohort >> half-dose in Reichman NEJM 2023",
+    physicalMechanism: "Dose-dependent engraftment: full-dose cohort >> half-dose in Reichman NEJM 2025",
+    weightSourceRef: "reichman-nejm-2025",
+    confidenceSourceRef: "reichman-nejm-2025",
   },
   {
     id: "vx880_e7",
@@ -470,6 +474,8 @@ const EDGES: CausalEdge[] = [
     confidence: 0.85,
     isInconsistent: false,
     physicalMechanism: "Primary IS role — prevents HLA-mismatch-driven rejection (Edmonton protocol; CIT-07)",
+    weightSourceRef: "shapiro-edmonton-2000",
+    confidenceSourceRef: "hering-cit07-2016",
   },
   {
     id: "vx880_e12",
@@ -564,6 +570,8 @@ const EDGES: CausalEdge[] = [
     confidence: 0.95,
     isInconsistent: false,
     physicalMechanism: "TIR ↔ HbA1c mathematically coupled via time-averaged glucose (Vigersky/Battelino 2019, r²≈0.80)",
+    weightSourceRef: "vigersky-2019",
+    confidenceSourceRef: "vigersky-2019",
   },
   {
     id: "vx880_e20",
@@ -586,6 +594,8 @@ const EDGES: CausalEdge[] = [
     confidence: 0.8,
     isInconsistent: false,
     physicalMechanism: "Stimulated C-peptide AUC is the stronger determinant of sustained insulin independence (Ryan criteria)",
+    weightSourceRef: "ryan-2005",
+    confidenceSourceRef: "ryan-2005",
   },
 ];
 

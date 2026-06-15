@@ -52,7 +52,6 @@ export default function Home() {
             alt=""
             width={780}
             height={952}
-            priority
             className="object-contain"
           />
         </div>
@@ -155,7 +154,7 @@ export default function Home() {
 
       {/* ───────── // DOMAINS ───────── */}
       <Section id="domains" className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// DOMAINS" path="manifold.domains" right="08 CONFIGURED · CLICK TO EXPLORE" />
+        <TerminalHeader label="// DOMAINS" right="08 DOMAINS · CLICK TO EXPLORE" />
 
         <p className="mb-5 text-[13px] md:text-sm font-mono text-text-muted leading-relaxed max-w-2xl">
           Find your domain. Each one explains the problem Manifold solves
@@ -195,7 +194,7 @@ export default function Home() {
 
       {/* ───────── // CAPABILITIES ───────── */}
       <Section className="pt-14 pb-10 md:pt-16 md:pb-12 border-t border-border">
-        <TerminalHeader label="// CAPABILITIES" path="manifold.what" right="3 STAGES" />
+        <TerminalHeader label="// CAPABILITIES" right="3 STAGES" />
         <div className="grid gap-3 md:grid-cols-3">
           <CapabilityTile {...CAPABILITIES[0]} visual={<MiniMap />} />
           <CapabilityTile {...CAPABILITIES[1]} visual={<MiniRadar />} />
@@ -205,7 +204,7 @@ export default function Home() {
 
       {/* ───────── // ENGINES ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// ENGINES" path="manifold.engines" right="04 CORES" />
+        <TerminalHeader label="// ENGINES" right="04 CORES" />
 
         {/* Pipeline strip */}
         <div className="relative bg-surface/60 border border-border rounded-lg overflow-hidden">
@@ -228,11 +227,11 @@ export default function Home() {
 
       {/* ───────── // SAMPLE READOUT ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// READOUT" path="manifold.node[0x7A3E]" right="LIVE · MANUFACTURING" />
+        <TerminalHeader label="// READOUT" right="SAMPLE · MANUFACTURING" />
 
         <div className="mb-6 max-w-2xl">
           <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.04em] text-foreground leading-snug">
-            Click any node. This is what you see.
+            What your analyst sees 4 seconds after flagging TSMC Arizona-1.
           </h3>
         </div>
 
@@ -241,27 +240,27 @@ export default function Home() {
 
       {/* ───────── // FORMULA ───────── */}
       <Section className="py-10 md:py-14 border-t border-border">
-        <TerminalHeader label="// FORMULA" path="manifold.omega_f" right="HOW THE SCORE WORKS" />
+        <TerminalHeader label="// FORMULA" right="HOW THE SCORE WORKS" />
 
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
           <FormulaTile />
           <SystemRollupTile
             symbol="ΩSF"
             label="System Fragility"
-            value="7.42"
-            sub="throughput-weighted"
+            value="62"
+            sub="0–100 · sample"
             color="text-accent-cyan"
             border="border-accent-cyan/30"
-            desc="How fragile the system is overall, weighted by what flows through each node. Catches fragility hidden in high-volume chokepoints."
+            desc="Live 0–100 system fragility index. Rises with aggregate shock severity and depleted buffer, and drives the regime band (STABLE → CRASH) in the Ω monitor."
           />
           <SystemRollupTile
-            symbol="ΩSX"
-            label="System Exposure"
-            value="6.18"
-            sub="exposure-weighted"
-            color="text-accent-amber"
-            border="border-accent-amber/30"
-            desc="How fragile the system is when you weight by what's actually at risk — sanctions, capital, geographic concentration."
+            symbol="Ω-Buffer"
+            label="Time to Failure"
+            value="212 DAYS"
+            sub="runway · sample"
+            color="text-accent-green"
+            border="border-accent-green/30"
+            desc="Days from the current buffer to systemic failure — the operational window for response. 365 nominal, compressing toward 3 at breach."
           />
         </div>
 
@@ -294,7 +293,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col gap-3 shrink-0">
               <CTAButton href={SITE.trialUrl} external>START 48-HR TRIAL</CTAButton>
-              <CTAButton href="/access" variant="secondary">REQUEST INVITE</CTAButton>
+              <CTAButton href="/access" variant="secondary">REQUEST ACCESS</CTAButton>
             </div>
           </div>
         </div>
@@ -392,9 +391,10 @@ function FormulaTile() {
         ΩF = w<sub>I</sub>·I + w<sub>R</sub>·R + w<sub>J</sub>·J + w<sub>C</sub>·C + w<sub>T</sub>·T
       </div>
       <p className="text-xs font-mono text-text-muted leading-snug">
-        Each pillar is scored 0–10. Composite ΩF is a weighted average — the
-        weights are configurable per domain. A reinsurer evaluating sovereign
-        credit weights J and T heavily; a supply-chain operator leans on I and R.
+        Each pillar is scored 0–10. Composite ΩF is a weighted average under
+        one canonical weighting, fixed across every domain — so a 7.0 on a
+        supply chain is directly comparable to a 7.0 on a power grid. What
+        changes per domain is the vocabulary, not the math.
       </p>
     </div>
   );
@@ -635,6 +635,23 @@ function NodeReadout() {
       </div>
 
       <div className="relative p-5 md:p-6 space-y-5">
+        {/* Verdict banner — Manifold's judgment on the node, surfaced
+            before the raw numbers so the prospect sees a decision,
+            not a dashboard. Added 2026-05-29. */}
+        <div className="relative flex gap-3 bg-accent-cyan/[0.04] border border-accent-cyan/30 rounded p-4">
+          <div className="absolute top-0 left-0 h-0.5 w-12 bg-accent-cyan opacity-80" />
+          <div className="space-y-1.5 flex-1">
+            <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
+              // VERDICT
+            </div>
+            <p className="text-[12.5px] md:text-[13px] font-mono text-foreground/90 leading-relaxed">
+              Critical single-source. A 90-day outage cascades to 37
+              downstream nodes — including 4 of the top 5 positions in
+              the mobile and accelerated-compute book.
+            </p>
+          </div>
+        </div>
+
         {/* Identity row + composite + sub-stats */}
         <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
           {/* Identity */}
@@ -742,10 +759,24 @@ function NodeReadout() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="relative flex items-center justify-between border-t border-border px-5 py-2.5 bg-surface/60 text-[10px] font-mono text-text-muted/80 tracking-wider">
-        <span>SCORE · ENRICHMENT · ANALYZED BY · SPIRTES · TARSKI · PEARL · PARETO</span>
-        <span>VERIFIED · 2026.05.01 14:08:11Z</span>
+      {/* Footer. Two-row layout: top row drives home the time-savings
+          claim (the actual prospect-relevant value); bottom row keeps
+          the engine attribution + verified timestamp for credibility.
+          Reworked 2026-05-29 to make the screen's *value* — not just
+          its provenance — legible in the footer. */}
+      <div className="relative border-t border-border bg-surface/60">
+        <div className="px-5 py-3 border-b border-border/60">
+          <p className="text-[11px] md:text-[12px] font-mono text-foreground/85 leading-snug">
+            <span className="text-text-muted">Without Manifold:</span>{" "}
+            2–3 analyst-days to assemble.{" "}
+            <span className="text-accent-cyan/90">With Manifold:</span>{" "}
+            this screen.
+          </p>
+        </div>
+        <div className="flex items-center justify-between px-5 py-2 text-[10px] font-mono text-text-muted/70 tracking-wider">
+          <span>SCORE · ENRICHMENT · ANALYZED BY · SPIRTES · TARSKI · PEARL · PARETO</span>
+          <span>SAMPLE · 2026.05.01</span>
+        </div>
       </div>
     </div>
   );

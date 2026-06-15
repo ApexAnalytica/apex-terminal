@@ -86,6 +86,14 @@ function DAGNode3DInner({
   const nodeSizeMetric = useApexStore((s) => s.nodeSizeMetric);
   const meshRef = useRef<THREE.Mesh>(null);
   const selectionRingRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  // Smoothed position. Parent posMap recomputes whenever omega values
+  // change (live feed tick / historical scrub), producing a new target
+  // position. Without lerping, every feed tick would snap the orb to
+  // the new position — visually jarring and erases the "system slowly
+  // breathing" insight. Each frame we ease the group's actual position
+  // toward the prop with a fixed time constant.
+  const currentPos = useRef<[number, number, number]>(position);
   const birthProgress = useRef(isConsequence ? 0 : 1);
   const displayOmega = useRef(node.omegaFragility.composite);
   const [hovered, setHovered] = useState(false);
@@ -133,6 +141,21 @@ function DAGNode3DInner({
   })());
 
   useFrame(({ clock }, delta) => {
+    // Smooth position toward target. Runs even when the cosmetic-pulse
+    // gates below skip — a greyed-out orb still needs to migrate when
+    // its omega changes, otherwise the network "shape" reads as a lie
+    // (the orb is at its old position despite the underlying state
+    // having moved on). Fixed-rate exponential ease: ~85% of the
+    // distance closed per 100ms feels smooth without being mushy.
+    if (groupRef.current) {
+      const k = 1 - Math.exp(-delta * 12);
+      const cur = currentPos.current;
+      cur[0] += (position[0] - cur[0]) * k;
+      cur[1] += (position[1] - cur[1]) * k;
+      cur[2] += (position[2] - cur[2]) * k;
+      groupRef.current.position.set(cur[0], cur[1], cur[2]);
+    }
+
     // Per-frame work is now baseline-idle by default — every visible
     // orb gets a slow breathing pulse so the canvas reads as alive
     // when nothing's happening. Reasons to skip outright:
@@ -189,7 +212,7 @@ function DAGNode3DInner({
   });
 
   return (
-    <group position={position} onClick={onClick} onDoubleClick={onDoubleClick}>
+    <group ref={groupRef} position={position} onClick={onClick} onDoubleClick={onDoubleClick}>
       {/* Selection ring (bright cyan pulsing) */}
       {isSelected && (
         <mesh ref={selectionRingRef} rotation={[Math.PI / 2, 0, 0]}>
@@ -364,7 +387,7 @@ function DAGNode3DInner({
             <div
               style={{
                 fontSize: isSelected ? "8px" : "7px",
-                color: isSelected ? "rgba(0,229,255,0.7)" : "rgba(90,94,114,1)",
+                color: isSelected ? "rgba(0,229,255,0.7)" : "var(--text-muted)",
                 textShadow: "0 0 4px rgba(0,0,0,0.9)",
                 marginTop: "1px",
               }}

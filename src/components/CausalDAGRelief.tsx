@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -925,6 +925,8 @@ function CausalDAGReliefInner() {
     () => graphSignature(graphData.nodes, graphData.edges),
     [graphData.nodes, graphData.edges],
   );
+  // Deferred topology fingerprint for the chiStar memo below (round 16).
+  const deferredSig = useDeferredValue(sig);
   const layout = useMemo(
     () => compute2DForceLayout(graphData.nodes, graphData.edges),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1087,7 +1089,13 @@ function CausalDAGReliefInner() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, activeField, isEmpty, layout]);
+    // chiStar runs a full Brandes' edge-betweenness pass (~120K ops on
+    // the default graph). Keying on `useDeferredValue(sig)` instead of
+    // `sig` lets the relief surface mount first and the bridge/chi-star
+    // overlay catch up in a follow-up concurrent commit — same pattern
+    // round 15 applied to CausalDAG3D's chiStarInfo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig, activeField, isEmpty, layout]);
 
   // Click handler — convert the mesh-local hit point to nearest node id
   // and dispatch into the store. Same selection signal the rest of the app

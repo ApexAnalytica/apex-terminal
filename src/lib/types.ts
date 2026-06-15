@@ -63,6 +63,17 @@ export interface TerminalLine {
 // ─── Omega-Fragility Profile ────────────────────────────────────
 export interface OmegaFragilityProfile {
   composite: number;              // ΩF 0-10 headline fragility score
+  /**
+   * The hand-authored / default-weighted composite this node carried
+   * before an active domain profile re-weighted it (see
+   * `recomputeComposite` in src/lib/omega-weighting.ts). Set ONLY when a
+   * profile with `compositeMode: "recomputed"` (e.g. AI-Safety) has
+   * overwritten `composite` with its own pillar weighting. Lets the
+   * inspector surface "reweighted from X.X" so the change stays auditable
+   * and the original tuned score isn't silently lost. Undefined means the
+   * displayed `composite` is the authored/default value itself.
+   */
+  baselineComposite?: number;
   irreplaceability: number;       // I  0-10 how impossible to substitute (capacity share, tech exclusivity)
   restorationLatency: number;     // R  0-10 time to restore equivalent capacity after catastrophic failure
   jurisdictionalHazard: number;   // J  0-10 sanctions, conflict, export controls, regulatory exposure
@@ -378,6 +389,86 @@ export interface CausalGraph {
   nodes: CausalNode[];
   edges: CausalEdge[];
   metadata: GraphMetadata;
+}
+
+/**
+ * An INFERRED LATENT node — a hidden common cause the model posits to
+ * explain dependencies among observed nodes that no observed node accounts
+ * for (Dr. Pita's "synthetic node" #1: missing from the MAP, not the
+ * territory). Derived on demand from the `confounded`/FCI latent-common-
+ * cause signal (see `deriveLatentNodes`); it is DELIBERATELY:
+ *
+ *   - NOT a `CausalNode` — it has no measured ΩF, category, or metadata,
+ *     because we don't observe it. Forcing it into the node shape would
+ *     invite the UI to render fake fragility scores for a thing we can't see.
+ *   - NOT stored on `CausalGraph.nodes` — it is computed when the analyst
+ *     opts in, so it can never leak into cascade simulation, ΩF, or the
+ *     system metrics (ΩSF/ΩSX/contagion). Read-only annotation only.
+ *
+ * It earns promotion from the dashed `confounded` edge ONLY when it is the
+ * common cause of 3+ observed nodes (a pairwise hidden cause stays an edge).
+ * Always framed as a hypothesis, never asserted as real (honours the
+ * "nothing synthetic under a real-data label" directive via a persistent
+ * INFERRED badge + provenance tooltip at the render layer).
+ */
+export interface LatentNode {
+  id: string;
+  /** Observed node ids this inferred latent is the common cause of (≥3). */
+  explains: string[];
+  /** How it was inferred. */
+  method: "confounded-cluster" | "fci";
+  /** Inference strength 0-1 (e.g. mean confidence of the source signals). */
+  strength: number;
+  /** Hypothesis-framed label — never an assertion of what the latent IS. */
+  label: string;
+  /**
+   * The hypothesised channel/driver, surfaced verbatim from the
+   * `physicalMechanism` of the cluster's confounded edges (an author-stated
+   * mechanism, e.g. "Gulf route disruption raises freight cost"). Turns the
+   * glyph from "?" into a named hypothesis. NOT an empirically identified
+   * variable — it's the channel the graph author asserted.
+   */
+  hypothesizedDriver?: string;
+  /**
+   * Real-data consistency check on the hypothesis (NOT a discovery claim):
+   * do the member nodes that carry live time-series actually co-move, as a
+   * shared hidden driver would predict? Computed from `liveData.history`.
+   *   - "supported"    : enough aligned data AND members co-move (|r| ≥ thresh)
+   *   - "inconsistent" : enough aligned data BUT members don't co-move
+   *   - "insufficient" : not enough live/aligned data to judge
+   * `statistic` is the mean pairwise correlation; `liveMembers` is how many
+   * members had usable series. Absent ⇒ support not computed.
+   */
+  dataSupport?: {
+    status: "supported" | "inconsistent" | "insufficient";
+    statistic?: number;
+    method?: "pairwise-correlation";
+    liveMembers: number;
+  };
+  /**
+   * Discovery-readiness assessment: can this latent ever be *discovered* from
+   * real data (vs the current authored hypothesis), and if not, what data is
+   * missing? Turns "insufficient" into an actionable acquisition spec — the
+   * prerequisite for honest FCI latent discovery (Phase 2).
+   *   - "ready"   : every member observed + enough date-aligned points for a
+   *                 credible CI test (≥ DISCOVERY_MIN_POINTS)
+   *   - "partial" : every member observed but underpowered (too few aligned pts)
+   *   - "blocked" : a member is unobserved, or alignment is far too sparse
+   * `limitingFactor` names the binding gap; `recommendation` is the concrete
+   * "to discover this for real, acquire X" instruction.
+   */
+  discoveryReadiness?: {
+    status: "ready" | "partial" | "blocked";
+    liveMembers: number;
+    totalMembers: number;
+    maxAlignedPoints: number;
+    /** Member ids that carry no live feed (need instrumentation). */
+    missingFeeds: string[];
+    limitingFactor: "coverage" | "frequency" | "none";
+    recommendation: string;
+  };
+  /** Render position (centroid of explained nodes); set by the render layer. */
+  position3d?: { x: number; y: number; z: number };
 }
 
 // ─── Copilot ─────────────────────────────────────────────────────

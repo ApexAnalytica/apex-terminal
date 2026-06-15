@@ -83,7 +83,7 @@ export function trackForPersona(persona: string | null | undefined): TourTrack {
  *  field in sync. */
 export const WELCOME_TITLE = "WELCOME — PICK A PERSONA";
 export const WELCOME_DESCRIPTION =
-  "Welcome to APEX Analytica MANIFOLD — a causal-inference platform for discovering, verifying, and stress-testing networks. Start by picking one of the five persona pills above: FINANCIAL, MACRO, GEOPOLITICAL, SCIENTIST (Life Sciences), or CROSS-DOMAIN. Each one filters the visible domain cards. Pick a card, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the “?” in the top-right.";
+  "Welcome to APEX Analytica MANIFOLD — a causal-inference platform for discovering, verifying, and stress-testing networks. Start by picking one of the five persona pills above: FINANCIAL, MACRO, GEOPOLITICAL, SCIENTIST (Life Sciences), or CROSS-DOMAIN. Each one filters the visible domain cards. Pick a card, confirm, and the tour will continue on the platform. You can relaunch this tour anytime from the Settings menu (the gear in the top-right).";
 
 const FIRST_RUN_STEPS: TourStep[] = [
   {
@@ -225,21 +225,14 @@ const FIRST_RUN_STEPS: TourStep[] = [
     },
   },
   {
-    id: "cd-omega-monitor",
+    id: "workspace-context",
     phase: "first-run",
-    targetSelector: '[data-tour="cd-omega"]',
+    targetSelector: '[data-tour="workspace-context"]',
     tooltipPosition: "bottom",
     copy: {
-      analyst: {
-        title: "CDΩ — DOOMSDAY MONITOR",
-        description:
-          "The Causal-Distance-Omega monitor in the header is always on. The segmented bar shows buffer depletion (green → amber → red), time-to-failure (T-Nd), regime classification (STABLE / MELT_UP / CRASH / PHASE_TRANSITION / STAGNATION), Dragon-King probability, and active shocks. The bar flashes when the system enters OMEGA_BREACH — no matter which engine tab you're on.",
-      },
-      scientist: {
-        title: "CDΩ — TRAJECTORY MONITOR",
-        description:
-          "The Causal-Distance-Omega monitor in the header is always on. The segmented bar shows mechanism-buffer depletion (green → amber → red), time-to-event (T-Nd), trajectory regime (STABLE / DETERIORATING / RAPID-DECLINE / RECOVERY), tail probability, and active stressors. The bar flashes on critical-threshold breach regardless of which engine tab you're in.",
-      },
+      title: "WORKSPACE CONTEXT",
+      description:
+        "The center of the header keeps you oriented. At rest it shows the size of the workspace you're analyzing — node and edge counts — plus how many shock scenarios are currently live. The moment you run a cascade replay it switches to live propagation state: which epoch you're on, how far the cascade has spread, and the system status right now. No guesswork about what you're looking at.",
     },
   },
   {
@@ -261,7 +254,7 @@ const FIRST_RUN_STEPS: TourStep[] = [
     copy: {
       title: "YOU'RE SET",
       description:
-        "That's the loop: pick a domain → click nodes → switch engines → run interventions → scrub the dial. The “?” button in the top-right relaunches this tour or opens a deeper dive into a specific area. Optional deep-dive tracks below — pick what looks useful or close out and start exploring.",
+        "That's the loop: pick a domain → click nodes → switch engines → run interventions → scrub the dial. The Settings menu (gear, top-right) relaunches this tour anytime or opens a deeper dive into a specific area. Optional deep-dive tracks below — pick what looks useful or close out and start exploring.",
     },
   },
 ];
@@ -400,6 +393,58 @@ const DEEP_DIVE_STEPS: TourStep[] = [
         "COMPUTE WITH CLAUDE generates a System State Snapshot — a structured digest of nodes, edges, engine outputs, and criticality metrics. Claude does the heavy reasoning; the copilot uses that snapshot as context for follow-up questions. If no Claude key is configured, a local snapshot is computed from graph structure instead. Snapshot status appears as a badge in the copilot header.",
     },
   },
+  // ─── Calculations → DIAL → Watchlist loop ──────────────────────────
+  //
+  // The CALCULATIONS panel + "→ DIAL" + the bottom WATCHLIST + chart
+  // form a four-step closed loop:
+  //   compute → push → row appears → trajectory accumulates over time
+  // Without a tour, it's not obvious that pressing DIAL does anything
+  // (the inline sparkline is small and the watchlist is a different
+  // panel). These three steps walk the user through it once.
+  {
+    id: "calculations-panel-intro",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calculations-panel"]',
+    tooltipPosition: "left",
+    copy: {
+      title: "CALCULATIONS — RIGHT-RAIL CONTEXT",
+      description:
+        "The CALCULATIONS panel surfaces measures that apply to your current focus — Supply HHI / Gini on the selected node, graph-wide cycle count / bridge ratio / edge density when none is selected. Each row carries a tone dot (red / amber / green), the scalar value, and one-clause context. Rows appear and disappear with selection — no fixed widget, no dead chrome.",
+    },
+  },
+  {
+    id: "calc-dial-push",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calc-dial-button"]',
+    tooltipPosition: "left",
+    copy: {
+      title: "→ DIAL — PUSH TO TIMEDIAL",
+      description:
+        "Pressing → DIAL on any calc row snapshots the current value into a trajectory. Node-scoped calcs (HHI, Gini) attach to the selected node's liveData[]; graph-wide calcs (mean ΩF, cycle count) accumulate in a separate per-calc history. First push auto-pins the row to the bottom watchlist + chart so the curve appears immediately. Every press appends a new point — repeat over time to build the trajectory. Both flavours persist across page reloads.",
+    },
+    awaitInteraction: {
+      hint: "Press → DIAL on any calc row to push a snapshot.",
+      // Predicate fires when EITHER history map has its first entry —
+      // the moment a calc gets pushed (node-scoped or graph-wide).
+      predicate: (s) =>
+        Object.keys(s.graphCalcHistory).length > 0 ||
+        Object.keys(s.nodeCalcHistory).length > 0,
+    },
+  },
+  {
+    id: "calc-watchlist-row",
+    phase: "deep-dive",
+    deepDiveTrack: "loop",
+    targetSelector: '[data-tour="calc-watchlist"]',
+    tooltipPosition: "top",
+    copy: {
+      title: "WATCHLIST — TRAJECTORIES ACCUMULATE HERE",
+      description:
+        "The pushed calc lands as a row in the WATCHLIST column (left side of the bottom dock) with a small CALC badge to distinguish it from node ΩF rows. The chart to the right draws a cyan curve — extending with each subsequent → DIAL press. Trajectories persist across reloads, so a long-running investigation (week-over-week drift on any metric, daily cycle-count or bridge-ratio check) is just \"press DIAL on the same calc when you come back.\"",
+    },
+  },
 
   // Customization
   {
@@ -418,24 +463,24 @@ const DEEP_DIVE_STEPS: TourStep[] = [
     id: "text-size",
     phase: "deep-dive",
     deepDiveTrack: "customization",
-    targetSelector: '[data-tour="text-size-toggle"]',
+    targetSelector: '[data-tour="settings-menu"]',
     tooltipPosition: "bottom",
     copy: {
       title: "TEXT SIZE (S / M / L)",
       description:
-        "Use the S / M / L toggle in the header to scale the readable text up or down. Layout, canvas, and icons stay put — only typography rescales, so dense panels stay legible without the graph reflowing. Persists across sessions and is applied before the page renders so there's no flash.",
+        "Open the Settings menu (the gear in the top-right) to scale the readable text up or down with the S / M / L control. Layout, canvas, and icons stay put — only typography rescales, so dense panels stay legible without the graph reflowing. Persists across sessions and is applied before the page renders so there's no flash.",
     },
   },
   {
     id: "import",
     phase: "deep-dive",
     deepDiveTrack: "customization",
-    targetSelector: '[data-tour="import-button"]',
+    targetSelector: '[data-tour="settings-menu"]',
     tooltipPosition: "bottom",
     copy: {
       title: "IMPORT YOUR OWN DATA",
       description:
-        "Bring your own graph. IMPORT accepts CSV, JSON, or adjacency matrices; the platform auto-detects format and maps columns into the fragility framework. All four engines work on imported graphs exactly as they do on built-in domains. Multiple datasets can coexist and merge via cross-domain edges.",
+        "Bring your own graph. Open the Settings menu (top-right) and choose Import data — it accepts CSV, JSON, or adjacency matrices; the platform auto-detects format and maps columns into the fragility framework. All four engines work on imported graphs exactly as they do on built-in domains. Multiple datasets can coexist and merge via cross-domain edges.",
     },
   },
   {

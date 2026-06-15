@@ -217,7 +217,19 @@ export default function DomainSelector() {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.2 }}
             data-tour="domain-selector-modal"
-            className="w-full max-w-2xl mx-4 rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
+            // `max-h-[calc(100vh-2rem)] flex flex-col` caps the modal to
+            // viewport height with a 1rem gutter top/bottom. Header,
+            // persona pills, mode switch, and footer stay anchored as
+            // flex items at their natural height. The middle scrollable
+            // region (cards + DATA LAYERS + demo picker) absorbs the
+            // remaining vertical space and scrolls internally — before
+            // this, selecting many domains or expanding DATA LAYERS
+            // could push the modal taller than the viewport, and the
+            // `items-center justify-center` parent would centre it
+            // vertically, clipping equal slivers off the top AND bottom
+            // (the launch button at the bottom was the most reported
+            // casualty).
+            className="w-full max-w-2xl mx-4 rounded-lg border border-border bg-background shadow-2xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -308,8 +320,20 @@ export default function DomainSelector() {
               )}
             </div>
 
+            {/* Middle scrollable region — wraps the domain cards,
+                DATA LAYERS accordion, and demo picker as one scroll
+                container so they grow/shrink together inside the
+                viewport-capped modal. Previously the cards section had
+                its own `max-h-[420px] overflow-y-auto` while DATA
+                LAYERS + demo picker sat outside as separate vertical
+                children of the modal, which meant expanding DATA
+                LAYERS pushed the modal taller than the viewport. With
+                this wrap the whole middle region shrinks down and a
+                single scrollbar appears at the modal edge when content
+                exceeds the available vertical space. */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
             {/* Grouped Domain Cards */}
-            <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-4">
+            <div className="px-6 py-4 space-y-4">
               {visibleGroups.map((group) => (
                 <div key={group.label}>
                   <div
@@ -496,6 +520,7 @@ export default function DomainSelector() {
                 onPick={() => setDomainSelectorOpen(false)}
               />
             </div>
+            </div>{/* /flex-1 min-h-0 overflow-y-auto — middle scrollable region */}
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-border flex items-center justify-between">

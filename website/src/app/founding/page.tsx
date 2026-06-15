@@ -6,8 +6,7 @@ import { OFFERS, offerCheckoutHref, isPlaceholderUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Founding 10 · Apex Analytica",
-  description:
-    "Ten seats at founding pricing — $1,500 for year one, locked at $9,000/year forever. Six left.",
+  description: `Ten seats at founding pricing — $1,500 for year one, locked at $9,000/year forever. ${OFFERS.foundingSeatsLeft} left.`,
 };
 
 /**
@@ -53,10 +52,6 @@ export default function FoundingPage() {
             <span className="font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] text-accent-cyan/90">
               // FOUNDING 10
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">
-              apex.founding
-            </span>
-            <span className="text-text-muted/40">·</span>
             <SeatBadge seatsLeft={seatsLeft} totalSeats={totalSeats} />
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
@@ -105,7 +100,6 @@ export default function FoundingPage() {
       <Section id="what-you-get" className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHAT YOU GET"
-          path="apex.founding.includes"
           right="LIFETIME LOCK"
         />
         <div className="grid gap-3 md:grid-cols-3">
@@ -141,7 +135,6 @@ export default function FoundingPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// WHY NOW"
-          path="apex.founding.thesis"
           right="TIME-BOUND"
           color="amber"
         />
@@ -173,7 +166,6 @@ export default function FoundingPage() {
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// FAQ"
-          path="apex.founding.faq"
           right="COMMON QUESTIONS"
           color="purple"
         />
@@ -203,7 +195,7 @@ export default function FoundingPage() {
             <h3 className="font-[family-name:var(--font-michroma)] text-2xl md:text-3xl tracking-[0.06em] text-foreground leading-[1.25]">
               {soldOut
                 ? "All seats claimed."
-                : "Six left. Then this offer is closed."}
+                : `${seatsLeft} left. Then this offer is closed.`}
             </h3>
             <p className="text-[12.5px] font-mono text-text-muted leading-relaxed">
               {/* COPY: closing paragraph from the source doc. */}

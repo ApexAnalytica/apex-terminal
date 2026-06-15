@@ -11,6 +11,7 @@ import {
   type DomainContent,
   type Persona,
 } from "@/lib/domains";
+import { ENGINE_META } from "@/lib/claims";
 
 const PILLAR_NAMES: Record<string, string> = {
   I: "IRREPLACEABILITY",
@@ -20,19 +21,15 @@ const PILLAR_NAMES: Record<string, string> = {
   T: "TAIL DEPTH",
 };
 
-const ENGINE_ROLE: Record<string, string> = {
-  SPIRTES: "STRUCTURE DISCOVERY",
-  TARSKI: "FORMAL VERIFICATION",
-  PEARL: "COUNTERFACTUAL ENGINE",
-  PARETO: "CASCADE & TAIL SIMULATION",
-};
+// Engine roles + colors come from the canonical claims module so the
+// domain pages can't drift from /product and /framework.
+const ENGINE_ROLE: Record<string, string> = Object.fromEntries(
+  ENGINE_META.map((e) => [e.name, e.role.toUpperCase()]),
+);
 
-const ENGINE_COLOR: Record<string, Color> = {
-  SPIRTES: "cyan",
-  TARSKI: "amber",
-  PEARL: "purple",
-  PARETO: "orange",
-};
+const ENGINE_COLOR: Record<string, Color> = Object.fromEntries(
+  ENGINE_META.map((e) => [e.name, e.color as Color]),
+);
 
 /**
  * Domain-flavored Mini-Audit CTA copy. Each entry pairs a per-slug
@@ -111,7 +108,6 @@ export default async function DomainPage({
             <span className={`font-[family-name:var(--font-michroma)] text-[10px] tracking-[0.3em] ${c.text}`}>
               // {d.name.toUpperCase()}
             </span>
-            <span className="font-mono text-[10px] text-text-muted/60">manifold.{d.slug}</span>
           </div>
           <h1 className="font-[family-name:var(--font-michroma)] text-3xl md:text-5xl tracking-[0.04em] leading-[1.15] text-foreground max-w-3xl">
             <span className={`${c.text} ${c.glow}`}>{d.name}.</span>
@@ -126,7 +122,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// THE PROBLEM"
-          path={`manifold.${d.slug}.problem`}
           right="WHAT YOU WALK IN WITH"
           color={d.color}
         />
@@ -143,7 +138,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// HOW MANIFOLD MAPS IT"
-          path={`manifold.${d.slug}.graph`}
           right="CAUSAL TOPOLOGY"
           color="cyan"
         />
@@ -183,7 +177,6 @@ export default async function DomainPage({
         <Section className="py-10 md:py-14 border-t border-border">
           <TerminalHeader
             label="// WHO THIS IS FOR"
-            path={`manifold.${d.slug}.personas`}
             right={`${d.personas.length} ROLES`}
             color="amber"
           />
@@ -199,7 +192,6 @@ export default async function DomainPage({
       <Section className="py-10 md:py-14 border-t border-border">
         <TerminalHeader
           label="// ENGINES IN PLAY"
-          path={`manifold.${d.slug}.engines`}
           right={`${d.engines.length} OF 4`}
           color="purple"
         />
@@ -237,7 +229,6 @@ export default async function DomainPage({
         <Section className="py-10 md:py-14 border-t border-border">
           <TerminalHeader
             label="// SIGNALS WE INGEST"
-            path={`manifold.${d.slug}.signals`}
             right={`${d.signals.length} STREAMS`}
             color="green"
           />
@@ -345,7 +336,6 @@ function SampleReadout({ domain }: { domain: DomainContent }) {
     <Section className="py-10 md:py-14 border-t border-border">
       <TerminalHeader
         label="// SAMPLE READOUT"
-        path={`manifold.${domain.slug}.sample`}
         right={node.label}
         color="cyan"
       />

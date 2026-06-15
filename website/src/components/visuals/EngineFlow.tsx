@@ -18,10 +18,10 @@ const W = 1100;
 const H = 360;
 
 const ENGINES = [
-  { name: "SPIRTES", role: "STRUCTURE",      sub: "DCD · PCMCI+ · FCI",     color: "var(--accent-cyan)"   },
+  { name: "SPIRTES", role: "STRUCTURE",      sub: "PC · FCI · NOTEARS",     color: "var(--accent-cyan)"   },
   { name: "TARSKI",  role: "VERIFICATION",   sub: "axiom library · check",  color: "var(--accent-amber)"  },
   { name: "PEARL",   role: "COUNTERFACTUAL", sub: "do(X) · sever · spawn",  color: "var(--accent-purple)" },
-  { name: "PARETO",  role: "MULTI-OBJECTIVE", sub: "frontier · MC scan",     color: "var(--accent-orange)" },
+  { name: "PARETO",  role: "CASCADE & TAIL", sub: "MC cascade · tail stats", color: "var(--accent-orange)" },
 ];
 
 // Layout constants
@@ -186,7 +186,7 @@ export default function EngineFlow() {
         fill="var(--foreground)">cascade replay · MC forecast</text>
       <text x={outX + outW / 2} y={outY + 82}
         textAnchor="middle" fontFamily="var(--font-jetbrains-mono)" fontSize="9"
-        fill="var(--text-muted)" opacity={0.7}>ΩSF · ΩSX · contagion radius</text>
+        fill="var(--text-muted)" opacity={0.7}>ΩSF · cascade reach · Ω-buffer</text>
 
       {/* Header strip: "PARALLEL" indicator */}
       <text

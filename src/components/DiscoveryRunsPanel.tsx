@@ -14,6 +14,7 @@ import { useApexStore } from "@/stores/useApexStore";
 export const CAPABILITY_BY_ALGORITHM: Record<string, Capability> = {
   "lag-correlation": "live",
   "pcmci-linear": "live",
+  "pcmci-plus": "live",
   "fci": "live",
   "notears": "live",
   "notears-mlp": "live",
@@ -47,6 +48,7 @@ const CALIBRATION_ALGORITHM_IDS = new Set([
 const SAMPLE_RUN_URLS = [
   "/discovery-runs/d1namo-lag-correlation-v0-1-0.json",
   "/discovery-runs/d1namo-pcmci-linear-v0-1-0.json",
+  "/discovery-runs/synthetic-cgm-pcmci-plus-v0-2-0.json",
   "/discovery-runs/d1namo-bocpd-hypo-calibration-v0-1-0.json",
   "/discovery-runs/d1namo-csd-fit-hypo-calibration-v0-1-0.json",
   "/discovery-runs/hall-csd-fit-hypo-calibration-v0-1-0.json",
@@ -57,6 +59,7 @@ const SAMPLE_RUN_URLS = [
 const COHORT_SHORT_LABELS: Record<string, string> = {
   "d1namo-2018": "D1NAMO",
   "hall-cgm-2018": "HALL",
+  "synthetic-cgm-2026-05": "SYNTH-CGM",
 };
 
 type LoadState =
@@ -115,14 +118,23 @@ export default function DiscoveryRunsPanel() {
 
   return (
     <div className="p-4 space-y-3">
-      <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
-        Edges and calibration runs computed on real observational
-        cohorts, separate from the curated CausalGraph above. Two public
-        substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
-        Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). Tab
-        labels carry the cohort prefix; same algorithm across cohorts
-        is how cross-substrate generalisation gets tested.
-      </div>
+      {/* Descriptive header is itself T1D-flavored (it names the D1NAMO /
+          Hall cohorts). Only render it when those cohorts are actually
+          in scope — otherwise it's the same out-of-context noise the
+          OutOfScopeTile was added to replace. */}
+      {state.kind !== "out-of-scope" && (
+        <div className="text-[8px] font-mono text-text-muted p-2 border border-border/50 rounded bg-surface-elevated">
+          Edges and calibration runs computed on real observational
+          cohorts, separate from the curated CausalGraph above. Two public
+          substrates today — D1NAMO (Dubosson 2018, 9 T1D subjects) and
+          Hall (Hall et al 2018, 19 T2D / pre-diabetic subjects). A
+          deterministic synthetic CGM cohort with the D1NAMO variable
+          schema is also included for the PCMCI+ contemporaneous-orientation
+          demo when raw D1NAMO bytes aren't available in the build
+          environment. Tab labels carry the cohort prefix; same algorithm
+          across cohorts is how cross-substrate generalisation gets tested.
+        </div>
+      )}
 
       {state.kind === "loading" && <LoadingTile />}
       {state.kind === "error" && <ErrorTile message={state.message} />}
@@ -199,6 +211,101 @@ function OutOfScopeTile() {
       cohort discovery runs will appear when they ship.
     </div>
   );
+}
+
+// ─── PAG endpoint-mark rendering ──────────────────────────────────────
+//
+// FCI-family algorithms (and PCMCI+ in this codebase) emit per-endpoint
+// marks: `tail`, `arrow`, or `circle`. The four canonical combinations
+// encode distinct edge semantics (see run-types.ts DiscoveredEdge):
+//   { tail, arrow }    → directed (source → target)
+//   { arrow, arrow }   → bidirected (latent common cause)
+//   { circle, arrow }  → possibly causal
+//   { circle, circle } → uncertain
+//
+// Renderers used to hardcode "→" and silently flatten everything to
+// directed — losing the latent-confounder warning bidirected edges
+// carry, and overstating confidence on circle-marked edges. This
+// helper restores the semantics. Color is tuned for legibility:
+// bidirected gets amber (it's a warning), possibly-causal gets cyan
+// (informative), uncertain stays muted.
+
+interface EndpointGlyph {
+  glyph: string;
+  /** Tailwind class for the glyph color. */
+  colorClass: string;
+  /** Hover title explaining the PAG semantics. */
+  title: string;
+}
+
+function pagGlyphFor(
+  sourceMark: "circle" | "arrow" | "tail" | undefined,
+  targetMark: "circle" | "arrow" | "tail" | undefined,
+): EndpointGlyph {
+  // Default (no marks present) = legacy directed semantics. This is
+  // also the path lag-correlation / pcmci-linear take since they don't
+  // emit endpointMarks.
+  if (!sourceMark || !targetMark) {
+    return {
+      glyph: "→",
+      colorClass: "text-text-muted",
+      title: "Directed edge (source → target)",
+    };
+  }
+  // Canonical PAG combinations
+  if (sourceMark === "tail" && targetMark === "arrow") {
+    return {
+      glyph: "→",
+      colorClass: "text-text-muted",
+      title: "Directed (tail-arrow): source → target",
+    };
+  }
+  if (sourceMark === "arrow" && targetMark === "tail") {
+    return {
+      glyph: "←",
+      colorClass: "text-text-muted",
+      title: "Directed (arrow-tail): target → source",
+    };
+  }
+  if (sourceMark === "arrow" && targetMark === "arrow") {
+    return {
+      glyph: "↔",
+      colorClass: "text-accent-amber",
+      title:
+        "Bidirected (arrow-arrow): latent common cause — neither variable directly causes the other",
+    };
+  }
+  if (sourceMark === "circle" && targetMark === "arrow") {
+    return {
+      glyph: "o→",
+      colorClass: "text-accent-cyan",
+      title:
+        "Possibly causal (circle-arrow): target is not an ancestor of source; source may or may not cause target",
+    };
+  }
+  if (sourceMark === "arrow" && targetMark === "circle") {
+    return {
+      glyph: "←o",
+      colorClass: "text-accent-cyan",
+      title:
+        "Possibly causal (arrow-circle): source is not an ancestor of target; target may or may not cause source",
+    };
+  }
+  if (sourceMark === "circle" && targetMark === "circle") {
+    return {
+      glyph: "o─o",
+      colorClass: "text-text-muted/60",
+      title:
+        "Uncertain (circle-circle): direction cannot be determined from observational data — Meek-rule propagation didn't fire",
+    };
+  }
+  // Rare fallthrough (tail-circle, circle-tail, tail-tail) — surface
+  // raw marks so an edge case doesn't silently become "→".
+  return {
+    glyph: `${sourceMark[0]}-${targetMark[0]}`,
+    colorClass: "text-text-muted/60",
+    title: `Edge marks: ${sourceMark} — ${targetMark}`,
+  };
 }
 
 function RunTile({ run }: { run: DiscoveryRun }) {
@@ -299,35 +406,48 @@ function RunTile({ run }: { run: DiscoveryRun }) {
             </div>
           ) : (
             <ul className="space-y-1">
-              {sortedEdges.map((edge, i) => (
-                <li
-                  key={i}
-                  className="text-[8px] font-mono text-foreground p-1.5 rounded border border-border bg-surface-elevated"
-                  title={edge.evidence}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate">
-                      <span className="text-accent-cyan">{edge.source}</span>
-                      <span className="text-text-muted mx-1">{"→"}</span>
-                      <span className="text-accent-amber">{edge.target}</span>
-                      {typeof edge.lag === "number" && edge.lag > 0 && (
-                        <span className="text-text-muted ml-2">
-                          (+{edge.lag}s)
+              {sortedEdges.map((edge, i) => {
+                const g = pagGlyphFor(
+                  edge.endpointMarks?.sourceMark,
+                  edge.endpointMarks?.targetMark,
+                );
+                return (
+                  <li
+                    key={i}
+                    className="text-[8px] font-mono text-foreground p-1.5 rounded border border-border bg-surface-elevated"
+                    title={edge.evidence}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">
+                        <span className="text-accent-cyan">{edge.source}</span>
+                        <span className={`${g.colorClass} mx-1`} title={g.title}>
+                          {g.glyph}
                         </span>
-                      )}
-                    </span>
-                    <span className="text-[7px] text-text-muted shrink-0">
-                      r={edge.strength.toFixed(3)}
-                      {typeof edge.pValue === "number" && (
-                        <>
-                          {" "}
-                          · p={edge.pValue.toExponential(1)}
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </li>
-              ))}
+                        <span className="text-accent-amber">{edge.target}</span>
+                        {typeof edge.lag === "number" && edge.lag > 0 && (
+                          <span className="text-text-muted ml-2">
+                            (+{edge.lag}s)
+                          </span>
+                        )}
+                        {edge.lag === undefined && edge.endpointMarks && (
+                          <span className="text-text-muted/60 ml-2">
+                            (contemp)
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[7px] text-text-muted shrink-0">
+                        r={edge.strength.toFixed(3)}
+                        {typeof edge.pValue === "number" && (
+                          <>
+                            {" "}
+                            · p={edge.pValue.toExponential(1)}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -353,6 +473,29 @@ function RunTile({ run }: { run: DiscoveryRun }) {
           edges fail the conditioning test → likely autocorrelation
           artefacts. A larger cohort or relaxed FDR may surface real
           residual signal.
+        </div>
+      )}
+      {run.algorithm.id === "pcmci-plus" && (
+        <div className="text-[7px] font-mono text-accent-cyan/80 leading-relaxed border border-accent-cyan/20 bg-accent-cyan/5 rounded px-1.5 py-1 space-y-1">
+          <div>
+            <strong>PCMCI+ (Runge 2020, linear-Gaussian).</strong> Reuses
+            the lagged PCMCI backbone, then runs a contemporaneous
+            PC-stable phase with separating-set tracking. Edges get
+            oriented via v-structures from sep-sets + Meek-rule
+            propagation (R1/R2/R3). Edges that survive Meek without
+            an orientation emit with circle endpoint marks.
+          </div>
+          <div className="border-t border-accent-cyan/20 pt-1">
+            <strong>PAG edge legend:</strong>
+            <span className="text-text-muted mx-1">→</span>directed ·
+            <span className="text-accent-amber mx-1">↔</span>bidirected
+            (latent confounder) ·
+            <span className="text-accent-cyan mx-1">o→</span>possibly
+            causal ·
+            <span className="text-text-muted/60 mx-1">o─o</span>uncertain
+            (direction not identifiable from observation). Hover an
+            edge to see the per-symbol semantics.
+          </div>
         </div>
       )}
       {run.algorithm.id === "bocpd-hypo-calibration" && (

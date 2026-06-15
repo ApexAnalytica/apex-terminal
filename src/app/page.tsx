@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useApexStore } from "@/stores/useApexStore";
 import { protectGraphData } from "@/lib/data-protection";
 import { useFeedRegistry } from "@/hooks/useFeedRegistry";
+import { mark, measureBetween } from "@/lib/perf/instrument";
+
+// Earliest mark on the launch path — fires when this module is
+// evaluated (before any React render). Paired with "launch:firstFrame"
+// emitted from the first canvas's onCreated to give a real
+// page-load-to-pixels number in __manifoldPerf.
+mark("launch:moduleLoad");
 import HeaderBar from "@/components/HeaderBar";
 import StructuralMetrics from "@/components/StructuralMetrics";
 import FeedbackWidget from "@/components/FeedbackWidget";
@@ -47,24 +54,13 @@ const SpotlightTour = dynamic(
   { ssr: false }
 );
 
-// TimeSeriesOverlay is ~1000 LOC and renders null when no node is
-// pinned. The initial paint never has pinned series, so we defer the
-// chunk and only mount the component after the user pins something.
-// Once mounted the gate keeps it alive across unpin → repin cycles so
-// we don't pay the import cost twice.
+// ΩF Time Series dock (watchlist + comparison chart, ~1000 LOC + the
+// folded-in discovery logic). Deferred until a workspace is loaded
+// (`hasGraph`); the empty splash has nothing to chart. This single dock
+// replaces the former RiskPropagationFlow strip + pinned-overlay pair.
 const TimeSeriesOverlay = dynamic(
   () => import("@/components/TimeSeriesOverlay"),
   { ssr: false }
-);
-
-// RiskPropagationFlow (594 LOC + framer-motion) shows risk cards below
-// the canvas. On the empty-graph splash it just renders a collapsed
-// toggle bar with no cards — so we defer the chunk until the user has
-// loaded a workspace (`hasGraph`). The placeholder is the natural empty
-// state: nothing.
-const RiskPropagationFlow = dynamic(
-  () => import("@/components/RiskPropagationFlow"),
-  { ssr: false },
 );
 
 // ModulePanel (842 LOC + DiscoveryRunsPanel 523 + community-detection
@@ -185,11 +181,53 @@ const CausalDAGRelief = dynamic(() => import("@/components/CausalDAGRelief"), {
 
 export default function Home() {
   const viewMode = useApexStore((s) => s.viewMode);
-  const hasPinnedSeries = useApexStore((s) => s.pinnedTimeSeriesNodes.length > 0);
-  // Gate to defer the 594-LOC RiskPropagationFlow chunk until a graph
-  // is loaded. Empty graph means risk cards are empty anyway — the
-  // collapsible toggle bar at the bottom would render an empty strip.
+  // Gate to defer the ΩF Time Series dock chunk until a graph is loaded.
+  // An empty workspace has nothing to watch, suggest, or chart.
   const hasGraph = useApexStore((s) => s.graphData.nodes.length > 0);
+
+  // App-wide hydration of persisted user state. Non-graph-dependent
+  // entries (axioms, snapshot history) run once on mount; severed
+  // edges wait for the graph so the prune-to-valid-ids step has
+  // something to match against. The ref-guard prevents a re-hydration
+  // if hasGraph ever flips false→true again (e.g. workspace reset).
+  const hydrateEnabledAxioms = useApexStore((s) => s.hydrateEnabledAxioms);
+  const hydrateSnapshotHistory = useApexStore(
+    (s) => s.hydrateSnapshotHistory,
+  );
+  const hydrateSeveredEdges = useApexStore((s) => s.hydrateSeveredEdges);
+  const hydrateUserPrefs = useApexStore((s) => s.hydrateUserPrefs);
+  useEffect(() => {
+    hydrateEnabledAxioms();
+    hydrateSnapshotHistory();
+    hydrateUserPrefs();
+  }, [hydrateEnabledAxioms, hydrateSnapshotHistory, hydrateUserPrefs]);
+  const severedHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!hasGraph || severedHydratedRef.current) return;
+    severedHydratedRef.current = true;
+    hydrateSeveredEdges();
+  }, [hasGraph, hydrateSeveredEdges]);
+
+  // View-switch instrumentation. setViewMode in the store stamps a
+  // "view-switch:start:{mode}" mark; this effect closes the loop on
+  // the next paint after the new view commits. rAF gives a real
+  // "switch felt complete" number — measuring just the React commit
+  // skips browser layout / paint cost which is where the user-felt
+  // latency actually lives. Skips the initial mount: no setViewMode
+  // call was made, so there's no matching start mark to measure from.
+  const viewMountedRef = useRef(false);
+  useEffect(() => {
+    if (!viewMountedRef.current) {
+      viewMountedRef.current = true;
+      return;
+    }
+    const startMark = `view-switch:start:${viewMode}`;
+    requestAnimationFrame(() => {
+      const endMark = `view-switch:end:${viewMode}:${performance.now()}`;
+      mark(endMark);
+      measureBetween("view-switch", startMark, endMark);
+    });
+  }, [viewMode]);
 
   // Live-data feed registry — single hook that polls every registered
   // provider on its declared cadence. Add a new provider in
@@ -288,17 +326,13 @@ export default function Home() {
                 what shape) is a UX decision we'll revisit separately. */}
           </div>
 
-          {/* Risk Propagation Flow — lazy + gated on workspace load.
-              Empty graph renders no cards (just a collapsed toggle bar),
-              so deferring the chunk until hasGraph is true costs nothing
-              on first paint. */}
-          {hasGraph && <RiskPropagationFlow />}
-
-          {/* Pinned time series comparison overlay — deferred until
-              the user pins a series. The overlay returns null when
-              empty anyway, so gating on length here saves the
-              ~1000 LOC chunk on first paint. */}
-          {hasPinnedSeries && <TimeSeriesOverlay />}
+          {/* ΩF Time Series dock — consolidated watchlist + comparison
+              chart (replaces the old separate risk-card strip and the
+              pinned-comparison overlay). Gated on workspace load: the
+              empty graph has nothing to watch or chart. The left rail
+              surfaces suggestions so the panel is useful before anything
+              is pinned. */}
+          {hasGraph && <TimeSeriesOverlay />}
 
           {/* Time Dial — persistent timeline scrubber */}
           <TimeDial />

@@ -9,7 +9,15 @@ import {
 
 type InterdictionMode = "edge" | "node" | "both";
 
-export default function InterdictionPanel() {
+// `embedded` drops the panel's own "CASCADE DEFENSE" header + the
+// minimax subtitle (the redesigned PEARL workspace supplies the title
+// and a plain-language `?`), and removes the top divider since the
+// workspace tab already frames it.
+export default function InterdictionPanel({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const graphData = useApexStore((s) => s.graphData);
   const shocks = useApexStore((s) => s.shocks);
   const severedEdges = useApexStore((s) => s.severedEdges);
@@ -87,18 +95,29 @@ export default function InterdictionPanel() {
   );
 
   return (
-    <div className="space-y-2 pt-3 border-t border-border">
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
-        CASCADE DEFENSE
-      </div>
-      <div className="text-[8px] font-mono text-text-muted">
-        Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
-      </div>
+    <div className={embedded ? "space-y-2" : "space-y-2 pt-3 border-t border-border"}>
+      {!embedded && (
+        <>
+          <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
+            CASCADE DEFENSE
+          </div>
+          <div className="text-[8px] font-mono text-text-muted">
+            Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
+          </div>
+        </>
+      )}
 
-      {/* Controls */}
-      <div className="flex items-center gap-2">
+      {/* Controls — wrap so the BUDGET + MODE pills never overflow the
+          fixed 320px PEARL panel (founder live-test: "budget buttons
+          extend out beyond the actual window"). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-1">
-          <span className="text-[8px] font-mono text-text-muted">BUDGET:</span>
+          <span
+            className="text-[8px] font-mono text-text-muted"
+            title="Maximum number of cuts the solver may apply (1–5; it skips 4 by design)"
+          >
+            BUDGET:
+          </span>
           {[1, 2, 3, 5].map((b) => (
             <button
               key={b}
@@ -113,7 +132,7 @@ export default function InterdictionPanel() {
             </button>
           ))}
         </div>
-        <div className="h-4 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-4 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
         <div className="flex items-center gap-1">
           <span className="text-[8px] font-mono text-text-muted">MODE:</span>
           {(["edge", "node", "both"] as InterdictionMode[]).map((m) => (
@@ -152,7 +171,9 @@ export default function InterdictionPanel() {
 
       {!canRun && (
         <div className="text-[8px] font-mono text-text-muted italic">
-          Inject shock scenarios above first, then solve for optimal defenses
+          {embedded
+            ? "Add a shock (via Describe) first, then solve for optimal defenses"
+            : "Inject shock scenarios above first, then solve for optimal defenses"}
         </div>
       )}
 

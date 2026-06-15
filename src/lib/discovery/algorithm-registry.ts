@@ -8,6 +8,7 @@
 import type { DiscoveryAlgorithm } from "./algorithm-interface";
 import { lagCorrelationAlgorithm } from "./algorithms/lag-correlation";
 import { pcmciLinearAlgorithm } from "./algorithms/pcmci-linear";
+import { pcmciPlusAlgorithm } from "./algorithms/pcmci-plus";
 import { fciAlgorithm } from "./algorithms/fci";
 import { notearsAlgorithm } from "./algorithms/notears";
 import { notearsMlpAlgorithm } from "./algorithms/notears-mlp";
@@ -21,6 +22,10 @@ const REGISTRY: Record<string, DiscoveryAlgorithm<Record<string, unknown>>> = {
     >,
   [pcmciLinearAlgorithm.id]:
     pcmciLinearAlgorithm as unknown as DiscoveryAlgorithm<
+      Record<string, unknown>
+    >,
+  [pcmciPlusAlgorithm.id]:
+    pcmciPlusAlgorithm as unknown as DiscoveryAlgorithm<
       Record<string, unknown>
     >,
   [fciAlgorithm.id]:

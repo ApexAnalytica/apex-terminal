@@ -13,6 +13,7 @@ import {
   type OrientedEdge,
 } from "../algorithms/fci";
 import type { Cohort } from "../cohort-types";
+import type { DiscoveredEdge } from "../run-types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 //
@@ -87,10 +88,10 @@ function buildCohort(opts: {
 }
 
 function findEdge(
-  edges: { source: string; target: string }[],
+  edges: DiscoveredEdge[],
   a: string,
   b: string,
-) {
+): DiscoveredEdge | undefined {
   return edges.find(
     (e) =>
       (e.source === a && e.target === b) || (e.source === b && e.target === a),

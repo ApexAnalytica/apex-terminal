@@ -13,13 +13,32 @@
 
 import type { Calculation, CalculationContext } from "./types";
 import { hhiCalculation } from "./hhi";
+import { giniCalculation } from "./gini";
+import { outdegreeHhiCalculation } from "./outdegree-hhi";
 import { crossDomainEdgesCalculation } from "./cross-domain-edges";
+import { edgeDensityCalculation } from "./edge-density";
+import { cycleCountCalculation } from "./cycle-count";
+import { bridgeRatioCalculation } from "./bridge-ratio";
 import { meanOmegaCalculation } from "./mean-omega";
+import { meanJurisdictionalHazardCalculation } from "./mean-jurisdictional-hazard";
 
 export const CALCULATION_REGISTRY: Calculation[] = [
+  // Node-scoped concentration measures — surface first when a node is
+  // selected so they're paired in the visual scan. HHI and Gini answer
+  // subtly different concentration questions: HHI flags a dominant
+  // supplier (quadratic top weight); Gini flags broad inequality
+  // (mean pairwise difference).
   hhiCalculation,
+  giniCalculation,
+  outdegreeHhiCalculation,
+  // Graph-wide structural measures.
   crossDomainEdgesCalculation,
+  edgeDensityCalculation,
+  cycleCountCalculation,
+  bridgeRatioCalculation,
+  // Graph-wide scores (composite + isolated pillar).
   meanOmegaCalculation,
+  meanJurisdictionalHazardCalculation,
 ];
 
 /** Filter the registry to entries whose `appliesWhen` predicate

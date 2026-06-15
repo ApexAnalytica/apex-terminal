@@ -93,10 +93,11 @@ describe("mockEiaSaudiCrudeFeed", () => {
 });
 
 describe("eiaSaudiCrudeProvider.matchPayload", () => {
-  it("attaches a production signal to Abqaiq / Juaymah / 'Saudi crude production' nodes", () => {
+  it("attaches a production signal to Abqaiq / Juaymah / Ras Tanura terminal / 'Saudi crude production' nodes", () => {
     const nodes = [
       makeNode({ id: "abqaiq", label: "Abqaiq Plants" }),
       makeNode({ id: "juaymah", label: "Juaymah Crude Terminal" }),
+      makeNode({ id: "ras_tanura", label: "Ras Tanura Terminal" }),
       makeNode({ id: "future", label: "Saudi Crude Production (raw upstream)" }),
       makeNode({ id: "neutral", label: "Generic Refinery" }),
     ];
@@ -108,8 +109,24 @@ describe("eiaSaudiCrudeProvider.matchPayload", () => {
     const matched = batch.updates.map((u) => u.nodeId).sort();
     expect(matched).toContain("abqaiq");
     expect(matched).toContain("juaymah");
+    expect(matched).toContain("ras_tanura");
     expect(matched).toContain("future");
     expect(matched).not.toContain("neutral");
+  });
+
+  it("matches the Ras Tanura crude export terminal but NOT the co-located refinery", () => {
+    // "ras tanura terminal" is a specific substring: the export terminal
+    // is a crude-throughput proxy (paired with Juaymah), the refinery is
+    // a downstream consumer and must not receive the production signal.
+    const nodes = [
+      makeNode({ id: "terminal", label: "Ras Tanura Terminal" }),
+      makeNode({ id: "refinery", label: "Ras Tanura Refinery" }),
+    ];
+    const feed = mockEiaSaudiCrudeFeed();
+    const batch = eiaSaudiCrudeProvider.matchPayload(feed, nodes);
+    const matched = batch.updates.map((u) => u.nodeId).sort();
+    expect(matched).toContain("terminal");
+    expect(matched).not.toContain("refinery");
   });
 
   it("emits no event when no nodes match", () => {

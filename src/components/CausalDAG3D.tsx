@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -9,6 +9,7 @@ import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import type { NodePosition, NodeMetrics } from "@/lib/graph-layout";
 import { requestLayout3D, type LayoutResult } from "@/lib/workers/layout3d-client";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
@@ -25,6 +26,7 @@ import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTick } from "@/lib/useReplayTick";
 import { AnimatePresence } from "framer-motion";
 import { EpochSnapshot, CausalEdge } from "@/lib/types";
+import { mark, measureBetween } from "@/lib/perf/instrument";
 
 // Error boundary to catch WebGL context loss and recover
 class DAGErrorBoundary extends React.Component<
@@ -528,6 +530,75 @@ export default function CausalDAG3D() {
   const interventionEpochs = useApexStore((s) => s.interventionEpochs);
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isLive = useApexStore((s) => s.isLive);
+  // Timeline scrub state + per-node temporal history. Both feed the
+  // posMap memo below so historical scrubbing reads omega-at-the-
+  // scrubbed-time instead of always-current omega (the bug the user
+  // reported as "scrubbing doesn't do the migration thing anymore").
+  const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const temporalData = useApexStore((s) => s.temporalData);
+
+  // Progressive node-mount ramp. r3f's React reconciler mounts every
+  // <DAGNode3D /> in a single commit; each child creates a THREE.Mesh
+  // + materials + a handful of sub-meshes (selection ring, outline,
+  // glow). For a 6-domain / ~200-node launch that single commit costs
+  // ~1.5–2s of frozen tab — the "LAUNCH WORKSPACE freezes" bug the
+  // user keeps reporting.
+  //
+  // Fix: render only `graphData.nodes.slice(0, visibleNodeCount)` and
+  // ramp the count from a small initial batch up to total over a few
+  // frames via requestAnimationFrame. Each frame mounts ~60 orbs which
+  // costs ~10–15 ms — well within the 16 ms frame budget so input
+  // stays responsive while the workspace materializes.
+  //
+  // Edges are filtered to those whose BOTH endpoints have already
+  // mounted (visibleNodeIds set lookup) so we don't render dangling
+  // half-edges mid-ramp.
+  //
+  // Reset key: graphData.nodes reference. A new graph load (domain
+  // swap, demo flow, snapshot apply) restarts the ramp from the
+  // initial batch.
+  const NODE_RAMP_INITIAL = 30;
+  const NODE_RAMP_BATCH = 60;
+  const [visibleNodeCount, setVisibleNodeCount] = useState<number>(() =>
+    Math.min(NODE_RAMP_INITIAL, graphData.nodes.length),
+  );
+  useEffect(() => {
+    // Reset to the initial batch whenever the node set itself swaps.
+    // setState-in-effect here is the whole point: this effect's job is
+    // to ramp visibleNodeCount in response to an external state change
+    // (graphData.nodes reference swap), which is the rule's intended
+    // exception. The setVisibleNodeCount inside `step()` below is
+    // functional-update, also outside React's render path.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisibleNodeCount(Math.min(NODE_RAMP_INITIAL, graphData.nodes.length));
+    if (graphData.nodes.length <= NODE_RAMP_INITIAL) return;
+    let rafId = 0;
+    let cancelled = false;
+    const step = () => {
+      if (cancelled) return;
+      setVisibleNodeCount((cur) => {
+        const total = graphData.nodes.length;
+        if (cur >= total) return cur;
+        const next = Math.min(cur + NODE_RAMP_BATCH, total);
+        if (next < total) rafId = requestAnimationFrame(step);
+        return next;
+      });
+    };
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [graphData.nodes]);
+
+  const visibleNodeIds = useMemo(() => {
+    const s = new Set<string>();
+    const limit = Math.min(visibleNodeCount, graphData.nodes.length);
+    for (let i = 0; i < limit; i++) s.add(graphData.nodes[i].id);
+    return s;
+  }, [graphData.nodes, visibleNodeCount]);
+  const isProgressiveMounting =
+    visibleNodeCount < graphData.nodes.length;
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -577,11 +648,16 @@ export default function CausalDAG3D() {
   // Stable topology key — only recompute layout when nodes/edges are added/removed,
   // NOT when omega scores or other properties change during temporal scrubbing.
   // This prevents the force simulation from re-running on every dial tick.
-  const topologyKey = useMemo(() => {
-    const nk = graphData.nodes.map((n) => n.id).sort().join(",");
-    const ek = graphData.edges.map((e) => `${e.source}>${e.target}`).sort().join(",");
-    return nk + "|" + ek;
-  }, [graphData]);
+  //
+  // Delegates to graphSignature (same helper used by 2D / Map / Relief /
+  // NodeInspector since round 16). graphSignature carries the round-18
+  // fingerprint cache, so on feed ticks — where graphData.nodes is
+  // rebuilt via .map but ids haven't moved — this is an O(1) lookup
+  // instead of the prior ~5 ms inline sort+join of ~700 entries.
+  const topologyKey = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
 
   // Keep a ref to current graphData so layout computation can access current nodes/edges
   const graphDataForLayoutRef = useRef(graphData);
@@ -690,6 +766,18 @@ export default function CausalDAG3D() {
   // Memoised on topologyKey so it only recomputes when the graph
   // structure actually changes — Brandes' BES is O(V·E) and
   // re-running every render would be wasteful.
+  // Defer the chi-star computation behind topologyKey. chiStar runs a full
+  // Brandes' edge-betweenness pass (O(V·E)) — ~120K queue/Map ops on the
+  // default ~350-node / ~350-edge graph — and used to run synchronously in
+  // the same React commit as the canvas mount on LAUNCH WORKSPACE. The
+  // result only drives visual edge-tier styling (bridge / chi-star /
+  // regular), so a one-frame lag where new edges briefly render at the
+  // default tier before popping into bridge styling is imperceptible. By
+  // keying the memo on `deferredTopologyKey` instead of `topologyKey`, the
+  // commit that introduces a new topology paints first with the prior
+  // chiStarInfo, then a follow-up commit lands with the recomputed sets —
+  // identical pattern to round 13's APSP deferral in CDOmegaMonitor.
+  const deferredTopologyKey = useDeferredValue(topologyKey);
   const chiStarInfo = useMemo(() => {
     if (graphData.edges.length === 0) {
       return {
@@ -713,7 +801,7 @@ export default function CausalDAG3D() {
       rank,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topologyKey]);
+  }, [deferredTopologyKey]);
   const chiStarSet = chiStarInfo.chiStarSet;
 
   // Store baseline omega scores (live/initial values) as a reference point.
@@ -739,30 +827,53 @@ export default function CausalDAG3D() {
   //   Movement is driven by absolute omega level (not delta), ensuring visible change.
   // During LIVE: return base positions (no movement).
   const posMap = useMemo(() => {
-    // Live mode — no animation
-    if (isLive && !currentSnapshot) return basePosMap;
-
     const map: Record<string, [number, number, number]> = {};
 
-    // Get stress for each node (0 to 1 scale)
+    // Get stress for each node (0 to 1 scale).
+    //
+    // Three sources, in priority order:
+    //  1. Active cascade replay → currentSnapshot.shockIntensity. Sharp,
+    //     intervention-driven motion.
+    //  2. Historical scrub (timeline dragged off "now") → omega-at-the-
+    //     scrubbed-time from temporalData.nodes[id].history. Live feed
+    //     data writes into this history every tick, so scrubbing back
+     //     reads the real past, not the current-adjusted omega.
+    //  3. Live mode → node.omegaFragility.composite, which is the
+    //     feed-adjusted live value (applyOmegaLiveAdjustments). Slow
+    //     drift as real-world data ticks in.
+    //
+    // All three paths funnel through the same omega → stress curve so
+    // the displacement code below doesn't have to branch.
     const getStress = (nodeId: string): number => {
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[nodeId];
         return state ? state.shockIntensity : 0;
       }
-      // Historical mode: use the temporal omega value directly
-      // High omega (>4) = stressed, pulls inward
-      // Low omega (<4) = relaxed, pushes outward
-      // Use O(1) nodeById lookup (item #10) instead of O(N) find
       const node = nodeById.get(nodeId);
       if (!node) return 0;
-      const omega = node.omegaFragility.composite;
+      let omega = node.omegaFragility.composite;
+      if (!isLive) {
+        // Historical scrub: look up the closest temporal sample at or
+        // before the scrubbed timestamp. Fall through to current omega
+        // if the node has no history (newly-added domains, etc.).
+        const history = temporalData?.nodes.get(nodeId)?.history;
+        if (history && history.length > 0) {
+          let lo = 0;
+          let hi = history.length - 1;
+          // Binary search for the rightmost timestamp ≤ target.
+          while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (history[mid].timestamp <= timelinePosition) lo = mid;
+            else hi = mid - 1;
+          }
+          omega = history[lo].omegaComposite;
+        }
+      }
       // Map omega → [-1, +1] stress with a steeper curve around the
-      // mid-band so synthetic temporal data's typical ±0.5 drift
-      // around omega 5-7 actually moves the orb. Old `(omega-5)/4`
-      // produced stress 0.25-0.5 at typical levels; new ramp puts
-      // it at 0.5-0.75 — paired with the 2D CONTRACTION push, the
-      // dial scrub finally reads as "the cluster is breathing."
+      // mid-band so typical ±0.5 drift around omega 5-7 actually
+      // moves the orb. The displacement magnitudes (PULL_MAX / PUSH_MAX
+      // below) are deliberately small in live mode — the breath should
+      // be subtle so the user notices it as motion, not jitter.
       return Math.max(-1, Math.min(1, (omega - 4) / 3));
     };
 
@@ -865,7 +976,16 @@ export default function CausalDAG3D() {
 
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive, nodeById]);
+  }, [
+    basePosMap,
+    currentSnapshot,
+    neighbors,
+    omegaKey,
+    isLive,
+    nodeById,
+    timelinePosition,
+    temporalData,
+  ]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 
@@ -1128,15 +1248,29 @@ export default function CausalDAG3D() {
         />
       )}
       <DAGErrorBoundary>
-      {/* frameloop="demand" stops the render loop when idle — invalidate() is called
-          on every interaction event so nothing visible is lost (item #1). */}
+      {/* frameloop="always" so the orb idle-breath in DAGNode3D's useFrame
+          renders continuously, matching 2D/map view behaviour. Was
+          "demand" — a battery-saving optimization that froze the orbs
+          between mouse moves and read as a dead canvas. The
+          invalidate()-based StoreInvalidator / ReplayInvalidator below
+          remain harmless no-ops in always mode and stay for low-cost
+          safety against any future flip back to demand. */}
       <Canvas
         key={canvasKey}
-        frameloop="demand"
+        frameloop="always"
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
+          // Launch instrumentation: r3f calls onCreated once the Canvas
+          // is mounted and the GL context is live but before the first
+          // frame paints. Pair with the "launch:moduleLoad" mark in
+          // page.tsx to give a full module-load → canvas-ready number.
+          // Subsequent canvas remounts (key change) re-fire; the
+          // aggregator rolls them into the same bucket which is fine —
+          // remount cost is itself worth tracking.
+          mark("launch:firstFrame");
+          measureBetween("launch", "launch:moduleLoad", "launch:firstFrame");
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
@@ -1158,7 +1292,11 @@ export default function CausalDAG3D() {
           <pointLight position={[0, 0, -80]} intensity={0.3} color="#e040fb" />
 
           {/* Nodes */}
-          {graphData.nodes.map((node) => {
+          {graphData.nodes.map((node, idx) => {
+            // Progressive mount gate — skip orbs not yet in the ramped-in
+            // window. Cheap O(1) check, no Set lookup needed because the
+            // visibility cutoff is contiguous from index 0.
+            if (idx >= visibleNodeCount) return null;
             const pos = posMap[node.id];
             if (!pos) return null;
 
@@ -1218,6 +1356,15 @@ export default function CausalDAG3D() {
 
           {/* Edges */}
           {graphData.edges.map((edge) => {
+            // Progressive mount gate — only render an edge once BOTH
+            // endpoints have come in. Avoids dangling half-edges during
+            // the launch ramp (would otherwise render from a mounted
+            // source into empty space toward a not-yet-mounted target).
+            if (
+              !visibleNodeIds.has(edge.source) ||
+              !visibleNodeIds.has(edge.target)
+            )
+              return null;
             const srcPos = posMap[edge.source];
             const tgtPos = posMap[edge.target];
             if (!srcPos || !tgtPos) return null;
@@ -1299,6 +1446,28 @@ export default function CausalDAG3D() {
           />
       </Canvas>
       </DAGErrorBoundary>
+      {/* Launch overlay — paints over the canvas while progressive mount
+          is in flight. Without this, large multi-domain launches read as
+          a frozen tab (the canvas mounts piece by piece but the gap is
+          ~50–100ms with the ramp; without the ramp it was 1.5–2s of true
+          freeze). Auto-dismisses once visibleNodeCount catches up to
+          total. Pointer events disabled so it doesn't intercept clicks
+          on the already-mounted orbs underneath. */}
+      {isProgressiveMounting && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none bg-background/40 backdrop-blur-[1px]"
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-widest text-accent-cyan animate-pulse">
+              MATERIALIZING WORKSPACE
+            </div>
+            <div className="text-[8px] font-mono text-text-muted tabular-nums">
+              {visibleNodeCount} / {graphData.nodes.length} nodes
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {selectedEdge && (
           <EdgeInspector

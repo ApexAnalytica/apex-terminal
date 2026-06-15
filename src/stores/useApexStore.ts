@@ -20,6 +20,56 @@ import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
+import {
+  loadGraphCalcHistory,
+  saveGraphCalcHistory,
+  loadNodeCalcHistory,
+  saveNodeCalcHistory,
+  type NodeCalcHistory,
+} from "@/lib/calc-history-persistence";
+import {
+  loadAxiomInteractionHistory,
+  saveAxiomInteractionHistory,
+  type AxiomInteractionHistory,
+} from "@/lib/axiom-interaction-persistence";
+import { record as recordPerf } from "@/lib/perf/instrument";
+
+// Mirrors instrument.ts's internal ENABLED gate so hot-path call sites
+// can skip even the cheap performance.now() in production. Keeping the
+// constant local avoids exporting an internal from the perf module.
+const ENABLED_PERF =
+  typeof window !== "undefined" &&
+  typeof performance !== "undefined" &&
+  process.env.NODE_ENV !== "production";
+
+import {
+  loadBottomDockCollapsed,
+  saveBottomDockCollapsed,
+  loadWatchlistCollapsed,
+  saveWatchlistCollapsed,
+  loadPinnedSeries,
+  savePinnedSeries,
+  loadSeveredEdges,
+  saveSeveredEdges,
+  loadEnabledAxioms,
+  saveEnabledAxioms,
+  loadSnapshotHistory,
+  saveSnapshotHistory,
+  loadViewMode,
+  saveViewMode,
+  loadActiveModule,
+  saveActiveModule,
+  loadNodeSizeMetric,
+  saveNodeSizeMetric,
+  loadVisibleEdgeTypes,
+  saveVisibleEdgeTypes,
+  loadTruthFilter,
+  saveTruthFilter,
+  loadActivePersona,
+  saveActivePersona,
+  loadSelectedDataSources,
+  saveSelectedDataSources,
+} from "@/lib/ui-prefs-persistence";
 // `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
 // type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
 // stays in `tarski-data.ts` next to the 891-LOC AXIOM_LIBRARY +
@@ -224,12 +274,60 @@ export interface ApexState {
    * pushed. Capped at LIVE_HISTORY_MAX entries per calc.
    */
   graphCalcHistory: Record<string, { value: number; observedAt: string }[]>;
-  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX. */
+  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX.
+   *  Persists the updated history to localStorage (best-effort). */
   pushGraphCalcSnapshot: (calcId: string, value: number) => void;
+
+  /**
+   * Persistent mirror of node-scoped calc-kind LiveDataPoints, keyed
+   * by nodeId. Each entry holds the latest calc-kind point per kind
+   * (the point's embedded `history` array carries the full trajectory).
+   * Written by pushCalculationSnapshot and hydrated by
+   * hydrateNodeCalcHistory.
+   */
+  nodeCalcHistory: NodeCalcHistory;
+  /** Hydrate graphCalcHistory from localStorage. Called from a client
+   *  effect after mount (not at store-create time) to avoid an SSR
+   *  hydration mismatch — the server renders with {}, the client merges
+   *  persisted history in post-hydration. Merge is non-destructive:
+   *  any in-memory entries pushed before hydration are preserved. */
+  hydrateGraphCalcHistory: () => void;
+
+  /** Hydrate node-scoped calc trajectories from localStorage. Each
+   *  persisted entry is a calc-kind LiveDataPoint (with embedded
+   *  `history` array) that gets replayed into the matching node's
+   *  liveData via upsertLiveSignal. Same SSR-safe post-mount pattern
+   *  as hydrateGraphCalcHistory. */
+  hydrateNodeCalcHistory: () => void;
+
+  /**
+   * Tracks which Tarski axioms the user has clicked into and when.
+   * Drives the recommender's decayed-recency boost — an axiom the
+   * user has investigated recently surfaces in the recommended list
+   * even when no node selection / structural feature lights it up.
+   *
+   * Persisted to localStorage via axiom-interaction-persistence so the
+   * memory survives reloads (and travel between machines via the
+   * sessions/MD-sync workflow, eventually).
+   */
+  axiomInteractionHistory: AxiomInteractionHistory;
+  /** Record an axiom interaction (the user expanded its card).
+   *  Increments clickCount + bumps lastClickedAt to now. Persists. */
+  recordAxiomInteraction: (axiomId: string) => void;
+  /** Hydrate axiom interaction history from localStorage. SSR-safe
+   *  post-mount pattern. */
+  hydrateAxiomInteractionHistory: () => void;
 
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
+
+  // Inferred-latent selection — a SEPARATE channel from selectedNode so latent
+  // overlay ids (latent__…) never reach the node-selection consumers
+  // (NodeInspector / 3D highlight / copilot focus / temporal). Mutually
+  // exclusive with node + edge selection.
+  selectedLatentId: string | null;
+  setSelectedLatentId: (id: string | null) => void;
 
   // Which pillar (if any) is expanded inside NodeInspector. Lifted from
   // NodeInspector local state to the store so the onboarding tour can
@@ -239,6 +337,45 @@ export interface ApexState {
   // is per-node, not per-app.
   expandedPillar: PillarKey | null;
   setExpandedPillar: (key: PillarKey | null) => void;
+
+  /** Bottom time-series dock collapsed state. Persisted to localStorage
+   *  (see ui-prefs-persistence) so the user's choice to reclaim canvas
+   *  room survives reloads. Defaults to expanded; hydrated post-mount via
+   *  hydrateBottomDockCollapsed to avoid an SSR hydration mismatch. */
+  bottomDockCollapsed: boolean;
+  setBottomDockCollapsed: (collapsed: boolean) => void;
+  hydrateBottomDockCollapsed: () => void;
+
+  /** Watchlist column (inside the dock) collapsed-to-left state.
+   *  Independent of the whole-dock collapse: the user can shrink just
+   *  the watchlist rail to a narrow strip and let the chart fill the
+   *  freed width while keeping both surfaces visible. */
+  watchlistCollapsed: boolean;
+  setWatchlistCollapsed: (collapsed: boolean) => void;
+  hydrateWatchlistCollapsed: () => void;
+
+  /** Hydrate persisted pinned series (node + calc) from localStorage,
+   *  pruned against the current graph so stale node ids drop. Pinned
+   *  series mutations are persisted automatically by a store-level
+   *  subscription (see end of file) — callers only need to hydrate. */
+  hydratePinnedSeries: () => void;
+
+  /** Hydrate persisted Pearl-scissors severed edges, enabled Tarski
+   *  axioms, and Pareto snapshot history. Each is persisted on change
+   *  via the store-level subscription at the end of the file; callers
+   *  only need to trigger hydration once on mount. Severed edges are
+   *  pruned against the current graph so stale ids drop. */
+  hydrateSeveredEdges: () => void;
+  hydrateEnabledAxioms: () => void;
+  hydrateSnapshotHistory: () => void;
+
+  /** Hydrate persisted user preferences (viewMode, activeModule,
+   *  nodeSizeMetric, visibleEdgeTypes, truthFilter, activePersona,
+   *  selectedDataSources). All seven validate against their respective
+   *  unions before applying; an unrecognised stored value falls back
+   *  to the in-memory default. Auto-persisted on change via the
+   *  subscription block at the end of the file. */
+  hydrateUserPrefs: () => void;
 
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
@@ -281,8 +418,23 @@ export interface ApexState {
   ablatedNodeIds: string[];
   ablatedEdgeIds: string[];
   setAblationMode: (on: boolean) => void;
+  /**
+   * Toggle the canvas ablation CLICK-MODE without clearing the existing
+   * cut set. `setAblationMode(false)` wipes `ablatedNodeIds`/`ablatedEdgeIds`
+   * (intended for the classic "exit & discard" flow); the redesigned PEARL
+   * workspace binds the Manual tab to this NON-destructive variant so
+   * leaving the tab stops the canvas hijacking clicks WITHOUT losing the
+   * cuts the analyst already made.
+   */
+  setAblationActive: (on: boolean) => void;
   toggleAblatedNode: (nodeId: string) => void;
   toggleAblatedEdge: (edgeId: string) => void;
+
+  // Inferred latent nodes (Dr. Pita synthetic-node #1) — opt-in, default OFF.
+  // Read-only overlay derived on demand via deriveLatentNodes; never stored
+  // on the graph, never enters cascade / ΩF / system metrics.
+  showLatentNodes: boolean;
+  setShowLatentNodes: (on: boolean) => void;
   resetAblation: () => void;
   startAblationReplay: () => void;
 
@@ -473,6 +625,16 @@ export interface ApexState {
   pinnedTimeSeriesNodes: string[];
   togglePinnedTimeSeries: (nodeId: string) => void;
   clearPinnedTimeSeries: () => void;
+
+  /**
+   * Calc ids pinned to the bottom time-series watchlist. Graph-wide
+   * calcs (mean ΩF, cross-domain edges, etc.) have no node to pin
+   * against, so they keep their own pinned list. Each entry's
+   * trajectory comes from `graphCalcHistory[calcId]`.
+   */
+  pinnedCalcSeries: string[];
+  togglePinnedCalcSeries: (calcId: string) => void;
+  clearPinnedCalcSeries: () => void;
 }
 
 export const useApexStore = create<ApexState>((set, get) => ({
@@ -517,7 +679,18 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // View
   viewMode: "3d",
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) => {
+    // View-switch instrumentation: start mark fires the instant the
+    // user picks a new view. The end mark is emitted from the new
+    // view component's first mount effect; measureBetween joins them
+    // into a "view-switch" rolling aggregate. We tag the mark per
+    // target mode so consecutive switches don't overwrite each other
+    // mid-render.
+    if (ENABLED_PERF) {
+      performance.mark(`view-switch:start:${mode}`);
+    }
+    set({ viewMode: mode });
+  },
 
   // Default to eigenvector — that's what the 3D view shipped with before
   // the toggle. Surfacing the choice as a visible UI control is the
@@ -547,6 +720,12 @@ export const useApexStore = create<ApexState>((set, get) => ({
     });
   },
   applyFeedBatch: (batch) => {
+    // Perf instrumentation: synchronous phase only — the post-set
+    // Tarski revalidation (phase 2) runs async and gets its own
+    // microtask budget. The "feed-tick" bucket therefore measures
+    // exactly the work that blocks the next paint, which is what we
+    // care about for laptop-felt smoothness.
+    const tickStart = ENABLED_PERF ? performance.now() : 0;
     // Phase 1: apply feed mutation + omega adjustments synchronously. The
     // non-verified path is complete here. Verified mode trails phase 2.
     let needsTarskiRevalidation = false;
@@ -622,6 +801,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
       needsTarskiRevalidation = s.truthFilter === "verified";
       return { ...base, graphData: adjusted };
     });
+    if (ENABLED_PERF) recordPerf("feed-tick", performance.now() - tickStart);
 
     if (!needsTarskiRevalidation) return;
     void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
@@ -668,11 +848,39 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   pushCalculationSnapshot: (nodeId, point) => {
     set((s) => {
-      const nextNodes = s.graphData.nodes.map((n) =>
-        n.id !== nodeId
-          ? n
-          : { ...n, liveData: upsertLiveSignal(n.liveData, point) },
-      );
+      let persistedPoint: LiveDataPoint | null = null;
+      const nextNodes = s.graphData.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const merged = upsertLiveSignal(n.liveData, point);
+        // Capture the merged calc-kind point (with its accumulated
+        // history array) so we can mirror just that into persistent
+        // storage — no need to drag the rest of n.liveData through
+        // localStorage.
+        persistedPoint = merged.find((p) => p.kind === point.kind) ?? null;
+        return { ...n, liveData: merged };
+      });
+      // Persistence (best-effort): mirror the upserted calc-kind point
+      // into nodeCalcHistory[nodeId], dropping any prior entry of the
+      // same kind (upsert semantics mirror node.liveData). Save outside
+      // the React state cycle but synchronous so the write completes
+      // before the user can navigate away.
+      if (persistedPoint) {
+        const safePoint: LiveDataPoint = persistedPoint;
+        const existing = s.nodeCalcHistory[nodeId] ?? [];
+        const next: LiveDataPoint[] = [
+          ...existing.filter((p) => p.kind !== safePoint.kind),
+          safePoint,
+        ];
+        const nextHistory: NodeCalcHistory = {
+          ...s.nodeCalcHistory,
+          [nodeId]: next,
+        };
+        saveNodeCalcHistory(nextHistory);
+        return {
+          graphData: { ...s.graphData, nodes: nextNodes },
+          nodeCalcHistory: nextHistory,
+        };
+      }
       return {
         graphData: { ...s.graphData, nodes: nextNodes },
       };
@@ -694,9 +902,113 @@ export const useApexStore = create<ApexState>((set, get) => ({
         next.length > LIVE_HISTORY_MAX
           ? next.slice(-LIVE_HISTORY_MAX)
           : next;
+      const updated = { ...s.graphCalcHistory, [calcId]: trimmed };
+      // Persist (best-effort; SSR-safe + swallows quota errors).
+      saveGraphCalcHistory(updated);
+      return { graphCalcHistory: updated };
+    });
+  },
+  hydrateGraphCalcHistory: () => {
+    const persisted = loadGraphCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory entries pushed before hydration
+      // win on key collision (they're newer than what's on disk). Most
+      // of the time the in-memory side is empty at mount so this is just
+      // the persisted data.
+      const merged: typeof s.graphCalcHistory = { ...persisted };
+      for (const [calcId, entries] of Object.entries(s.graphCalcHistory)) {
+        if (entries.length > 0) merged[calcId] = entries;
+      }
+      return { graphCalcHistory: merged };
+    });
+  },
+
+  nodeCalcHistory: {},
+  hydrateNodeCalcHistory: () => {
+    const persisted = loadNodeCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Replay each persisted calc-kind point into the matching node's
+      // liveData via upsertLiveSignal. Skip nodes that aren't in the
+      // current graph (stale persistence from a prior graph schema).
+      // We also skip replay if the node already has a same-kind point
+      // with a >= observedAt — the in-memory side wins on collision,
+      // mirroring hydrateGraphCalcHistory semantics.
+      const byId = new Map(s.graphData.nodes.map((n) => [n.id, n]));
+      const matchedIds: string[] = [];
+      const nextNodes = s.graphData.nodes.map((n) => {
+        const entries = persisted[n.id];
+        if (!entries || entries.length === 0) return n;
+        matchedIds.push(n.id);
+        let liveData = n.liveData;
+        for (const point of entries) {
+          const existing = liveData?.find((p) => p.kind === point.kind);
+          if (existing && existing.observedAt >= point.observedAt) continue;
+          liveData = upsertLiveSignal(liveData, point);
+        }
+        return liveData === n.liveData ? n : { ...n, liveData };
+      });
+      if (matchedIds.length === 0) {
+        // Nothing matched — still seed in-memory mirror with what's on
+        // disk so subsequent pushes don't silently lose prior trajectory
+        // (e.g. user reselects a node we haven't touched yet).
+        return { nodeCalcHistory: { ...persisted, ...s.nodeCalcHistory } };
+      }
+      // Mirror only what we actually replayed (matched ids), so
+      // nodeCalcHistory tracks the live nodes; nodes not in the
+      // current graph still survive in the localStorage layer (we
+      // didn't touch the persisted object).
+      const mirror: NodeCalcHistory = { ...s.nodeCalcHistory };
+      for (const id of matchedIds) {
+        const fromDisk = persisted[id];
+        const inMem = mirror[id] ?? [];
+        // Per-kind, keep whichever side has the newer observedAt.
+        const byKind = new Map<string, LiveDataPoint>();
+        for (const p of fromDisk) byKind.set(p.kind, p);
+        for (const p of inMem) {
+          const prev = byKind.get(p.kind);
+          if (!prev || p.observedAt >= prev.observedAt) byKind.set(p.kind, p);
+        }
+        mirror[id] = Array.from(byKind.values());
+      }
+      void byId; // (kept for readability; lookup map above)
       return {
-        graphCalcHistory: { ...s.graphCalcHistory, [calcId]: trimmed },
+        graphData: { ...s.graphData, nodes: nextNodes },
+        nodeCalcHistory: mirror,
       };
+    });
+  },
+
+  axiomInteractionHistory: {},
+  recordAxiomInteraction: (axiomId) => {
+    set((s) => {
+      const now = new Date().toISOString();
+      const existing = s.axiomInteractionHistory[axiomId];
+      const next: AxiomInteractionHistory = {
+        ...s.axiomInteractionHistory,
+        [axiomId]: {
+          lastClickedAt: now,
+          clickCount: (existing?.clickCount ?? 0) + 1,
+        },
+      };
+      saveAxiomInteractionHistory(next);
+      return { axiomInteractionHistory: next };
+    });
+  },
+  hydrateAxiomInteractionHistory: () => {
+    const persisted = loadAxiomInteractionHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory wins on collision (it's
+      // either a fresh click that hasn't been persisted yet or an
+      // identical replay — either way prefer it). Same pattern as
+      // graphCalcHistory hydration.
+      const merged: AxiomInteractionHistory = { ...persisted };
+      for (const [id, rec] of Object.entries(s.axiomInteractionHistory)) {
+        merged[id] = rec;
+      }
+      return { axiomInteractionHistory: merged };
     });
   },
 
@@ -705,18 +1017,177 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSelectedNode: (nodeId) =>
     set((s) => ({
       selectedNode: nodeId,
+      // Selecting a real node closes any open latent inspector.
+      selectedLatentId: nodeId ? null : s.selectedLatentId,
       // Reset the expanded pillar when the selected node changes; the
       // explanation card belongs to the previous node and would read
       // misleadingly against fresh ΩF values.
       expandedPillar: nodeId === s.selectedNode ? s.expandedPillar : null,
     })),
 
+  // Inferred-latent selection (separate channel; mutually exclusive with
+  // node + edge selection so latent ids never leak into node consumers).
+  selectedLatentId: null,
+  setSelectedLatentId: (id) =>
+    set((s) => ({
+      selectedLatentId: id,
+      // Opening a latent clears node + edge; clearing it (null) leaves them.
+      selectedNode: id ? null : s.selectedNode,
+      selectedEdgeId: id ? null : s.selectedEdgeId,
+    })),
+
   expandedPillar: null,
   setExpandedPillar: (key) => set({ expandedPillar: key }),
 
+  // Bottom-dock collapse. Default expanded; the persisted preference is
+  // applied post-mount by hydrateBottomDockCollapsed so server and first
+  // client render agree (both see `false`) before the stored value lands.
+  bottomDockCollapsed: false,
+  setBottomDockCollapsed: (collapsed) => {
+    saveBottomDockCollapsed(collapsed);
+    set({ bottomDockCollapsed: collapsed });
+  },
+  hydrateBottomDockCollapsed: () => {
+    const persisted = loadBottomDockCollapsed();
+    if (persisted !== null) set({ bottomDockCollapsed: persisted });
+  },
+
+  // Watchlist column collapse. Same post-mount hydration pattern.
+  watchlistCollapsed: false,
+  setWatchlistCollapsed: (collapsed) => {
+    saveWatchlistCollapsed(collapsed);
+    set({ watchlistCollapsed: collapsed });
+  },
+  hydrateWatchlistCollapsed: () => {
+    const persisted = loadWatchlistCollapsed();
+    if (persisted !== null) set({ watchlistCollapsed: persisted });
+  },
+
+  // Pinned series hydration. Node ids are pruned against the current
+  // graph so a persisted pin for a node that no longer exists silently
+  // drops rather than rendering a phantom row. Calc ids are kept as-is
+  // — graphCalcHistory hydrates separately and the chart's hasData
+  // branch handles the empty case.
+  hydratePinnedSeries: () => {
+    const persisted = loadPinnedSeries();
+    if (!persisted) return;
+    set((s) => {
+      const nextNodes = prunePinsToGraph(s.graphData, persisted.nodes);
+      const nextCalcs = persisted.calcs;
+      // Only update keys that actually change so we don't kick off a
+      // re-render or trip the persistence subscription for a no-op.
+      const out: Partial<ApexState> = {};
+      if (
+        nextNodes.length !== s.pinnedTimeSeriesNodes.length ||
+        nextNodes.some((id, i) => id !== s.pinnedTimeSeriesNodes[i])
+      ) {
+        out.pinnedTimeSeriesNodes = nextNodes;
+      }
+      if (
+        nextCalcs.length !== s.pinnedCalcSeries.length ||
+        nextCalcs.some((id, i) => id !== s.pinnedCalcSeries[i])
+      ) {
+        out.pinnedCalcSeries = nextCalcs;
+      }
+      return out;
+    });
+  },
+
+  hydrateSeveredEdges: () => {
+    const persisted = loadSeveredEdges();
+    if (!persisted || persisted.length === 0) return;
+    set((s) => {
+      // Prune to edge ids that still exist in the current graph; stale
+      // ids (graph was reloaded with a different schema) silently drop.
+      const valid = new Set(s.graphData.edges.map((e) => e.id));
+      const next = persisted.filter((id) => valid.has(id));
+      if (next.length === 0) return {};
+      return { severedEdges: next };
+    });
+  },
+  hydrateEnabledAxioms: () => {
+    const persisted = loadEnabledAxioms();
+    if (!persisted) return;
+    // Empty stored array is a deliberate "no axioms enabled" — preserved
+    // as such. Set reference always changes here so the persistence
+    // subscription will run once on hydration (harmless idempotent write).
+    set({ enabledAxioms: new Set(persisted) });
+  },
+  hydrateSnapshotHistory: () => {
+    const persisted = loadSnapshotHistory();
+    if (!persisted || persisted.length === 0) return;
+    set({
+      snapshotHistory: persisted,
+      // Surface the most recent persisted snapshot as the "current" so
+      // panels that read currentSnapshot have something to render
+      // immediately on mount.
+      currentSnapshot: persisted[persisted.length - 1],
+    });
+  },
+
+  hydrateUserPrefs: () => {
+    // Validate each stored value against the live union before applying.
+    // Anything stale (renamed enum member, hand-edited corruption) drops
+    // silently rather than being typed as `as ViewMode` and causing a
+    // runtime render mismatch.
+    const out: Partial<ApexState> = {};
+
+    const vm = loadViewMode();
+    if (vm === "2d" || vm === "3d" || vm === "map" || vm === "relief") {
+      out.viewMode = vm;
+    }
+
+    const am = loadActiveModule();
+    if (am === "spirtes" || am === "tarski" || am === "pearl" || am === "pareto") {
+      out.activeModule = am;
+    }
+
+    const nsm = loadNodeSizeMetric();
+    if (nsm === "omega" || nsm === "eigenvector" || nsm === "betweenness") {
+      out.nodeSizeMetric = nsm;
+    }
+
+    const tf = loadTruthFilter();
+    if (tf === "raw" || tf === "verified") out.truthFilter = tf;
+
+    const personaList: ApexState["activePersona"][] = [
+      "scientist",
+      "financial",
+      "macro",
+      "geopolitical",
+      "cross",
+      "analyst",
+    ];
+    const ap = loadActivePersona();
+    if (ap !== null && (personaList as string[]).includes(ap)) {
+      out.activePersona = ap as ApexState["activePersona"];
+    }
+
+    const ds = loadSelectedDataSources();
+    if (ds && ds.length > 0) out.selectedDataSources = ds;
+
+    const vet = loadVisibleEdgeTypes();
+    if (vet) {
+      const allowed: EdgeType[] = ["directed", "confounded", "temporal", "flow"];
+      const filtered = vet.filter((t): t is EdgeType =>
+        (allowed as string[]).includes(t),
+      );
+      // Empty-after-filter means corrupted storage → keep default rather
+      // than hiding every edge type on the user.
+      if (filtered.length > 0) out.visibleEdgeTypes = new Set(filtered);
+    }
+
+    if (Object.keys(out).length > 0) set(out);
+  },
+
   // Selected edge
   selectedEdgeId: null,
-  setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
+  setSelectedEdgeId: (edgeId) =>
+    set((s) => ({
+      selectedEdgeId: edgeId,
+      // Selecting an edge closes any open latent inspector.
+      selectedLatentId: edgeId ? null : s.selectedLatentId,
+    })),
   promoteAutoBridge: (edgeId) => {
     let needsTarskiRevalidation = false;
     set((s) => {
@@ -801,6 +1272,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
     ablationMode: on,
     ...(on ? { scissorsMode: false } : {}),
     ...(!on ? { ablatedNodeIds: [], ablatedEdgeIds: [] } : {}),
+  })),
+
+  // Inferred latent-node overlay toggle (opt-in, default OFF).
+  showLatentNodes: false,
+  setShowLatentNodes: (on) => set({ showLatentNodes: on }),
+
+  // Non-destructive: flips the canvas click-mode only; never clears the
+  // cut set. Used by the redesigned PEARL Manual tab so switching tabs
+  // (or leaving PEARL) can safely stop canvas-hijacking without deleting
+  // the analyst's ablations.
+  setAblationActive: (on) => set((s) => ({
+    ablationMode: on,
+    ...(on ? { scissorsMode: false } : {}),
   })),
   toggleAblatedNode: (nodeId) =>
     set((s) => {
@@ -1463,4 +1947,72 @@ export const useApexStore = create<ApexState>((set, get) => ({
         : [...s.pinnedTimeSeriesNodes, nodeId],
     })),
   clearPinnedTimeSeries: () => set({ pinnedTimeSeriesNodes: [] }),
+
+  pinnedCalcSeries: [],
+  togglePinnedCalcSeries: (calcId) =>
+    set((s) => ({
+      pinnedCalcSeries: s.pinnedCalcSeries.includes(calcId)
+        ? s.pinnedCalcSeries.filter((id) => id !== calcId)
+        : [...s.pinnedCalcSeries, calcId],
+    })),
+  clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));
+
+// ─── Auto-persistence (store-level subscriptions) ──────────────────
+//
+// Rather than wire save*() into every mutator + every graph-change
+// path, subscribe once per concern and write whenever the watched
+// reference changes. Reference equality is correct here — all
+// mutators (toggle/clear/prune) produce new arrays/sets via
+// spread/filter/new Set(...), so a referential delta tracks the
+// semantic delta exactly.
+//
+// SSR-safe via the localStorage guard inside each save* helper. The
+// subscription does not fire on initial subscribe, so the first
+// invocation is always on a real state change.
+
+useApexStore.subscribe((state, prev) => {
+  if (
+    state.pinnedTimeSeriesNodes === prev.pinnedTimeSeriesNodes &&
+    state.pinnedCalcSeries === prev.pinnedCalcSeries
+  ) {
+    return;
+  }
+  savePinnedSeries({
+    nodes: state.pinnedTimeSeriesNodes,
+    calcs: state.pinnedCalcSeries,
+  });
+});
+
+useApexStore.subscribe((state, prev) => {
+  if (state.severedEdges !== prev.severedEdges) {
+    saveSeveredEdges(state.severedEdges);
+  }
+  if (state.enabledAxioms !== prev.enabledAxioms) {
+    saveEnabledAxioms(state.enabledAxioms);
+  }
+  if (state.snapshotHistory !== prev.snapshotHistory) {
+    saveSnapshotHistory(state.snapshotHistory);
+  }
+});
+
+// User-preference fields. Primitives → reference compare is just an
+// equality compare; Sets/arrays produce new references on every change
+// in their setters so === tracks the semantic delta.
+useApexStore.subscribe((state, prev) => {
+  if (state.viewMode !== prev.viewMode) saveViewMode(state.viewMode);
+  if (state.activeModule !== prev.activeModule) saveActiveModule(state.activeModule);
+  if (state.nodeSizeMetric !== prev.nodeSizeMetric) {
+    saveNodeSizeMetric(state.nodeSizeMetric);
+  }
+  if (state.visibleEdgeTypes !== prev.visibleEdgeTypes) {
+    saveVisibleEdgeTypes(state.visibleEdgeTypes);
+  }
+  if (state.truthFilter !== prev.truthFilter) saveTruthFilter(state.truthFilter);
+  if (state.activePersona !== prev.activePersona) {
+    saveActivePersona(state.activePersona);
+  }
+  if (state.selectedDataSources !== prev.selectedDataSources) {
+    saveSelectedDataSources(state.selectedDataSources);
+  }
+});

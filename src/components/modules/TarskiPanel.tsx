@@ -5,7 +5,7 @@
 // extraction — TarskiPanel + its two private helpers (AxiomIcon,
 // ProofTraceList). See PR history for the original inline definitions.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-color";
 import { AXIOM_LIBRARY, scoreAxiomRelevance, type ScoredAxiom } from "@/lib/tarski-data";
@@ -116,14 +116,41 @@ function TarskiPanel() {
   const enabledAxioms = useApexStore((s) => s.enabledAxioms);
   const setEnabledAxioms = useApexStore((s) => s.setEnabledAxioms);
   const runTarskiWithAxioms = useApexStore((s) => s.runTarskiWithAxioms);
+  // Selection state for the recommender's selection-aware boosts —
+  // clicking a chokepoint boosts A-04, clicking a node with cross-
+  // domain incident edges boosts R-04, etc. See scoreAxiomRelevance.
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
+  // Recommender memory: per-axiom click history fuels a decayed-
+  // recency boost so axioms the user has been investigating lately
+  // surface even without a structural / selection trigger.
+  const axiomInteractionHistory = useApexStore(
+    (s) => s.axiomInteractionHistory,
+  );
+  const recordAxiomInteraction = useApexStore(
+    (s) => s.recordAxiomInteraction,
+  );
+  const hydrateAxiomInteractionHistory = useApexStore(
+    (s) => s.hydrateAxiomInteractionHistory,
+  );
+  useEffect(() => {
+    hydrateAxiomInteractionHistory();
+  }, [hydrateAxiomInteractionHistory]);
   const [expandedAxiom, setExpandedAxiom] = useState<string | null>(null);
 
   // Score axioms by relevance to current graph, filtered by the active profile
   // so e.g. T1D sessions don't surface chokepoint / force-majeure axioms.
+  // Selection is fed in so the recommended list reacts to what the user is
+  // focused on, not just the overall graph.
   const activeProfileId = resolveDomainProfile(selectedDomains).id;
   const scoredAxioms = useMemo(
-    () => scoreAxiomRelevance(graphData, activeProfileId),
-    [graphData, activeProfileId]
+    () =>
+      scoreAxiomRelevance(graphData, activeProfileId, {
+        selectedNode,
+        selectedNodes,
+        interactionHistory: axiomInteractionHistory,
+      }),
+    [graphData, activeProfileId, selectedNode, selectedNodes, axiomInteractionHistory]
   );
 
   // Split into recommended (score >= 0.4) and other
@@ -136,6 +163,56 @@ function TarskiPanel() {
     }
     return { recommended: rec, other: oth };
   }, [scoredAxioms]);
+
+  // Enumerate the scoring layers active RIGHT NOW so the user can see
+  // what the recommender is reacting to (instead of the silent reorder
+  // problem where clicking a chokepoint moves A-04 up but nothing
+  // visibly says "the selection layer fired"). Cheap inline checks —
+  // mirrors the actual layers inside scoreAxiomRelevance.
+  const scoringLayers = useMemo(() => {
+    const layers: string[] = [];
+    const hasSelection = !!selectedNode || (selectedNodes?.length ?? 0) > 0;
+    if (hasSelection) {
+      const count = selectedNode
+        ? 1
+        : selectedNodes?.length ?? 0;
+      layers.push(`selection (${count})`);
+    }
+    // Memory layer: count axioms whose lastClick is within the 3τ decay
+    // window (~21 days) — beyond that the boost is below cutoff so the
+    // axiom doesn't really count as "in memory" any more.
+    const nowMs = Date.now();
+    const activeMemoryCount = Object.values(axiomInteractionHistory).filter(
+      (r) => {
+        const lastMs = Date.parse(r.lastClickedAt);
+        if (!Number.isFinite(lastMs)) return false;
+        const deltaDays = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+        return deltaDays <= 21;
+      },
+    ).length;
+    if (activeMemoryCount > 0) layers.push(`memory (${activeMemoryCount})`);
+    // Structural layer: at least one graph-wide feature firing. Cheap
+    // re-checks against graphData — the canonical version lives in
+    // scoreAxiomRelevance; this is just a presence count.
+    const structuralFlags: string[] = [];
+    if (graphData.nodes.some((n) =>
+      n.label.toLowerCase().includes("strait") ||
+      n.label.toLowerCase().includes("chokepoint"),
+    )) structuralFlags.push("chokepoint");
+    if (graphData.edges.some((e) => {
+      const s = graphData.nodes.find((n) => n.id === e.source);
+      const t = graphData.nodes.find((n) => n.id === e.target);
+      return s && t && s.domain !== t.domain;
+    })) structuralFlags.push("cross-domain");
+    if (graphData.nodes.some((n) => n.omegaFragility.composite > 7))
+      structuralFlags.push("high-ΩF");
+    if (graphData.nodes.some((n) => n.omegaFragility.jurisdictionalHazard >= 6))
+      structuralFlags.push("high-J");
+    if (structuralFlags.length > 0) {
+      layers.push(`structural (${structuralFlags.join(", ")})`);
+    }
+    return layers;
+  }, [selectedNode, selectedNodes, axiomInteractionHistory, graphData]);
 
   // Auto-suggest: enable high-relevance axioms when user hasn't customized
   const [hasCustomized, setHasCustomized] = useState(false);
@@ -187,13 +264,24 @@ function TarskiPanel() {
   const levelLabels: Record<number, string> = { 0: "PHYSICAL LAW", 1: "REGULATORY", 2: "HEURISTIC" };
   const levelIcons: Record<number, string> = { 0: "\u26A0", 1: "\u2696", 2: "\u26A1" };
 
-  const renderAxiomCard = (sa: ScoredAxiom) => {
+  const renderAxiomCard = (sa: ScoredAxiom, showReason = false) => {
     const { axiom, relevanceScore, reason, matchedDomains } = sa;
     const isActive = activeAxiomIds.has(axiom.id);
     const violationCount = axiomViolationCounts[axiom.id] || 0;
     const hasViolations = truthFilter === "verified" && violationCount > 0;
     const levelColor = levelColors[axiom.level];
     const isExpanded = expandedAxiom === axiom.id;
+    // Reason rendering: only show on recommended cards (showReason=true),
+    // skip generic fallbacks ("Low relevance to current selection",
+    // pure universal-axiom restatement, empty), and highlight selection-
+    // driven reasons in cyan so the user sees that clicking a node moved
+    // this axiom up the list.
+    const reasonIsSelectionDriven = reason.startsWith("Selected") || reason.startsWith("Selection");
+    const reasonIsMeaningful =
+      showReason &&
+      !!reason &&
+      reason !== "Low relevance to current selection" &&
+      reason !== "Universal axiom — applies to all profiles";
 
     return (
       <div
@@ -215,7 +303,12 @@ function TarskiPanel() {
         {/* Compact header — always visible */}
         <div
           className="flex items-center gap-2 px-2 py-2 cursor-pointer hover:bg-white/[0.02] transition-colors"
-          onClick={() => setExpandedAxiom(isExpanded ? null : axiom.id)}
+          onClick={() => {
+            // Record only on EXPAND (not collapse) so the recommender
+            // memory tracks investigation, not toggle noise.
+            if (!isExpanded) recordAxiomInteraction(axiom.id);
+            setExpandedAxiom(isExpanded ? null : axiom.id);
+          }}
         >
           {/* Visual icon */}
           <AxiomIcon axiomId={axiom.id} color={levelColor} />
@@ -238,10 +331,40 @@ function TarskiPanel() {
             <div className="text-[8px] font-mono text-text-muted mt-0.5 leading-snug line-clamp-1">
               {axiom.plainText}
             </div>
+            {/* Why-recommended caption — surfaces the scorer's `reason`
+                string. Highlighted in cyan when selection-driven so the
+                user immediately sees that clicking a node moved this
+                axiom up the list (otherwise the recommender's response
+                to selection is invisible — the only effect was reorder). */}
+            {reasonIsMeaningful && (
+              <div
+                className={`text-[7px] font-mono mt-0.5 leading-snug line-clamp-1 ${
+                  reasonIsSelectionDriven
+                    ? "text-accent-cyan/85"
+                    : "text-text-muted/70"
+                }`}
+                title={reason}
+              >
+                why · {reason}
+              </div>
+            )}
           </div>
 
           {/* Right side: toggle + status */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Score badge — only on recommended cards (showReason=true).
+                Makes the recommender's output legible: users see the
+                numeric score change in real time as they click around,
+                instead of just watching the silent reorder. Tabular-
+                nums to keep alignment when scores update. */}
+            {showReason && (
+              <span
+                className="text-[7px] px-1 py-0.5 rounded bg-accent-cyan/10 text-accent-cyan/90 font-mono tabular-nums"
+                title={`Relevance score (0.00–1.00). Live-recomputed on selection, axiom clicks (memory), and graph structure changes.`}
+              >
+                {relevanceScore.toFixed(2)}
+              </span>
+            )}
             {hasViolations && (
               <span className="text-[7px] px-1 py-0.5 rounded bg-accent-red/15 text-accent-red font-mono animate-pulse">
                 {violationCount} {violationCount === 1 ? "issue" : "issues"}
@@ -391,8 +514,18 @@ function TarskiPanel() {
               </button>
             </div>
           </div>
+          {/* Scoring-layers caption — makes it obvious WHAT the recommender
+              is reacting to right now. Without this the user clicks a
+              chokepoint and the list reorders silently; with this they
+              see "scoring on: selection · memory (2)" and watch the
+              caption (and the card scores) update on every interaction. */}
+          {scoringLayers.length > 0 && (
+            <div className="text-[7px] font-mono text-text-muted/80 leading-snug pl-1">
+              scoring on: {scoringLayers.join(" · ")}
+            </div>
+          )}
           <div className="space-y-1">
-            {recommended.map(renderAxiomCard)}
+            {recommended.map((sa) => renderAxiomCard(sa, true))}
           </div>
         </div>
       )}
@@ -404,7 +537,7 @@ function TarskiPanel() {
             OTHER CONSTRAINTS ({other.length})
           </summary>
           <div className="space-y-1">
-            {other.map(renderAxiomCard)}
+            {other.map((sa) => renderAxiomCard(sa, false))}
           </div>
         </details>
       )}

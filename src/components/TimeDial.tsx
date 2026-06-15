@@ -5,6 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import type { TimeGranularity, TemporalEvent } from "@/lib/temporal-data";
 import { getEventsInRange } from "@/lib/temporal-data";
+import {
+  computeActivitySeries,
+  gradientFromActivity,
+} from "@/lib/timeline/activity-heatmap";
+
+// Resolution of the network-activity heatmap behind the track. 120
+// buckets ≈ 12h-wide cells on a 60-day window; fine enough to read
+// hot-spots as distinct bands, coarse enough that the gradient string
+// stays short (~240 colour stops, ~3KB).
+const HEATMAP_BUCKETS = 120;
 
 // Two groups so we can render a subtle visual divider between fast presets
 // (sub-monthly, suitable for daily/weekly FRED + EIA Hormuz) and long presets
@@ -282,6 +292,26 @@ export default function TimeDial() {
     () => (temporalData ? getEventsInRange(temporalData, start, end) : []),
     [temporalData, start, end],
   );
+
+  // Network-activity heatmap behind the track. Quantitative — Σ |Δω|
+  // across all nodes with history covering each bucket, per-second
+  // normalized, then p95-clamped so a single spike doesn't crush the
+  // rest of the gradient. See lib/timeline/activity-heatmap.ts.
+  // Recomputes only on temporalData / window changes — feed ticks
+  // append to history but don't re-allocate the Map, so this stays
+  // referentially stable across live ticks (recomputes on each
+  // batched store mutation that swaps temporalData, which is the
+  // intended behaviour: live edits → fresh heatmap).
+  const activityGradient = useMemo(() => {
+    const series = computeActivitySeries(
+      temporalData,
+      start,
+      end,
+      HEATMAP_BUCKETS,
+    );
+    if (!series.hasSignal) return null;
+    return gradientFromActivity(series);
+  }, [temporalData, start, end]);
 
   // Events within selection (for context)
   const selectionEventCount = useMemo(() => {
@@ -775,12 +805,26 @@ export default function TimeDial() {
         <div
           ref={trackRef}
           data-timedial-track="true"
-          className="relative h-6 cursor-crosshair rounded"
-          style={{ backgroundColor: "rgba(26,28,46,0.8)" }}
+          className="relative h-6 cursor-crosshair rounded overflow-hidden"
+          style={{ backgroundColor: "color-mix(in srgb, var(--border) 80%, transparent)" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
         >
+          {/* Network-activity heatmap. Green (quiet) → amber → red
+              (active) per-bucket strip, computed from real ω history
+              and aligned to the same start→end window as the track
+              itself. Sits behind all other track decorations so the
+              cursor / fill / selection remain legible on top. */}
+          {activityGradient && (
+            <div
+              aria-hidden
+              className="absolute inset-0 pointer-events-none rounded"
+              title="Network activity (Σ |Δω| across nodes per bucket, p95-normalized)"
+              style={{ background: activityGradient }}
+            />
+          )}
+
           {/* Filled portion */}
           <div
             className="absolute top-0 left-0 h-full rounded-l transition-[width] duration-75"
@@ -1007,14 +1051,14 @@ export default function TimeDial() {
                             : bufferValue < 35
                               ? "var(--accent-amber)"
                               : "var(--accent-cyan)"
-                          : "rgba(90, 94, 114, 0.2)",
+                          : "color-mix(in srgb, var(--text-muted) 20%, transparent)",
                     }}
                   />
                 ))}
               </div>
             </div>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Timeline tabs */}
             <div className="flex items-center gap-0.5">
@@ -1071,7 +1115,7 @@ export default function TimeDial() {
               BRANCH
             </button>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Stop button */}
             <button

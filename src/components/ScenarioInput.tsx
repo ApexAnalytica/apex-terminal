@@ -30,14 +30,40 @@
 // the message still lands in the store and the user can open the copilot
 // drawer to see it.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useApexStore } from "@/stores/useApexStore";
 
-const PLACEHOLDER =
+// Domain-aware example prose. The placeholder previously hardcoded a
+// Hormuz scenario, which surfaced geopolitical framing inside T1D
+// sessions even when the active graph was entirely β-cell / CGM
+// nodes. We pick a profile-appropriate example so the user's first
+// hint is in the right vocabulary. Same `t1d-` prefix check ModulePanel
+// uses to avoid pulling domain-profiles into the critical-path bundle.
+const PLACEHOLDER_GEOPOLITICAL =
   "e.g. “What happens if Hormuz transit drops 50% for 30 days?”\nThe copilot interprets the scenario, injects appropriate shocks, and proposes the cheapest defensive cuts.";
+const PLACEHOLDER_T1D =
+  "e.g. “Which edges should be cut to keep insulin-independence above 50% at 12 months?”\nThe copilot interprets the scenario, injects appropriate shocks, and proposes the cheapest defensive cuts.";
 
-export default function ScenarioInput() {
+// `embedded` renders just the textarea + submit control, dropping the
+// component's own header chip and footer explanation. The redesigned
+// PEARL workspace supplies those via the shared SectionHeader (title +
+// `?`), so printing them again here would duplicate the prose the
+// redesign is trying to remove.
+export default function ScenarioInput({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const placeholder = useMemo(
+    () =>
+      selectedDomains.some((id) => id.startsWith("t1d-"))
+        ? PLACEHOLDER_T1D
+        : PLACEHOLDER_GEOPOLITICAL,
+    [selectedDomains],
+  );
 
   const submit = useCallback(() => {
     const trimmed = text.trim();
@@ -63,16 +89,22 @@ export default function ScenarioInput() {
   return (
     <div
       data-tour="scenario-input"
-      className="border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2"
+      className={
+        embedded
+          ? "space-y-2"
+          : "border border-accent-amber/30 rounded bg-accent-amber/5 p-3 space-y-2"
+      }
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
-          SCENARIO {"→"} INTERDICTION
-        </span>
-        <span className="text-[7px] font-mono text-text-muted">
-          natural language
-        </span>
-      </div>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-amber">
+            SCENARIO {"→"} INTERDICTION
+          </span>
+          <span className="text-[7px] font-mono text-text-muted">
+            natural language
+          </span>
+        </div>
+      )}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -83,7 +115,7 @@ export default function ScenarioInput() {
             submit();
           }
         }}
-        placeholder={PLACEHOLDER}
+        placeholder={placeholder}
         rows={3}
         className="w-full text-[9px] font-mono bg-surface border border-border rounded px-2 py-1.5 text-foreground leading-relaxed resize-none focus:outline-none focus:border-accent-amber/60"
       />
@@ -102,10 +134,12 @@ export default function ScenarioInput() {
           {busy ? "SUBMITTING…" : "RUN INTERDICTION"}
         </button>
       </div>
-      <div className="text-[7px] font-mono text-text-muted/80 leading-relaxed">
-        Routes to the copilot, which parses the prose, injects shocks,
-        runs the solver, and returns candidate cuts in the panel below.
-      </div>
+      {!embedded && (
+        <div className="text-[7px] font-mono text-text-muted/80 leading-relaxed">
+          Routes to the copilot, which parses the prose, injects shocks,
+          runs the solver, and returns candidate cuts in the panel below.
+        </div>
+      )}
     </div>
   );
 }

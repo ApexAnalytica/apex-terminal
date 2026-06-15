@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-color";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
-import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
+import { resolveDomainProfile, formatWeights, type PillarKey } from "@/lib/domain-profiles";
 import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { buildContextualReview } from "@/lib/contextual-review";
 
 function getBarColor(value: number): string {
@@ -217,7 +218,15 @@ export default function NodeInspector() {
   // = how many of this node's edges are in χ★ — answers "is this
   // node embedded in the load-bearing skeleton?". Computed once
   // per graph (Brandes O(V·E)), independent of which node is
-  // selected, so node-flip is free.
+  // selected, so node-flip is free. Keyed on `deferredSig` (round 16):
+  // a topology-stable fingerprint so feed-tick liveData mutations don't
+  // re-run the ~120K-op Brandes pass, and deferred so the inspector
+  // mounts before chi-star tier highlighting catches up.
+  const sig = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
+  const deferredSig = useDeferredValue(sig);
   const chiStarSet = useMemo(() => {
     if (graphData.edges.length === 0) return new Set<string>();
     const r = chiStar({
@@ -226,7 +235,8 @@ export default function NodeInspector() {
       metadata: graphData.metadata,
     });
     return new Set(r.chiStar);
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
   const bridgeCentrality = useMemo(
     () => connectedEdges.filter((e) => chiStarSet.has(e.id)).length,
     [connectedEdges, chiStarSet],
@@ -511,6 +521,21 @@ export default function NodeInspector() {
                 selectedKey={expandedPillar}
                 onSelect={(k) => setExpandedPillar(expandedPillar === k ? null : k)}
               />
+              {/* Audit trail when the active profile re-weighted this node's
+                  composite (compositeMode: "recomputed", e.g. AI-Safety on the
+                  borrowed `main` graph) — surfaces the original authored score
+                  so the reweighting isn't silent. */}
+              {node.omegaFragility.baselineComposite != null &&
+                node.omegaFragility.baselineComposite !== node.omegaFragility.composite && (
+                  <div className="flex justify-center mt-1">
+                    <span
+                      className="text-[7px] font-mono text-accent-amber/80 tracking-wider cursor-help"
+                      title={`Re-weighted under the ${profile.displayName} profile (${formatWeights(profile.weights)}). Authored / default-weighted score was ${node.omegaFragility.baselineComposite.toFixed(1)}.`}
+                    >
+                      ↻ REWEIGHTED FROM {node.omegaFragility.baselineComposite.toFixed(1)} · {profile.displayName.toUpperCase()}
+                    </span>
+                  </div>
+                )}
               <div className="flex justify-center mt-1">
                 <button
                   onClick={() => setShowMethodology((v) => !v)}

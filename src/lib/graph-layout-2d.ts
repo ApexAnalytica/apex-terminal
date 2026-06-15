@@ -180,12 +180,53 @@ export function create2DLiveSimulation(
 /**
  * Stable signature over the node and edge id sets. Layout is recomputed only
  * when this changes — filter/isolation/replay don't trigger a re-layout.
+ *
+ * Memoised on a cheap content fingerprint (length + first/last id of each
+ * input array). On live workspaces, `graphData.nodes` is rebuilt via `.map`
+ * on every feed tick to overlay liveData, so each canvas component's
+ * `useMemo(() => graphSignature(...), [nodes, edges])` re-fires per tick.
+ * The full O((N+E) log (N+E)) sort+join + ~10KB string allocation can
+ * stack to a few ms across the 4 canvas-class callers (2D, Map, Relief,
+ * NodeInspector) — and the output is invariant when topology is stable.
+ * The internal cache returns the prior signature in O(1) on a quick-key
+ * hit, so feed ticks become free across all consumers.
+ *
+ * Cache shape mirrors the round 17 fingerprint cache in chi-star.ts:
+ * bounded Map with FIFO eviction, delete-and-re-set on hit for an
+ * LRU-ish refresh.
  */
+const SIG_MAX_ENTRIES = 16;
+const sigCache = new Map<string, string>();
+
+function quickSigKey(nodes: CausalNode[], edges: CausalEdge[]): string {
+  const nN = nodes.length;
+  const nE = edges.length;
+  const nFirst = nN > 0 ? nodes[0].id : "";
+  const nLast = nN > 0 ? nodes[nN - 1].id : "";
+  const eFirst = nE > 0 ? edges[0].id : "";
+  const eLast = nE > 0 ? edges[nE - 1].id : "";
+  return `${nN}:${nFirst}:${nLast}|${nE}:${eFirst}:${eLast}`;
+}
+
 export function graphSignature(
   nodes: CausalNode[],
   edges: CausalEdge[],
 ): string {
+  const qk = quickSigKey(nodes, edges);
+  const cached = sigCache.get(qk);
+  if (cached !== undefined) {
+    // Refresh insertion order so this entry survives the next eviction.
+    sigCache.delete(qk);
+    sigCache.set(qk, cached);
+    return cached;
+  }
   const ns = nodes.map((n) => n.id).sort().join("|");
   const es = edges.map((e) => e.id).sort().join("|");
-  return `${ns}#${es}`;
+  const sig = `${ns}#${es}`;
+  if (sigCache.size >= SIG_MAX_ENTRIES) {
+    const firstKey = sigCache.keys().next().value;
+    if (firstKey !== undefined) sigCache.delete(firstKey);
+  }
+  sigCache.set(qk, sig);
+  return sig;
 }

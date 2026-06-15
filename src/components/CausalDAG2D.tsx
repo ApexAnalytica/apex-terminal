@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -24,6 +24,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { motion } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
+import { deriveLatentNodes } from "@/lib/latent-nodes";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { getCategoryColor, getDomainColor } from "@/lib/graph-color";
 import { getDomainCardColor } from "@/lib/domains";
@@ -31,7 +32,7 @@ import { chiStar } from "@/lib/estimators/chi-star";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTickDOM } from "@/lib/useReplayTick";
-import type { CausalEdge, EpochSnapshot } from "@/lib/types";
+import type { CausalEdge, EpochSnapshot, LatentNode } from "@/lib/types";
 import {
   create2DLiveSimulation,
   graphSignature,
@@ -476,7 +477,326 @@ function EdgeInspector({
   );
 }
 
-const nodeTypes = { causal: CausalNode2D };
+/**
+ * In-canvas inspector popup for an INFERRED LATENT — same floating design
+ * as the CAUSAL LINK INSPECTOR above so latents feel like first-class
+ * citizens of the canvas. Structured evidence → data check → action; member
+ * chips pivot into the real node, evidence rows open the edge popup.
+ */
+function LatentInspector2D({
+  latent,
+  labelOf,
+  evidenceEdges,
+  onClose,
+  onOpenNode,
+  onOpenEdge,
+}: {
+  latent: LatentNode;
+  labelOf: Map<string, string>;
+  evidenceEdges: CausalEdge[];
+  onClose: () => void;
+  onOpenNode: (id: string) => void;
+  onOpenEdge: (edge: CausalEdge) => void;
+}) {
+  const MAGENTA = "#e040fb";
+  const sup = latent.dataSupport;
+  const rdy = latent.discoveryReadiness;
+  const supColor =
+    sup?.status === "supported" ? "#00e676"
+      : sup?.status === "inconsistent" ? "#ff1744"
+        : "#9aa0a6";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.15 }}
+      className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-[460px] max-h-[60%] overflow-y-auto rounded border border-border bg-background/95 backdrop-blur-sm shadow-2xl"
+      style={{ boxShadow: `0 0 20px ${MAGENTA}15`, borderColor: `${MAGENTA}55` }}
+    >
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur-sm">
+        <div className="text-[9px] font-[family-name:var(--font-michroma)] tracking-[0.15em]" style={{ color: MAGENTA }}>
+          ◌ INFERRED LATENT INSPECTOR
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-text-muted hover:text-foreground transition-colors"
+        >
+          ESC
+        </button>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        <div className="text-[10px] font-mono text-foreground/90">{latent.label}</div>
+        <div className="text-[8px] font-mono text-text-muted italic leading-relaxed">
+          Inferred from authored confounded structure, checked against live data
+          where available — not an empirical discovery.
+        </div>
+
+        {latent.hypothesizedDriver && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              HYPOTHESISED CHANNEL
+            </div>
+            <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+              {latent.hypothesizedDriver}
+            </div>
+          </div>
+        )}
+
+        {/* Stats row — mirrors the edge popup's TYPE/WEIGHT/... row */}
+        <div className="flex gap-4">
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">DATA CHECK</div>
+            <div className="text-[10px] font-mono mt-0.5" style={{ color: supColor }}>
+              {(sup?.status ?? "n/a").toUpperCase()}
+            </div>
+          </div>
+          {sup?.statistic != null && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">MEAN r</div>
+              <div className="text-[10px] font-mono text-foreground mt-0.5">{sup.statistic}</div>
+            </div>
+          )}
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">LIVE MEMBERS</div>
+            <div className="text-[10px] font-mono text-foreground mt-0.5">
+              {sup?.liveMembers ?? 0}/{latent.explains.length}
+            </div>
+          </div>
+          {rdy && (
+            <div>
+              <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">ALIGNED PTS</div>
+              <div className="text-[10px] font-mono text-foreground mt-0.5">{rdy.maxAlignedPoints}</div>
+            </div>
+          )}
+        </div>
+
+        {rdy && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              DISCOVERY READINESS — {rdy.status.toUpperCase()}
+            </div>
+            <div className="text-[10px] font-mono text-foreground/80 leading-relaxed">
+              {rdy.recommendation}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+            MEMBERS ({latent.explains.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {latent.explains.map((id) => (
+              <button
+                key={id}
+                onClick={() => onOpenNode(id)}
+                className="px-1.5 py-0.5 rounded border border-border bg-surface text-[10px] font-mono text-foreground/90 hover:border-accent-cyan/50 hover:text-accent-cyan transition-colors"
+                title={`Open ${labelOf.get(id) ?? id} in the node inspector`}
+              >
+                {labelOf.get(id) ?? id}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {evidenceEdges.length > 0 && (
+          <div>
+            <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted mb-1">
+              EVIDENCE — CONFOUNDED EDGES ({evidenceEdges.length})
+            </div>
+            <div className="space-y-1">
+              {evidenceEdges.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => onOpenEdge(e)}
+                  className="w-full text-left rounded border border-border bg-surface px-2 py-1 hover:border-accent-cyan/50 transition-colors"
+                  title="Open in the link inspector"
+                >
+                  <div className="text-[10px] font-mono text-foreground/90">
+                    {labelOf.get(e.source) ?? e.source} ↔ {labelOf.get(e.target) ?? e.target}
+                    <span className="text-text-muted"> · conf {e.confidence.toFixed(2)}</span>
+                  </div>
+                  {e.physicalMechanism && (
+                    <div className="mt-0.5 text-[8px] font-mono text-text-muted leading-relaxed">
+                      {e.physicalMechanism}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Inferred-latent ghost glyph (Dr. Pita synthetic-node #1). Deliberately
+ * looks UNLIKE a real node: dashed magenta ring, no fill, no ΩF score, a "?"
+ * and a persistent INFERRED badge. Hover discloses full provenance. Never
+ * carries omega data — it's a hypothesis, not an observation.
+ */
+interface LatentNode2DData {
+  label: string;
+  members: string;
+  strength: number;
+  /** Author-stated channel (verbatim physicalMechanism), not a named variable. */
+  driver?: string;
+  /** Real-data consistency check on the shared-driver hypothesis. */
+  support?: {
+    status: "supported" | "inconsistent" | "insufficient";
+    statistic?: number;
+    liveMembers: number;
+  };
+  /** Discovery-readiness: what data is needed to discover this for real. */
+  readiness?: {
+    status: "ready" | "partial" | "blocked";
+    recommendation: string;
+    limitingFactor: "coverage" | "frequency" | "none";
+  };
+}
+function LatentNode2D({ id, data }: NodeProps<LatentNode2DData>) {
+  const isSelected = useApexStore((s) => s.selectedLatentId === id);
+  const sup = data.support;
+  const supColor =
+    sup?.status === "supported" ? "#00e676"
+      : sup?.status === "inconsistent" ? "#ff1744"
+        : "#9aa0a6";
+  const supText =
+    !sup ? null
+      : sup.status === "supported" ? `DATA ✓ r=${sup.statistic ?? "?"}`
+        : sup.status === "inconsistent" ? `DATA ✗ r=${sup.statistic ?? "?"}`
+          : "NO LIVE DATA";
+  const tooltip =
+    `INFERRED LATENT — not observed.\n` +
+    `${data.label}\n` +
+    (data.driver ? `Hypothesised channel: ${data.driver}\n` : "") +
+    `Members: ${data.members}\n` +
+    `Data check: ${supText ?? "n/a"}` +
+    (sup ? ` (${sup.liveMembers} live member${sup.liveMembers === 1 ? "" : "s"})` : "") +
+    (data.readiness ? `\nDiscovery readiness: ${data.readiness.status.toUpperCase()} — ${data.readiness.recommendation}` : "") +
+    `\nA hypothesis from authored confounded structure, checked against live data where available — not an empirical discovery.`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer" }} title={tooltip}>
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: "50%",
+          // Dashed = unselected hypothesis; selected gets a solid ring + glow,
+          // the same affordance real nodes show when picked.
+          border: `2px ${isSelected ? "solid" : "dashed"} #e040fb`,
+          background: isSelected ? "rgba(224,64,251,0.16)" : "rgba(224,64,251,0.07)",
+          boxShadow: isSelected ? "0 0 14px rgba(224,64,251,0.55)" : "none",
+          transition: "box-shadow 150ms ease-out, background 150ms ease-out",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}
+      >
+        <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+        <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+        <span style={{ color: "#e040fb", fontSize: 16, fontWeight: 700, lineHeight: 1, opacity: 0.85 }}>?</span>
+        <div
+          style={{
+            position: "absolute",
+            top: -13,
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 7,
+            letterSpacing: "0.08em",
+            fontFamily: "monospace",
+            color: "#e040fb",
+            background: "rgba(0,0,0,0.65)",
+            padding: "1px 4px",
+            borderRadius: 2,
+            whiteSpace: "nowrap",
+            border: "1px solid rgba(224,64,251,0.45)",
+            pointerEvents: "none",
+          }}
+        >
+          INFERRED
+        </div>
+      </div>
+      {data.driver && (
+        <div
+          style={{
+            marginTop: 3,
+            maxWidth: 124,
+            fontSize: 7,
+            fontFamily: "monospace",
+            color: "#e7b8f5",
+            textAlign: "center",
+            lineHeight: 1.15,
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            pointerEvents: "none",
+          }}
+        >
+          {data.driver}
+        </div>
+      )}
+      {supText && (
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 7,
+            fontFamily: "monospace",
+            fontWeight: 700,
+            color: supColor,
+            border: `1px solid ${supColor}55`,
+            background: `${supColor}14`,
+            borderRadius: 2,
+            padding: "0 3px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {supText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A member node pulled into the current (filtered) view because an inferred
+ * latent binds it — i.e. cross-domain structure the domain filter was hiding.
+ * Rendered as a small dashed-magenta chip, clearly marked as brought in by the
+ * latent (not a normal node in this view), read-only. Disappears on toggle-off.
+ */
+function LatentMember2D({ data }: NodeProps<{ label: string }>) {
+  return (
+    <div
+      title={`Pulled into view by an inferred latent — this node lives in another domain but shares the hidden common cause.`}
+      style={{
+        padding: "2px 6px",
+        borderRadius: 4,
+        border: "1px dashed rgba(224,64,251,0.7)",
+        background: "rgba(224,64,251,0.06)",
+        color: "#e7b8f5",
+        fontSize: 8,
+        fontFamily: "monospace",
+        whiteSpace: "nowrap",
+        position: "relative",
+        cursor: "help",
+        opacity: 0.92,
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: "transparent", border: "none", width: 0, height: 0 }} />
+      {data.label}
+      <span style={{ marginLeft: 4, fontSize: 6, color: "#e040fb", letterSpacing: "0.05em" }}>via latent</span>
+    </div>
+  );
+}
+
+const nodeTypes = { causal: CausalNode2D, latent: LatentNode2D, latentMember: LatentMember2D };
 
 /**
  * Custom edge component that subscribes to hover/selection state itself
@@ -766,6 +1086,11 @@ function CausalDAG2DInner() {
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
   const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
+  const showLatentNodes = useApexStore((s) => s.showLatentNodes);
+  // Latents derive from the FULL (unfiltered) store graph, not the filtered
+  // view — confounded clusters are inherently cross-domain, so a single-domain
+  // filter would hide the very structure the feature exists to reveal.
+  const fullGraphForLatent = useApexStore((s) => s.graphData);
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [selectedEdge, setSelectedEdge] = useState<CausalEdge | null>(null);
@@ -873,6 +1198,11 @@ function CausalDAG2DInner() {
     () => graphSignature(graphData.nodes, graphData.edges),
     [graphData.nodes, graphData.edges],
   );
+  // Deferred topology fingerprint for the chiStar memo below (round 16).
+  // Switches the chiStar memo from `[graphData]` (re-fires on every feed
+  // tick) to a topology-stable key, AND lets the launch commit paint
+  // before the ~120K-op Brandes pass lands.
+  const deferredSig = useDeferredValue(sig);
   // Layout + network-metrics both come from the layout Web Worker
   // (`requestLayout2D`). Both used to be synchronous useMemos that
   // ran d3-force-2d + Brandes' centrality on the main thread, which
@@ -1090,8 +1420,10 @@ function CausalDAG2DInner() {
   // χ★ result on the live filtered graph. Powers (a) the violet halo
   // behind χ★ edges in EmphasizedEdge below, and (b) the per-edge
   // BES + bridge-vs-top-k context surfaced by the EdgeInspector.
-  // Brandes' BES is O(V·E); memoised on graphData so it runs only
-  // when the graph changes, not on selection / hover.
+  // Brandes' BES is O(V·E). Keyed on `deferredSig` (round 16): a
+  // topology-stable fingerprint so feed-tick liveData mutations don't
+  // re-run the pass, AND deferred so the launch commit paints before
+  // the bridge/chi-star tier styling lands.
   const chiStarInfo = useMemo(() => {
     if (graphData.edges.length === 0) {
       return {
@@ -1114,7 +1446,8 @@ function CausalDAG2DInner() {
       bes: r.bes,
       rank,
     };
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
 
   // Edges carry only structural / replay / truth-filter state. Hover and
   // single-select emphasis are computed inside `EmphasizedEdge` itself, so
@@ -1223,17 +1556,8 @@ function CausalDAG2DInner() {
 
   const onInit = useCallback(() => {}, []);
 
-  const onEdgeClick: EdgeMouseHandler = useCallback(
-    (_event, rfEdge) => {
-      const causalEdge = edgeById.get(rfEdge.id);
-      if (causalEdge) {
-        setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
-      }
-    },
-    [edgeById]
-  );
-
   const setSelectedNode = useApexStore((s) => s.setSelectedNode);
+  const setSelectedLatentId = useApexStore((s) => s.setSelectedLatentId);
   const selectedNodesCount = useApexStore((s) => s.selectedNodes.length);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   // Ablation mode is global — when on, clicks across every visual
@@ -1243,6 +1567,26 @@ function CausalDAG2DInner() {
   // declared earlier — re-deriving here would shadow it.)
   const ablationMode = useApexStore((s) => s.ablationMode);
   const toggleAblatedNode = useApexStore((s) => s.toggleAblatedNode);
+
+  const onEdgeClick: EdgeMouseHandler = useCallback(
+    (_event, rfEdge) => {
+      // Latent tether (latent__X__tether__Y) → open the latent inspector;
+      // tethers aren't causal edges, so edgeById would silently miss them.
+      const tetherMatch = rfEdge.id.match(/^(latent__.+?)__tether__/);
+      if (tetherMatch) {
+        setSelectedEdge(null);
+        setSelectedLatentId(tetherMatch[1]);
+        return;
+      }
+      const causalEdge = edgeById.get(rfEdge.id);
+      if (causalEdge) {
+        // Opening a real edge closes the latent popup (both float bottom-center).
+        setSelectedLatentId(null);
+        setSelectedEdge((prev) => (prev?.id === causalEdge.id ? null : causalEdge));
+      }
+    },
+    [edgeById, setSelectedLatentId]
+  );
 
   // Hand-rolled shift+drag marquee. We bypass React Flow's built-in
   // selection (which is unreliable when combined with panOnDrag) and
@@ -1337,25 +1681,38 @@ function CausalDAG2DInner() {
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, rfNode) => {
+      const id = rfNode.id;
+      // Latent glyph → open the LatentInspector via its own selection channel
+      // (never selectedNode — latent ids don't resolve as real nodes). Close
+      // the local edge popup too: both float at the canvas bottom-center.
+      if (id.startsWith("latent__") && !id.includes("__member__")) {
+        setSelectedEdge(null);
+        setSelectedLatentId(id);
+        return;
+      }
+      // Pulled-in member chip → pivot into the REAL node it stands for.
+      const memberMatch = id.match(/^latent__.*__member__(.+)$/);
+      const targetId = memberMatch ? memberMatch[1] : id;
       setSelectedEdge(null);
       // In ablation mode, clicks toggle ablation instead of moving the
       // selection. Matches the 3D / Map / Relief behaviour so the
       // affordance is identical regardless of which view the user
       // happens to be in.
       if (ablationMode) {
-        toggleAblatedNode(rfNode.id);
+        toggleAblatedNode(targetId);
       } else {
-        setSelectedNode(rfNode.id);
+        setSelectedNode(targetId);
       }
     },
-    [setSelectedNode, ablationMode, toggleAblatedNode]
+    [setSelectedNode, setSelectedLatentId, ablationMode, toggleAblatedNode]
   );
 
   const onPaneClick = useCallback(() => {
     setSelectedEdge(null);
     setSelectedNode(null);
+    setSelectedLatentId(null);
     setHoveredNodeId(null);
-  }, [setSelectedNode]);
+  }, [setSelectedNode, setSelectedLatentId]);
 
   const onNodeMouseEnter: NodeMouseHandler = useCallback((_event, rfNode) => {
     setHoveredNodeId(rfNode.id);
@@ -1419,6 +1776,149 @@ function CausalDAG2DInner() {
   // recompute themselves from these. Memoised so context-only consumers
   // (CausalNode2D, EmphasizedEdge) don't re-run their useMemo on parent
   // re-render when the values are equal.
+  // Inferred-latent overlay (Dr. Pita synthetic-node #1). Injected into the
+  // React Flow arrays ONLY when the analyst opts in — the store graph
+  // (graphData) is never mutated, so latent nodes can't enter cascade / ΩF /
+  // system metrics. Glyph sits at the centroid of the members it explains,
+  // with faint dashed tethers to each member.
+  const latentOverlay = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
+    if (!showLatentNodes) return { nodes: [], edges: [] };
+    // Derive from the FULL store graph so cross-domain confounded clusters
+    // aren't hidden by the active domain filter (the structure the feature exists
+    // to reveal). Members not in the current view are pulled in as marked chips.
+    const latents = deriveLatentNodes(fullGraphForLatent);
+    if (latents.length === 0) return { nodes: [], edges: [] };
+    const labelOf = new Map(
+      fullGraphForLatent.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id] as const),
+    );
+
+    // Fallback anchor when none of a latent's members are in the current view.
+    // Anchor INSIDE the visible-node bounding box (not floated above it) so the
+    // glyph always lands on-screen and stays clickable — the fitView padding
+    // (0.3) keeps the bbox well within the canvas, whereas the old `viewCy - 260`
+    // offset overshot above the fitted viewport and the glyph became unreachable.
+    let vcx = 0, vcy = 0, vk = 0;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodePositions.forEach((p) => {
+      vcx += p.x; vcy += p.y; vk++;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    const viewCx = vk ? vcx / vk : 0;
+    const viewCy = vk ? vcy / vk : 0;
+    const bboxW = vk ? maxX - minX : 0;
+    const bboxH = vk ? maxY - minY : 0;
+    // Spread off-view latents horizontally across the top of the bbox.
+    const offViewCount = latents.filter(
+      (l) => !l.explains.some((m) => nodePositions.has(m)),
+    ).length;
+    let offIdx = 0;
+
+    const lNodes: Node[] = [];
+    const lEdges: Edge[] = [];
+    const PULL_RADIUS = 110;
+    const tether = (latId: string, targetId: string) =>
+      lEdges.push({
+        id: `${latId}__tether__${targetId}`,
+        source: latId,
+        target: targetId,
+        type: "default",
+        style: { stroke: "#e040fb", strokeDasharray: "3 3", strokeWidth: 1, opacity: 0.45 },
+      });
+
+    latents.forEach((lat) => {
+      const visible = lat.explains.filter((m) => nodePositions.has(m));
+      const missing = lat.explains.filter((m) => !nodePositions.has(m));
+
+      // Glyph anchor: centroid of visible members, else offset above the view
+      // centroid (per-latent offset so multiple latents don't stack).
+      let ax: number, ay: number;
+      if (visible.length) {
+        let cx = 0, cy = 0;
+        for (const m of visible) { const p = nodePositions.get(m)!; cx += p.x; cy += p.y; }
+        ax = cx / visible.length; ay = cy / visible.length;
+      } else {
+        // Inside the bbox, near the top, spread horizontally so multiple
+        // off-view latents don't stack — always on-screen + clickable.
+        const t = (offIdx + 1) / (offViewCount + 1);
+        ax = vk ? minX + bboxW * t : viewCx + offIdx * 240;
+        ay = vk ? minY + bboxH * 0.12 : viewCy;
+        offIdx++;
+      }
+
+      lNodes.push({
+        id: lat.id,
+        type: "latent",
+        position: { x: ax, y: ay },
+        data: {
+          label: lat.label,
+          members: lat.explains.map((id) => labelOf.get(id) ?? id).join(", "),
+          strength: lat.strength,
+          driver: lat.hypothesizedDriver,
+          support: lat.dataSupport,
+          readiness: lat.discoveryReadiness,
+        },
+        draggable: false,
+        selectable: false,
+      });
+
+      // Visible members: tether to their existing node.
+      for (const m of visible) tether(lat.id, m);
+
+      // Missing (cross-domain) members: pull in as marked chips around the glyph.
+      missing.forEach((m, i) => {
+        // Lower semicircle (0..π) so pulled-in chips fan below/beside the glyph
+        // and stay on-screen even when the glyph sits near the top of the bbox.
+        const ang = Math.PI * ((i + 0.5) / Math.max(1, missing.length));
+        const mid = `${lat.id}__member__${m}`;
+        lNodes.push({
+          id: mid,
+          type: "latentMember",
+          position: { x: ax + Math.cos(ang) * PULL_RADIUS, y: ay + Math.sin(ang) * PULL_RADIUS },
+          data: { label: labelOf.get(m) ?? m },
+          draggable: false,
+          selectable: false,
+        });
+        tether(lat.id, mid);
+      });
+    });
+
+    return { nodes: lNodes, edges: lEdges };
+  }, [showLatentNodes, fullGraphForLatent, nodePositions]);
+
+  // Selected latent → in-canvas popup payload (latent + labels + the
+  // confounded evidence edges it was derived from). Recomputed on demand;
+  // latents are never stored.
+  const selectedLatentId = useApexStore((s) => s.selectedLatentId);
+  const selectedLatentInfo = useMemo(() => {
+    if (!selectedLatentId) return null;
+    const latent = deriveLatentNodes(fullGraphForLatent).find((l) => l.id === selectedLatentId);
+    if (!latent) return null;
+    const labelOf = new Map(
+      fullGraphForLatent.nodes.map((n) => [n.id, n.shortLabel || n.label || n.id]),
+    );
+    const members = new Set(latent.explains);
+    const evidence = fullGraphForLatent.edges.filter(
+      (e) =>
+        e.type === "confounded" &&
+        !e.isSevered &&
+        members.has(e.source) &&
+        members.has(e.target),
+    );
+    return { latent, labelOf, evidence };
+  }, [selectedLatentId, fullGraphForLatent]);
+
+  const renderNodes = useMemo(
+    () => (latentOverlay.nodes.length ? visibleNodes.concat(latentOverlay.nodes) : visibleNodes),
+    [visibleNodes, latentOverlay.nodes],
+  );
+  const renderEdges = useMemo(
+    () => (latentOverlay.edges.length ? (visibleEdges as Edge[]).concat(latentOverlay.edges) : (visibleEdges as Edge[])),
+    [visibleEdges, latentOverlay.edges],
+  );
+
   const dag2dContextValue = useMemo<Dag2DContextValue>(
     () => ({
       adjacency,
@@ -1435,8 +1935,8 @@ function CausalDAG2DInner() {
       <DAGOverlay />
       <div ref={flowWrapperRef} className="absolute inset-0">
         <ReactFlow
-          nodes={visibleNodes}
-          edges={visibleEdges}
+          nodes={renderNodes}
+          edges={renderEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onInit={onInit}
@@ -1484,6 +1984,20 @@ function CausalDAG2DInner() {
         </div>
       )}
       <AnimatePresence>
+        {selectedLatentInfo && (
+          <LatentInspector2D
+            key={selectedLatentInfo.latent.id}
+            latent={selectedLatentInfo.latent}
+            labelOf={selectedLatentInfo.labelOf}
+            evidenceEdges={selectedLatentInfo.evidence}
+            onClose={() => setSelectedLatentId(null)}
+            onOpenNode={setSelectedNode}
+            onOpenEdge={(e) => {
+              setSelectedLatentId(null);
+              setSelectedEdge(e);
+            }}
+          />
+        )}
         {selectedEdge && (
           <EdgeInspector
             key={selectedEdge.id}

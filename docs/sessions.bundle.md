@@ -174,9 +174,9 @@ This session does **not** care about graph data, engines, canvas rendering, or p
 - Three stacked blocks at the top of `ModulePanel` (the right panel) that give the user immediate situational awareness:
   - **AT A GLANCE** (`relevantNowCallouts` in `ModulePanel.tsx`) — top 3 context signals; selection-aware (centrality, cascade, auto-bridges incident on selected node) or graph-wide (stability, components, bridge lifecycle counts, uncertainty)
   - **REVIEW** (`NodeInspector.tsx`, only when a node is selected) — synthesised verb-led recommendations (`buildContextualReview` in `src/lib/contextual-review.ts`): Tarski axiom hits on incident edges, ΩF velocity, unpromoted bridges, cascade saturation, confounder, χ★ membership
-  - **CALCULATIONS** (`CalculationsPanel.tsx`) — pure-function readouts from `src/lib/calculations/` registry (HHI, cross-domain edges, mean ΩF). New entries (Greeks, T1D scores, supply-chain variants) plug in by appending to `CALCULATION_REGISTRY`. Two push paths to TimeDial:
+  - **CALCULATIONS** (`CalculationsPanel.tsx`) — pure-function readouts from `src/lib/calculations/` registry. Six entries today across three categories: **concentration** (Supply HHI, Buyer HHI — both node-scoped, mirror inbound/outbound concentration), **structure** (cross-domain edge count, bridge ratio χ★ %), **score** (mean ΩF, mean J pillar). New entries (Greeks, T1D scores, supply-chain variants) plug in by appending to `CALCULATION_REGISTRY`. Two push paths to TimeDial:
     - **Node-scoped** — calcs implementing `toSnapshot(result, ctx)` (e.g. HHI) get a "→ DIAL" button that pushes the current value into the selected node's `liveData[]` via `pushCalculationSnapshot`. History accumulates through the existing temporal infrastructure; renders as a sparkline in the time-series cards.
-    - **Graph-wide** — calcs implementing `toGraphSnapshot(result, ctx)` (e.g. mean ΩF, cross-domain edges) push into `graphCalcHistory[calc.id]` via `pushGraphCalcSnapshot`. A tiny inline sparkline (12px tall, 48px wide) renders next to the value once ≥2 entries exist — no node attachment needed
+    - **Graph-wide** — calcs implementing `toGraphSnapshot(result, ctx)` (e.g. mean ΩF, cross-domain edges) push into `graphCalcHistory[calc.id]` via `pushGraphCalcSnapshot`. A tiny inline sparkline (12px tall, 48px wide) renders next to the value once ≥2 entries exist — no node attachment needed. **Persisted** to localStorage (`manifold:graph-calc-history`) via `src/lib/calc-history-persistence.ts` so trajectories survive page reloads; hydrated in a post-mount effect (`hydrateGraphCalcHistory`) rather than at store-create time to avoid an SSR hydration mismatch. Node-scoped snapshots are NOT persisted — they live in the graph's `liveData[]`, which resets with the session graph
 - All three render only when at least one entry fires — empty/healthy graphs don't paint dead chrome
 - Tone-coloured dots (red/amber/green/neutral) keep the visual language consistent across the three blocks
 
@@ -500,7 +500,12 @@ Owns the engine that discovers causal structure from data. Runs three discovery 
 
 - All four panels (DCD/PCMCI+/FCI + StructuralMetrics) currently render **precomputed** discovery tags from `src/lib/graph-data.ts` (`discoverySource: "DCD" | "PCMCI+" | "FCI" | "merged"` on each `CausalNode`, `lag` on edges, `isConfounded` on nodes). The panels do layout + temporal-window deltas, not real algorithm execution.
 - "Spirtes-live" — running real DCD/PCMCI+/FCI on rolling windows — is a phase-2 effort that hasn't started. Needs separate scoping (in-browser library vs server-side with streamed results).
-- **Algorithm trio is complete and cross-verified.** `lag-correlation`, `pcmci-linear`, `fci`, and `notears` all live in `src/lib/discovery/algorithms/` and are picked up by `algorithm-registry.ts`. Cross-algorithm consistency capstone (`src/lib/discovery/__tests__/cross-algorithm-consistency.test.ts`) exercises all four against contemporaneous and lagged chain cohorts, asserts each finds the data-generating adjacencies on its wheelhouse cohort, and confirms every registered algorithm runs on either cohort without throwing.
+- **Algorithm trio is complete and cross-verified.** `lag-correlation`, `pcmci-linear`, `pcmci-plus`, `fci`, `notears`, and `notears-mlp` all live in `src/lib/discovery/algorithms/` and are picked up by `algorithm-registry.ts`. Cross-algorithm consistency capstone (`src/lib/discovery/__tests__/cross-algorithm-consistency.test.ts`) exercises the lagged set against contemporaneous and lagged chain cohorts, asserts each finds the data-generating adjacencies on its wheelhouse cohort, and confirms every registered algorithm runs on either cohort without throwing.
+- **PCMCI+ (v0.2)** — extends `pcmci-linear` with a contemporaneous PC-stable phase + v-structure detection + Meek-rule propagation. Reuses the lagged PCMCI for `X[t-k] → Y[t]` edges (no duplication). Then:
+  - **Phase 2: contemporaneous PC-stable.** Start from the complete contemporaneous graph; at each conditioning size `condDim = 0..maxCondsDim`, snapshot the skeleton and remove edges `(i, j)` whose partial correlation falls below `contempAlpha` when conditioning on a subset of size `condDim` drawn from `adj[i] \ {j}` OR `adj[j] \ {i}`, plus the union of lagged parents of both endpoints in every test. Records `sep(i, j)` — the separating set that first showed independence.
+  - **Phase 3: v-structure detection.** For each unshielded triple `i — k — j` (i and j not adjacent in the surviving skeleton), orient `i → k ← j` when `k ∉ sep(i, j)`.
+  - **Phase 4: Meek propagation.** Iteratively apply R1 (`a → b — c`, `a, c` not adjacent → `b → c`), R2 (`a → b → c` and `a — c` → `a → c`), R3 (`a — b, a — c, a — d, c → b, d → b`, `c, d` not adjacent → `a → b`). Fixpoint iteration; remaining undirected edges emit with `endpointMarks: {circle, circle}`.
+  - **Honest about remaining limits:** linear/Gaussian CI only (no CMI-knn/GP-DC); the lagged phase doesn't condition on contemporaneous parents, so chain-inflated lagged edges can survive and dilute Phase-2 conditioning sets — doesn't affect skeleton correctness but reduces orientation power on some real-data shapes.
 - Network metrics (eigenvector centrality, betweenness, clustering, density, community structure, spectral stability) computed live in StructuralMetrics from the current `graphData`.
 - **Communities are now real.** Previously the "Communities" zone in `ModulePanel.tsx` was just a relabeling of `node.domain` — a fake "label propagation, 10 iterations" comment masked a one-line domain regroup. As of the modularity-greedy work, `src/lib/community-detection.ts` runs Louvain phase 1 (local-move modularity optimization) on the actual edge topology. The panel now surfaces emergent groupings, the modularity-proxy intra-edge fraction, and badges cross-domain communities (the interesting cases — communities the topology says belong together that the curator-assigned domain partition splits).
 
@@ -536,7 +541,7 @@ The TARSKI session has shipped two live API feeds (EIA Persian Gulf throughput, 
 
 Owns the engine that audits every edge in the causal graph against domain-aware axioms in three tiers: PHYSICAL, REGULATORY, HEURISTIC.
 
-> **Status:** Active. Live API feeds wired into A-02 (production/throughput capacity saturation), A-04 (Hormuz throughput), R-01 / R-02 (sanctions), and R-04 (cross-domain confidence × WGI governance). Live Coverage Program: 8 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, NOAA NHC, Derivations) covering **~56 graph nodes** including the T1D side, EM FX, sovereign default, MENA import dependency, the broader CPI / PCE / wage / sentiment expansion, WGI Rule of Law for the China / Brazil jurisdictions, and NOAA active-tropical-cyclone aggregates per basin. **Real-data-only goal reached: 0 synthetic composites remaining** — all 4 originally synthetic composites are now live-derived from real data. All free-tier; mock fallback when keys/upstream missing.
+> **Status:** Active. Live API feeds wired into A-02 (production/throughput capacity saturation), A-04 (Hormuz throughput), R-01 / R-02 (sanctions), R-03 (storm / sanctions / saturation at downstream chokepoint), and R-04 (cross-domain confidence × WGI governance). Live Coverage Program: 8 providers shipped (EIA, OFAC, FRED, World Bank, OpenFDA, ClinicalTrials.gov, NOAA NHC, Derivations) covering **~56 graph nodes** including the T1D side, EM FX, sovereign default, MENA import dependency, the broader CPI / PCE / wage / sentiment expansion, WGI Rule of Law for the China / Brazil jurisdictions, and NOAA active-tropical-cyclone aggregates per basin. **Real-data-only goal reached: 0 synthetic composites remaining** — all 4 originally synthetic composites are now live-derived from real data. All free-tier; mock fallback when keys/upstream missing.
 >
 > **Stated end-state goal:** every node carries continuously-pulled real data. **No synthetic composites.** 4 composites still synthetic as of this writing — all 4 have a concrete path to real-data backing (see "Real-data-only goal" section below).
 
@@ -546,7 +551,7 @@ Owns the engine that audits every edge in the causal graph against domain-aware 
   - **PHYSICAL** (Level 0) — immutable laws (e.g. A-01 Temporal Priority, A-02 Flow Conservation, A-03 DAG Integrity, A-04 Strait of Hormuz, A-05 Single-Source Fragility, plus the T1D physiological set TA-01..TA-06).
   - **REGULATORY** (Level 1) — sanctions, export controls, treaties, FDA tiers, IRB constraints (R-01..R-04 geopolitical, TR-01..TR-05 T1D).
   - **HEURISTIC** (Level 2) — anomaly flags (H-01, H-02 geopolitical; TH-01..TH-04 T1D).
-- Auto-ranking constraints by relevance to active domains via `scoreAxiomRelevance(graph, activeProfileId)` in `src/lib/tarski-data.ts`.
+- Auto-ranking constraints by relevance via `scoreAxiomRelevance(graph, activeProfileId, selection?)` in `src/lib/tarski-data.ts`. Three additive signal layers: (1) universal-axiom base (0.45) + L0 base (0.15), (2) graph-wide structural features (chokepoints, cross-domain edges, high-Ω nodes, cascade hubs, single-supplier, high-J anywhere; +0.3 per match), (3) **selection-aware boosts** (+0.25 per match with selection-specific reason that overrides the generic one). Selection-aware features: selected chokepoint → A-04/R-03; selected node with cross-domain incident edges → R-04; selected node with high J → R-01/R-02; selected single-source node → A-05; selected node with live production/throughput saturation ≥ 0.9 → A-02 + A-04. Empty selection short-circuits the third layer so callers without selection state get layers 1+2 unchanged.
 - The VERIFY action: toggle axioms, run verification, recolor canvas (violating edges → red), expose clickable proof traces explaining which constraint failed.
 - Constraint catalog and proof-trace logic.
 - Snapshot validator: `src/lib/snapshots/tarski-validator.ts` — adapter that delegates to `runTarskiValidation` (the full 32-axiom library) when given a live graph. The thin 5-axiom path is kept as a `partial` fallback for legacy callers that pass only a snapshot without a live graph.
@@ -1273,13 +1278,117 @@ The pattern: each PR addressed a real bug introduced by the previous. The first 
 
 User feedback after each PR was the unblocker. Listening for "still doing it" / "stretched to a line" / "1D didn't restore" surfaced the trap that wouldn't have shown up in unit tests.
 
+## Shared-Infrastructure Pattern (Phase 16)
+
+Architectural shift from **single conflated nodes** to **canonical facet nodes in a Shared Infrastructure domain**, applied to multi-domain physical infrastructure. Piloted on Strait of Hormuz (PR #440) and Abqaiq Plants (PR #456), cleaned up in PR #461. The pattern is now ready to be applied to the next batch of physical-asset moat targets.
+
+### Why this exists
+
+A chokepoint like the Strait of Hormuz isn't *one* variable — it's a *cluster* of variables, each with its own data source and its own downstream effects:
+
+- **Throughput** — observed flow (mb/d). Live signal from EIA.
+- **Capacity** — physical/structural ceiling. Static, published.
+- **War-risk premium** — disruption probability. No free public source; architectural seat for future Lloyd's / VIX-correlation / naval-activity wiring.
+- (Future facets: tanker AIS density, alternative-route capacity, etc.)
+
+Before Phase 16, all of these were conflated into a single `qf_strait_of_hormuz` / `mn_strait_of_hormuz` node (and similarly `sa_abqaiq_plants`). Three concrete problems:
+
+1. **Pearl intervention semantics were ambiguous.** "Intervene on Hormuz" meant *which variable*? An EIA value collapses to a single `value` field with no way to model "throughput drops by 50% but capacity unchanged."
+2. **Tarski A-04 axiom's `value > capacity` was incoherent.** Both fields belonged to the same conflated node — you can't compare a thing to itself.
+3. **Cross-domain duplication.** Same physical chokepoint was represented twice (QAFCO copy + Ma'aden copy). Bug-prone — any signal had to be replicated.
+
+### The pattern
+
+1. **Add a new domain string** for the shared-infrastructure tier:
+   ```ts
+   domain: "Shared Infrastructure",
+   ```
+   No domain-profile registration needed — `node.domain` is free-form. Domains without explicit profiles render correctly with default behavior.
+
+2. **Replace the single conflated node with N facet nodes**, one per intervenable variable. Use a consistent ID convention:
+   ```ts
+   { id: "si_<concept>_<facet>", label: "<Concept> — <Facet>", ... }
+   ```
+   - `si_` prefix marks shared-infrastructure
+   - `<concept>` is the physical thing (hormuz, abqaiq, ras_laffan, 2africa)
+   - `<facet>` is the intervenable variable (throughput, capacity, war_risk_premium, latency, etc.)
+
+3. **Add intra-facet edges** to express the structural relationships:
+   ```
+   si_X_capacity → si_X_throughput    // capacity bounds throughput
+   si_X_war_risk → si_X_throughput    // elevated risk reduces effective flow
+   ```
+
+4. **Add cross-domain edges** from each facet to the operational nodes it affects. This is where the *new analytical clarity* shows up — channels that were invisible in the single-node design get assigned to the facet they semantically belong to:
+   - Hormuz example: `si_hormuz_war_risk_premium → sc_shipping_cost_index` (risk drives shipping cost independently of realized throughput)
+   - Abqaiq example: `si_abqaiq_war_risk_premium → fc_sovereign_default` (2019 strike triggered measurable +40bp HY OAS spike)
+
+5. **Update the provider matcher** with negative exclusions:
+   ```ts
+   if (l.includes("capacity") || l.includes("war-risk")) return false;
+   return l.includes("<concept-substring>");
+   ```
+   Each facet shares the concept substring (e.g. "Strait of Hormuz") in its label, so the matcher needs explicit guards against routing the throughput signal to capacity or war-risk facets.
+
+### Mechanical migration steps (additive → cleanup pattern)
+
+The Hormuz + Abqaiq pilots split the work into two PRs each — this kept the radius small and made rollback possible at any point.
+
+**Phase A (additive — one PR):**
+1. Add the new facet nodes in a new "Shared Infrastructure" section of graph-data.ts
+2. Add intra-facet edges + cross-domain edges from facets to downstream consumers
+3. Add backward-compat edges from facets → existing legacy nodes so cascade still flows
+4. Update the provider matcher with negative exclusions
+5. Tests + add regression test asserting non-throughput facets aren't matched
+
+**Phase B (cleanup — one PR):**
+1. Re-target all existing edges from legacy node IDs to facet IDs (use Python script for atomicity — sed alone is dangerous because edge IDs encode source/target names)
+2. Delete duplicate edges that result from migration (e.g. when two legacy nodes both pointed at the same target, you'll have a duplicate — keep the higher-weight one)
+3. Delete self-loops that result from migration (the backward-compat edges become self-loops after the legacy node disappears — delete them)
+4. Delete the legacy node definitions
+5. Update geo-coordinates.ts (delete legacy entries, add facet entries at same physical location)
+6. Update event templates in temporal-data.ts + real-timeseries.ts
+7. Update demo-flows.ts highlights (dedupe within arrays — qf + mn both becoming si_hormuz_throughput should collapse to a single entry)
+8. Update athena-graph-data.ts cross-dataset bridges
+9. Update tests
+10. Clean up matcher comments (legacy paths no longer needed)
+
+### Applied examples
+
+| Concept | Legacy node(s) | Facets | PR (additive) | PR (cleanup) |
+|---|---|---|---|---|
+| Strait of Hormuz | `qf_strait_of_hormuz` (QAFCO), `mn_strait_of_hormuz` (Ma'aden) | throughput / capacity / war_risk_premium | #440 | #461 |
+| Abqaiq Plants | `sa_abqaiq_plants` (Saudi Aramco) | throughput / capacity / war_risk_premium | #456 | #461 |
+
+Both were cleaned up in the single #461 sweep — one cleanup PR is much cleaner than two separate ones.
+
+### When to apply the pattern (criteria)
+
+Apply shared-infrastructure decomposition when:
+
+1. **The node has multiple intervenable variables.** The "intervene on X by reducing throughput" question must be answerable independently of "intervene on X by changing capacity" or "intervene on X by changing risk premium." If the answer is the same (or undefined), the concept is a single variable and doesn't need decomposition.
+2. **The node is multi-domain.** Same physical thing referenced from two or more domains. The current workaround is per-domain copies (`qf_X` + `mn_X`); decomposition gives you one canonical node with cross-domain edges.
+3. **Future facets are foreseeable.** If the only variable you can think of is throughput, capacity + war-risk are speculative seats — the pattern is overkill. Add them only when you have a concrete data source or analytical use case for the second facet.
+
+### Likely next targets
+
+- **`qe_ras_laffan_port`** (Qatar LNG hub) — same shape as Hormuz/Abqaiq. Facets: throughput (LNG cargoes/month), capacity (berth + storage), war-risk premium. Currently single-conflated in the QatarEnergy LNG domain.
+- **`ic_2africa`** (undersea cable system) — facets: capacity (Tbps), realized utilization, repair-vessel availability, war-risk premium. Different shape (data-flow rather than commodity-flow) but the same pattern of multiple-intervenable-variables-per-physical-asset applies.
+- **`sa_ras_tanura_terminal`** (Saudi crude export terminal) — same shape as Abqaiq. Facets: throughput, capacity, war-risk premium.
+- **`qf_north_field_gas`** + **`qe_north_field_gas_field`** — currently duplicated across QAFCO and QatarEnergy domains. Decomposition consolidates to one canonical node.
+
+### Coordination with other sessions
+
+- **Tarski session** — A-04 chokepoint axiom currently reads the single conflated node's `value` and `capacity` fields. After Phase 16 cleanup these now refer to nothing (legacy nodes deleted). A coordinated Tarski-session PR is needed to update A-04 to read `si_<concept>_throughput.value > si_<concept>_capacity.value` directly.
+- **UX / Onboarding session** — domain-profiles.ts may eventually want an explicit "Shared Infrastructure" profile entry (for sidebar grouping, persona mapping, etc.). For now, untyped string domains render correctly with default behavior; no UX coordination required for the pilot.
+
 ## Likely upcoming themes
 
 - New domain cards as customer pilots demand them.
 - Real-world coordinate coverage for MAP-view domains.
 - Sanction / export-control axiom expansion (TARSKI co-auth).
 - Time-series coverage for currently sparse nodes.
-- TODO: fill in.
+- Roll out the shared-infrastructure pattern to Ras Laffan, 2Africa, Ras Tanura, North Field.
 
 ## How to start a task
 
@@ -1400,7 +1509,7 @@ Owns the copilot as the **primary linguistic interface to the platform**. Long-t
 src/lib/copilot/
   tool-registry.ts        defineTool / schemas / parsers / coercion / prompt rendering / JSON Schema export
   tools.ts                every built-in tool (~21 of them as of #264)
-  system-prompt.ts        COPILOT_SYSTEM_PROMPT — shared between route + eval (extracted in #302)
+  system-prompt.ts        buildCopilotSystemPrompt(profileId) + COPILOT_SYSTEM_PROMPT — shared between route + eval. Profile-aware: domain-scope clause and example tool-syntax node ids swap on "geopolitical" vs "t1d". Default is "geopolitical" for backwards compat; the named constant equals the geopolitical variant so the eval harness keeps reproducible scores.
   trace-logger.ts         logTurnTrace + hashPrompt + newConversationId + resolveActiveDataset (#310)
   conversation-window.ts  pruneConversation(messages, limit=12) — sliding window (#331)
   analytics.ts            summarize(rows) — pure aggregator (#332)

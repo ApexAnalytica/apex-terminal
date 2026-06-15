@@ -51,15 +51,6 @@ export type DomainContent = {
   };
 };
 
-const PILLAR_FOR_ENGINE = {
-  SPIRTES: "C",
-  TARSKI: "J",
-  PEARL: "I + R",
-  PARETO: "T",
-} as const;
-
-export const ENGINE_PILLAR_LABEL = PILLAR_FOR_ENGINE;
-
 export const DOMAINS: Record<string, DomainContent> = {
   manufacturing: {
     slug: "manufacturing",
@@ -85,7 +76,7 @@ export const DOMAINS: Record<string, DomainContent> = {
       {
         title: "CFO · Multi-Site Manufacturer",
         pain: "Operational risk is footnoted in the 10-K but not modeled. When a node fails, the loss is computed after the fact.",
-        gain: "ΩSF (system fragility) and ΩSX (system exposure) as steady metrics. Tail-depth simulation puts a defensible number on the worst-case scenario, before it happens.",
+        gain: "A live system-fragility index and a time-to-failure runway on the operation's graph. Tail-depth simulation puts a defensible number on the worst-case scenario, before it happens.",
       },
       {
         title: "Reinsurance Underwriter · Industrial Lines",
@@ -95,7 +86,7 @@ export const DOMAINS: Record<string, DomainContent> = {
       {
         title: "Government · Industrial Policy Office",
         pain: "Needs to identify which nodes in the national manufacturing base are decisive — not which are biggest.",
-        gain: "Irreplaceability + Cascade Load ranking on the national graph, configurable per strategic objective.",
+        gain: "Irreplaceability + Cascade Load ranking on the national graph — the decisive-node list, with the cascade evidence behind it.",
       },
     ],
     engines: ["SPIRTES", "PEARL", "PARETO"],
@@ -146,7 +137,7 @@ export const DOMAINS: Record<string, DomainContent> = {
       {
         title: "Government · Critical Infrastructure Protection",
         pain: "Strategic-asset lists rank by size or visibility. The decisive nodes — the ones whose failure cascades — aren't the same set, and aren't ranked anywhere.",
-        gain: "I + C ranking on the national infrastructure graph, configurable per strategic objective (continuity of government, defense logistics, financial settlement).",
+        gain: "I + C ranking on the national infrastructure graph — the decisive nodes for continuity of government, defense logistics, and financial settlement.",
       },
     ],
   },
@@ -172,7 +163,7 @@ export const DOMAINS: Record<string, DomainContent> = {
       {
         title: "Macro Strategist · Multi-Strategy Hedge Fund",
         pain: "GDP and PMI prints lag the cascade by months. The structural fragility shows in the data only after positions have already moved.",
-        gain: "Cascade simulation on trade-flow and sectoral graphs. Leading ΩSF / ΩSX signal before it lands in the prints.",
+        gain: "Cascade simulation on trade-flow and sectoral graphs. A leading system-fragility signal before it lands in the prints.",
       },
       {
         title: "Sovereign Wealth · Risk & Allocation",
@@ -357,7 +348,7 @@ export const DOMAINS: Record<string, DomainContent> = {
       {
         title: "CRO · P&C Insurer",
         pain: "Aggregate exposure is monitored per line of business. The joint event that hits multiple lines at once is rarely sized. When it lands, the loss is computed after the fact and the capital case is reactive.",
-        gain: "Joint-shock simulation across the full book. ΩSF / ΩSX as steady metrics on the portfolio graph. Defensible economic-capital case before the next renewal cycle.",
+        gain: "Joint-shock simulation across the full book. A live fragility index and failure-runway readout on the portfolio graph. Defensible economic-capital case before the next renewal cycle.",
       },
       {
         title: "ILS / Sidecar Manager",

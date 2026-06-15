@@ -26,7 +26,11 @@ import { streamText, convertToModelMessages, type UIMessage, type LanguageModel 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LLMProvider } from "@/lib/llm-providers";
-import { COPILOT_SYSTEM_PROMPT } from "@/lib/copilot/system-prompt";
+import {
+  buildCopilotSystemPrompt,
+  type CopilotProfileId,
+} from "@/lib/copilot/system-prompt";
+import { wrapUntrusted } from "@/lib/security/untrusted-context";
 
 // ─── Provider → model adapter ───────────────────────────────────
 
@@ -65,6 +69,10 @@ interface CopilotRequestBody {
   apiKey?: string;
   model?: string;
   provider?: LLMProvider;
+  /** Active domain profile — drives the profile-specific bits of the
+   *  system prompt (domain-scope clause, example tool params).
+   *  Defaults to "geopolitical" when omitted. */
+  profileId?: CopilotProfileId;
 }
 
 export async function POST(req: NextRequest) {
@@ -112,9 +120,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const baseSystem = buildCopilotSystemPrompt(body.profileId);
+  // systemContext is the serialized graph block — user-controlled data
+  // imported via CSV/XLSX flows through here. wrapUntrusted adds the
+  // <untrusted_graph_data> sentinels the base system prompt's
+  // untrusted-context directive references, so the model knows to
+  // treat the block as DATA, not as instructions. Per-field
+  // sanitization already happened upstream in copilot-context.ts.
   const fullSystem = systemContext
-    ? `${COPILOT_SYSTEM_PROMPT}\n\n--- LIVE GRAPH CONTEXT ---\n${systemContext}`
-    : COPILOT_SYSTEM_PROMPT;
+    ? `${baseSystem}\n\n--- LIVE GRAPH CONTEXT ---\n${wrapUntrusted(systemContext)}`
+    : baseSystem;
 
   try {
     // Convert the chat messages to the SDK's UIMessage shape so

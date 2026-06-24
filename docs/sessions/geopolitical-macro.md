@@ -592,6 +592,16 @@ the fetch through. (Gotcha found in real-runtime validation: header values are
 Latin-1/ByteString, so the `x-feed-error` string must avoid the em-dash that
 the `source` body field uses.)
 
+**✅ ENABLED ON PROD (2026-06-11).** Junaid confirmed the CC-BY-NC license is
+cleared and authorized prod enablement. `OPENSANCTIONS_ENABLED=1` is set on the
+Vercel **manifold** project, **Production scope only** (preview deploys still
+serve the mock). Verified live at
+`manifold.apexanalytica.co/api/feeds/opensanctions/targets` →
+`x-feed-mode: live`, ~70,900 targets across ~203 jurisdictions, Iran ~2,711
+listed. The env var is read at request time, so a plain redeploy picks it up; it
+persisted across the 2026-06-14 #549 build fix and remains live. To revert,
+unset the env var (no code change) — the route falls back to `mock-disabled`.
+
 `check:feeds` is unaffected — like OFAC, this is a single-payload feed and is
 not catalog-registered in the FRED/WB health check.
 

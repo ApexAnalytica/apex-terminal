@@ -46,6 +46,7 @@ import {
   cascadeEdgeActivationOrder,
   edgeFireIntensity,
 } from "@/lib/cascade-edge-activation-order";
+import { getEdgeTypeMeta } from "@/lib/edge-type-registry";
 import { AnimatePresence } from "framer-motion";
 
 type NodeEmphasis = "focus" | "neighbor" | "dim" | "none";
@@ -329,19 +330,13 @@ function EdgeInspector({
   onClose: () => void;
   chiStarInfo?: ChiStarEdgeInfo | null;
 }) {
-  const typeColor =
-    edge.type === "temporal"
-      ? "#ffab00"
-      : edge.type === "confounded"
-        ? "#ff6d00"
-        : "#00e5ff";
-
-  const typeLabel =
-    edge.type === "temporal"
-      ? "TEMPORAL"
-      : edge.type === "confounded"
-        ? "CONFOUNDED"
-        : "DIRECTED";
+  // Color + label resolved from the edge-type registry — the single source
+  // of truth shared with the other surfaces. Before this, the local ternary
+  // only knew temporal/confounded and fell through to DIRECTED/cyan, so a
+  // `flow` edge was mislabelled here (same bug class the registry kills).
+  const typeMeta = getEdgeTypeMeta(edge.type);
+  const typeColor = typeMeta.color;
+  const typeLabel = typeMeta.label;
 
   return (
     <motion.div
@@ -1463,7 +1458,6 @@ function CausalDAG2DInner() {
         const isSelected = selectedEdge?.id === e.id;
         const isTemporal = e.type === "temporal";
         const isConfounded = e.type === "confounded";
-        const isFlow = e.type === "flow";
         // FIRE pulse — peaks at the edge's activation epoch and decays
         // over a 3-epoch window. 0 when the edge never fired in the
         // visible cascade. Severed / ablated suppress separately in
@@ -1474,15 +1468,11 @@ function CausalDAG2DInner() {
             ? edgeFireIntensity(fireActivationEpoch, clampedEpoch)
             : 0;
 
+        // Type color from the shared registry; the verified-inconsistent
+        // override still wins (it's a truth-filter signal, not a type).
         const baseColor = isInconsistent
           ? "#ff1744"
-          : isTemporal
-            ? "#ffab00"
-            : isConfounded
-              ? "#ff6d00"
-              : isFlow
-                ? "#1de9b6"
-                : "#00e5ff";
+          : getEdgeTypeMeta(e.type).color;
         const baseOpacity = isSelected ? 1 : isInconsistent ? 0.6 : 0.7;
         // Power-scale weight to widen the visible width range. Real
         // edge weights cluster between 0.4 and 0.8, so a linear
@@ -1492,7 +1482,7 @@ function CausalDAG2DInner() {
         // as ~3× a thin one even at typical clustering.
         const w = Math.max(0, Math.min(1, e.weight));
         const baseWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
-        const showArrow = e.type === "directed" || isTemporal || isFlow;
+        const showArrow = getEdgeTypeMeta(e.type).arrow;
 
         return {
           id: e.id,

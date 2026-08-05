@@ -3,6 +3,12 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import { getDomainColor } from "@/lib/graph-color";
+import {
+  getEdgeTypeMeta,
+  getAllEdgeTypeMeta,
+  getBuiltinEdgeTypeMeta,
+  type EdgeTypeMeta,
+} from "@/lib/edge-type-registry";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import { DOMAIN_CARDS } from "@/lib/domains";
 import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";
@@ -83,6 +89,17 @@ function EncodingLegend({
       help: "Lies on shortest paths between others. Surfaces chokepoints.",
     },
   ];
+
+  // The four built-in edge-type rows below keep their bespoke swatch shapes
+  // (arrow / dot / dashed gradient) + prose, but pull their HUE from the
+  // shared registry so the legend stays in lockstep with the canvas. Any
+  // DOMAIN-registered (non-built-in) type appends a generic auto-row, so a
+  // new type documents itself with no edit here. Empty by default — nothing
+  // registers a custom type through the closed union yet.
+  const builtinTypeIds = new Set(getBuiltinEdgeTypeMeta().map((m) => m.type));
+  const domainEdgeTypes = getAllEdgeTypeMeta().filter(
+    (m) => !builtinTypeIds.has(m.type)
+  );
 
   return (
     <div
@@ -191,8 +208,8 @@ function EncodingLegend({
           help="Direct cause: A → B. Arrowed."
           swatch={
             <div className="flex items-center gap-0.5">
-              <span className="h-0.5 w-6" style={{ backgroundColor: "#00e5ff" }} />
-              <span className="text-[8px]" style={{ color: "#00e5ff" }}>▶</span>
+              <span className="h-0.5 w-6" style={{ backgroundColor: getEdgeTypeMeta("directed").color }} />
+              <span className="text-[8px]" style={{ color: getEdgeTypeMeta("directed").color }}>▶</span>
             </div>
           }
         />
@@ -201,8 +218,8 @@ function EncodingLegend({
           help="Lag-correlation: A leads B by some delay. Particles flow source → target."
           swatch={
             <div className="flex items-center gap-0.5">
-              <span className="h-0.5 w-6" style={{ backgroundColor: "#ffab00" }} />
-              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: "#ffab00", boxShadow: "0 0 4px #ffab00" }} />
+              <span className="h-0.5 w-6" style={{ backgroundColor: getEdgeTypeMeta("temporal").color }} />
+              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: getEdgeTypeMeta("temporal").color, boxShadow: `0 0 4px ${getEdgeTypeMeta("temporal").color}` }} />
             </div>
           }
         />
@@ -214,8 +231,7 @@ function EncodingLegend({
               <span
                 className="h-0.5 w-7"
                 style={{
-                  backgroundImage:
-                    "linear-gradient(to right, #ff6d00 50%, transparent 50%)",
+                  backgroundImage: `linear-gradient(to right, ${getEdgeTypeMeta("confounded").color} 50%, transparent 50%)`,
                   backgroundSize: "4px 100%",
                 }}
               />
@@ -227,12 +243,24 @@ function EncodingLegend({
           help="Directed transmission of material / capital / signal through the network. Distinct from CAUSAL (a claim of cause) and TEMPORAL (a lag correlation) — flow means stuff is actually moving along this edge."
           swatch={
             <div className="flex items-center gap-0.5">
-              <span className="h-0.5 w-6" style={{ backgroundColor: "#1de9b6" }} />
-              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: "#1de9b6", boxShadow: "0 0 4px #1de9b6" }} />
-              <span className="text-[8px]" style={{ color: "#1de9b6" }}>▶</span>
+              <span className="h-0.5 w-6" style={{ backgroundColor: getEdgeTypeMeta("flow").color }} />
+              <span className="h-1 w-1 rounded-full" style={{ backgroundColor: getEdgeTypeMeta("flow").color, boxShadow: `0 0 4px ${getEdgeTypeMeta("flow").color}` }} />
+              <span className="text-[8px]" style={{ color: getEdgeTypeMeta("flow").color }}>▶</span>
             </div>
           }
         />
+        {/* Domain-registered edge types (none by default — the EdgeType union
+            is closed in this PR) document themselves here with a generic
+            swatch derived from the registry flags. No edit needed when a
+            domain registers a type via `registerEdgeType`. */}
+        {domainEdgeTypes.map((meta) => (
+          <LegendRow
+            key={meta.type}
+            label={meta.label}
+            help={meta.description}
+            swatch={<DomainEdgeSwatch meta={meta} />}
+          />
+        ))}
         <LegendRow
           label="INCONSISTENT (red)"
           help="Tarski filter: edge violates a domain-aware axiom. Only visible when the verified-truth filter is on."
@@ -323,6 +351,39 @@ function LegendRow({
         <div className="text-[8px] tracking-wider text-text-muted">{label}</div>
         <div className="text-[9px] text-foreground leading-snug">{help}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Generic legend swatch for a DOMAIN-registered edge type, derived entirely
+ * from its registry flags (color + dashed). The four built-ins keep their
+ * hand-tuned swatches above; this renders any type a domain adds at runtime
+ * via `registerEdgeType` so it's documented without a UI edit. Mirrors the
+ * dashed-vs-solid distinction the built-in confounded/causal rows draw.
+ */
+function DomainEdgeSwatch({ meta }: { meta: EdgeTypeMeta }) {
+  if (meta.dashed) {
+    return (
+      <div className="flex items-center">
+        <span
+          className="h-0.5 w-7"
+          style={{
+            backgroundImage: `linear-gradient(to right, ${meta.color} 50%, transparent 50%)`,
+            backgroundSize: "4px 100%",
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-0.5">
+      <span className="h-0.5 w-6" style={{ backgroundColor: meta.color }} />
+      {meta.arrow && (
+        <span className="text-[8px]" style={{ color: meta.color }}>
+          ▶
+        </span>
+      )}
     </div>
   );
 }
@@ -515,10 +576,13 @@ export default function DAGOverlay() {
           <div className="flex items-center gap-0.5 rounded border border-border overflow-hidden">
             {(
               [
-                { type: "directed", label: "CAUSAL", color: "#00e5ff" },
-                { type: "temporal", label: "TEMP", color: "#ffab00" },
-                { type: "confounded", label: "CONF", color: "#ff6d00" },
-                { type: "flow", label: "FLOW", color: "#1de9b6" },
+                // Short chip labels stay bespoke (CAUSAL/TEMP/CONF/FLOW —
+                // tighter than the registry's full labels); only the hue is
+                // registry-sourced so the strip tracks the canvas.
+                { type: "directed", label: "CAUSAL", color: getEdgeTypeMeta("directed").color },
+                { type: "temporal", label: "TEMP", color: getEdgeTypeMeta("temporal").color },
+                { type: "confounded", label: "CONF", color: getEdgeTypeMeta("confounded").color },
+                { type: "flow", label: "FLOW", color: getEdgeTypeMeta("flow").color },
               ] as const
             ).map(({ type, label, color }) => {
               // Empty Set === everything visible (back-compat).

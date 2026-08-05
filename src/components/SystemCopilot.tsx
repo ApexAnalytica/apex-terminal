@@ -719,7 +719,8 @@ export default function SystemCopilot() {
         // Awaited because the registry handlers may be async — `solve_interdiction`
         // in particular runs the chunked minimax solver and yields between
         // candidates so the chat UI stays responsive during the solve.
-        const { displayText, actionResults, toolCalls } = await processLlmActionsWithTrace(accumulated);
+        const { displayText, actionResults, toolCalls, failedAttempts } =
+          await processLlmActionsWithTrace(accumulated);
         // Flush final text to the store in one write
         useApexStore.setState((s) => ({
           copilotMessages: s.copilotMessages.map((m) =>
@@ -780,6 +781,16 @@ export default function SystemCopilot() {
             active_module: activeModule,
             selected_node: selectedNode,
             active_shock_count: shocks.length,
+            // Failed action-shaped strings — square brackets, wrong
+            // angle count, or unknown tool names. Empty on clean turns;
+            // when populated, signals either prompt drift (LLM picked
+            // the wrong syntax) or a capability gap (LLM asked for a
+            // tool we don't expose). Lives in client_meta so it
+            // extends the row without a schema migration.
+            client_meta:
+              failedAttempts.length > 0
+                ? { failed_action_attempts: failedAttempts }
+                : undefined,
           };
           // Intentionally not awaited \u2014 logging is best-effort.
           void logTurnTrace(trace);

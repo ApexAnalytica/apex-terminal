@@ -17,11 +17,11 @@ single voice. Run the question through the **five-adviser council**, then synthe
 Convene it **proactively** in any lane; end with a synthesis + the concrete next move. Skip trivial
 mechanical tasks. Full spec: **[docs/AI_ADVISER_COUNCIL.md](docs/AI_ADVISER_COUNCIL.md)**.
 
-## Reading files (measured, 2026-09-23)
+## Reading files
 
-Re-reading a file this session already read cost **588k tokens in 14 days** across Apex sessions — 464 calls, a quarter of all file-read tokens, and that figure EXCLUDES legitimate re-reads after an edit. Worst offenders were large source files (`ModulePanel.tsx`, `MonteCarloForecast.tsx`, `CausalDAG2D.tsx`) and long text dumps read twice end to end.
+Keep file reads cheap; they are the largest tool cost on this repo after shell output.
 
-- **Don't re-read what is already in context.** Re-read only after an edit (yours or another session's), or to get a section you never loaded.
+- **Don't re-read what is already in context.** Re-read only after an edit (yours or another session's), or to get a section you never loaded. Measured 2026-09-23: 44 avoidable re-reads in 14 days, 65k tokens, mostly large memory files read end to end twice.
 - **Find, then read a range.** `grep -n 'symbol' path` to locate, then read with offset/limit. Read a file whole only when you are about to rewrite it.
 - **Never `grep -rn` across the whole vault.** `grep -rl` to find the file, then read the one range. Full rules: `~/Documents/apex-memory/feedback_token_hygiene.md`.
 

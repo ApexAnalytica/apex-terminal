@@ -1,10 +1,20 @@
 import { CausalGraph, CausalNode, CausalEdge } from "./types";
+import { computeSystemFragility } from "./omega-system";
 import type { SystemStateSnapshot } from "./snapshots/types";
 import { diffSnapshots } from "./snapshots/diff";
 import { TarskiValidationReport, AXIOM_LIBRARY } from "./tarski-data";
 import type { TemporalDataset } from "./temporal-data";
 import { getEventsInRange, getNodeStateAt } from "./temporal-data";
-import { DOMAIN_CARDS } from "@/components/DomainSelector";
+import { DOMAIN_CARDS } from "@/lib/domains";
+import { escapeUntrustedString as esc } from "@/lib/security/untrusted-context";
+import {
+  renderEngineStateText,
+  summarizeEngineState,
+} from "./engine-state-summary";
+import { renderToolsForPrompt } from "./copilot/tool-registry";
+// Side-effect import: ensures all built-in tools are registered
+// before we render the prompt section.
+import "./copilot/tools";
 
 interface ContextOptions {
   selectedNode: string | null;
@@ -21,15 +31,21 @@ interface ContextOptions {
 const MAX_ADJACENCY_NODES = 30;
 
 function serializeNode(n: CausalNode): string {
+  // Free-form string fields (label, globalConcentration, replacementTime)
+  // come from user-imported CSV/XLSX. They flow into the LLM system
+  // prompt verbatim, so each one goes through escapeUntrustedString to
+  // neutralize role markers, collapse newline-based escape attempts,
+  // and strip any sentinel tags. n.id / n.domain / n.category are
+  // controlled enum-ish values from internal data layers — left raw.
   return (
-    `${n.label} [${n.id}] — domain:${n.domain} cat:${n.category} ` +
+    `${esc(n.label)} [${n.id}] — domain:${n.domain} cat:${n.category} ` +
     `Ω:${n.omegaFragility.composite.toFixed(1)} ` +
     `(irr:${n.omegaFragility.irreplaceability.toFixed(1)} ` +
     `rest:${n.omegaFragility.restorationLatency.toFixed(1)} ` +
     `jur:${n.omegaFragility.jurisdictionalHazard.toFixed(1)} ` +
     `casc:${n.omegaFragility.cascadeLoad.toFixed(1)} ` +
     `tail:${n.omegaFragility.tailDepth.toFixed(1)}) ` +
-    `conc:"${n.globalConcentration}" repl:"${n.replacementTime}"` +
+    `conc:"${esc(n.globalConcentration)}" repl:"${esc(n.replacementTime)}"` +
     (n.isConfounded ? " [CONFOUNDED]" : "") +
     (n.isRestricted ? " [TARSKI-RESTRICTED]" : "")
   );
@@ -38,10 +54,11 @@ function serializeNode(n: CausalNode): string {
 function serializeEdge(e: CausalEdge, nodes: CausalNode[]): string {
   const src = nodes.find((n) => n.id === e.source);
   const tgt = nodes.find((n) => n.id === e.target);
+  // shortLabel + physicalMechanism are user-imported free text — sanitize.
   return (
-    `${src?.shortLabel ?? e.source} → ${tgt?.shortLabel ?? e.target} ` +
+    `${esc(src?.shortLabel ?? e.source)} → ${esc(tgt?.shortLabel ?? e.target)} ` +
     `[${e.id}] w:${e.weight.toFixed(2)} lag:${e.lag} type:${e.type} ` +
-    `conf:${e.confidence.toFixed(2)} mech:"${e.physicalMechanism}"` +
+    `conf:${e.confidence.toFixed(2)} mech:"${esc(e.physicalMechanism)}"` +
     (e.isInconsistent ? " [INCONSISTENT]" : "") +
     (e.isSevered ? " [SEVERED]" : "")
   );
@@ -53,37 +70,10 @@ export function serializeGraphContext(
 ): string {
   const lines: string[] = [];
 
-  // Available actions
-  lines.push("=== COPILOT ACTIONS ===");
-  lines.push("You can control the graph by emitting action tags in your response.");
-  lines.push("Format: <<<ACTION:type:param>>>");
-  lines.push("Available actions:");
-  lines.push("  select_node:<node_id or label> — Select and highlight a node");
-  lines.push("  set_domains:<id1,id2,...> — Filter network to specific domains (rebuilds graph)");
-  lines.push("  add_shock:<shock_id> — Inject a stress scenario");
-  lines.push("  remove_shock:<shock_id> — Remove an active shock");
-  lines.push("  sever_edge:<edge_id> — Pearl link-break on an edge");
-  lines.push("  reset_severed — Reset all severed edges");
-  lines.push("  set_module:<spirtes|tarski|pearl|pareto> — Switch analysis module");
-  lines.push("  set_view:<2d|3d> — Switch visualization mode");
-  lines.push("  start_replay / stop_replay — Control cascade animation");
-  lines.push("  solve_interdiction:budget=N,mode=edge|node|both — Run greedy minimax solver to find optimal defensive cuts (budget=1-10)");
-  lines.push("  apply_interdiction:all — Apply all recommended interdictions from the last solve");
-  lines.push("  apply_interdiction:1,2 — Apply specific recommendations by index (1-based)");
-  lines.push("");
-  lines.push("INTERDICTION WORKFLOW — CRITICAL: When a user asks about interdiction, optimal cuts, defensive cuts,");
-  lines.push("where to intervene, how to defend, what to sever, minimax, or any variant of 'find/solve/recommend cuts',");
-  lines.push("you MUST emit the solve_interdiction action. Do not just describe — trigger it. Steps:");
-  lines.push("  1. If no shocks are active, first inject one: <<<ACTION:add_shock:SHOCK_ID>>>");
-  lines.push("  2. Emit the solver action on its own line: <<<ACTION:solve_interdiction:budget=3,mode=edge>>>");
-  lines.push("     (the solver auto-switches to the PEARL module and renders the results panel)");
-  lines.push("  3. After the action fires, explain the returned cuts in plain language and their damage reduction");
-  lines.push("  4. Offer to apply: <<<ACTION:apply_interdiction:all>>> or specific indices like <<<ACTION:apply_interdiction:1,2>>>");
-  lines.push("  5. Optionally visualize: <<<ACTION:start_replay>>>");
-  lines.push("EXAMPLE user turn -> expected response:");
-  lines.push("  USER: 'where should we cut to defend against this?'");
-  lines.push("  YOU:  'Running the minimax interdiction solver now. <<<ACTION:solve_interdiction:budget=3,mode=edge>>>'");
-  lines.push("        (then explain results once they come back)");
+  // Available actions — auto-generated from the tool registry. Adding
+  // a new tool means defining it in src/lib/copilot/tools.ts; the
+  // prompt picks it up here automatically.
+  lines.push(renderToolsForPrompt());
   lines.push("");
   lines.push("=== AVAILABLE DOMAINS ===");
   const available = DOMAIN_CARDS.filter((d) => d.hasData);
@@ -94,6 +84,15 @@ export function serializeGraphContext(
   lines.push("SMART FILTERING: When a user describes their role, strategy, or context (e.g., 'I am a CDS trader'),");
   lines.push("determine which domains are most relevant and emit <<<ACTION:set_domains:id1,id2,...>>>.");
   lines.push("Then explain WHY those domains matter for their specific use case and what causal paths to watch.");
+  lines.push("");
+
+  // Engine state snapshot — at-a-glance view of feeds + Tarski + pillar
+  // overlays so the model sees what the engines are doing without
+  // trawling the per-node sections below. Helpful when the user asks
+  // "what's flowing right now" or "what's the validation state."
+  lines.push("=== ENGINE STATE SNAPSHOT ===");
+  const engineState = summarizeEngineState(graph, opts.tarskiReport ?? null);
+  lines.push(renderEngineStateText(engineState));
   lines.push("");
 
   // Graph metadata
@@ -107,6 +106,28 @@ export function serializeGraphContext(
   lines.push(
     `Inconsistent edges: ${graph.metadata.inconsistentEdges} | ` +
       `Restricted nodes: ${graph.metadata.restrictedNodes}`
+  );
+
+  // Tarski axiom catalog — the full set of selectable axiom ids so the
+  // copilot can drive enable_axioms / set_axiom_level. Without this the
+  // model only ever sees axioms that already appear in a violation.
+  lines.push("");
+  lines.push("=== TARSKI AXIOMS (catalog — ids for enable_axioms) ===");
+  for (const ax of AXIOM_LIBRARY) {
+    lines.push(`  ${ax.id} (L${ax.level}) ${ax.name}`);
+  }
+
+  // System-level Ω-Fragility — the network-wide aggregations so the copilot
+  // can answer "how fragile is the whole system?" rather than only quoting
+  // per-node Ω. Mirrors the CD-Ω monitor header (computeSystemFragility).
+  const sys = computeSystemFragility(graph);
+  lines.push("");
+  lines.push("=== SYSTEM FRAGILITY (ΩSF / ΩSX) ===");
+  lines.push(
+    `ΩSF (throughput-weighted): ${sys.omegaSF.toFixed(1)} | ` +
+      `ΩSX (exposure-weighted by concentration): ${sys.omegaSX.toFixed(1)} | ` +
+      `Contagion radius (nodes Ω≥7): ${sys.contagionRadius} | ` +
+      `Buffer horizon: ${sys.bufferHorizon} epochs`
   );
 
   // Selected node detail
@@ -206,7 +227,7 @@ export function serializeGraphContext(
     if (opts.ablatedNodeIds && opts.ablatedNodeIds.length > 0) {
       const ablatedLabels = opts.ablatedNodeIds.map((id) => {
         const node = graph.nodes.find((n) => n.id === id);
-        return node ? `${node.label} [${id}]` : id;
+        return node ? `${esc(node.label)} [${id}]` : id;
       });
       lines.push(`Ablated nodes (${opts.ablatedNodeIds.length}): ${ablatedLabels.join(", ")}`);
     }
@@ -388,7 +409,7 @@ export function serializeTimeWindowContext(
     const delta = endState.omegaComposite - startState.omegaComposite;
     nodeDeltas.push({
       nodeId: node.id,
-      label: node.shortLabel || node.label,
+      label: esc(node.shortLabel || node.label),
       startOmega: startState.omegaComposite,
       endOmega: endState.omegaComposite,
       delta,

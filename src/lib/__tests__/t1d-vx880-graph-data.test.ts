@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { VX880_GRAPH } from "../t1d-vx880-graph-data";
 import { simulateCascade } from "../cascade-simulator";
-import { solveInterdiction } from "../interdiction-engine";
+import { solveInterdiction, solveInterdictionAsync } from "../interdiction-engine";
 import { DOMAIN_MAP } from "@/hooks/useFilteredGraph";
 import type { CausalShock } from "../types";
 
@@ -103,5 +103,81 @@ describe("VX-880 flagship graph", () => {
     expect(result.baselineDamage).toBeGreaterThan(0);
     expect(result.interventions.length).toBeGreaterThan(0);
     expect(result.interventions[0].marginalReduction).toBeGreaterThan(0);
+  });
+
+  it("async solver returns the same interventions as the sync solver", async () => {
+    // The async variant has to be identical to the sync one — same
+    // greedy minimax algorithm, same `simulateCascade` call per
+    // candidate, same `computeDamage` scoring. The only differences are
+    // the periodic yield and the optional progress callback, neither of
+    // which should alter the picked interventions or their damages.
+    // This guard catches accidental divergence on future edits
+    // (re-ordering the inner loop, dropping a budget step, etc.).
+    const shock: CausalShock = {
+      id: "health_shock_async",
+      name: "Autoimmune recurrence flare",
+      severity: 0.6,
+      category: "health",
+      description: "Synthetic health shock",
+    };
+    const sync = solveInterdiction(VX880_GRAPH, [shock], [], 3, "edge");
+    const async = await solveInterdictionAsync(VX880_GRAPH, [shock], [], 3, "edge");
+
+    expect(async.baselineDamage).toBe(sync.baselineDamage);
+    expect(async.bestDamage).toBe(sync.bestDamage);
+    expect(async.reductionPct).toBe(sync.reductionPct);
+    expect(async.interventions.length).toBe(sync.interventions.length);
+    for (let i = 0; i < sync.interventions.length; i++) {
+      expect(async.interventions[i].target.id).toBe(sync.interventions[i].target.id);
+      expect(async.interventions[i].target.type).toBe(sync.interventions[i].target.type);
+      expect(async.interventions[i].damage).toBe(sync.interventions[i].damage);
+      expect(async.interventions[i].marginalReduction).toBe(
+        sync.interventions[i].marginalReduction,
+      );
+    }
+  });
+
+  it("async solver respects AbortSignal", async () => {
+    const shock: CausalShock = {
+      id: "health_shock_abort",
+      name: "Autoimmune recurrence flare",
+      severity: 0.6,
+      category: "health",
+      description: "Synthetic health shock",
+    };
+    const ctrl = new AbortController();
+    // Abort immediately so the solver bails before completing its
+    // first cascade run. This proves the signal is plumbed through;
+    // production callers (InterdictionPanel) rely on it to cancel a
+    // run when the user clicks SOLVE twice in quick succession.
+    ctrl.abort();
+    await expect(
+      solveInterdictionAsync(VX880_GRAPH, [shock], [], 3, "edge", {
+        signal: ctrl.signal,
+      }),
+    ).rejects.toThrow(/abort/i);
+  });
+
+  it("async solver emits progress callbacks", async () => {
+    const shock: CausalShock = {
+      id: "health_shock_progress",
+      name: "Autoimmune recurrence flare",
+      severity: 0.6,
+      category: "health",
+      description: "Synthetic health shock",
+    };
+    // Yield aggressively so we definitely get at least one mid-run
+    // progress callback even on a small graph. yieldEveryMs=0 means
+    // every candidate evaluation gets a yield.
+    const calls: Array<{ done: number; total: number }> = [];
+    await solveInterdictionAsync(VX880_GRAPH, [shock], [], 2, "edge", {
+      yieldEveryMs: 0,
+      onProgress: (done, total) => calls.push({ done, total }),
+    });
+    expect(calls.length).toBeGreaterThan(0);
+    // Monotonically non-decreasing `done` across the run.
+    for (let i = 1; i < calls.length; i++) {
+      expect(calls[i].done).toBeGreaterThanOrEqual(calls[i - 1].done);
+    }
   });
 });

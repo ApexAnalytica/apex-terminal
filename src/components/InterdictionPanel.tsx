@@ -1,15 +1,23 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApexStore } from "@/stores/useApexStore";
 import {
-  solveInterdiction,
+  solveInterdictionAsync,
   InterdictionResult,
 } from "@/lib/interdiction-engine";
 
 type InterdictionMode = "edge" | "node" | "both";
 
-export default function InterdictionPanel() {
+// `embedded` drops the panel's own "CASCADE DEFENSE" header + the
+// minimax subtitle (the redesigned PEARL workspace supplies the title
+// and a plain-language `?`), and removes the top divider since the
+// workspace tab already frames it.
+export default function InterdictionPanel({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const graphData = useApexStore((s) => s.graphData);
   const shocks = useApexStore((s) => s.shocks);
   const severedEdges = useApexStore((s) => s.severedEdges);
@@ -19,17 +27,64 @@ export default function InterdictionPanel() {
   const [mode, setMode] = useState<InterdictionMode>("edge");
   const [result, setResult] = useState<InterdictionResult | null>(null);
   const [computing, setComputing] = useState(false);
+  // Progress in [0, 1] — drives the percentage shown on the SOLVE
+  // button while the async solver yields between candidate evaluations.
+  // Null when no run is in flight.
+  const [progress, setProgress] = useState<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const canRun = shocks.length > 0;
 
-  const runInterdiction = useCallback(() => {
+  // Cancel any in-flight solve on unmount so a long Hormuz run doesn't
+  // keep emitting progress callbacks after the user has navigated away.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const runInterdiction = useCallback(async () => {
+    // Cancel any previous run before starting a new one — clicking
+    // SOLVE twice in quick succession should switch to the new params,
+    // not stack two solvers fighting over `setResult`.
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     setComputing(true);
-    // Defer to next frame so UI updates with "computing" state
-    requestAnimationFrame(() => {
-      const r = solveInterdiction(graphData, shocks, severedEdges, budget, mode);
-      setResult(r);
-      setComputing(false);
-    });
+    setProgress(0);
+    try {
+      const r = await solveInterdictionAsync(
+        graphData,
+        shocks,
+        severedEdges,
+        budget,
+        mode,
+        {
+          signal: ctrl.signal,
+          onProgress: (done, total) => {
+            if (ctrl.signal.aborted) return;
+            setProgress(total > 0 ? Math.min(1, done / total) : null);
+          },
+        },
+      );
+      if (!ctrl.signal.aborted) {
+        setResult(r);
+      }
+    } catch (e) {
+      // Abort is the expected "user clicked SOLVE again" path; any
+      // other error means the solver itself blew up — keep the prior
+      // result on screen and surface to the console rather than
+      // wedging the UI on a partial state.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        console.error("[InterdictionPanel] solver failed:", e);
+      }
+    } finally {
+      if (!ctrl.signal.aborted) {
+        setComputing(false);
+        setProgress(null);
+      }
+    }
   }, [graphData, shocks, severedEdges, budget, mode]);
 
   const applyIntervention = useCallback(
@@ -40,18 +95,29 @@ export default function InterdictionPanel() {
   );
 
   return (
-    <div className="space-y-2 pt-3 border-t border-border">
-      <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
-        CASCADE DEFENSE
-      </div>
-      <div className="text-[8px] font-mono text-text-muted">
-        Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
-      </div>
+    <div className={embedded ? "space-y-2" : "space-y-2 pt-3 border-t border-border"}>
+      {!embedded && (
+        <>
+          <div className="font-[family-name:var(--font-michroma)] text-[10px] tracking-wider text-accent-amber">
+            CASCADE DEFENSE
+          </div>
+          <div className="text-[8px] font-mono text-text-muted">
+            Minimax optimization — find optimal defensive cuts to minimize worst-case cascade damage
+          </div>
+        </>
+      )}
 
-      {/* Controls */}
-      <div className="flex items-center gap-2">
+      {/* Controls — wrap so the BUDGET + MODE pills never overflow the
+          fixed 320px PEARL panel (founder live-test: "budget buttons
+          extend out beyond the actual window"). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-1">
-          <span className="text-[8px] font-mono text-text-muted">BUDGET:</span>
+          <span
+            className="text-[8px] font-mono text-text-muted"
+            title="Maximum number of cuts the solver may apply (1–5; it skips 4 by design)"
+          >
+            BUDGET:
+          </span>
           {[1, 2, 3, 5].map((b) => (
             <button
               key={b}
@@ -66,7 +132,7 @@ export default function InterdictionPanel() {
             </button>
           ))}
         </div>
-        <div className="h-4 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-4 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
         <div className="flex items-center gap-1">
           <span className="text-[8px] font-mono text-text-muted">MODE:</span>
           {(["edge", "node", "both"] as InterdictionMode[]).map((m) => (
@@ -96,12 +162,18 @@ export default function InterdictionPanel() {
           background: computing ? "rgba(255, 171, 0, 0.15)" : "rgba(255, 171, 0, 0.05)",
         }}
       >
-        {computing ? "COMPUTING MINIMAX..." : "SOLVE CASCADE DEFENSE"}
+        {computing
+          ? progress !== null
+            ? `COMPUTING MINIMAX… ${Math.round(progress * 100)}%`
+            : "COMPUTING MINIMAX…"
+          : "SOLVE CASCADE DEFENSE"}
       </button>
 
       {!canRun && (
         <div className="text-[8px] font-mono text-text-muted italic">
-          Inject shock scenarios above first, then solve for optimal defenses
+          {embedded
+            ? "Add a shock (via Describe) first, then solve for optimal defenses"
+            : "Inject shock scenarios above first, then solve for optimal defenses"}
         </div>
       )}
 

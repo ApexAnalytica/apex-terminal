@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import {
@@ -10,11 +10,22 @@ import {
   streamLlmQuery,
   CopilotAction,
 } from "@/lib/copilot-engine";
-import { processLlmActions, stripActions } from "@/lib/copilot-actions";
+import { processLlmActionsWithTrace, stripActions } from "@/lib/copilot-actions";
+import { echoOverlapRatio } from "@/lib/copilot/echo-detection";
+import {
+  logTurnTrace,
+  hashPrompt,
+  newConversationId,
+  resolveActiveDataset,
+  type TurnTrace,
+} from "@/lib/copilot/trace-logger";
+import { pruneConversation } from "@/lib/copilot/conversation-window";
+import { DOMAIN_CARDS } from "@/lib/domains";
 import { CopilotMessage } from "@/lib/types";
 import { getModelsForProvider, type LLMProvider } from "@/lib/llm-providers";
 import { serializeGraphContext, serializeSnapshotContext, serializeTimeWindowContext } from "@/lib/copilot-context";
 import { buildSnapshot } from "@/lib/snapshots/serializer";
+import CopilotTraceHistory from "@/components/CopilotTraceHistory";
 
 const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "DISCOVER STRUCTURE", action: "DISCOVER_STRUCTURE", color: "var(--accent-cyan)" },
@@ -22,7 +33,12 @@ const ACTIONS: { label: string; action: CopilotAction; color: string }[] = [
   { label: "VERIFY LOGIC", action: "VERIFY_LOGIC", color: "var(--accent-amber)" },
 ];
 
-// Copilot is locked to Gemini; Claude is used exclusively for compute.
+// Copilot DEFAULTS to Gemini (set in useApexStore: llmProvider = "gemini").
+// The picker in settings can flip to Anthropic or local Ollama; that's a
+// per-user opt-in and does not change the on-load default. See the
+// "Defaults & invariants" section in docs/sessions/copilot.md.
+// Claude is also the heavy-reasoning compute path (separate from copilot
+// chat) — that split stays.
 
 function getRoleColor(role: CopilotMessage["role"]): string {
   switch (role) {
@@ -37,6 +53,25 @@ function getRoleLabel(role: CopilotMessage["role"]): string {
     case "system": return "SYS";
     case "user": return "YOU";
     case "assistant": return "APEX";
+  }
+}
+
+// ─── Voice-mode diagnostic logger ──────────────────────────────
+// Voice mode has lots of moving parts (Web Speech API quirks,
+// Chrome's flaky speechSynthesis.onend, recognition cooldown
+// timing, etc). When something breaks in production it's nearly
+// impossible to diagnose without a trace of state transitions.
+//
+// Opt-in via `localStorage.APEX_VOICE_DEBUG = '1'`. No-op when
+// disabled so we don't ship perma-console-noise. Caller can paste
+// the resulting trace into a bug report.
+function voiceLog(event: string, detail?: Record<string, unknown>): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage?.getItem("APEX_VOICE_DEBUG") !== "1") return;
+    console.log(`[voice] ${event}`, detail ?? "");
+  } catch {
+    // localStorage may throw in sandboxed contexts — swallow.
   }
 }
 
@@ -63,6 +98,7 @@ export default function SystemCopilot() {
   const geminiModel = useApexStore((s) => s.geminiModel);
   const ollamaUrl = useApexStore((s) => s.ollamaUrl);
   const ollamaModel = useApexStore((s) => s.ollamaModel);
+  const preferredVoiceName = useApexStore((s) => s.preferredVoiceName);
   const isLlmStreaming = useApexStore((s) => s.isLlmStreaming);
   const setLlmProvider = useApexStore((s) => s.setLlmProvider);
   const setClaudeApiKey = useApexStore((s) => s.setClaudeApiKey);
@@ -83,10 +119,22 @@ export default function SystemCopilot() {
   const currentEpoch = useApexStore((s) => s.currentEpoch);
   const tarskiReport = useApexStore((s) => s.tarskiReport);
 
-  // Copilot provider: Gemini or Ollama; Claude is for compute only
-  const copilotProvider: LLMProvider = llmProvider === "ollama" ? "ollama" : "gemini";
-  const copilotApiKey = copilotProvider === "ollama" ? "ollama-local" : geminiApiKey;
-  const copilotModel = copilotProvider === "ollama" ? ollamaModel : geminiModel;
+  // Copilot provider — flows through from llmProvider (default "gemini",
+  // see store). Picker in settings lets the user opt into Anthropic or
+  // Ollama; default-on-load stays Gemini per the invariant.
+  const copilotProvider: LLMProvider = llmProvider;
+  const copilotApiKey =
+    copilotProvider === "ollama"
+      ? "ollama-local"
+      : copilotProvider === "anthropic"
+        ? claudeApiKey
+        : geminiApiKey;
+  const copilotModel =
+    copilotProvider === "ollama"
+      ? ollamaModel
+      : copilotProvider === "anthropic"
+        ? claudeModel
+        : geminiModel;
   const copilotModelOptions = getModelsForProvider(copilotProvider);
 
   // Claude compute key/model
@@ -94,11 +142,58 @@ export default function SystemCopilot() {
   const computeModel = claudeModel;
 
   const [input, setInput] = useState("");
+  // ─── Node-name autocomplete state ────────────────────────────
+  // As the user types, we look at the current "word" (text from the last
+  // whitespace before the cursor up to the cursor) and surface matching
+  // graph node labels in a dropdown above the input. Tab / Enter / click
+  // inserts; Esc dismisses until the next keystroke; arrow keys navigate.
+  const [mention, setMention] = useState<{
+    active: boolean;
+    /** Lowercase query used to filter nodes. */
+    query: string;
+    /** Index in `input` where the current word starts (used to splice the
+     *  selected label back in). */
+    wordStart: number;
+    /** Length of the current word (before insertion replaces it). */
+    wordLen: number;
+    /** Highlighted suggestion in the dropdown. */
+    selectedIdx: number;
+  }>({ active: false, query: "", wordStart: 0, wordLen: 0, selectedIdx: 0 });
+  const inputRef = useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDatasets, setShowDatasets] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [contextBadge, setContextBadge] = useState<string | null>(null);
-  const [isListening, setIsListening] = useState(false);
+  // Number of older turns dropped from the prompt window on the
+  // most recent send. Drives a small hint in the chat input area
+  // so the user knows we're not sending the full history.
+  const [truncatedTurns, setTruncatedTurns] = useState<number>(0);
+  // (Old isListening state removed — voiceStage covers it now.)
   const [ttsEnabled, setTtsEnabled] = useState(false);
+  // ─── Voice conversation mode ──────────────────────────────
+  // When `voiceMode` is true, the chat runs hands-free:
+  //   listening → processing → speaking → listening (auto-loop)
+  // Stage drives the visual indicator and the auto-restart wiring
+  // around speech recognition + TTS.
+  const [voiceMode, setVoiceMode] = useState(false);
+  type VoiceStage = "idle" | "listening" | "processing" | "speaking";
+  const [voiceStage, setVoiceStage] = useState<VoiceStage>("idle");
+  // Surfaced near the input when set. Cleared on next successful
+  // recognition.onstart. Distinct from voiceStage because "error"
+  // is orthogonal — you can be in 'listening' with a stale error
+  // from a previous retry.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // Refs the speech handlers read to avoid stale closures.
+  const voiceModeRef = useRef(false);
+  const voiceStageRef = useRef<VoiceStage>("idle");
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
+  useEffect(() => { voiceStageRef.current = voiceStage; }, [voiceStage]);
+  // Timestamp of the last voiceStage transition — drives the
+  // stuck-state watchdog that force-closes the loop if a stage
+  // hangs too long (Chrome onend bug, recognition silently dying,
+  // etc).
+  const voiceStageEnteredAtRef = useRef<number>(Date.now());
+  useEffect(() => { voiceStageEnteredAtRef.current = Date.now(); }, [voiceStage]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const datasetPanelRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<string | null>(null);
@@ -111,9 +206,69 @@ export default function SystemCopilot() {
   const badgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastSpokenMsgRef = useRef<string | null>(null);
+  // Voice-mode TTS callback restarts listening — needs a ref so we
+  // don't have to thread startListening through useEffect deps.
+  const startListeningRef = useRef<(() => void) | null>(null);
+  // ─── Singleton-recognition machinery ────────────────────────
+  // Web Speech API in Chrome misbehaves badly when multiple
+  // recognitions race: silent audio-acquisition failure, cascading
+  // start/onend storms when backgrounded timers all fire at once,
+  // etc. Three guards keep exactly one recognition alive at a time:
+  //
+  //  - recognitionGenerationRef: incremented on each start. Every
+  //    event handler captures its generation and no-ops if a
+  //    newer recognition has taken over.
+  //  - lastStartAtRef: enforces a 300ms cooldown between starts,
+  //    so a flood of queued setTimeouts collapses to one start.
+  //  - restartScheduledRef: when onend/closeVoiceLoop want to
+  //    restart, they set this flag. Any further restart attempts
+  //    while the flag is set are skipped, then the flag clears
+  //    when the scheduled restart runs.
+  const recognitionGenerationRef = useRef(0);
+  const lastStartAtRef = useRef(0);
+  const restartScheduledRef = useRef(false);
+  // Tracks whether the active (current-generation) recognition is
+  // alive. Used by closeVoiceLoop after barge-in: if the mic is
+  // already listening (because we kept it alive during TTS), we
+  // don't spin up another recognition that would clobber it.
+  const recognitionAliveRef = useRef(false);
+  // Last AI-spoken content — used for the barge-in feedback
+  // heuristic. If the mic picks up something that's entirely
+  // contained in the recent AI utterance, treat it as TTS echo
+  // and ignore. Imperfect but cheap, and the alternative (no
+  // barge-in) is worse for the user.
+  const lastSpokenContentRef = useRef<string>("");
+  // Timestamp (ms epoch) of the most recent TTS end, used by the
+  // submit-time echo guard. When the mic captures audio shortly
+  // after TTS finishes, that audio is often the speaker tail
+  // bleeding back into the mic — even after voiceStage has flipped
+  // from "speaking" to "listening". A submit-time substring check
+  // within this window catches it.
+  const ttsEndedAtRef = useRef<number>(0);
+  const TTS_ECHO_GUARD_MS = 5000;
+  // Echo detection thresholds. Token-overlap > 0.85 always
+  // suppresses; > 0.6 suppresses only within the time window.
+  // Real user replies typically share <40% of words with the
+  // recent AI message; pure echo shares ~all of them.
+  const ECHO_OVERLAP_STRONG = 0.85;
+  const ECHO_OVERLAP_TIMED = 0.6;
+  // Conversation identity for trace logging. Stable across the
+  // session; resets when the chat is cleared. turn_index is a
+  // monotonically increasing counter so we can replay traces in
+  // order. Lazily initialized so SSR doesn't call crypto.randomUUID.
+  const conversationIdRef = useRef<string | null>(null);
+  const turnIndexRef = useRef<number>(0);
+  if (conversationIdRef.current === null && typeof window !== "undefined") {
+    conversationIdRef.current = newConversationId();
+  }
 
-  // Gemini is always active — server-side env var provides the key if client doesn't
-  const isLlmActive = copilotProvider === "ollama" || copilotProvider === "gemini" || copilotApiKey.length > 0;
+  // Gemini is always active — server-side env var provides the key if the
+  // client doesn't have one. Ollama needs no key. Anthropic must have a
+  // user-provided key (no server-side fallback today).
+  const isLlmActive =
+    copilotProvider === "ollama" ||
+    copilotProvider === "gemini" ||
+    copilotApiKey.length > 0;
   const isComputeAvailable = computeApiKey.length > 0;
 
   // Stable refs for event handlers to avoid stale closures in CustomEvent listeners
@@ -145,8 +300,11 @@ export default function SystemCopilot() {
   }, []);
 
   // ─── Voice Output (Text-to-Speech) ─────────────────────
-  const speakText = useCallback((text: string) => {
-    if (!ttsEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+  const speakText = useCallback((text: string, onFinish?: () => void) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onFinish?.();
+      return;
+    }
     window.speechSynthesis.cancel();
 
     const clean = text
@@ -156,34 +314,184 @@ export default function SystemCopilot() {
       .replace(/\n/g, ", ")
       .trim();
 
-    if (!clean) return;
+    if (!clean) {
+      onFinish?.();
+      return;
+    }
 
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.rate = 0.95;
-    utterance.pitch = 0.85;
+    utterance.pitch = 1.05;
     utterance.volume = 1;
 
     const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(
-      (v) => v.name.includes("Daniel") || v.name.includes("Google UK English Male") || v.name.includes("Alex")
-    ) ?? voices.find((v) => v.lang.startsWith("en") && v.name.toLowerCase().includes("male"))
-      ?? voices.find((v) => v.lang.startsWith("en"));
+    const nameMatches = (v: SpeechSynthesisVoice, ...needles: string[]) =>
+      needles.some((n) => v.name.includes(n));
+    const isFemaleName = (v: SpeechSynthesisVoice) =>
+      v.name.toLowerCase().includes("female") ||
+      nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie", "Fiona", "Tessa", "Karen", "Moira", "Samantha", "Allison", "Ava");
+
+    // Override path: if the copilot's set_voice tool has stashed a
+    // preferred name, try that first (case-insensitive substring
+    // match on voice.name). Falls through to the British-female
+    // chain if no match — better to keep talking in some voice
+    // than to silently fail.
+    const override = preferredVoiceName?.trim().toLowerCase();
+    const overrideMatch = override
+      ? voices.find((v) => v.name.toLowerCase().includes(override))
+      : undefined;
+
+    const preferred =
+      overrideMatch ??
+      // First: named en-GB female voices.
+      voices.find((v) => v.lang === "en-GB" && nameMatches(v, "Kate", "Serena", "Susan", "Hazel", "Stephanie")) ??
+      // Then: any en-GB voice tagged female (Google's "Google UK English Female", Microsoft "Hazel").
+      voices.find((v) => v.lang === "en-GB" && isFemaleName(v)) ??
+      voices.find((v) => v.name.includes("Google UK English Female")) ??
+      // Then: any en-GB voice.
+      voices.find((v) => v.lang === "en-GB") ??
+      // Then: any English female.
+      voices.find((v) => v.lang.startsWith("en") && isFemaleName(v)) ??
+      // Then: any English.
+      voices.find((v) => v.lang.startsWith("en"));
     if (preferred) utterance.voice = preferred;
 
-    window.speechSynthesis.speak(utterance);
-  }, [ttsEnabled]);
+    // Hooks: onend fires when the utterance finishes OR is cancelled.
+    // Voice-mode uses onFinish to auto-restart listening.
+    utterance.onend = () => onFinish?.();
+    utterance.onerror = () => onFinish?.();
 
-  // Auto-speak assistant responses when TTS is enabled
+    window.speechSynthesis.speak(utterance);
+  }, [preferredVoiceName]);
+
+  // Auto-speak assistant responses when TTS or voiceMode is on.
+  // In voiceMode, the onFinish hook auto-restarts listening so the
+  // chat loops listening → processing → speaking → listening.
   useEffect(() => {
-    if (!ttsEnabled) return;
-    const lastMsg = copilotMessages[copilotMessages.length - 1];
-    if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.content) return;
-    if (lastMsg.id === lastSpokenMsgRef.current) return;
+    if (!ttsEnabled && !voiceMode) return;
+
+    // Find the MOST RECENT assistant message — not necessarily the
+    // last message overall. After a turn fires actions, the runtime
+    // appends a "SYS: ACTIONS EXECUTED: ..." message. If we keyed off
+    // the absolute last message, the role check would fail and the
+    // effect would bail, leaving voice mode stuck on "processing".
+    let lastAssistant: CopilotMessage | undefined;
+    for (let i = copilotMessages.length - 1; i >= 0; i--) {
+      if (copilotMessages[i].role === "assistant") {
+        lastAssistant = copilotMessages[i];
+        break;
+      }
+    }
+    if (!lastAssistant) return;
+    if (lastAssistant.id === lastSpokenMsgRef.current) return;
     if (isLlmStreaming) return;
 
-    lastSpokenMsgRef.current = lastMsg.id;
-    speakText(lastMsg.content);
-  }, [copilotMessages, ttsEnabled, isLlmStreaming, speakText]);
+    lastSpokenMsgRef.current = lastAssistant.id;
+
+    // Voice-mode loop closer: flips state back to listening and
+    // restarts speech recognition. Used both after TTS finishes
+    // AND when there's no text to speak (empty assistant message
+    // — possible if the LLM emitted only actions with no prose).
+    //
+    // Idempotent: the fallback timeout below and utterance.onend
+    // can both fire (browser-dependent). First one wins.
+    let closed = false;
+    const closeVoiceLoop = (reason: string) => {
+      if (closed) {
+        voiceLog("closeVoiceLoop skipped (already closed)", { reason });
+        return;
+      }
+      closed = true;
+      // Stamp the TTS-end time so the submit-time echo guard can
+      // suppress speaker-tail audio that lands during the next few
+      // hundred ms while the mic flips back to "listening".
+      ttsEndedAtRef.current = Date.now();
+      voiceLog("closeVoiceLoop", {
+        reason,
+        voiceModeRef: voiceModeRef.current,
+        recognitionAlive: recognitionAliveRef.current,
+      });
+      if (voiceModeRef.current) {
+        setVoiceStage("listening");
+        // If the mic is still alive (barge-in mic stayed up
+        // through TTS), don't spin up another recognition — that
+        // would clobber the live one. The state transition above
+        // is enough; onresult / onend on the existing recognition
+        // will continue handling things.
+        if (recognitionAliveRef.current) {
+          voiceLog("closeVoiceLoop: mic already alive, skipping start");
+          return;
+        }
+        setTimeout(() => {
+          voiceLog("closeVoiceLoop scheduled startListening", { voiceModeRef: voiceModeRef.current });
+          if (voiceModeRef.current && !recognitionAliveRef.current) {
+            startListeningRef.current?.();
+          }
+        }, 50);
+      } else {
+        setVoiceStage("idle");
+      }
+    };
+
+    if (voiceMode) {
+      voiceLog("auto-speak effect — voice mode on", {
+        assistantId: lastAssistant.id,
+        contentLen: lastAssistant.content?.length ?? 0,
+      });
+      if (!lastAssistant.content) {
+        // Nothing to speak — bypass TTS and restart listening so
+        // the loop doesn't deadlock on actions-only turns.
+        closeVoiceLoop("empty-content");
+        return;
+      }
+      // ─── Barge-in setup ───────────────────────────────────────
+      // Track what the AI is about to say so the recognition's
+      // onresult can suppress feedback (mic hearing the AI's own
+      // voice from speakers). Then ensure a recognition is alive
+      // during TTS so a real user voice can cut it off. We
+      // explicitly do NOT stop the existing recognition here —
+      // it should stay listening across the speaking stage.
+      lastSpokenContentRef.current = lastAssistant.content;
+      setVoiceStage("speaking");
+      speakText(lastAssistant.content, () => closeVoiceLoop("onend"));
+
+      // If no recognition is currently alive (e.g. it died at the
+      // tail of the previous user utterance and we're entering
+      // "speaking" before a restart could schedule), kick one off
+      // after a short delay. The delay lets Chrome's audio pipeline
+      // engage echo cancellation against the TTS we just started.
+      if (!recognitionAliveRef.current) {
+        setTimeout(() => {
+          if (
+            voiceModeRef.current &&
+            voiceStageRef.current === "speaking" &&
+            !recognitionAliveRef.current
+          ) {
+            voiceLog("starting barge-in mic during TTS");
+            startListeningRef.current?.();
+          }
+        }, 250);
+      }
+
+      // ─── Chrome onend fallback ────────────────────────────
+      // speechSynthesis.onend is well-known to be flaky in
+      // Chrome — for utterances over ~15s it often never fires,
+      // which deadlocks voice mode on "speaking" forever. The
+      // fix: estimate TTS duration from word count and schedule
+      // a fallback close. Whichever fires first wins (closed
+      // flag dedups).
+      //
+      // ~140 wpm at our rate=0.95 + 2.5s ceiling buffer. The
+      // closeVoiceLoop is idempotent so if real onend fires
+      // first it just no-ops.
+      const wordCount = lastAssistant.content.split(/\s+/).filter(Boolean).length;
+      const estimatedMs = Math.max(3000, (wordCount / 140) * 60_000 * 1.15 + 2500);
+      voiceLog("scheduled onend fallback", { wordCount, estimatedMs });
+      setTimeout(() => closeVoiceLoop("fallback-timeout"), estimatedMs);
+    } else if (lastAssistant.content) {
+      speakText(lastAssistant.content);
+    }
+  }, [copilotMessages, ttsEnabled, voiceMode, isLlmStreaming, speakText]);
 
   // Load voices (some browsers load them async)
   useEffect(() => {
@@ -334,11 +642,16 @@ export default function SystemCopilot() {
       });
 
       try {
-        // Build messages list including the new user message
-        const allMessages = [
+        // Build messages list including the new user message, then
+        // prune to a sliding window. Older turns drop out so prompts
+        // stay lean as conversations grow. droppedCount drives the
+        // small UI hint below the chat input.
+        const fullHistory = [
           ...copilotMessages.filter((m) => m.role !== "system"),
           { id: "temp", role: "user" as const, content: userContent, timestamp: Date.now() },
         ];
+        const { kept: allMessages, droppedCount } = pruneConversation(fullHistory);
+        setTruncatedTurns(droppedCount);
 
         // Enrich system context with snapshot data if available
         let snapshotContext = snapshotHistory.length > 0
@@ -351,6 +664,19 @@ export default function SystemCopilot() {
         if (timelineSel && tempData) {
           snapshotContext += serializeTimeWindowContext(timelineSel, tempData, graphData);
         }
+
+        // Profile derivation — same `t1d-` prefix check ModulePanel /
+        // DiscoveryRunsPanel / ScenarioInput use to avoid pulling the
+        // 480-LOC domain-profiles module into the critical-path bundle.
+        // Pulled via getState so a domain switch mid-conversation is
+        // picked up on the next send without re-render coupling.
+        const activeDomains =
+          useApexStore.getState().selectedDomains;
+        const profileId: "geopolitical" | "t1d" = activeDomains.some(
+          (id) => id.startsWith("t1d-"),
+        )
+          ? "t1d"
+          : "geopolitical";
 
         const stream = await streamLlmQuery({
           copilotMessages: allMessages,
@@ -369,6 +695,7 @@ export default function SystemCopilot() {
           snapshotContext,
           tarskiReport,
           ollamaUrl: copilotProvider === "ollama" ? ollamaUrl : undefined,
+          profileId,
         });
 
         const reader = stream.getReader();
@@ -388,8 +715,11 @@ export default function SystemCopilot() {
           setStreamingDisplayText(displayTextStreaming);
         }
 
-        // After streaming completes, execute any actions from the full response
-        const { displayText, actionResults } = processLlmActions(accumulated);
+        // After streaming completes, execute any actions from the full response.
+        // Awaited because the registry handlers may be async — `solve_interdiction`
+        // in particular runs the chunked minimax solver and yields between
+        // candidates so the chat UI stays responsive during the solve.
+        const { displayText, actionResults, toolCalls } = await processLlmActionsWithTrace(accumulated);
         // Flush final text to the store in one write
         useApexStore.setState((s) => ({
           copilotMessages: s.copilotMessages.map((m) =>
@@ -408,6 +738,54 @@ export default function SystemCopilot() {
             content: `ACTIONS EXECUTED:\n${actionSummary}`,
             timestamp: Date.now(),
           });
+        }
+
+        // \u2500\u2500\u2500 Trace logging (PR2) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Fire-and-forget POST to /api/copilot/trace. We hash the
+        // system prompt instead of storing the full text \u2014 too large
+        // to log every turn. Logging never awaits and never blocks
+        // the chat; failures land in console.warn only.
+        try {
+          const conversationId = conversationIdRef.current ?? newConversationId();
+          conversationIdRef.current = conversationId;
+          const turnIndex = turnIndexRef.current++;
+          const systemPromptText = serializeGraphContext(graphData, {
+            selectedNode,
+            severedEdges,
+            shocks,
+            interventionMode,
+            interventionTarget,
+            ablationMode,
+            ablatedNodeIds,
+            ablatedEdgeIds,
+            tarskiReport,
+          }) + (snapshotContext ? "\n\n" + snapshotContext : "");
+          const trace: TurnTrace = {
+            conversation_id: conversationId,
+            turn_index: turnIndex,
+            user_message: userContent,
+            assistant_message: accumulated,
+            display_text: displayText,
+            tool_calls: toolCalls,
+            model_provider: copilotProvider,
+            model_id: copilotModel,
+            system_prompt_hash: hashPrompt(systemPromptText),
+            system_prompt_size: systemPromptText.length,
+            // Resolved from selectedDomains via the domain catalog.
+            // Null when no domains selected (pre-onboarding).
+            dataset: resolveActiveDataset(
+              useApexStore.getState().selectedDomains,
+              DOMAIN_CARDS,
+            ),
+            active_module: activeModule,
+            selected_node: selectedNode,
+            active_shock_count: shocks.length,
+          };
+          // Intentionally not awaited \u2014 logging is best-effort.
+          void logTurnTrace(trace);
+        } catch (logErr) {
+          // Never let trace prep errors leak into the chat.
+          console.warn("[copilot-trace] prep failed:", logErr);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "LLM request failed";
@@ -441,6 +819,8 @@ export default function SystemCopilot() {
       ablationMode,
       ablatedNodeIds,
       ablatedEdgeIds,
+      activeModule,
+      tarskiReport,
       addCopilotMessage,
       setIsLlmStreaming,
     ]
@@ -482,24 +862,182 @@ export default function SystemCopilot() {
       return;
     }
 
+    // ─── Cooldown ─────────────────────────────────────────────
+    // If a flood of queued setTimeouts all fire after a tab
+    // un-throttles (background → foreground), every one of them
+    // calls startListening. The cooldown collapses that storm
+    // into a single start.
+    const now = Date.now();
+    const sinceLastStart = now - lastStartAtRef.current;
+    if (sinceLastStart < 300) {
+      voiceLog("startListening cooldown — skipping", { sinceLastStart });
+      return;
+    }
+    lastStartAtRef.current = now;
+
+    // ─── Singleton: invalidate any previous recognition ──────
+    // Bump the generation token first so any in-flight handlers
+    // from older recognitions become no-ops on their next event.
+    // Then stop the old one cleanly. The old onend will fire but
+    // will skip the restart branch because of the gen check.
+    const myGen = ++recognitionGenerationRef.current;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore — recognition may already be finished
+      }
+    }
+
+    // NOTE: previously cancelled TTS here on the assumption that
+    // `startListening` was only called via explicit user intent
+    // (toggle, click-to-talk). It now also gets called by the
+    // auto-speak effect to start the barge-in mic *while* TTS is
+    // playing — so cancelling here would kill TTS the moment the
+    // barge-in mic spins up. The actual "AI goes quiet when the
+    // user starts talking" semantics live in `recognition.onresult`
+    // below, gated on the non-feedback substring check. Explicit
+    // mic toggles still get a TTS cancel via toggleVoiceMode's
+    // own speechSynthesis.cancel() call.
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onstart = () => setIsListening(true);
+    let submitted = false;
+    // Stale-handler guard. Every event handler bails immediately
+    // if the global generation has advanced (i.e. a newer
+    // recognition has taken over).
+    const isStale = () => myGen !== recognitionGenerationRef.current;
+
+    recognition.onstart = () => {
+      if (isStale()) return;
+      voiceLog("recognition.onstart", { voiceModeRef: voiceModeRef.current, gen: myGen });
+      recognitionAliveRef.current = true;
+      // Clear any stale error from a prior retry — we're listening now.
+      setVoiceError(null);
+      // Don't downgrade stage when starting mid-TTS (barge-in mic).
+      // Only assert "listening" if we're not already in "speaking".
+      if (voiceModeRef.current && voiceStageRef.current !== "speaking") {
+        setVoiceStage("listening");
+      }
+    };
+
+    // Helper to schedule a single restart, debounced via the
+    // ref so concurrent triggers (onerror + onend + close) all
+    // collapse to one outstanding restart.
+    //
+    // Important: restart is allowed in BOTH listening and speaking
+    // stages. Listening = normal. Speaking = barge-in mic should
+    // stay alive so the user can interrupt the AI. Only "processing"
+    // (LLM thinking) and "idle" (voice mode off) suppress restart.
+    const scheduleRestart = (delayMs: number, reason: string) => {
+      if (restartScheduledRef.current) {
+        voiceLog("restart already scheduled — skipping", { reason });
+        return;
+      }
+      restartScheduledRef.current = true;
+      setTimeout(() => {
+        restartScheduledRef.current = false;
+        voiceLog("scheduled restart firing", { reason });
+        const stage = voiceStageRef.current;
+        if (
+          voiceModeRef.current &&
+          (stage === "listening" || stage === "speaking")
+        ) {
+          startListeningRef.current?.();
+        }
+      }, delayMs);
+    };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (isStale()) return;
       let transcript = "";
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
       setInput(transcript);
 
+      // ─── Barge-in detection ────────────────────────────────
+      // While TTS is speaking and we hear meaningful voice
+      // activity, cut TTS so the user can speak.
+      //
+      // Feedback heuristic — token-overlap. Real user replies
+      // typically share <40% of words with the recent AI text;
+      // pure mic-captured-TTS-echo shares ~all of them. Substring
+      // comparison is too brittle because the recognition
+      // transcribes "8.5" as "eight point five" and drops
+      // hyphens (so "omega-fragility" → "omega fragility"), making
+      // exact-substring matches fail on real echoes.
+      if (voiceStageRef.current === "speaking") {
+        const heard = transcript.trim();
+        if (heard.length >= 4) {
+          const overlap = echoOverlapRatio(heard, lastSpokenContentRef.current);
+          if (overlap >= ECHO_OVERLAP_STRONG) {
+            voiceLog("ignoring possible TTS feedback", {
+              heard: heard.slice(0, 60),
+              overlap: overlap.toFixed(2),
+            });
+          } else {
+            voiceLog("barge-in detected — cancelling TTS", {
+              heard: heard.slice(0, 60),
+              overlap: overlap.toFixed(2),
+            });
+            if (typeof window !== "undefined") {
+              window.speechSynthesis?.cancel();
+            }
+            // closeVoiceLoop will fire from the utterance.onend
+            // (or its idempotent fallback) and transition to
+            // listening. We don't force-flip stage here; the user
+            // is still mid-utterance, and onresult.final below
+            // will handle the submit when their speech ends.
+          }
+        }
+      }
+
       if (event.results[event.results.length - 1].isFinal) {
+        voiceLog("recognition.onresult final", { transcriptLen: transcript.length });
         setInput(transcript);
+        submitted = true;
         setTimeout(() => {
+          if (isStale()) return;
           const trimmed = transcript.trim();
+
+          // ─── Post-TTS echo guard ───────────────────────────────
+          // Two tiers:
+          //   - Strong overlap (≥ECHO_OVERLAP_STRONG): suppress
+          //     regardless of timing. Almost certainly an echo
+          //     even if the user paused; only matches when the
+          //     transcript is mostly composed of words from the
+          //     recent AI message.
+          //   - Timed overlap (≥ECHO_OVERLAP_TIMED, within
+          //     TTS_ECHO_GUARD_MS of TTS end): suppress because
+          //     the speaker tail is still in the air. Real user
+          //     replies to a fresh AI response rarely overlap
+          //     more than 40-50% with the AI's words.
+          //
+          // Token-based overlap (vs literal substring) survives
+          // the transcript differences: "8.5" → "eight point
+          // five", "omega-fragility" → "omega fragility", etc.
+          if (trimmed && voiceModeRef.current) {
+            const overlap = echoOverlapRatio(trimmed, lastSpokenContentRef.current);
+            const sinceTtsMs = Date.now() - ttsEndedAtRef.current;
+            const isStrong = overlap >= ECHO_OVERLAP_STRONG;
+            const isTimedEcho =
+              overlap >= ECHO_OVERLAP_TIMED && sinceTtsMs < TTS_ECHO_GUARD_MS;
+            if (isStrong || isTimedEcho) {
+              voiceLog("suppressed post-TTS echo at submit", {
+                heard: trimmed.slice(0, 60),
+                overlap: overlap.toFixed(2),
+                sinceTtsMs,
+                tier: isStrong ? "strong" : "timed",
+              });
+              setInput("");
+              return;
+            }
+          }
+
           if (trimmed) {
             const userMsg: CopilotMessage = {
               id: `user-${Date.now()}`,
@@ -508,6 +1046,7 @@ export default function SystemCopilot() {
               timestamp: Date.now(),
             };
             addCopilotMessage(userMsg);
+            if (voiceModeRef.current) setVoiceStage("processing");
             if (isLlmActive) {
               handleStreamingQuery(trimmed);
             } else {
@@ -515,22 +1054,173 @@ export default function SystemCopilot() {
               responses.forEach((msg) => addCopilotMessage(msg));
             }
             setInput("");
+          } else if (voiceModeRef.current) {
+            // Empty utterance but voice mode is on — restart so the
+            // user can try again without re-toggling.
+            scheduleRestart(200, "empty-final-result");
           }
         }, 100);
       }
     };
 
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event: Event) => {
+      if (isStale()) return;
+      // SpeechRecognitionErrorEvent isn't in lib.dom.d.ts but it
+      // carries an `error` string with the Web Speech API codes
+      // ("not-allowed", "audio-capture", "network", etc).
+      const code = (event as Event & { error?: string }).error ?? "unknown";
+      voiceLog("recognition.onerror", {
+        code,
+        voiceModeRef: voiceModeRef.current,
+        voiceStageRef: voiceStageRef.current,
+        gen: myGen,
+      });
+      const permanent =
+        code === "not-allowed" ||
+        code === "service-not-allowed" ||
+        code === "audio-capture";
+
+      const message =
+        code === "not-allowed"
+          ? "Microphone permission denied. Click the lock icon in the address bar to allow microphone access, then click the mic again."
+          : code === "service-not-allowed"
+            ? "Speech recognition service unavailable in this browser."
+            : code === "audio-capture"
+              ? "No microphone detected on this device."
+              : code === "network"
+                ? "Speech recognition needs an internet connection."
+                : code === "no-speech"
+                  ? null // common, not worth surfacing
+                  : code === "aborted"
+                    ? null // we aborted intentionally
+                    : `Speech recognition error: ${code}`;
+
+      if (message) setVoiceError(message);
+
+      if (permanent) {
+        // Hard stop — drop out of voice mode so the user sees the
+        // error + can fix it without an infinite restart loop.
+        setVoiceMode(false);
+        setVoiceStage("idle");
+        return;
+      }
+
+      // Transient: retry from the listening stage (skip if we
+      // already moved to processing — that path is owned by
+      // onresult/handleStreamingQuery).
+      if (voiceModeRef.current && voiceStageRef.current !== "processing") {
+        scheduleRestart(500, `onerror:${code}`);
+      }
+    };
+    recognition.onend = () => {
+      if (isStale()) {
+        // An older recognition's onend firing because a newer one
+        // started — totally fine, log and move on.
+        voiceLog("recognition.onend (stale, ignored)", { gen: myGen });
+        return;
+      }
+      recognitionAliveRef.current = false;
+      voiceLog("recognition.onend", {
+        submitted,
+        voiceModeRef: voiceModeRef.current,
+        voiceStageRef: voiceStageRef.current,
+        gen: myGen,
+      });
+      // Keep mic alive across BOTH listening and speaking. During
+      // speaking, the alive mic enables barge-in. Don't restart if
+      // we're processing (LLM running) or idle.
+      const stage = voiceStageRef.current;
+      const shouldRestart =
+        voiceModeRef.current &&
+        !submitted &&
+        (stage === "listening" || stage === "speaking");
+      if (shouldRestart) {
+        scheduleRestart(200, `onend-no-result(${stage})`);
+      }
+    };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+      voiceLog("recognition.start() called", { gen: myGen });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      voiceLog("recognition.start() threw", { msg, gen: myGen });
+      if (voiceModeRef.current) {
+        // Cooldown is already in effect, but explicit start
+        // failures get their own debounced retry too. Longer
+        // delay than the cooldown so we don't immediately bounce
+        // back into this same path.
+        scheduleRestart(msg.toLowerCase().includes("already") ? 400 : 200, "start-threw");
+      } else {
+        setVoiceError(`Couldn't start microphone: ${msg}`);
+      }
+    }
   }, [addCopilotMessage, isLlmActive, handleStreamingQuery, graphData]);
 
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    setIsListening(false);
-  }, []);
+  // Keep the ref pointing at the latest closure so voiceMode
+  // auto-restart logic can call startListening without circular deps.
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
+
+  // ─── Voice-mode toggle ──────────────────────────────────
+  // Single button. When entering, kick off listening; when
+  // exiting, cancel any speech and stop the recognition loop.
+  const toggleVoiceMode = useCallback(() => {
+    const next = !voiceMode;
+    voiceLog("toggleVoiceMode", { from: voiceMode, to: next });
+    setVoiceMode(next);
+    if (next) {
+      // Cancel any in-flight TTS before starting (clean state).
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setVoiceStage("listening");
+      setTimeout(() => startListeningRef.current?.(), 50);
+    } else {
+      // Tear down cleanly:
+      //  1. Bump the generation so any in-flight handlers no-op.
+      //  2. Clear any scheduled restart so it doesn't fire after
+      //     the user explicitly opted out.
+      //  3. Stop the active recognition (onend will fire but be
+      //     ignored as stale).
+      //  4. Cancel any TTS in progress.
+      recognitionGenerationRef.current += 1;
+      restartScheduledRef.current = false;
+      recognitionAliveRef.current = false;
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore
+      }
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setVoiceStage("idle");
+    }
+  }, [voiceMode]);
+
+  // ─── Stuck-state watchdog ───────────────────────────────
+  // If voiceStage hangs on "speaking" or "processing" for more
+  // than STUCK_MS, force-close the loop and restart listening.
+  // Belt-and-suspenders fallback for browser quirks the existing
+  // handlers don't catch (e.g. utterance.onend silently dropped,
+  // recognition object dying without firing onend, etc).
+  useEffect(() => {
+    if (!voiceMode) return;
+    const STUCK_MS = 30_000;
+    const tick = setInterval(() => {
+      const stage = voiceStageRef.current;
+      if (stage !== "speaking" && stage !== "processing") return;
+      const stuckFor = Date.now() - voiceStageEnteredAtRef.current;
+      if (stuckFor < STUCK_MS) return;
+      voiceLog("watchdog: stage stuck — force-restarting listening", {
+        stage,
+        stuckMs: stuckFor,
+      });
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+      setVoiceStage("listening");
+      setTimeout(() => {
+        if (voiceModeRef.current) startListeningRef.current?.();
+      }, 50);
+    }, 5_000);
+    return () => clearInterval(tick);
+  }, [voiceMode]);
 
   const handleAction = (action: CopilotAction) => {
     const userContent = action.replace(/_/g, " ");
@@ -587,6 +1277,143 @@ export default function SystemCopilot() {
     }
 
     setInput("");
+    setMention((m) => ({ ...m, active: false }));
+  };
+
+  // ─── Programmatic submit entry point ────────────────────────────
+  //
+  // PEARL's ScenarioInput dispatches `manifold:copilot-submit` with
+  // the user's prose. We treat that exactly like a chat-input submit
+  // (record the user message, kick off the streaming response) except
+  // we skip the input-field clearing because there's no input to
+  // clear. Used today by the ScenarioInput component; any future
+  // component that wants to inject a prompt can use the same event.
+  useEffect(() => {
+    const onSubmit = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string }>).detail;
+      const text = detail?.text?.trim();
+      if (!text || isLlmStreaming) return;
+      const userMsg: CopilotMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: text,
+        timestamp: Date.now(),
+      };
+      addCopilotMessage(userMsg);
+      if (isLlmActive) handleStreamingQuery(text);
+      else processQuery(text, graphData).forEach((msg) => addCopilotMessage(msg));
+    };
+    window.addEventListener("manifold:copilot-submit", onSubmit);
+    return () => window.removeEventListener("manifold:copilot-submit", onSubmit);
+  }, [isLlmStreaming, isLlmActive, addCopilotMessage, handleStreamingQuery, graphData]);
+
+  // ─── Node-name autocomplete: matches + handlers ────────────────
+  const MAX_MENTION_RESULTS = 8;
+  const MIN_QUERY_LEN = 2;
+
+  /** Score a node against the query: substring of full label > substring of
+   *  short label > prefix match > anywhere. Lower is better. We only show
+   *  up to MAX_MENTION_RESULTS, sorted ascending by score. */
+  const mentionMatches = useMemo(() => {
+    if (!mention.active || mention.query.length < MIN_QUERY_LEN) return [];
+    const q = mention.query.toLowerCase();
+    const nodes = graphData.nodes;
+    type Scored = { node: typeof nodes[number]; score: number };
+    const scored: Scored[] = [];
+    for (const node of nodes) {
+      const label = node.label.toLowerCase();
+      const short = (node.shortLabel ?? "").toLowerCase();
+      let score = Infinity;
+      if (label.startsWith(q)) score = 0;
+      else if (short.startsWith(q)) score = 1;
+      else if (label.includes(q)) score = 2;
+      else if (short && short.includes(q)) score = 3;
+      if (score < Infinity) scored.push({ node, score });
+    }
+    scored.sort((a, b) => a.score - b.score || a.node.label.localeCompare(b.node.label));
+    return scored.slice(0, MAX_MENTION_RESULTS).map((s) => s.node);
+  }, [mention.active, mention.query, graphData]);
+
+  /** Re-derive mention state from the input value + cursor position. Called
+   *  on every change. The "current word" is text from the last whitespace
+   *  before the cursor (exclusive) to the cursor. We only activate when the
+   *  word is at least MIN_QUERY_LEN characters; this keeps the dropdown
+   *  silent during normal English typing where short stop-words ("is",
+   *  "to") wouldn't match anything anyway. */
+  const updateMention = useCallback((value: string, cursor: number) => {
+    const upToCursor = value.slice(0, cursor);
+    // Find the last whitespace before the cursor; current word starts after it.
+    const wsMatch = /\s\S*$/.exec(upToCursor);
+    const wordStart = wsMatch ? wsMatch.index + 1 : 0;
+    const word = value.slice(wordStart, cursor);
+    if (word.length >= MIN_QUERY_LEN) {
+      setMention({
+        active: true,
+        query: word,
+        wordStart,
+        wordLen: word.length,
+        selectedIdx: 0,
+      });
+    } else {
+      setMention((m) => (m.active ? { ...m, active: false } : m));
+    }
+  }, []);
+
+  /** Splice the chosen node's label into the input where the user was
+   *  typing the partial. Adds a trailing space if the next char isn't
+   *  already whitespace (so the cursor lands ready to keep typing). */
+  const insertMention = useCallback(
+    (label: string) => {
+      const before = input.slice(0, mention.wordStart);
+      const after = input.slice(mention.wordStart + mention.wordLen);
+      const sep = after === "" || after.startsWith(" ") ? "" : " ";
+      const next = before + label + sep + after;
+      setInput(next);
+      setMention((m) => ({ ...m, active: false }));
+      const newCursor = (before + label + sep).length;
+      // Restore focus + place cursor right after the inserted label so the
+      // user can keep typing without re-clicking.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(newCursor, newCursor);
+      });
+    },
+    [input, mention.wordStart, mention.wordLen],
+  );
+
+  // Not memoized: the key handler reads handleSubmit + mention state on
+  // every render, so memoizing it just adds noise without saving work.
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Autocomplete navigation takes priority when the dropdown is open.
+    if (mention.active && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMention((m) => ({
+          ...m,
+          selectedIdx: (m.selectedIdx + 1) % mentionMatches.length,
+        }));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMention((m) => ({
+          ...m,
+          selectedIdx: (m.selectedIdx - 1 + mentionMatches.length) % mentionMatches.length,
+        }));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[mention.selectedIdx].label);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention((m) => ({ ...m, active: false }));
+        return;
+      }
+    }
+    if (e.key === "Enter") handleSubmit();
   };
 
   const selectedNodeData = selectedNode
@@ -605,13 +1432,39 @@ export default function SystemCopilot() {
             <div className="text-[9px] text-text-muted font-mono mt-0.5">
               {copilotProvider === "ollama"
                 ? `Ollama Local (${ollamaModel})`
-                : isLlmActive
-                  ? "Gemini-Augmented Analysis"
-                  : "Synthetic Scientist Interface"}
+                : copilotProvider === "anthropic"
+                  ? isLlmActive
+                    ? `Claude-Augmented Analysis (${copilotModel})`
+                    : "Claude — key required"
+                  : isLlmActive
+                    ? `Gemini-Augmented Analysis (${copilotModel})`
+                    : "Synthetic Scientist Interface"}
               {isComputeAvailable && " + Claude Compute"}
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* Voice conversation mode (hands-free loop) */}
+            <button
+              onClick={toggleVoiceMode}
+              className={`text-[11px] transition-colors p-1 ${
+                voiceMode
+                  ? voiceStage === "listening"
+                    ? "text-accent-cyan animate-pulse"
+                    : voiceStage === "speaking"
+                      ? "text-accent-green"
+                      : voiceStage === "processing"
+                        ? "text-accent-amber"
+                        : "text-accent-cyan"
+                  : "text-text-muted hover:text-accent-cyan"
+              }`}
+              title={
+                voiceMode
+                  ? `Voice Conversation: ${voiceStage}. Click to exit.`
+                  : "Start Voice Conversation (hands-free)"
+              }
+            >
+              {voiceMode ? "🎙️" : "🎤"}
+            </button>
             {/* TTS toggle */}
             <button
               onClick={() => {
@@ -628,7 +1481,7 @@ export default function SystemCopilot() {
             </button>
             {importedDatasets.length > 0 && (
               <button
-                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) setShowSettings(false); }}
+                onClick={() => { setShowDatasets(!showDatasets); if (!showDatasets) { setShowSettings(false); setShowHistory(false); } }}
                 className={`text-[11px] transition-colors p-1 ${
                   showDatasets ? "text-accent-amber" : "text-text-muted hover:text-accent-amber"
                 }`}
@@ -638,7 +1491,16 @@ export default function SystemCopilot() {
               </button>
             )}
             <button
-              onClick={() => { setShowSettings(!showSettings); if (!showSettings) setShowDatasets(false); }}
+              onClick={() => { setShowHistory(!showHistory); if (!showHistory) { setShowSettings(false); setShowDatasets(false); } }}
+              className={`text-[11px] transition-colors p-1 ${
+                showHistory ? "text-accent-green" : "text-text-muted hover:text-accent-green"
+              }`}
+              title="Your Conversation History"
+            >
+              {showHistory ? "\u2715" : "\u29C9"}
+            </button>
+            <button
+              onClick={() => { setShowSettings(!showSettings); if (!showSettings) { setShowDatasets(false); setShowHistory(false); } }}
               className="text-[11px] text-text-muted hover:text-accent-cyan transition-colors p-1"
               title="LLM Settings"
             >
@@ -661,10 +1523,10 @@ export default function SystemCopilot() {
                 {/* Provider toggle */}
                 <div className="space-y-1">
                   <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
-                    COPILOT PROVIDER
+                    COPILOT PROVIDER <span className="text-text-muted/60">— DEFAULT: GEMINI</span>
                   </div>
                   <div className="flex gap-1">
-                    {(["gemini", "ollama"] as const).map((p) => (
+                    {(["gemini", "anthropic", "ollama"] as const).map((p) => (
                       <button
                         key={p}
                         onClick={() => setLlmProvider(p)}
@@ -675,7 +1537,7 @@ export default function SystemCopilot() {
                           color: copilotProvider === p ? "var(--accent-cyan)" : "var(--text-muted)",
                         }}
                       >
-                        {p === "gemini" ? "GEMINI" : "OLLAMA"}
+                        {p === "gemini" ? "GEMINI" : p === "anthropic" ? "CLAUDE" : "OLLAMA"}
                       </button>
                     ))}
                   </div>
@@ -711,6 +1573,43 @@ export default function SystemCopilot() {
                         GEMINI ACTIVE
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Anthropic (Claude) config — opt-in copilot path */}
+                {copilotProvider === "anthropic" && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+                      CLAUDE — COPILOT
+                    </div>
+                    <input
+                      type="password"
+                      value={claudeApiKey}
+                      onChange={(e) => setClaudeApiKey(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors"
+                      placeholder="sk-ant-... (session only)"
+                      spellCheck={false}
+                    />
+                    <select
+                      value={copilotModel}
+                      onChange={(e) => setClaudeModel(e.target.value)}
+                      className="w-full bg-surface font-mono text-[10px] text-foreground outline-none px-2 py-1 rounded border border-border transition-colors"
+                    >
+                      {copilotModelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    {claudeApiKey.length > 0 && (
+                      <div className="text-[8px] text-accent-green font-mono tracking-wider">
+                        CLAUDE COPILOT ACTIVE
+                      </div>
+                    )}
+                    <div className="text-[8px] font-mono text-text-muted leading-relaxed">
+                      The same key powers compute below. Switching providers
+                      doesn&apos;t change the on-load default (Gemini).
+                    </div>
                   </div>
                 )}
 
@@ -771,6 +1670,21 @@ export default function SystemCopilot() {
           )}
         </AnimatePresence>
 
+        {/* Trace history panel — opens via the ⧉ icon next to settings */}
+        <AnimatePresence>
+          {showHistory && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <CopilotTraceHistory open={showHistory} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Context badge */}
         <AnimatePresence>
           {contextBadge && (
@@ -785,6 +1699,59 @@ export default function SystemCopilot() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Voice-mode stage indicator — shown only when voice
+            conversation mode is active. Lets the user see at a
+            glance whether the chat is waiting on them, processing,
+            or speaking. */}
+        {voiceMode && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[9px] font-mono tracking-wider">
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                voiceStage === "listening"
+                  ? "bg-accent-cyan animate-pulse"
+                  : voiceStage === "processing"
+                    ? "bg-accent-amber animate-pulse"
+                    : voiceStage === "speaking"
+                      ? "bg-accent-green"
+                      : "bg-text-muted/40"
+              }`}
+            />
+            <span className="text-text-muted">
+              VOICE: {voiceStage.toUpperCase()}
+              {voiceStage === "listening" && " (talk now)"}
+              {voiceStage === "processing" && " (thinking)"}
+              {voiceStage === "speaking" && " (you can interrupt)"}
+            </span>
+          </div>
+        )}
+
+        {/* Voice error — surfaces recognition failures (mic denied,
+            no mic, network) instead of silently looping. Shown
+            whether voice mode is currently on or already kicked
+            out of voice mode by a permanent error. */}
+        {voiceError && (
+          <div className="mt-1.5 flex items-start gap-1.5 text-[9px] font-mono tracking-wider text-accent-amber">
+            <span className="shrink-0">⚠</span>
+            <span className="flex-1">{voiceError}</span>
+            <button
+              onClick={() => setVoiceError(null)}
+              className="shrink-0 text-text-muted/70 hover:text-foreground"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Truncation hint — shown when older turns dropped from the
+            prompt window. Surfaces so the user knows we're not
+            sending the entire history. */}
+        {truncatedTurns > 0 && (
+          <div className="mt-1.5 text-[8px] font-mono tracking-wider text-text-muted/70">
+            {truncatedTurns} earlier turn{truncatedTurns === 1 ? "" : "s"} omitted from context
+          </div>
+        )}
       </div>
 
       {/* Messages + Datasets overlay container */}
@@ -959,28 +1926,81 @@ export default function SystemCopilot() {
       {/* Input */}
       <div className="px-3 py-2 border-t border-border">
         <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            disabled={isLlmStreaming}
-            className="flex-1 bg-surface-elevated font-mono text-[11px] text-foreground outline-none px-2.5 py-1.5 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors disabled:opacity-40"
-            placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
-            spellCheck={false}
-          />
-          <button
-            onClick={isListening ? stopListening : startListening}
-            disabled={isLlmStreaming}
-            className={`text-[12px] px-1.5 py-1.5 rounded transition-colors disabled:opacity-40 ${
-              isListening
-                ? "text-accent-red bg-accent-red/10 animate-pulse"
-                : "text-text-muted hover:text-accent-cyan hover:bg-accent-cyan/10"
-            }`}
-            title={isListening ? "Stop listening" : "Voice input"}
-          >
-            {isListening ? "\u23F9" : "\uD83C\uDF99"}
-          </button>
+          <div className="flex-1 relative">
+            {/* Node-name autocomplete dropdown — sits above the input
+                because the input is at the bottom of a tall sidebar; a
+                downward popup would clip off-viewport. */}
+            {mention.active && mentionMatches.length > 0 && (
+              <div
+                className="absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded border border-accent-cyan/30 bg-surface-elevated shadow-2xl z-50"
+                role="listbox"
+                aria-label="Node name suggestions"
+              >
+                <div className="px-2 py-1 border-b border-border/50 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted/70">
+                  {mentionMatches.length} {mentionMatches.length === 1 ? "MATCH" : "MATCHES"} · ↑↓ NAV · ⏎ INSERT · ESC DISMISS
+                </div>
+                {mentionMatches.map((node, i) => {
+                  const isActive = i === mention.selectedIdx;
+                  return (
+                    <button
+                      key={node.id}
+                      type="button"
+                      // mousedown fires before the input's blur, so the
+                      // dropdown isn't dismissed before the click registers.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertMention(node.label);
+                      }}
+                      onMouseEnter={() =>
+                        setMention((m) => ({ ...m, selectedIdx: i }))
+                      }
+                      className={`w-full text-left px-2 py-1.5 text-[10px] font-mono truncate transition-colors ${
+                        isActive
+                          ? "bg-accent-cyan/15 text-accent-cyan"
+                          : "text-text-muted hover:bg-white/[0.04] hover:text-foreground"
+                      }`}
+                      role="option"
+                      aria-selected={isActive}
+                      title={node.label}
+                    >
+                      {node.label}
+                      {node.shortLabel && node.shortLabel !== node.label && (
+                        <span className="text-[8px] opacity-50 ml-1">· {node.shortLabel}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => {
+                const v = e.target.value;
+                const cursor = e.target.selectionStart ?? v.length;
+                setInput(v);
+                updateMention(v, cursor);
+              }}
+              onKeyDown={handleInputKeyDown}
+              onBlur={() => {
+                // Small delay so a mousedown on a dropdown item can fire
+                // before the dropdown unmounts (mousedown does call
+                // preventDefault, but blur still fires after this hander
+                // returns; defer the close).
+                setTimeout(() => setMention((m) => ({ ...m, active: false })), 120);
+              }}
+              disabled={isLlmStreaming}
+              className="w-full bg-surface-elevated font-mono text-[11px] text-foreground outline-none px-2.5 py-1.5 rounded border border-border placeholder:text-text-muted focus:border-accent-cyan/50 transition-colors disabled:opacity-40"
+              placeholder={copilotProvider === "ollama" ? "Ask anything (Ollama local)..." : isLlmActive ? "Ask anything (LLM active)..." : "Ask the system to analyze or verify..."}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+          {/* Voice input lives in the header now (\uD83C\uDFA4 voice mode toggle).
+              The old one-shot dictation button below the input was
+              redundant \u2014 two mic icons, one of which was a mode-toggle
+              and one a push-to-talk, with no visual distinction. */}
           <button
             onClick={handleSubmit}
             disabled={isLlmStreaming}

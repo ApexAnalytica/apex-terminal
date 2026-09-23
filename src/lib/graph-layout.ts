@@ -245,19 +245,21 @@ export function computeLayout3D(
     connected.add(tgt);
   }
 
-  // d3-force-3d types are incomplete — runtime API accepts (nodes, nDim)
-  const sim = (forceSimulation as any)(simNodes, 3)
+  // d3-force-3d types are incomplete — runtime API accepts (nodes, nDim).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AnySim = any;
+  const sim = (forceSimulation as AnySim)(simNodes, 3)
     .force(
       "link",
-      forceLink(simLinks)
-        .id((d: any) => d.id)
+      (forceLink as AnySim)(simLinks)
+        .id((d: AnySim) => d.id)
         // Distance inversely proportional to edge weight:
         // weight 1.0 (strong correlation) → distance 10 (close together)
         // weight 0.1 (weak correlation) → distance 35 (far apart)
-        .distance((d: any) => 10 + (1 - d.weight) * 25)
-        .strength((d: any) => 0.3 + d.weight * 0.4)
+        .distance((d: AnySim) => 10 + (1 - d.weight) * 25)
+        .strength((d: AnySim) => 0.3 + d.weight * 0.4)
     )
-    .force("charge", forceManyBody().strength((d: any) =>
+    .force("charge", (forceManyBody as AnySim)().strength((d: AnySim) =>
       connected.has(d.id) ? -100 : -30
     ))
     .force("center", forceCenter(0, 0, 0))

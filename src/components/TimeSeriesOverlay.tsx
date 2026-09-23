@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
 import type { NodeTemporalState } from "@/lib/temporal-data";
+import { CALCULATION_REGISTRY } from "@/lib/calculations/registry";
+import { topByKey } from "@/lib/perf/top-n";
 
 const CHART_HEIGHT = 120;
 // left/right are overridden at runtime to match the TimeDial track's actual
@@ -44,6 +46,8 @@ function buildHoldForwardPoints(
 
   const toX = (ts: number) =>
     plotLeft + ((ts - xStart) / xRange) * plotW;
+  // Caller passes per-curve [yMin, yMax] for normalized rendering; this
+  // helper itself stays unit-agnostic.
   const toY = (omega: number) =>
     PAD.top + (1 - (omega - yMin) / yRange) * (CHART_HEIGHT - PAD.top - PAD.bottom);
 
@@ -87,17 +91,112 @@ function getLineColor(value: number): string {
   return "#00e676";
 }
 
+/**
+ * Format a raw underlying metric for the tooltip.
+ *  - Big numbers (≥ 1000) get thousands separators, no decimals.
+ *  - Small magnitudes (< 1) keep 3 sig figs.
+ *  - Everything else: 2 decimal places, which works for percentages,
+ *    indices, USD/bbl, USD/T, etc.
+ */
+function formatRawValue(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (abs >= 1) return value.toFixed(2);
+  if (abs >= 0.01) return value.toFixed(3);
+  return value.toExponential(2);
+}
+
 export default function TimeSeriesOverlay() {
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
+  // Pinned graph-wide calculations — surface as additional watchlist
+  // rows + chart curves so the user actually sees the calc trajectory
+  // they pushed via "→ DIAL". Without this, calc snapshots silently
+  // accumulated in graphCalcHistory with no rendering surface beyond
+  // the right-rail inline sparkline.
+  const pinnedCalcs = useApexStore((s) => s.pinnedCalcSeries);
+  const togglePinnedCalc = useApexStore((s) => s.togglePinnedCalcSeries);
+  const graphCalcHistory = useApexStore((s) => s.graphCalcHistory);
   const clearPinned = useApexStore((s) => s.clearPinnedTimeSeries);
+  const clearPinnedCalcs = useApexStore((s) => s.clearPinnedCalcSeries);
+  const clearAllPinned = useCallback(() => {
+    clearPinned();
+    clearPinnedCalcs();
+  }, [clearPinned, clearPinnedCalcs]);
   const temporalData = useApexStore((s) => s.temporalData);
   const graphData = useApexStore((s) => s.graphData);
   const timelineRange = useApexStore((s) => s.timelineRange);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
   const isLive = useApexStore((s) => s.isLive);
+  const timelineDragging = useApexStore((s) => s.timelineDragging);
+  // Watchlist discovery inputs — the consolidated dock surfaces "suggested"
+  // series to pin (selected → live-fed → top-Ω) directly in the left rail,
+  // folding in what the old standalone risk-card row used to do.
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedNodes = useApexStore((s) => s.selectedNodes);
 
   const [hoverX, setHoverX] = useState<number | null>(null);
+  // Collapse state for the whole dock. Mirrors the affordance that lived on
+  // the retired RiskPropagationFlow strip: a clickable header bar that hides
+  // both the watchlist rail and the chart, giving the canvas above more
+  // vertical room when the user wants to focus on the primary module.
+  // Persisted via the store (localStorage-backed) so the choice survives a
+  // reload; hydrated post-mount to keep SSR and first client render in sync.
+  const collapsed = useApexStore((s) => s.bottomDockCollapsed);
+  const setBottomDockCollapsed = useApexStore((s) => s.setBottomDockCollapsed);
+  const hydrateBottomDockCollapsed = useApexStore(
+    (s) => s.hydrateBottomDockCollapsed,
+  );
+  // Watchlist column collapse (independent of the whole-dock collapse).
+  // Lets the chart take the freed width without hiding the chart too.
+  const watchlistCollapsed = useApexStore((s) => s.watchlistCollapsed);
+  const setWatchlistCollapsed = useApexStore((s) => s.setWatchlistCollapsed);
+  const hydrateWatchlistCollapsed = useApexStore(
+    (s) => s.hydrateWatchlistCollapsed,
+  );
+  const hydratePinnedSeries = useApexStore((s) => s.hydratePinnedSeries);
+  useEffect(() => {
+    hydrateBottomDockCollapsed();
+    hydrateWatchlistCollapsed();
+    hydratePinnedSeries();
+  }, [
+    hydrateBottomDockCollapsed,
+    hydrateWatchlistCollapsed,
+    hydratePinnedSeries,
+  ]);
+  // X-axis zoom mode.
+  //  - "dial": chart x-axis mirrors the TimeDial's 60-day window so the
+  //    chart cursor lines up with the scrubber below. Default, matches the
+  //    pre-existing behaviour. Curves with multi-year history (e.g. World
+  //    Bank annual series — fertilizer consumption, debt-to-GDP) compress
+  //    to a hold-forward flat line at the current value because every
+  //    historical point falls before xStart.
+  //  - "data": chart x-axis expands to span the pinned curves' actual
+  //    history. Multi-year WB / annual series render as real curves;
+  //    the TimeDial below is unchanged (it stays a 60-day scrubber) so
+  //    the chart cursor no longer aligns with the dial in this mode.
+  //    This is the explicit trade-off — comparison mode for sparse
+  //    series, alignment mode otherwise.
+  const [xAxisMode, setXAxisMode] = useState<"dial" | "data">("dial");
+
+  // When the user clicks a dial preset (1H / 1D / 1W / 1M), `timelineRange.start`
+  // changes. That click is the strongest possible signal that they want the
+  // chart to track the dial again, so we auto-reset out of "data" mode.
+  //
+  // We watch `.start` specifically (not `.end`) because `.end` advances every
+  // live tick — watching `.end` would kick the user out of "data" mode every
+  // second, which would defeat the feature. `.start` only changes on dial-
+  // preset clicks and full timeline-range edits.
+  //
+  // Without this reset, the FIT toggle was a one-way trap: once a user clicked
+  // into "data" mode, the chart appeared to ignore subsequent dial clicks
+  // because the chart x-axis stayed pinned to the full data span while the
+  // dial scrubber moved beneath it. Reported as "1D shows curves, 1M flattens
+  // to a line, 1D doesn't restore detail" on 2026-05-21.
+  useEffect(() => {
+    setXAxisMode("dial");
+  }, [timelineRange.start]);
+
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // The SVG uses preserveAspectRatio="none", so viewBox width is set to the
@@ -132,35 +231,94 @@ export default function TimeSeriesOverlay() {
           : { width, left, right },
       );
     };
+    // Coalesce resize storms (window-resize drag, container reflow
+    // chains) into a single per-frame update. ResizeObserver + the
+    // window listener can fire many times within one frame; without
+    // this the geom state was being set 3–5×/frame during interactive
+    // resizes, each triggering a full chart re-render.
+    let rafId: number | null = null;
+    const schedule = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        update();
+      });
+    };
     update();
-    const ro = new ResizeObserver(update);
+    const ro = new ResizeObserver(schedule);
     if (svgRef.current) ro.observe(svgRef.current);
     const track = document.querySelector<HTMLElement>("[data-timedial-track]");
     if (track) ro.observe(track);
-    window.addEventListener("resize", update);
+    window.addEventListener("resize", schedule);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       ro.disconnect();
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", schedule);
     };
   }, [pinnedNodes.length]);
 
   const plotInset = geom;
   const chartW = geom.width;
 
-  // Gather histories for pinned nodes.
-  // Nodes with exactly 1 history point (unmapped fallback) are included
-  // as a flat horizontal line at their static omega — previously they
-  // were silently dropped (history.length < 2 guard), causing the chart
-  // to show nothing for those pins.
+  // O(1) id → node lookup. Replaces an O(N) Array.find() that ran
+  // once per pinned series inside curves and once per suggestion
+  // candidate — both rebuilt on every feed tick (graphData ref
+  // changes). On a 200-node graph with 6 pinned series that was
+  // ~1200 linear scans per tick.
+  const nodeById = useMemo(
+    () => new Map(graphData.nodes.map((n) => [n.id, n] as const)),
+    [graphData.nodes],
+  );
+
+  // Gather histories for pinned nodes. Prefer live-data history when a node
+  // has any liveData[] attached (consistent with the per-card sparkline
+  // behaviour in RiskPropagationFlow); fall back to synthetic omega history
+  // otherwise. Nodes with no history at all fall through to noDataNodes.
   const curves = useMemo(() => {
-    if (!temporalData || pinnedNodes.length === 0) return [];
+    if (pinnedNodes.length === 0) return [];
     return pinnedNodes
       .map((nodeId) => {
-        const nodeData = temporalData.nodes.get(nodeId);
-        const node = graphData.nodes.find((n) => n.id === nodeId);
-        // No temporal entry at all → falls through to noDataNodes
-        if (!nodeData || !node || nodeData.history.length === 0) return null;
+        const node = nodeById.get(nodeId);
+        if (!node) return null;
         const dataDesc = getNodeDataDescription(nodeId);
+
+        // Live-data path: any liveData entry → plot live values.
+        // For the live path the value IS the raw underlying metric
+        // (FRED CPI %, oil $/bbl, etc.), so we mirror it into rawValue
+        // for the tooltip — same treatment as the temporal-data path.
+        const liveSignal = node.liveData?.[0];
+        if (liveSignal) {
+          const liveHistory: NodeTemporalState[] = [
+            ...(liveSignal.history ?? []).map((h) => ({
+              timestamp: new Date(h.observedAt).getTime(),
+              omegaComposite: h.value,
+              rawValue: h.value,
+              omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+            })),
+            {
+              timestamp: new Date(liveSignal.observedAt).getTime(),
+              omegaComposite: liveSignal.value,
+              rawValue: liveSignal.value,
+              omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+            },
+          ];
+          if (liveHistory.length === 0) return null;
+          return {
+            nodeId,
+            label: node.label,
+            domain: node.domain,
+            color: getDomainColor(node.domain),
+            history: liveHistory,
+            currentOmega: liveSignal.value,
+            pointCount: liveHistory.length,
+            sourceLabel: `LIVE · ${liveSignal.source.split(/[\s—(]/)[0]}`,
+            sourceUnit: liveSignal.unit,
+          };
+        }
+
+        // Synthetic-omega fallback (existing behaviour).
+        const nodeData = temporalData?.nodes.get(nodeId);
+        if (!nodeData || nodeData.history.length === 0) return null;
         return {
           nodeId,
           label: node.label,
@@ -168,7 +326,6 @@ export default function TimeSeriesOverlay() {
           color: getDomainColor(node.domain),
           history: nodeData.history,
           currentOmega: node.omegaFragility.composite,
-          // Number of *published* timepoints (1 = unmapped fallback flat line)
           pointCount: nodeData.history.length,
           sourceLabel: dataDesc?.label ?? null,
           sourceUnit: dataDesc?.unit ?? null,
@@ -185,107 +342,329 @@ export default function TimeSeriesOverlay() {
       sourceLabel: string | null;
       sourceUnit: string | null;
     }[];
-  }, [pinnedNodes, temporalData, graphData]);
+  }, [pinnedNodes, temporalData, nodeById]);
 
-  // Pinned nodes that have zero history entries — truly no temporal data
-  // (nodes with ≥ 1 history point are now included in curves above)
-  const noDataNodes = useMemo(() => {
-    if (!temporalData) return [];
-    const curveIds = new Set(curves.map((c) => c.nodeId));
+  // (Pinned nodes with no plottable history are surfaced directly in the
+  // watchlist rail below via each row's `hasData: false` branch, so the
+  // old separate `noDataNodes` list is no longer needed.)
+
+  // Pinned graph-wide calc series → curves with the same shape the
+  // chart and tooltip code consumes. nodeId is the calc id verbatim so
+  // it can't collide with real node ids (real nodes never start with
+  // "calc-"). The history is mapped from graphCalcHistory[calcId] into
+  // NodeTemporalState[], with the value going into both
+  // `omegaComposite` (chart y) and `rawValue` (tooltip).
+  const calcCurves = useMemo(() => {
+    const out: typeof curves = [];
+    for (const calcId of pinnedCalcs) {
+      const calc = CALCULATION_REGISTRY.find((c) => c.id === calcId);
+      if (!calc) continue;
+      const history = graphCalcHistory[calcId] ?? [];
+      if (history.length === 0) continue;
+      const points: NodeTemporalState[] = history.map((h) => ({
+        timestamp: new Date(h.observedAt).getTime(),
+        omegaComposite: h.value,
+        rawValue: h.value,
+        omegaProfile: {} as unknown as NodeTemporalState["omegaProfile"],
+      }));
+      const current = history[history.length - 1].value;
+      // Calc curves use a distinct cyan to set them apart from
+      // domain-coloured node curves. Falls through the chart's
+      // existing yMin/yMax normalisation so mixed Ω / HHI / % series
+      // co-exist in one frame without one swamping the others.
+      out.push({
+        nodeId: calcId,
+        label: calc.name,
+        domain: "calculation",
+        color: "#00e5ff",
+        history: points,
+        currentOmega: current,
+        pointCount: points.length,
+        sourceLabel: "Calculation",
+        sourceUnit: null,
+      });
+    }
+    return out;
+  }, [pinnedCalcs, graphCalcHistory]);
+
+  // Merge node-derived curves with calc curves so all downstream
+  // consumers (chart polylines, axis bounds, tooltip) iterate one list.
+  const allCurves = useMemo(
+    () => [...curves, ...calcCurves],
+    [curves, calcCurves],
+  );
+
+  // Watchlist rows for the left rail — one per pinned node, in pin order.
+  // Prefer the rich curve data (color + current value + unit); fall back to
+  // a bare label for pinned nodes that carry no plottable history yet so the
+  // user can still see and unpin them.
+  const pinnedRows = useMemo(() => {
+    const curveById = new Map(curves.map((c) => [c.nodeId, c]));
     return pinnedNodes
-      .filter((id) => !curveIds.has(id))
       .map((id) => {
+        const curve = curveById.get(id);
+        if (curve) {
+          return {
+            nodeId: id,
+            label: curve.label,
+            color: curve.color,
+            omega: curve.currentOmega,
+            unit: curve.sourceUnit,
+            hasData: true,
+          };
+        }
         const node = graphData.nodes.find((n) => n.id === id);
-        return node ? { nodeId: id, label: node.label, domain: node.domain } : null;
+        if (!node) return null;
+        return {
+          nodeId: id,
+          label: node.label,
+          color: getDomainColor(node.domain),
+          omega: node.omegaFragility.composite,
+          unit: null as string | null,
+          hasData: false,
+        };
       })
-      .filter(Boolean) as { nodeId: string; label: string; domain: string }[];
-  }, [pinnedNodes, curves, temporalData, graphData]);
+      .filter(Boolean) as {
+      nodeId: string;
+      label: string;
+      color: string;
+      omega: number;
+      unit: string | null;
+      hasData: boolean;
+    }[];
+  }, [pinnedNodes, curves, graphData]);
 
-  // Compute dynamic y-axis range from actual data with padding
-  const { yMin, yMax, gridLines } = useMemo(() => {
-    if (curves.length === 0) return { yMin: 0, yMax: 10, gridLines: [2.5, 5.0, 7.5] };
+  // Calc rows for the watchlist — one per pinned calc id, in pin order.
+  // Mirrors the node-row shape so the rendering code can iterate both
+  // lists with the same template. Uses calcId as the key; the unpin
+  // click routes to togglePinnedCalc (not togglePinned).
+  const pinnedCalcRows = useMemo(() => {
+    return pinnedCalcs
+      .map((calcId) => {
+        const calc = CALCULATION_REGISTRY.find((c) => c.id === calcId);
+        if (!calc) return null;
+        const history = graphCalcHistory[calcId] ?? [];
+        const current = history.length > 0 ? history[history.length - 1].value : 0;
+        return {
+          calcId,
+          label: calc.name,
+          color: "#00e5ff",
+          value: current,
+          hasData: history.length > 0,
+        };
+      })
+      .filter(Boolean) as {
+      calcId: string;
+      label: string;
+      color: string;
+      value: number;
+      hasData: boolean;
+    }[];
+  }, [pinnedCalcs, graphCalcHistory]);
 
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (const curve of curves) {
+  // Suggested series to pin: explicit selection first, then live-fed nodes,
+  // then the highest-Ω nodes — minus anything already pinned. Capped so the
+  // rail stays scannable. This is the discovery path that used to live in
+  // the separate risk-card strip.
+  const suggestions = useMemo(() => {
+    const seen = new Set(pinnedNodes);
+    const out: { nodeId: string; label: string; color: string; omega: number }[] = [];
+    const push = (id: string) => {
+      if (seen.has(id) || out.length >= 6) return;
+      const n = nodeById.get(id);
+      if (!n) return;
+      seen.add(id);
+      out.push({
+        nodeId: n.id,
+        label: n.label,
+        color: getDomainColor(n.domain),
+        omega: n.omegaFragility.composite,
+      });
+    };
+    for (const id of [selectedNode, ...selectedNodes]) if (id) push(id);
+    for (const n of graphData.nodes) {
+      if (out.length >= 6) break;
+      if (n.liveData && n.liveData.length > 0) push(n.id);
+    }
+    // Partial-select top-Ω instead of full sort. We may push past the
+    // 6-cap from this list since `push` itself respects the cap.
+    if (out.length < 6) {
+      const topRanked = topByKey(
+        graphData.nodes,
+        (n) => n.omegaFragility.composite,
+        6 + seen.size,
+      );
+      for (const n of topRanked) {
+        if (out.length >= 6) break;
+        push(n.id);
+      }
+    }
+    return out;
+  }, [graphData, pinnedNodes, selectedNode, selectedNodes, nodeById]);
+
+  // Per-curve scale: each pinned curve normalizes to its OWN min/max so
+  // curves with mismatched units (Ω 0-10, %, mb/d, USD/ton, programs)
+  // can be visually compared by shape, not absolute value. Without this,
+  // a single high-magnitude curve dominated the chart and lower-magnitude
+  // curves collapsed to flat lines along the bottom.
+  const curveScales = useMemo(() => {
+    const scales = new Map<string, { min: number; max: number }>();
+    for (const curve of allCurves) {
+      let lo = Infinity;
+      let hi = -Infinity;
       for (const h of curve.history) {
         if (h.omegaComposite < lo) lo = h.omegaComposite;
         if (h.omegaComposite > hi) hi = h.omegaComposite;
       }
+      if (!Number.isFinite(lo)) {
+        lo = 0;
+        hi = 1;
+      }
+      if (lo === hi) {
+        // Avoid divide-by-zero: a flat curve gets a tiny synthetic range
+        // so it renders as a horizontal line at the chart's vertical center.
+        hi = lo + 1;
+        lo = lo - 1;
+      }
+      scales.set(curve.nodeId, { min: lo, max: hi });
     }
+    return scales;
+  }, [allCurves]);
 
-    // Add 10% padding on each side, clamped to [0, 10]
-    const span = hi - lo || 1;
-    const pad = span * 0.1;
-    const yMinRaw = Math.max(0, Math.floor((lo - pad) * 2) / 2); // snap to 0.5
-    const yMaxRaw = Math.min(10, Math.ceil((hi + pad) * 2) / 2);
+  // Compute dynamic y-axis range from actual data with padding.
+  // (When normalized, the chart axis is 0..1; gridLines reflect that.)
+  // Kept for the rare single-curve case where global scale is meaningful.
+  const { yMin, yMax, gridLines } = useMemo(() => {
+    if (allCurves.length === 0) return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
+    // Multi-curve: normalized 0..1 axis with quartile gridlines.
+    return { yMin: 0, yMax: 1, gridLines: [0.25, 0.5, 0.75] };
+  }, [allCurves]);
 
-    // Generate ~3-5 evenly spaced grid lines
-    const range = yMaxRaw - yMinRaw;
-    // Pick a nice step: 0.5, 1, 2, or 2.5
-    let step = 1;
-    if (range <= 2) step = 0.5;
-    else if (range <= 5) step = 1;
-    else if (range <= 8) step = 2;
-    else step = 2.5;
-
-    const lines: number[] = [];
-    let v = Math.ceil(yMinRaw / step) * step;
-    while (v < yMaxRaw) {
-      if (v > yMinRaw) lines.push(Math.round(v * 10) / 10);
-      v += step;
+  // Data-driven x-axis bounds: min/max across every pinned curve's history.
+  // Used by the "data" zoom mode and by the FIT button's availability check.
+  // When no curve has history, this falls back to the dial range so callers
+  // can use it as a safe default.
+  const dataXBounds = useMemo(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const c of allCurves) {
+      for (const h of c.history) {
+        if (h.timestamp < lo) lo = h.timestamp;
+        if (h.timestamp > hi) hi = h.timestamp;
+      }
     }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
+      return { start: timelineRange.start, end: timelineRange.end };
+    }
+    // 2% padding on each side so endpoints don't sit flush against the
+    // chart edges (matters visually for hold-forward markers).
+    const pad = (hi - lo) * 0.02;
+    return { start: lo - pad, end: hi + pad };
+  }, [curves, timelineRange]);
 
-    return { yMin: yMinRaw, yMax: yMaxRaw, gridLines: lines };
-  }, [curves]);
+  // FIT is only meaningful when at least one pinned curve has history that
+  // extends meaningfully outside the dial window. We require >25% of the
+  // span to fall before timelineRange.start to flag this — that's the
+  // regime where the curve would render as a flat hold-forward line in
+  // "dial" mode and the user would benefit from zooming out.
+  const shouldOfferFit = useMemo(() => {
+    if (allCurves.length === 0) return false;
+    const dialSpan = timelineRange.end - timelineRange.start || 1;
+    const overshootStart = Math.max(0, timelineRange.start - dataXBounds.start);
+    return overshootStart > dialSpan * 0.25;
+  }, [curves, dataXBounds, timelineRange]);
 
-  // Always mirror the TimeDial's visible window so a timestamp renders at
-  // the same fractional x on both. Previously this fell back to the curves'
-  // own min/max when not zoomed, which made the vertical cursor drift off
-  // the TimeDial scrub below.
-  const { xStart, xEnd } = useMemo(
-    () => ({ xStart: timelineRange.start, xEnd: timelineRange.end }),
-    [timelineRange],
-  );
+  // Resolved x-axis. "dial" mirrors timelineRange (chart aligns with the
+  // TimeDial scrubber). "data" uses the curves' actual history span — the
+  // chart cursor visually decouples from the dial below, in exchange for
+  // making multi-year / annual series readable as curves rather than flat
+  // hold-forward lines. See the xAxisMode comment above for context.
+  const { xStart, xEnd } = useMemo(() => {
+    if (xAxisMode === "data") {
+      return { xStart: dataXBounds.start, xEnd: dataXBounds.end };
+    }
+    return { xStart: timelineRange.start, xEnd: timelineRange.end };
+  }, [xAxisMode, timelineRange, dataXBounds]);
 
-  // Convert data coordinates to SVG coordinates
+  // Convert data coordinates to SVG coordinates. Per-curve normalization:
+  // when curveId is provided, the value is mapped to its own 0..1 range
+  // (set by `curveScales`), then placed on the shared 0..1 axis. This is
+  // the path used by all multi-curve renderings.
   const toSvg = useCallback(
-    (timestamp: number, omega: number, width: number) => {
+    (timestamp: number, omega: number, width: number, curveId?: string) => {
       const xRange = xEnd - xStart || 1;
       const x =
         plotInset.left +
         ((timestamp - xStart) / xRange) *
           (width - plotInset.left - plotInset.right);
+      let norm: number;
+      if (curveId) {
+        const scale = curveScales.get(curveId);
+        if (scale) {
+          norm = (omega - scale.min) / (scale.max - scale.min || 1);
+        } else {
+          norm = (omega - yMin) / (yMax - yMin || 1);
+        }
+      } else {
+        norm = (omega - yMin) / (yMax - yMin || 1);
+      }
       const y =
-        PAD.top +
-        (1 - (omega - yMin) / (yMax - yMin || 1)) *
-          (CHART_HEIGHT - PAD.top - PAD.bottom);
+        PAD.top + (1 - norm) * (CHART_HEIGHT - PAD.top - PAD.bottom);
       return { x, y };
     },
-    [xStart, xEnd, yMin, yMax, plotInset],
+    [xStart, xEnd, yMin, yMax, curveScales, plotInset],
   );
 
-  // Get hovered values
-  const hoverValues = useMemo(() => {
-    if (hoverX === null) return null;
+  // Resolve which x to anchor the tooltip to. Hover wins when the cursor is
+  // over the chart; otherwise — if the user is dragging the dial below — pin
+  // to the dial position so the same value pop-up appears next to the smaller
+  // lines instead of just an unlabeled vertical playhead.
+  const tooltipAnchor = useMemo<
+    { x: number; source: "hover" | "drag" } | null
+  >(() => {
+    if (hoverX !== null) return { x: hoverX, source: "hover" };
+    if (timelineDragging) {
+      const xRange = xEnd - xStart || 1;
+      const plotW = chartW - plotInset.left - plotInset.right;
+      const x = plotInset.left + ((timelinePosition - xStart) / xRange) * plotW;
+      // Clamp inside the plot region; if the dial is outside the visible
+      // window (e.g. mid-zoom transition), just don't show a tooltip.
+      if (x < plotInset.left || x > chartW - plotInset.right) return null;
+      return { x, source: "drag" };
+    }
+    return null;
+  }, [hoverX, timelineDragging, timelinePosition, xStart, xEnd, plotInset, chartW]);
+
+  // Get values at the anchored x — same logic for hover and drag.
+  const tooltipValues = useMemo(() => {
+    if (!tooltipAnchor) return null;
     const xRange = xEnd - xStart || 1;
     const ts =
       xStart +
-      ((hoverX - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
+      ((tooltipAnchor.x - plotInset.left) / (chartW - plotInset.left - plotInset.right)) *
         xRange;
-    const values: { nodeId: string; label: string; color: string; omega: number }[] = [];
-    for (const curve of curves) {
+    const values: {
+      nodeId: string;
+      label: string;
+      color: string;
+      omega: number;
+      rawValue?: number;
+      unit?: string | null;
+    }[] = [];
+    for (const curve of allCurves) {
       const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
       let omega: number;
+      let rawValue: number | undefined;
       if (isSparse) {
-        // Hold-forward: return the last published value at or before hoverTs.
-        // If hoverTs is before the first point, return the first point's value.
-        let held = curve.history[0].omegaComposite;
+        // Hold-forward: return the last published value at or before ts.
+        // If ts is before the first point, return the first point's value.
+        let held = curve.history[0];
         for (const h of curve.history) {
-          if (h.timestamp <= ts) held = h.omegaComposite;
+          if (h.timestamp <= ts) held = h;
           else break;
         }
-        omega = held;
+        omega = held.omegaComposite;
+        rawValue = held.rawValue;
       } else {
         // Dense series: find closest timestamp (original behaviour)
         let closest = curve.history[0];
@@ -295,16 +674,19 @@ export default function TimeSeriesOverlay() {
           }
         }
         omega = closest.omegaComposite;
+        rawValue = closest.rawValue;
       }
       values.push({
         nodeId: curve.nodeId,
         label: curve.label,
         color: curve.color,
         omega,
+        rawValue,
+        unit: curve.sourceUnit,
       });
     }
     return { ts, values };
-  }, [hoverX, curves, xStart, xEnd, plotInset, chartW]);
+  }, [tooltipAnchor, curves, xStart, xEnd, plotInset, chartW]);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -320,29 +702,288 @@ export default function TimeSeriesOverlay() {
     [plotInset],
   );
 
-  if (pinnedNodes.length === 0) return null;
+  // Render nothing only when there's genuinely nothing to show — no pinned
+  // series and no candidates to suggest (e.g. empty workspace). Page-level
+  // gating on `hasGraph` is the primary guard; this is the safety net.
+  if (
+    pinnedRows.length === 0 &&
+    pinnedCalcRows.length === 0 &&
+    suggestions.length === 0
+  )
+    return null;
+
+  const hasPinned = pinnedRows.length > 0 || pinnedCalcRows.length > 0;
+  const liveCount = curves.filter((c) => c.sourceLabel?.startsWith("LIVE")).length;
 
   return (
-    <div ref={containerRef} className="border-t border-border bg-surface-elevated">
+    <div
+      ref={containerRef}
+      className="border-t border-border bg-surface-elevated"
+      data-tour="risk-flow"
+    >
+      {/* Collapse toggle bar. When collapsed, only this strip is visible —
+          the watchlist + chart body below are hidden, giving the canvas
+          above more vertical room. Mirrors the affordance the retired
+          RiskPropagationFlow strip used to expose. */}
+      <button
+        onClick={() => setBottomDockCollapsed(!collapsed)}
+        className="flex items-center gap-3 w-full px-4 py-1 hover:bg-surface transition-colors"
+        title={collapsed ? "Expand ΩF time series" : "Collapse ΩF time series"}
+      >
+        <span className="text-[9px] font-mono text-text-muted w-3 flex-shrink-0 text-center">
+          {collapsed ? "▶" : "▼"}
+        </span>
+        <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted">
+          {"Ω"}F TIME SERIES
+        </span>
+        {collapsed && (
+          <span className="text-[7px] font-mono text-text-muted/60 tabular-nums">
+            {pinnedRows.length > 0 ? `${pinnedRows.length} pinned` : "none pinned"}
+            {liveCount > 0 ? ` · ${liveCount} live` : ""}
+          </span>
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key="ts-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-stretch border-t border-border/40">
+      {/* LEFT: watchlist rail — pinned series + suggestions. Doubles as the
+          chart legend (each pinned row is a curve) and the discovery surface
+          (suggested rows pin with one click). Replaces the old standalone
+          risk-card strip and the chart's bottom legend chips.
+          When `watchlistCollapsed`, the rail shrinks to a narrow vertical
+          strip with a single expand chevron + pin count, letting the chart
+          fill the freed width. */}
+      <motion.div
+        data-tour="calc-watchlist"
+        animate={{ width: watchlistCollapsed ? 24 : 224 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className="flex-shrink-0 border-r border-border flex flex-col overflow-hidden"
+      >
+      {watchlistCollapsed ? (
+        // Collapsed rail: vertical expand affordance + pinned count.
+        // Whole column is clickable to reduce target-acquisition cost.
+        <button
+          onClick={() => setWatchlistCollapsed(false)}
+          className="flex-1 flex flex-col items-center justify-start gap-2 pt-2 pb-1 hover:bg-surface transition-colors"
+          title="Expand watchlist"
+        >
+          <span className="text-[9px] font-mono text-text-muted leading-none">▶</span>
+          <span
+            className="text-[7px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
+            WATCHLIST
+          </span>
+          {(pinnedRows.length + pinnedCalcRows.length) > 0 && (
+            <span className="text-[7px] font-mono text-accent-cyan tabular-nums">
+              {pinnedRows.length + pinnedCalcRows.length}
+            </span>
+          )}
+        </button>
+      ) : (
+        <>
+        <div className="flex items-center justify-between px-3 py-1 border-b border-border">
+          <button
+            onClick={() => setWatchlistCollapsed(true)}
+            className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            title="Collapse watchlist to the left"
+          >
+            <span className="text-[9px] font-mono text-text-muted leading-none">◀</span>
+            <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-accent-cyan">
+              WATCHLIST
+            </span>
+          </button>
+          <div className="flex items-center gap-2">
+            {liveCount > 0 && (
+              <span className="flex items-center gap-1 text-[7px] font-mono text-accent-green">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
+                {liveCount} LIVE
+              </span>
+            )}
+            {hasPinned && (
+              <button
+                onClick={clearAllPinned}
+                className="text-[7px] font-mono text-text-muted hover:text-accent-red transition-colors"
+                title="Unpin all series"
+              >
+                CLEAR
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5 max-h-[180px]">
+          {hasPinned && (
+            <div className="text-[7px] font-mono text-text-muted/50 px-1 pb-0.5 tracking-wider">
+              PINNED · {pinnedRows.length + pinnedCalcRows.length}
+            </div>
+          )}
+          {/* Calc rows first — they're typically what the user just
+              pushed via "→ DIAL" so they want immediate confirmation
+              that the trajectory landed in the chart. */}
+          {pinnedCalcRows.map((row) => (
+            <button
+              key={`calc-${row.calcId}`}
+              onClick={() => togglePinnedCalc(row.calcId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${row.label} (calculation) — click to unpin`}
+            >
+              <span className="text-[9px] leading-none text-accent-cyan group-hover:text-accent-red transition-colors flex-shrink-0">
+                ◉
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: row.color, opacity: row.hasData ? 1 : 0.4 }}
+              />
+              <span className="text-[9px] font-mono text-foreground truncate flex-1">
+                {row.label}
+                <span className="text-[6px] text-text-muted/50 ml-1">CALC</span>
+              </span>
+              {row.hasData ? (
+                <span
+                  className="text-[9px] font-mono font-bold tabular-nums flex-shrink-0 text-accent-cyan"
+                >
+                  {row.value.toFixed(row.value > 100 ? 0 : 2)}
+                </span>
+              ) : (
+                <span className="text-[6px] font-mono text-text-muted/40 flex-shrink-0">
+                  NO DATA
+                </span>
+              )}
+            </button>
+          ))}
+          {pinnedRows.map((row) => (
+            <button
+              key={row.nodeId}
+              onClick={() => togglePinned(row.nodeId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${row.label} — click to unpin`}
+            >
+              <span className="text-[9px] leading-none text-accent-cyan group-hover:text-accent-red transition-colors flex-shrink-0">
+                ◉
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: row.color, opacity: row.hasData ? 1 : 0.4 }}
+              />
+              <span className="text-[9px] font-mono text-foreground truncate flex-1">
+                {row.label}
+              </span>
+              {row.hasData ? (
+                <span
+                  className="text-[9px] font-mono font-bold tabular-nums flex-shrink-0"
+                  style={{ color: getLineColor(row.omega) }}
+                >
+                  {row.omega.toFixed(1)}
+                </span>
+              ) : (
+                <span className="text-[6px] font-mono text-text-muted/40 flex-shrink-0">
+                  NO DATA
+                </span>
+              )}
+            </button>
+          ))}
+          {suggestions.length > 0 && (
+            <div className="text-[7px] font-mono text-text-muted/50 px-1 pt-1.5 pb-0.5 tracking-wider">
+              SUGGESTED
+            </div>
+          )}
+          {suggestions.map((s) => (
+            <button
+              key={s.nodeId}
+              onClick={() => togglePinned(s.nodeId)}
+              className="w-full flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface transition-colors group text-left"
+              title={`${s.label} — click to pin to chart`}
+            >
+              <span className="text-[9px] leading-none text-text-muted/50 group-hover:text-accent-cyan transition-colors flex-shrink-0">
+                ○
+              </span>
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: s.color }}
+              />
+              <span className="text-[9px] font-mono text-text-muted group-hover:text-foreground transition-colors truncate flex-1">
+                {s.label}
+              </span>
+              <span
+                className="text-[9px] font-mono tabular-nums flex-shrink-0"
+                style={{ color: getLineColor(s.omega) }}
+              >
+                {s.omega.toFixed(1)}
+              </span>
+            </button>
+          ))}
+          {!hasPinned && (
+            <div className="text-[7px] font-mono text-text-muted/40 px-1 pt-1.5 leading-relaxed">
+              Click ○ to add a series, or select a node on the canvas.
+            </div>
+          )}
+        </div>
+        </>
+      )}
+      </motion.div>
+
+      {/* RIGHT: header + comparison chart */}
+      <div className="flex-1 min-w-0 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-1">
-        <div className="min-w-[72px] flex-shrink-0 flex items-center justify-center">
+        <div className="hidden">
           <span className="text-[9px] font-mono text-accent-cyan">
             {"\u2261"}
           </span>
         </div>
-        <span className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-muted flex-1">
-          {"\u03A9"}F COMPARISON — {curves.length} CURVE{curves.length !== 1 ? "S" : ""}
+        {/* Title moved to the outer collapse toggle bar. Only the zoom
+            indicator stays here, when applicable. */}
+        <span className="text-[8px] font-mono text-text-muted flex-1">
+          {xAxisMode === "data" && (
+            <span className="text-accent-cyan/80">
+              ZOOMED {new Date(xStart).getFullYear()}{"–"}{new Date(xEnd).getFullYear()}
+            </span>
+          )}
         </span>
-        <button
-          onClick={clearPinned}
-          className="text-[8px] font-mono text-text-muted hover:text-accent-red transition-colors px-1.5 py-0.5 rounded border border-border hover:border-accent-red/30"
-        >
-          CLEAR ALL
-        </button>
+        {/* FIT toggle — surfaces only when at least one pinned curve has
+            history that extends meaningfully before the dial window (the
+            regime where dial-aligned x-axis renders a flat hold-forward
+            line). Click flips between dial-aligned and data-span axis. */}
+        {(shouldOfferFit || xAxisMode === "data") && (
+          <button
+            onClick={() => setXAxisMode((m) => (m === "dial" ? "data" : "dial"))}
+            className={`text-[8px] font-mono transition-colors px-1.5 py-0.5 rounded border ${
+              xAxisMode === "data"
+                ? "text-accent-cyan border-accent-cyan/40 hover:border-accent-cyan"
+                : "text-text-muted border-border hover:border-accent-cyan/30 hover:text-accent-cyan"
+            }`}
+            title={
+              xAxisMode === "data"
+                ? "Showing each series' full history. Click to snap the x-axis back to the timeline scrubber below."
+                : "Some series have history older than the timeline window. Click to zoom out and show their full span."
+            }
+          >
+            {xAxisMode === "data" ? "SYNC TO TIMELINE" : "FIT TO DATA"}
+          </button>
+        )}
       </div>
 
-      {/* Chart area */}
+      {/* Chart area — show a prompt until at least one series is pinned,
+          rather than an empty grid. */}
+      {!hasPinned ? (
+        <div
+          className="flex items-center justify-center px-4"
+          style={{ minHeight: CHART_HEIGHT }}
+        >
+          <span className="text-[9px] font-mono text-text-muted/50 text-center">
+            Pin a series from the watchlist to chart it here.
+          </span>
+        </div>
+      ) : (
       <AnimatePresence initial={false}>
         <motion.div
           initial={{ height: 0, opacity: 0 }}
@@ -352,15 +993,22 @@ export default function TimeSeriesOverlay() {
           className="overflow-hidden"
         >
           <div className="flex items-stretch px-4 pb-2">
-            {/* Y-axis label column — aligned with TimeDial, auto-scaled */}
+            {/* Y-axis label column — normalized 0..100% so curves with mismatched
+                units share an axis without one dominating the others. */}
             <div className="min-w-[72px] flex-shrink-0 flex flex-col justify-between py-1">
-              <span className="text-[7px] font-mono text-text-muted/60">{yMax % 1 === 0 ? yMax : yMax.toFixed(1)}</span>
-              {gridLines.map((v) => (
+              <span className="text-[7px] font-mono text-text-muted/60">100%</span>
+              {/* Grid labels render top→bottom, so sort descending to read
+                  100 / 75 / 50 / 25 / 0 down the axis (previously printed
+                  in ascending order, giving the nonsensical 100/25/50/75/0). */}
+              {[...gridLines].sort((a, b) => b - a).map((v) => (
                 <span key={v} className="text-[7px] font-mono text-text-muted/60">
-                  {v % 1 === 0 ? v : v.toFixed(1)}
+                  {Math.round(v * 100)}%
                 </span>
               ))}
-              <span className="text-[7px] font-mono text-text-muted/60">{yMin % 1 === 0 ? yMin : yMin.toFixed(1)}</span>
+              <span className="text-[7px] font-mono text-text-muted/60">0%</span>
+              <span className="text-[6px] font-mono text-text-muted/40 tracking-wider mt-0.5">
+                % OF RANGE
+              </span>
             </div>
 
             {/* SVG Chart */}
@@ -394,7 +1042,7 @@ export default function TimeSeriesOverlay() {
                 })}
 
                 {/* Curves */}
-                {curves.map((curve) => {
+                {allCurves.map((curve) => {
                   const w = chartW;
                   const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
 
@@ -405,12 +1053,15 @@ export default function TimeSeriesOverlay() {
                     // to xEnd. This makes a 3-point series cover the full
                     // axis width rather than collapsing to a tiny segment.
                     // Handles the 1-point fallback (flat horizontal line).
+                    // Per-curve normalization: pass this curve's own min/max
+                    // so it renders against its own range, not the global one.
+                    const scale = curveScales.get(curve.nodeId) ?? { min: yMin, max: yMax };
                     const { linePoints, fillPoints } = buildHoldForwardPoints(
                       curve.history,
                       xStart,
                       xEnd,
-                      yMin,
-                      yMax,
+                      scale.min,
+                      scale.max,
                       plotInset.left,
                       plotInset.right,
                       w,
@@ -432,7 +1083,7 @@ export default function TimeSeriesOverlay() {
                         />
                         {/* Published point markers */}
                         {curve.history.map((h) => {
-                          const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
+                          const { x, y } = toSvg(h.timestamp, h.omegaComposite, w, curve.nodeId);
                           return (
                             <circle
                               key={h.timestamp}
@@ -451,21 +1102,25 @@ export default function TimeSeriesOverlay() {
                   // Dense series — original solid polyline rendering
                   const points = curve.history
                     .map((h) => {
-                      const { x, y } = toSvg(h.timestamp, h.omegaComposite, w);
+                      const { x, y } = toSvg(h.timestamp, h.omegaComposite, w, curve.nodeId);
                       return `${x},${y}`;
                     })
                     .join(" ");
 
-                  // Fill polygon — baseline at yMin (bottom of visible range)
+                  // Fill polygon — baseline at this curve's normalized 0
+                  const scale = curveScales.get(curve.nodeId);
+                  const baseValue = scale?.min ?? yMin;
                   const first = toSvg(
                     curve.history[0].timestamp,
-                    yMin,
+                    baseValue,
                     w,
+                    curve.nodeId,
                   );
                   const last = toSvg(
                     curve.history[curve.history.length - 1].timestamp,
-                    yMin,
+                    baseValue,
                     w,
+                    curve.nodeId,
                   );
                   const fillPoints = `${first.x},${first.y} ${points} ${last.x},${last.y}`;
 
@@ -517,24 +1172,28 @@ export default function TimeSeriesOverlay() {
                   );
                 })()}
 
-                {/* Hover crosshair + intersection dots */}
-                {hoverX !== null && (
+                {/* Crosshair + per-curve intersection dots. The dashed white
+                    line is suppressed during dial-drag because the cyan
+                    timelinePosition playhead above already marks that x. */}
+                {tooltipAnchor && tooltipValues && (
                   <g>
-                    <line
-                      x1={hoverX}
-                      y1={PAD.top}
-                      x2={hoverX}
-                      y2={CHART_HEIGHT - PAD.bottom}
-                      stroke="rgba(255,255,255,0.3)"
-                      strokeWidth={1}
-                      strokeDasharray="3 3"
-                    />
-                    {hoverValues?.values.map((v) => {
-                      const { y } = toSvg(hoverValues.ts, v.omega, chartW);
+                    {tooltipAnchor.source === "hover" && (
+                      <line
+                        x1={tooltipAnchor.x}
+                        y1={PAD.top}
+                        x2={tooltipAnchor.x}
+                        y2={CHART_HEIGHT - PAD.bottom}
+                        stroke="rgba(255,255,255,0.3)"
+                        strokeWidth={1}
+                        strokeDasharray="3 3"
+                      />
+                    )}
+                    {tooltipValues.values.map((v) => {
+                      const { y } = toSvg(tooltipValues.ts, v.omega, chartW);
                       return (
                         <g key={v.nodeId}>
-                          <circle cx={hoverX} cy={y} r={4} fill={v.color} opacity={0.25} />
-                          <circle cx={hoverX} cy={y} r={2} fill={v.color} />
+                          <circle cx={tooltipAnchor.x} cy={y} r={4} fill={v.color} opacity={0.25} />
+                          <circle cx={tooltipAnchor.x} cy={y} r={2} fill={v.color} />
                         </g>
                       );
                     })}
@@ -559,45 +1218,59 @@ export default function TimeSeriesOverlay() {
                 </span>
               </div>
 
-              {/* Hover tooltip — anchors next to the crosshair inside the
-                  chart wrapper (which is position: relative). Flips to the
-                  left of the cursor when near the right edge. */}
-              {hoverValues && hoverX !== null && (() => {
-                const flipLeft = hoverX > chartW * 0.7;
+              {/* Tooltip — anchors next to the crosshair (hover) or the dial
+                  playhead (drag). Inside the chart wrapper, which is
+                  position: relative. Flips to the left of the cursor when
+                  near the right edge. */}
+              {tooltipValues && tooltipAnchor && (() => {
+                const anchorX = tooltipAnchor.x;
+                const flipLeft = anchorX > chartW * 0.7;
                 return (
                 <div
                   className="absolute z-20 pointer-events-none"
                   style={{
-                    left: flipLeft ? undefined : `${hoverX + 12}px`,
-                    right: flipLeft ? `${chartW - hoverX + 12}px` : undefined,
+                    left: flipLeft ? undefined : `${anchorX + 12}px`,
+                    right: flipLeft ? `${chartW - anchorX + 12}px` : undefined,
                     top: "-4px",
                   }}
                 >
                   <div className="bg-surface-elevated border border-border rounded px-2 py-1.5 shadow-lg">
                     <div className="text-[7px] font-mono text-text-muted mb-1">
-                      {new Date(hoverValues.ts).toLocaleDateString("en-US", {
+                      {new Date(tooltipValues.ts).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
                       })}
                     </div>
-                    {hoverValues.values.map((v) => (
-                      <div key={v.nodeId} className="flex items-center gap-2 text-[8px] font-mono">
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: v.color }}
-                        />
-                        <span className="text-foreground truncate max-w-[120px]">
-                          {v.label}
-                        </span>
-                        <span
-                          className="font-bold ml-auto"
-                          style={{ color: getLineColor(v.omega) }}
-                        >
-                          {v.omega.toFixed(1)}
-                        </span>
-                      </div>
-                    ))}
+                    {tooltipValues.values.map((v) => {
+                      // Prefer raw underlying metric (e.g. 6.76 % food
+                      // inflation) over the omega-normalized value when
+                      // the temporal data carries it. Without this the
+                      // tooltip just repeats the per-card sparkline's
+                      // 0-10 omega scale, leaving the user without any
+                      // sense of the actual quantity being tracked.
+                      const showRaw = v.rawValue !== undefined;
+                      const display = showRaw
+                        ? `${formatRawValue(v.rawValue!)}${v.unit ? ` ${v.unit}` : ""}`
+                        : v.omega.toFixed(1);
+                      return (
+                        <div key={v.nodeId} className="flex items-center gap-2 text-[8px] font-mono">
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: v.color }}
+                          />
+                          <span className="text-foreground truncate max-w-[120px]">
+                            {v.label}
+                          </span>
+                          <span
+                            className="font-bold ml-auto"
+                            style={{ color: getLineColor(v.omega) }}
+                          >
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 );
@@ -605,76 +1278,13 @@ export default function TimeSeriesOverlay() {
             </div>
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-2 px-4 pb-2 flex-wrap">
-            <div className="min-w-[72px] flex-shrink-0" />
-            {curves.map((curve) => {
-              const isSparse = curve.pointCount < SPARSE_POINT_THRESHOLD;
-              const tooltipParts: string[] = [];
-              if (curve.sourceLabel) tooltipParts.push(`${curve.sourceLabel}${curve.sourceUnit ? ` (${curve.sourceUnit})` : ""}`);
-              tooltipParts.push(isSparse ? `${curve.pointCount} published timepoint${curve.pointCount !== 1 ? "s" : ""} — hold-forward rendering` : `${curve.pointCount} datapoints`);
-              tooltipParts.push("Click to remove");
-              return (
-                <button
-                  key={curve.nodeId}
-                  onClick={() => togglePinned(curve.nodeId)}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border hover:border-accent-red/40 transition-colors group"
-                  title={tooltipParts.join(" · ")}
-                >
-                  {/* Swatch — dashed for sparse series to match the chart line style */}
-                  <span
-                    className="w-3 flex-shrink-0"
-                    style={{
-                      height: "1.5px",
-                      backgroundColor: isSparse ? "transparent" : curve.color,
-                      borderTop: isSparse ? `1.5px dashed ${curve.color}` : "none",
-                    }}
-                  />
-                  <span className="text-[8px] font-mono text-foreground group-hover:text-accent-red transition-colors truncate max-w-[100px]">
-                    {curve.label}
-                  </span>
-                  {/* Sparsity badge — shown for sparse real data */}
-                  {isSparse && (
-                    <span
-                      className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wide px-1 py-px rounded flex-shrink-0"
-                      style={{
-                        color: curve.color,
-                        backgroundColor: `${curve.color}18`,
-                        border: `1px solid ${curve.color}40`,
-                        opacity: 0.85,
-                      }}
-                    >
-                      {curve.pointCount === 1 ? "STATIC" : `${curve.pointCount}PT`}
-                    </span>
-                  )}
-                  <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
-                    {"\u2715"}
-                  </span>
-                </button>
-              );
-            })}
-            {noDataNodes.map((nd) => (
-              <button
-                key={nd.nodeId}
-                onClick={() => togglePinned(nd.nodeId)}
-                className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-border/50 hover:border-accent-red/40 transition-colors group opacity-50"
-                title={`${nd.label} — no time series data available`}
-              >
-                <span
-                  className="w-2 h-0.5 rounded-full flex-shrink-0 border border-text-muted/30"
-                  style={{ backgroundColor: "transparent" }}
-                />
-                <span className="text-[8px] font-mono text-text-muted group-hover:text-accent-red transition-colors truncate max-w-[100px]">
-                  {nd.label}
-                </span>
-                <span className="text-[6px] font-mono text-text-muted/40 ml-0.5">NO DATA</span>
-                <span className="text-[7px] text-text-muted group-hover:text-accent-red transition-colors">
-                  {"\u2715"}
-                </span>
-              </button>
-            ))}
-          </div>
         </motion.div>
+      </AnimatePresence>
+      )}
+      </div>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

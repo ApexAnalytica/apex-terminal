@@ -27,20 +27,24 @@ let cachedData: TimeseriesJSON | null = null;
 
 async function loadTimeseriesJSON(): Promise<TimeseriesJSON> {
   if (cachedData) return cachedData;
-  const [geoResp, t1dResp] = await Promise.all([
+  const [geoResp, t1dResp, macroResp] = await Promise.all([
     fetch("/datasets/claire/timeseries.json"),
     fetch("/datasets/claire/t1d_timeseries.json"),
+    fetch("/datasets/claire/macro_timeseries.json"),
   ]);
-  const [geo, t1d] = await Promise.all([
+  const [geo, t1d, macro] = await Promise.all([
     geoResp.json() as Promise<TimeseriesJSON>,
     t1dResp.ok
       ? (t1dResp.json() as Promise<TimeseriesJSON>)
       : Promise.resolve({} as TimeseriesJSON),
+    macroResp.ok
+      ? (macroResp.json() as Promise<TimeseriesJSON>)
+      : Promise.resolve({} as TimeseriesJSON),
   ]);
-  // T1D sources live in their own file so the geopolitical 2.3MB payload stays
-  // isolated. Source keys are namespaced (vx880_trial, tn10_teplizumab, …) so
-  // there's no collision with the geopolitical sources.
-  cachedData = { ...geo, ...t1d };
+  // T1D + macro sources live in separate files so each domain's payload can
+  // grow without bloating the others. Source keys are namespaced
+  // (vx880_trial, macro_fred_proxy, …) so there's no collision.
+  cachedData = { ...geo, ...t1d, ...macro };
   return cachedData!;
 }
 
@@ -161,6 +165,10 @@ function realDataToHistory(
     return {
       timestamp: dp.date.getTime(),
       omegaComposite: omega,
+      // Stash the raw value so TimeSeriesOverlay can plot the actual
+      // metric (e.g. food inflation %) instead of duplicating the
+      // per-card sparkline's omega-normalized curve.
+      rawValue: dp.value,
       omegaProfile: {
         composite: omega,
         irreplaceability: Math.round(baseProfile.irreplaceability * profileScale * 100) / 100,
@@ -226,7 +234,7 @@ const REAL_EVENTS: Omit<TemporalEvent, "id">[] = [
     date: new Date("2019-09-14"),
     label: "Abqaiq-Khurais Attack",
     description: "Drone/missile strike on Abqaiq and Khurais oil facilities temporarily halved Saudi crude output (~5.7 mb/d)",
-    affectedNodeIds: ["sa_abqaiq_plants", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
+    affectedNodeIds: ["si_abqaiq_throughput", "sa_ras_tanura_terminal", "sa_east_west_pipeline"],
     severity: 0.95,
   },
   {
@@ -301,15 +309,35 @@ export async function loadRealTemporalData(
     unmappedNodes.push(node);
   }
 
-  // Determine time range from real-data nodes only
+  // Determine time range from real-data nodes only.
+  //
+  // Cap at "now": some sources in `timeseries.json` extend into the
+  // future (forecasts / target end-states — e.g. `2030-12-31`, plus
+  // monthly projections through 2027). Letting those push `rangeEnd`
+  // forward made the live timeline scrubbable into 2030, which the
+  // user (correctly) flagged as nonsense — historical data only goes
+  // up to today, anything past is projection. Forecast points still
+  // live in the per-node history (TimeSeriesOverlay can plot them as
+  // a dashed projection if a future feature wants that), but the
+  // *timeline range* is bounded by observed history. A small +1 hour
+  // headroom keeps `now` itself reachable when the user goes live.
+  const nowMs = Date.now();
   let rangeStart = new Date();
   let rangeEnd = new Date(0);
   for (const [, nodeData] of nodeMap) {
     for (const h of nodeData.history) {
+      if (h.timestamp > nowMs) continue; // skip future / forecast points for range
       const d = new Date(h.timestamp);
       if (d < rangeStart) rangeStart = d;
       if (d > rangeEnd) rangeEnd = d;
     }
+  }
+  // Fallback when no observable history exists (every series was
+  // forecast-only or empty). Without this, rangeEnd stays at the 1970
+  // sentinel and the timeline collapses, which we'd rather not ship.
+  if (rangeEnd.getTime() === 0 || rangeStart.getTime() > nowMs) {
+    rangeEnd = new Date(nowMs);
+    rangeStart = new Date(nowMs - 60 * 24 * 60 * 60 * 1000);
   }
 
   // ── Pass 2: Unmapped nodes — no real data available ─────────────

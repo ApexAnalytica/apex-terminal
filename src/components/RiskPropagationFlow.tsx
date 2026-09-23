@@ -4,10 +4,29 @@ import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { getDomainColor, buildRiskCards } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
+import { buildRiskCards } from "@/lib/risk-cards";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
-import { getNodeDataDescription } from "@/lib/real-timeseries";
+// `getNodeDataDescription` lives in `real-timeseries.ts`, which transitively
+// pulls the 1311-LOC `node-timeseries-map.ts` constant. RiskPropagationFlow
+// is on the critical path; the data-label badges it renders from this
+// helper are tiny (6px) and absent for ~100ms wouldn't break the layout.
+// Dynamic-load via effect + state so the heavy map stays off first paint.
+type NodeDescFn = (nodeId: string) => {
+  description: string;
+  label: string;
+  unit: string;
+  source: string;
+} | null;
+import {
+  feedDotClass,
+  feedModeFromSource,
+  feedSparklineColor,
+  formatLiveSignal,
+  summarizeLiveFeeds,
+  timeAgoLabel,
+} from "@/lib/feeds/display";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -16,40 +35,81 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
-/** Tiny sparkline SVG for a node's omega history */
+/**
+ * Tiny sparkline SVG for a node's omega history.
+ *
+ * x-axis: real time, mapped from `xStart`/`xEnd` (passed from the
+ * caller — the global timelineRange) so every tile shares the same
+ * x-axis as the TimeDial scrubber and the bottom overlay. Without
+ * this the previous index-based x stretched a 2-point series to
+ * cover the whole tile while a 24-point series got compressed —
+ * tiles looked completely heterogeneous.
+ *
+ * Sparse-data behaviour: when only 1 point is in range we draw a
+ * horizontal hold-forward line at that value, so every tile has a
+ * line edge-to-edge. When 0 points are in range the component
+ * returns null and the parent renders the "LIVE — building" hint.
+ */
 function OmegaSparkline({
   history,
   width,
   height,
   color,
   highlightIdx,
+  xStart,
+  xEnd,
 }: {
   history: NodeTemporalState[];
   width: number;
   height: number;
   color: string;
   highlightIdx: number | null;
+  xStart: number;
+  xEnd: number;
 }) {
-  if (history.length < 2) return null;
+  if (history.length === 0) return null;
+
+  const pad = 2;
+  const xRange = xEnd - xStart || 1;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const toX = (ts: number) => pad + ((ts - xStart) / xRange) * innerW;
 
   const omegas = history.map((h) => h.omegaComposite);
   const min = Math.min(...omegas);
   const max = Math.max(...omegas);
   const range = max - min || 1;
-  const pad = 2;
+  const toY = (v: number) => height - pad - ((v - min) / range) * innerH;
 
-  const points = omegas
-    .map((v, i) => {
-      const x = (i / (omegas.length - 1)) * (width - pad * 2) + pad;
-      const y = height - pad - ((v - min) / range) * (height - pad * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  // Fill area under the line
-  const firstX = pad;
-  const lastX = (width - pad * 2) * ((omegas.length - 1) / (omegas.length - 1)) + pad;
+  // Build the polyline points. For a single observation we draw a
+  // horizontal hold-forward line; for ≥2 we connect each point in
+  // chronological order and then hold the last value forward to xEnd
+  // so the line always reaches the right edge of the tile.
+  const polyPts: string[] = [];
+  if (history.length === 1) {
+    const onlyY = toY(history[0].omegaComposite);
+    polyPts.push(`${toX(history[0].timestamp)},${onlyY}`);
+    polyPts.push(`${pad + innerW},${onlyY}`);
+  } else {
+    for (const h of history) {
+      polyPts.push(`${toX(h.timestamp)},${toY(h.omegaComposite)}`);
+    }
+    const last = history[history.length - 1];
+    polyPts.push(`${pad + innerW},${toY(last.omegaComposite)}`);
+  }
+  const points = polyPts.join(" ");
+  const firstX = toX(history[0].timestamp);
+  const lastX = pad + innerW;
   const fillPoints = `${firstX},${height - pad} ${points} ${lastX},${height - pad}`;
+
+  // Highlight dot — clamp to a real point in case the parent's
+  // highlightIdx is stale relative to a freshly-filtered history.
+  const idx = Math.max(
+    0,
+    Math.min(history.length - 1, highlightIdx ?? history.length - 1),
+  );
+  const dotX = toX(history[idx].timestamp);
+  const dotY = toY(history[idx].omegaComposite);
 
   return (
     <svg width={width} height={height} className="flex-shrink-0">
@@ -58,9 +118,9 @@ function OmegaSparkline({
         <line
           key={frac}
           x1={pad}
-          y1={pad + (1 - frac) * (height - pad * 2)}
+          y1={pad + (1 - frac) * innerH}
           x2={width - pad}
-          y2={pad + (1 - frac) * (height - pad * 2)}
+          y2={pad + (1 - frac) * innerH}
           stroke="rgba(255,255,255,0.04)"
           strokeWidth={0.5}
         />
@@ -76,17 +136,8 @@ function OmegaSparkline({
         strokeLinejoin="round"
       />
       {/* Current value dot */}
-      {(() => {
-        const idx = highlightIdx ?? omegas.length - 1;
-        const x = (idx / (omegas.length - 1)) * (width - pad * 2) + pad;
-        const y = height - pad - ((omegas[idx] - min) / range) * (height - pad * 2);
-        return (
-          <>
-            <circle cx={x} cy={y} r={3} fill={color} opacity={0.4} />
-            <circle cx={x} cy={y} r={1.5} fill={color} />
-          </>
-        );
-      })()}
+      <circle cx={dotX} cy={dotY} r={3} fill={color} opacity={0.4} />
+      <circle cx={dotX} cy={dotY} r={1.5} fill={color} />
     </svg>
   );
 }
@@ -101,10 +152,27 @@ export default function RiskPropagationFlow() {
   const temporalData = useApexStore((s) => s.temporalData);
   const initTemporalData = useApexStore((s) => s.initTemporalData);
   const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const timelineRange = useApexStore((s) => s.timelineRange);
   const { graph: temporalGraph } = useTemporalGraph();
   const pinnedNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
   const togglePinned = useApexStore((s) => s.togglePinnedTimeSeries);
   const [collapsed, setCollapsed] = useState(false);
+
+  // Lazy-loaded data-description lookup. See the type definition above
+  // for why this is deferred. Initial render shows risk cards without
+  // the tiny data-label badge; once the chunk lands (one effect tick)
+  // the badges appear. Visual delta is negligible — the badge is a
+  // 6px caption between the domain name and the omega bar.
+  const [getNodeDataDescription, setGetNodeDataDescription] = useState<NodeDescFn | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("@/lib/real-timeseries").then((mod) => {
+      if (!cancelled) setGetNodeDataDescription(() => mod.getNodeDataDescription);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Ensure temporal data is initialized (may not be if TimeDial hasn't mounted yet)
   useEffect(() => {
@@ -135,40 +203,67 @@ export default function RiskPropagationFlow() {
     return { riskCards: cards, riskMap: map };
   }, [activeGraph, shocks]);
 
-  // Get the nodes to display time series for.
-  // Selected nodes (single + multi) shown first, then fill remaining slots with top risk nodes.
-  // Depends on riskCards/riskMap identity (stable across scrub) + allSelectedIds.
+  // Get the nodes to display time series for. Priority order:
+  //   1. Selected nodes (single + multi) — explicit user choice
+  //   2. Nodes with `liveData` attached — surface live-fed nodes so the
+  //      Live Coverage Program is visible without clicking
+  //   3. Top-Ω risk nodes — the original default
+  // Depends on riskCards/riskMap identity (stable across scrub) +
+  // allSelectedIds + activeGraph (for liveData scan).
   const displayNodes = useMemo(() => {
-    if (allSelectedIds.size > 0) {
-      // Build cards for all selected nodes, even if they're not top-risk
-      const selectedCards: typeof riskCards = [];
-      for (const id of allSelectedIds) {
-        const existing = riskMap.get(id);
-        if (existing) {
-          selectedCards.push(existing);
-        } else {
-          // Node not in top risk — build a card from graph data
-          const node = activeGraph.nodes.find((n) => n.id === id);
-          if (node) {
-            const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
-            const shockMult = Math.min(1, totalSeverity);
-            selectedCards.push({
-              nodeId: node.id,
-              label: node.label,
-              category: node.category,
-              omegaScore: parseFloat((node.omegaFragility.composite * (1 + shockMult * 0.05)).toFixed(1)),
-              domain: node.domain,
-              globalConcentration: node.globalConcentration,
-            });
-          }
+    const cards: typeof riskCards = [];
+    const seen = new Set<string>();
+
+    // Helper: synthesize a card for a node not in the riskCards list
+    const buildCardFor = (nodeId: string): (typeof riskCards)[number] | null => {
+      const existing = riskMap.get(nodeId);
+      if (existing) return existing;
+      const node = activeGraph.nodes.find((n) => n.id === nodeId);
+      if (!node) return null;
+      const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
+      const shockMult = Math.min(1, totalSeverity);
+      return {
+        nodeId: node.id,
+        label: node.label,
+        category: node.category,
+        omegaScore: parseFloat((node.omegaFragility.composite * (1 + shockMult * 0.05)).toFixed(1)),
+        domain: node.domain,
+        globalConcentration: node.globalConcentration,
+      };
+    };
+
+    // 1. Selected nodes
+    for (const id of allSelectedIds) {
+      if (seen.has(id)) continue;
+      const c = buildCardFor(id);
+      if (c) {
+        cards.push(c);
+        seen.add(id);
+      }
+    }
+
+    // 2. Live-fed nodes — any node whose `liveData[]` is non-empty
+    if (allSelectedIds.size === 0) {
+      for (const n of activeGraph.nodes) {
+        if (seen.has(n.id)) continue;
+        if (!n.liveData || n.liveData.length === 0) continue;
+        const c = buildCardFor(n.id);
+        if (c) {
+          cards.push(c);
+          seen.add(n.id);
         }
       }
-      // Fill remaining slots with top risk nodes not already selected
-      const remaining = riskCards.filter((c) => !allSelectedIds.has(c.nodeId));
-      const maxSlots = Math.max(5, allSelectedIds.size);
-      return [...selectedCards, ...remaining].slice(0, maxSlots);
     }
-    return riskCards.slice(0, 5);
+
+    // 3. Top-Ω fillers
+    for (const c of riskCards) {
+      if (seen.has(c.nodeId)) continue;
+      cards.push(c);
+      seen.add(c.nodeId);
+    }
+
+    const maxSlots = Math.max(5, allSelectedIds.size);
+    return cards.slice(0, maxSlots);
   }, [riskCards, riskMap, allSelectedIds, activeGraph, shocks]);
 
   // Get temporal history for each display node
@@ -181,6 +276,19 @@ export default function RiskPropagationFlow() {
     }
     return map;
   }, [temporalData, displayNodes]);
+
+  // Per-card lookup of the underlying CausalNode (for liveData[]).
+  const nodeById = useMemo(
+    () => new Map(activeGraph.nodes.map((n) => [n.id, n])),
+    [activeGraph],
+  );
+
+  // Global feed summary for the header — counts distinct feed `kind`s by mode.
+  const feedSummary = useMemo(() => {
+    const counts = summarizeLiveFeeds(activeGraph.nodes);
+    const total = counts.live + counts.mock + counts["mock-fallback"];
+    return total > 0 ? counts : null;
+  }, [activeGraph]);
 
   // Find which history index corresponds to current timeline position
   const currentHistoryIdx = useMemo(() => {
@@ -228,6 +336,20 @@ export default function RiskPropagationFlow() {
               ? "ΩF TIME SERIES — SELECTED NODE"
               : "ΩF TIME SERIES — TOP RISK NODES"}
         </span>
+        {feedSummary && (
+          <span className="ml-auto flex items-center gap-2 text-[8px] font-mono text-text-muted">
+            <span className="tracking-[0.15em]">FEEDS</span>
+            {(["live", "mock-fallback", "mock"] as const).map((mode) =>
+              feedSummary[mode] > 0 ? (
+                <span key={mode} className="flex items-center gap-1">
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${feedDotClass(mode)}`} />
+                  <span className="tabular-nums">{feedSummary[mode]}</span>
+                  <span className="text-text-muted/60">{mode === "mock-fallback" ? "fallback" : mode}</span>
+                </span>
+              ) : null,
+            )}
+          </span>
+        )}
       </button>
 
       {/* Collapsible content */}
@@ -253,7 +375,40 @@ export default function RiskPropagationFlow() {
               {/* Cards — aligns with TimeDial track */}
               <div ref={containerRef} className="flex-1 flex items-stretch gap-2 overflow-x-auto min-w-0">
               {displayNodes.map((card, i) => {
-                const history = nodeHistories.get(card.nodeId) ?? [];
+                const omegaHistory = nodeHistories.get(card.nodeId) ?? [];
+                // Prefer live-data when ANY liveData entry is attached. On
+                // the first tick `liveSignal.history` is empty, but the
+                // current observation is appended below as a literal — so
+                // `allHistory.length` is 1, not 0, and OmegaSparkline draws
+                // a horizontal hold-forward line at that single value. On
+                // the second tick `allHistory.length` is 2 and the sparkline
+                // renders a real curve.
+                const node = nodeById.get(card.nodeId);
+                const liveSignal = node?.liveData?.[0];
+                const usingLiveHistory = !!liveSignal;
+                const allHistory = usingLiveHistory
+                  ? [
+                      ...(liveSignal!.history ?? []).map((h) => ({
+                        timestamp: new Date(h.observedAt).getTime(),
+                        omegaComposite: h.value,
+                        omegaProfile: {} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"],
+                      })),
+                      {
+                        timestamp: new Date(liveSignal!.observedAt).getTime(),
+                        omegaComposite: liveSignal!.value,
+                        omegaProfile: {} as unknown as import("@/lib/temporal-data").NodeTemporalState["omegaProfile"],
+                      },
+                    ]
+                  : omegaHistory;
+                // Filter to the visible time-dial window so the 1H/1D/1W/1M
+                // scale buttons actually change the curve. If the filter
+                // would yield zero points (e.g. monthly data with a 1H window),
+                // fall back to the unfiltered series so the card never goes
+                // empty due to scale mismatch alone.
+                const filtered = allHistory.filter(
+                  (h) => h.timestamp >= timelineRange.start && h.timestamp <= timelineRange.end,
+                );
+                const history = filtered.length > 0 ? filtered : allHistory;
                 const domainColor = getDomainColor(card.domain);
                 const isActive = allSelectedIds.has(card.nodeId);
                 const currentOmega = card.omegaScore;
@@ -285,6 +440,18 @@ export default function RiskPropagationFlow() {
                       <div className="text-[10px] font-mono text-foreground truncate flex-1">
                         {card.label}
                       </div>
+                      {/* DATA NEEDED badge — surfaces nodes the data session
+                          has explicitly marked Category-C (no defensible
+                          free source). Distinguishes intentionally-blank
+                          slots from "no provider matched yet" cases. */}
+                      {node?.dataStatus === "blank-needs-data" && (
+                        <span
+                          className="text-[6px] font-[family-name:var(--font-michroma)] tracking-wider px-1 py-px rounded flex-shrink-0 bg-accent-amber/15 text-accent-amber border border-accent-amber/40"
+                          title="Node intentionally blank — real data source still needed (Category C in the live-coverage program)"
+                        >
+                          DATA NEEDED
+                        </span>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -325,7 +492,8 @@ export default function RiskPropagationFlow() {
                         {card.domain}
                       </div>
                       {(() => {
-                        const desc = getNodeDataDescription(card.nodeId);
+                        // null until the lazy real-timeseries chunk lands
+                        const desc = getNodeDataDescription?.(card.nodeId);
                         if (desc) {
                           return (
                             <div className="text-[6px] font-mono text-accent-cyan/60 truncate max-w-[120px]" title={`${desc.label} (${desc.unit})`}>
@@ -346,36 +514,100 @@ export default function RiskPropagationFlow() {
                       )}
                     </div>
 
+                    {/* Live-data rows — one per `liveData[]` entry. Card without
+                        any live signal renders nothing here. */}
+                    {(() => {
+                      const node = nodeById.get(card.nodeId);
+                      const live = node?.liveData;
+                      if (!live || live.length === 0) return null;
+                      return (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {live.map((point) => {
+                            const formatted = formatLiveSignal(point);
+                            const mode = feedModeFromSource(point.source, point.observedAt);
+                            return (
+                              <div
+                                key={point.kind}
+                                className="flex items-center gap-1.5 text-[7px] font-mono text-text-muted"
+                                title={point.source}
+                              >
+                                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                  {mode === "live" && (
+                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${feedDotClass(mode)} opacity-60`} />
+                                  )}
+                                  <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${feedDotClass(mode)}`} />
+                                </span>
+                                <span className="text-foreground/70 shrink-0">{formatted.shortLabel}</span>
+                                <span className="text-foreground tabular-nums truncate">{formatted.primaryValue}</span>
+                                {formatted.qualifier && (
+                                  <span className="text-text-muted/80 shrink-0 tabular-nums">· {formatted.qualifier}</span>
+                                )}
+                                <span className="ml-auto text-text-muted/70 shrink-0 tabular-nums">
+                                  {timeAgoLabel(point.observedAt)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
                     {/* Time series chart */}
                     <div
                       className="relative"
                       onMouseMove={(e) => handleChartHover(card.nodeId, e)}
                       onMouseLeave={() => setHoveredDay(null)}
                     >
-                      {history.length > 1 ? (
+                      {history.length >= 1 ? (
                         <OmegaSparkline
                           history={history}
                           width={isActive ? 254 : 174}
                           height={isActive ? 48 : 36}
-                          color={getBarColor(currentOmega)}
+                          color={
+                            usingLiveHistory
+                              ? feedSparklineColor(
+                                  feedModeFromSource(liveSignal!.source, liveSignal!.observedAt),
+                                )
+                              : getBarColor(currentOmega)
+                          }
                           highlightIdx={hoveredDay ?? currentHistoryIdx}
+                          xStart={timelineRange.start}
+                          xEnd={timelineRange.end}
                         />
                       ) : (
                         <div className="h-9 flex items-center justify-center gap-1.5">
-                          <span className="text-[7px] font-mono text-text-muted/40 tracking-wider">NO DATA</span>
-                          <span className="text-[6px] font-mono text-text-muted/25">— static Ω only</span>
+                          <span className="text-[7px] font-mono text-text-muted/40 tracking-wider">
+                            {usingLiveHistory ? "LIVE — building" : "NO DATA"}
+                          </span>
+                          <span className="text-[6px] font-mono text-text-muted/25">
+                            {usingLiveHistory ? `· ${liveSignal!.source.split(/[\s—(]/)[0]} polling` : "— static Ω only"}
+                          </span>
                         </div>
+                      )}
+                      {usingLiveHistory && history.length >= 1 && (
+                        <span
+                          className="absolute top-0 right-0 text-[6px] font-mono tracking-wider px-1 rounded-sm"
+                          style={{
+                            color: feedSparklineColor(feedModeFromSource(liveSignal!.source, liveSignal!.observedAt)),
+                            backgroundColor: "rgba(0,0,0,0.4)",
+                          }}
+                          title={liveSignal!.source}
+                        >
+                          LIVE
+                        </span>
                       )}
                     </div>
 
-                    {/* Date range labels */}
-                    {history.length > 1 && (
+                    {/* Date range labels — show timeline window edges so every
+                        tile reads with the same axis labels regardless of how
+                        many points it actually has in range. */}
+                    {history.length >= 1 && (
                       <div className="flex justify-between mt-0.5 text-[7px] font-mono text-text-muted/50">
                         <span>
-                          {new Date(history[0].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                          {new Date(timelineRange.start).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
                         </span>
                         <span>
-                          {new Date(history[history.length - 1].timestamp).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                          {new Date(timelineRange.end).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
                         </span>
                       </div>
                     )}

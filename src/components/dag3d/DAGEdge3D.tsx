@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
 import * as THREE from "three";
 import { CausalEdge, EdgeEpochState } from "@/lib/types";
+import { edgeFireIntensity } from "@/lib/cascade-edge-activation-order";
 
 interface DAGEdge3DProps {
   edge: CausalEdge;
@@ -25,6 +26,39 @@ interface DAGEdge3DProps {
   onAblationClick?: () => void;
   onEdgeClick?: () => void;
   epochState?: EdgeEpochState;
+  /**
+   * Cascade-firing pulse inputs. When the current replay epoch falls
+   * within a small window of this edge's `fireActivationEpoch`, the
+   * edge renders a brief "FIRE" pulse (brighter line, larger flow
+   * particle, color flash toward white). Driven by
+   * `cascadeEdgeActivationOrder` — see src/lib/cascade-edge-activation-
+   * order.ts. Undefined when the edge never fires in the visible
+   * cascade window; pulse is suppressed in that case.
+   */
+  fireActivationEpoch?: number;
+  /** Current replay epoch — read by `edgeFireIntensity` per-frame. */
+  currentEpoch?: number;
+  /**
+   * True iff cascade replay is in progress. Gates the FIRE pulse so
+   * the brightness boost doesn't fire spuriously when the user is
+   * just hovering over an idle graph.
+   */
+  replayActive?: boolean;
+  /**
+   * χ★ tier — discrete midpoint marker tells the user this edge is
+   * in the load-bearing skeleton without smudging the cyan / amber
+   * line color (which encodes causal type). Two visual tiers so the
+   * categorical difference between strict bridges and top-BES reads
+   * at a glance:
+   *   "bridge"  — filled violet octahedron. Cutting this disconnects
+   *                the (undirected) graph.
+   *   "top-bes" — hollow violet octahedron (wireframe). High shortest-
+   *                path load, but not a disconnector.
+   *   null / undef — edge isn't in χ★; no marker rendered.
+   * Computed once per graph at the parent level — see CausalDAG3D's
+   * chiStarInfo useMemo.
+   */
+  chiStarTier?: "bridge" | "top-bes" | null;
 }
 
 /**
@@ -40,7 +74,8 @@ function getEdgeColor(edge: CausalEdge, isVerifiedInconsistent: boolean): string
     case "directed": return "#00e5ff";
     case "temporal": return "#ffab00";
     case "confounded": return "#ff6d00";
-    default: return "#2a2d45";
+    case "flow": return "#1de9b6";
+    default: return "#42466a";
   }
 }
 
@@ -63,9 +98,17 @@ function DAGEdge3DInner({
   onAblationClick,
   onEdgeClick,
   epochState,
+  fireActivationEpoch,
+  currentEpoch,
+  replayActive = false,
+  chiStarTier = null,
 }: DAGEdge3DProps) {
   const [hovered, setHovered] = useState(false);
   const particleRef = useRef<THREE.Mesh>(null);
+  // FIRE-pulse halo — co-located with the particle so it inherits the
+  // particle's path along the curve. Same useFrame block updates both
+  // refs so the halo doesn't drift away from its core particle.
+  const haloRef = useRef<THREE.Mesh>(null);
   const particleT = useRef(Math.random()); // stagger start positions
 
   // Color: match 2D exactly
@@ -75,7 +118,12 @@ function DAGEdge3DInner({
   //   else → type-based color or Tarski red if inconsistent
   const baseColor = getEdgeColor(edge, isVerifiedInconsistent);
   const color = isAblated ? "#e040fb" : isSevered ? "#78909c" : isConsequenceEdge ? "#ff6d00" : baseColor;
-  const lineWidth = 0.5 + edge.weight * 1.5;
+  // Power-scale weight to widen visible thickness range. Real weights
+  // cluster 0.4–0.8 so the previous linear `0.5 + w * 1.5` mapping
+  // produced 1.1–1.7 — basically uniform on screen. See the parallel
+  // change in `CausalDAG2D.tsx` (EmphasizedEdge memo).
+  const w = Math.max(0, Math.min(1, edge.weight));
+  const lineWidth = 0.7 + Math.pow(w, 2.4) * 3.3;
 
   // Deterministic curve offset based on edge ID
   const curveOffset = useMemo(() => {
@@ -91,27 +139,84 @@ function DAGEdge3DInner({
     );
   }, [edge.id]);
 
-  const posKey = `${sourcePos[0]},${sourcePos[1]},${sourcePos[2]}|${targetPos[0]},${targetPos[1]},${targetPos[2]}`;
+  // Extracted into locals to satisfy react-hooks/exhaustive-deps — the
+  // lint can't statically reason about array-element dep expressions.
+  const sx = sourcePos[0];
+  const sy = sourcePos[1];
+  const sz = sourcePos[2];
+  const tx = targetPos[0];
+  const ty = targetPos[1];
+  const tz = targetPos[2];
 
-  const { curvePoints, midpoint, curve } = useMemo(() => {
-    const src = new THREE.Vector3(...sourcePos);
-    const tgt = new THREE.Vector3(...targetPos);
+  const { curvePoints, midpoint, curve, chiTrackTop, chiTrackBottom } = useMemo(() => {
+    const src = new THREE.Vector3(sx, sy, sz);
+    const tgt = new THREE.Vector3(tx, ty, tz);
     const mid = new THREE.Vector3().lerpVectors(src, tgt, 0.5);
     mid.add(curveOffset);
 
     const c = new THREE.QuadraticBezierCurve3(src, mid, tgt);
-    const pts = c.getPoints(32);
+    const N = 32;
+    const pts = c.getPoints(N);
     const midPt = c.getPoint(0.5);
+
+    // χ★ parallel-track offsets. Skipped when this edge isn't in χ★ —
+    // the chiTrackTier guard further down hides the tracks anyway, so
+    // computing them for the ~95% of edges that aren't in χ★ was pure
+    // waste. For a 300-edge graph with maybe 10 in χ★, that's ~9,000
+    // cross products + Vector3 allocations skipped per layout step.
+    //
+    // When the edge IS in χ★: for each point on the curve, compute
+    // the tangent there, cross with world-up to get a "side" vector
+    // perpendicular to the curve in the horizontal plane, then offset
+    // by ±CHI_TRACK_OFFSET along it. The result is two parallel
+    // 3D curves running alongside the main one — visible as
+    // train-tracks from the standard top-down camera angle. Fallback
+    // when the tangent is parallel to up (rare; vertical edges):
+    // use world-X as the reference perpendicular.
+    let top: [number, number, number][] | null = null;
+    let bottom: [number, number, number][] | null = null;
+    if (chiStarTier) {
+      const CHI_TRACK_OFFSET = 0.85;
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      const worldX = new THREE.Vector3(1, 0, 0);
+      top = [];
+      bottom = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const p = pts[i];
+        const tangent = c.getTangent(t);
+        // side = tangent × up, normalised. If tangent is parallel to up
+        // (cross is ~zero), use tangent × worldX as fallback.
+        const side = new THREE.Vector3().crossVectors(tangent, worldUp);
+        if (side.lengthSq() < 1e-6) {
+          side.crossVectors(tangent, worldX);
+        }
+        side.normalize().multiplyScalar(CHI_TRACK_OFFSET);
+        top.push([p.x + side.x, p.y + side.y, p.z + side.z]);
+        bottom.push([p.x - side.x, p.y - side.y, p.z - side.z]);
+      }
+    }
+
     return {
       curvePoints: pts.map(p => [p.x, p.y, p.z] as [number, number, number]),
       midpoint: midPt,
       curve: c,
+      chiTrackTop: top,
+      chiTrackBottom: bottom,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posKey, curveOffset]);
+    // Primitive position deps replace the previous `posKey` string
+    // composed of these same six numbers. The string was rebuilt on
+    // every parent render — ~1300 fresh template-literal allocations
+    // per layout on a 300-edge graph — but useMemo only used it for
+    // an Object.is comparison anyway. Direct primitive comparison
+    // achieves the same gating without the allocation. chiStarTier
+    // joins the deps so a topology change that flips an edge into
+    // (or out of) χ★ recomputes the tracks.
+  }, [sx, sy, sz, tx, ty, tz, curveOffset, chiStarTier]);
 
   // Edge type determines rendering style
   const isTemporalFlow = edge.type === "temporal";
+  const isFlow = edge.type === "flow";
   const isDashed = edge.type === "confounded" || isVerifiedInconsistent ||
     isAblated || isSevered;
 
@@ -119,28 +224,71 @@ function DAGEdge3DInner({
   const selectionDim = anyNodeSelected && !isConnectedToSelected;
   const propSignal = epochState ? epochState.propagationSignal : 0;
   const propBoost = propSignal * 0.5;
+  // Cascade "FIRE" pulse — peaks at the activation epoch and decays
+  // over a few epochs. 0 outside the window or when replay isn't
+  // active. Added to opacity and used to grow the particle so the
+  // moment-of-firing reads as a clear punctuation in the cascade,
+  // not just a continuation of the steady propSignal flow that's
+  // been there since PR #258. Ablated / severed edges suppress the
+  // pulse — those are post-cut analysis states where firing would
+  // misrepresent what just happened to the topology.
+  const fireIntensity =
+    replayActive &&
+    fireActivationEpoch !== undefined &&
+    currentEpoch !== undefined &&
+    !isAblated &&
+    !isSevered
+      ? edgeFireIntensity(fireActivationEpoch, currentEpoch)
+      : 0;
   const baseOpacity = isAblated ? 0.15
     : isSevered ? 0.45
     : isDimmed ? 0.15
     : isHighlighted ? 0.9
     : hovered ? 0.8
     : isConsequenceEdge ? 0.85
-    : (0.5 + propBoost);
+    : (0.5 + propBoost + fireIntensity * 0.4);
   const lineOpacity = selectionDim ? 0.05
     : isConnectedToSelected ? 1.0
     : Math.min(1, baseOpacity);
 
-  // Should the particle flow animate?
+  // Should the particle flow animate? Fire pulse counts as a reason
+  // to animate too — at very low propSignal the steady-flow path
+  // wouldn't kick in, but the fire moment still needs to render
+  // a particle whoosh.
   const shouldAnimate = !isSevered && !isAblated && !selectionDim &&
-    (isTemporalFlow || propSignal > 0.3);
-  const animSpeed = isTemporalFlow ? 0.4 : 0.3 + propSignal * 0.5;
+    (isTemporalFlow || isFlow || propSignal > 0.3 || fireIntensity > 0.05);
+  // Boost the animation speed during the fire pulse so the particle
+  // visibly accelerates at firing time — matches the human read of
+  // "signal arriving fast" vs "signal continuously flowing." Flow
+  // edges run a touch faster than temporal to give a distinct
+  // "stuff in motion" cadence (vs. temporal's slower "lag" cadence).
+  const animSpeed = isFlow
+    ? 0.6 + fireIntensity * 0.6
+    : isTemporalFlow
+      ? 0.4 + fireIntensity * 0.6
+      : 0.3 + propSignal * 0.5 + fireIntensity * 0.8;
 
-  // Animate particle along curve for temporal/causal edges
+  // Animate particle along curve for temporal/causal edges.
+  // Reads from the pre-cached curvePoints array (allocated once per
+  // posKey change) instead of re-evaluating the bezier each frame —
+  // saves ~one Vector3 allocation + a sqrt per animating edge per
+  // frame. With ~100 animating edges at 60fps that's ~6k fewer
+  // allocations/sec and noticeably less GC pressure during replay.
   useFrame((_, delta) => {
     if (!particleRef.current || !shouldAnimate) return;
     particleT.current = (particleT.current + delta * animSpeed) % 1;
-    const pos = curve.getPoint(particleT.current);
-    particleRef.current.position.set(pos.x, pos.y, pos.z);
+    const samples = curvePoints.length;
+    const i = Math.min(samples - 1, Math.floor(particleT.current * samples));
+    const [x, y, z] = curvePoints[i];
+    particleRef.current.position.set(x, y, z);
+    // Keep the halo in lockstep with the particle so the pulse reads
+    // as a coherent glow around its core, not a separate object
+    // floating along an offset path. The halo mesh is conditionally
+    // rendered (only during fireIntensity > 0.05), so the ref is null
+    // outside that window — the guard below handles that.
+    if (haloRef.current) {
+      haloRef.current.position.set(x, y, z);
+    }
   });
 
   return (
@@ -169,9 +317,45 @@ function DAGEdge3DInner({
           }
         }}
       >
-        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 8, 8]} />
+        {/* Invisible hitbox — raycast cost scales with triangle count,
+            so keep the tessellation low. 4×4 segments = 8 triangles
+            vs 8×8 = 64 with no visual difference (it's transparent). */}
+        <sphereGeometry args={[scissorsMode || ablationMode ? 3.5 : 2, 4, 4]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
+
+      {/* χ★ parallel tracks — TWO thin violet lines running alongside
+          the main edge, offset perpendicular to the curve tangent by
+          CHI_TRACK_OFFSET world-units (see chiTrackTop / chiTrackBottom
+          in the curve memo above). The cyan/amber main line stays
+          untouched in the middle — this is "train-track" outlining,
+          not a halo. Solid for strict bridges, dashed for top-BES.
+          Skipped on severed / ablated edges (their own markers take
+          priority). */}
+      {chiStarTier && chiTrackTop && chiTrackBottom && !isSevered && !isAblated && (
+        <>
+          <Line
+            points={chiTrackTop}
+            color="#7B68EE"
+            lineWidth={1.5}
+            transparent
+            opacity={0.85}
+            dashed={chiStarTier === "top-bes"}
+            dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
+            gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
+          />
+          <Line
+            points={chiTrackBottom}
+            color="#7B68EE"
+            lineWidth={1.5}
+            transparent
+            opacity={0.85}
+            dashed={chiStarTier === "top-bes"}
+            dashSize={chiStarTier === "top-bes" ? 0.4 : undefined}
+            gapSize={chiStarTier === "top-bes" ? 0.35 : undefined}
+          />
+        </>
+      )}
 
       {/* Edge line — using drei Line for reliable rendering:
           directed = solid cyan
@@ -192,12 +376,48 @@ function DAGEdge3DInner({
       {/* Animated flowing particle for temporal/causal edges —
           small glowing sphere that travels source → target along the curve */}
       {shouldAnimate && (
-        <mesh ref={particleRef}>
-          <sphereGeometry args={[0.25, 8, 8]} />
+        <mesh
+          ref={particleRef}
+          // Scale up during the fire pulse so the moment of activation
+          // reads as a punctuation — particle grows from 1× → 2.6× at
+          // the activation epoch and decays back over the window. The
+          // base radius stays 0.25 so steady-flow edges look identical
+          // to before; the boost only shows up while `fireIntensity > 0`.
+          scale={1 + fireIntensity * 1.6}
+        >
+          {/* 6×6 segments = 36 triangles, indistinguishable from 8×8
+              (64 tri) at this radius (0.25). Saves vertex work
+              proportional to active orb count. */}
+          <sphereGeometry args={[0.25, 6, 6]} />
           <meshBasicMaterial
             color={color}
             transparent
-            opacity={lineOpacity * 0.9}
+            // Boost particle opacity during the fire pulse to keep it
+            // visible even when the line itself stays near baseline.
+            // Combined with the scale boost above, the eye reads the
+            // activation moment clearly without needing a color shift.
+            opacity={Math.min(1, lineOpacity * 0.9 + fireIntensity * 0.4)}
+          />
+        </mesh>
+      )}
+      {/* FIRE-pulse halo — a second translucent sphere co-located with
+          the particle, twice the size, that only renders during the
+          activation window. The double-render is cheap (6×6 segments
+          ≈ 36 triangles × ≤ 192 edges firing simultaneously, but in
+          practice ≤ ~20 edges are within the 3-epoch window at any
+          given time) and gives the pulse a visible "glow" around the
+          core particle without needing a shader. */}
+      {fireIntensity > 0.05 && shouldAnimate && (
+        <mesh
+          ref={haloRef}
+          scale={(1 + fireIntensity * 1.6) * 2.2}
+        >
+          <sphereGeometry args={[0.25, 6, 6]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={fireIntensity * 0.35}
+            depthWrite={false}
           />
         </mesh>
       )}
@@ -229,9 +449,66 @@ function DAGEdge3DInner({
           </mesh>
         </group>
       )}
+
     </group>
   );
 }
 
-const DAGEdge3D = React.memo(DAGEdge3DInner);
+/**
+ * Custom equality check for the React.memo wrap below. Same problem as in
+ * DAGNode3D — sourcePos / targetPos rebuild fresh `[x, y, z]` tuples each
+ * parent render, epochState is sometimes a fresh object literal, and the
+ * onClick / onScissorsClick / onAblationClick closures are inline. That
+ * defeated default shallow equality and re-rendered all ~323 edges on
+ * every selection change, costing frame budget that the per-frame
+ * particle animations needed.
+ *
+ * Compares value props by content and ignores callback identity (closures
+ * are pure functions of stable bound `edge.id` + store actions).
+ */
+function arePropsEqual(prev: DAGEdge3DProps, next: DAGEdge3DProps) {
+  if (prev.edge !== next.edge) return false;
+  if (
+    prev.sourcePos[0] !== next.sourcePos[0] ||
+    prev.sourcePos[1] !== next.sourcePos[1] ||
+    prev.sourcePos[2] !== next.sourcePos[2]
+  ) return false;
+  if (
+    prev.targetPos[0] !== next.targetPos[0] ||
+    prev.targetPos[1] !== next.targetPos[1] ||
+    prev.targetPos[2] !== next.targetPos[2]
+  ) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+  if (prev.isDimmed !== next.isDimmed) return false;
+  if (prev.isVerifiedInconsistent !== next.isVerifiedInconsistent) return false;
+  if (prev.isCrossDomain !== next.isCrossDomain) return false;
+  if (prev.isConnectedToSelected !== next.isConnectedToSelected) return false;
+  if (prev.anyNodeSelected !== next.anyNodeSelected) return false;
+  if (prev.isSevered !== next.isSevered) return false;
+  if (prev.isConsequenceEdge !== next.isConsequenceEdge) return false;
+  if (prev.scissorsMode !== next.scissorsMode) return false;
+  if (prev.isAblated !== next.isAblated) return false;
+  if (prev.ablationMode !== next.ablationMode) return false;
+  if (prev.chiStarTier !== next.chiStarTier) return false;
+  // epochState — only `propagationSignal` is read (drives shouldAnimate).
+  const pe = prev.epochState;
+  const ne = next.epochState;
+  if (pe !== ne) {
+    if (!pe || !ne) return false;
+    if (pe.propagationSignal !== ne.propagationSignal) return false;
+  }
+  // Cascade-firing inputs. `replayActive` flips infrequently, but
+  // `currentEpoch` advances every replay tick and `fireActivationEpoch`
+  // is stable per (edge, cascade-run). Skipping these here would make
+  // the memo stale during replay — the fire pulse wouldn't render
+  // because the parent's reseat-the-edge-list re-render would be
+  // short-circuited.
+  if (prev.fireActivationEpoch !== next.fireActivationEpoch) return false;
+  if (prev.currentEpoch !== next.currentEpoch) return false;
+  if (prev.replayActive !== next.replayActive) return false;
+  // Intentionally not comparing onScissorsClick / onAblationClick / onEdgeClick.
+  return true;
+}
+
+const DAGEdge3D = React.memo(DAGEdge3DInner, arePropsEqual);
 export default DAGEdge3D;

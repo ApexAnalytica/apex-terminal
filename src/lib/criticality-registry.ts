@@ -85,27 +85,68 @@ const REGISTRY: Record<EstimatorId, EstimatorMeta> = {
     defaultAvailability: "ready",
   },
 
-  // ── Medical estimators (TS-ported, awaiting real data wiring) ──────
+  // ── BOCPD: live on the scoped Ω trajectory (same source as CSD/LPPLS).
+  // Was previously gated to T1D-node series (rarely > 5 points each); now
+  // runs on whatever trajectory the active scope produces, which is the
+  // same substrate the rest of the criticality cards already use.
   bocpd: {
     id: "bocpd",
     abbrev: "BOCPD",
     fullName: "BAYESIAN ONLINE CHANGE-POINT DETECTION",
     shortDesc:
-      "Run-length posterior on a patient trace — flags regime shifts (honeymoon end, DKA onset)",
+      "Run-length posterior on the scoped Ω trajectory — flags regime shifts via P(new run)",
     color: "#00e5ff",
     methodology: [
       "Adams & MacKay (2007) run-length posterior with a Normal-Inverse-Gamma conjugate prior on a Gaussian observation model. For each time step we track P(r_t = k), the probability that the current run began k steps ago.",
-      "Signal of interest is P(r_t < cpWindow) — the probability that a change-point has occurred in the last `cpWindow` observations. Threshold this to flag regime shifts: honeymoon-phase termination, insulin-dose regime changes, DKA precursors, stress-induced excursions.",
-      "TS implementation lives at src/lib/estimators/bocpd.ts with a parity test against the Python reference. Awaiting a patient time-series source — CGM trace, C-peptide AUC sequence, or daily TIR — to be wired into the store before this card can run live.",
+      "Signal of interest is P(r_t < cpWindow) — the probability that a change-point has occurred in the last `cpWindow` observations. The Pareto card surfaces the trailing-window peak of this trace as the criticality readout; F·E·G·S·M's regime gate then weighs it against (1) recent peak above floor and (2) variability of the full posterior so a flat trace does not score as criticality.",
+      "TS implementation at src/lib/estimators/bocpd.ts with a parity test against the Python reference. Same kernel that runs on D1NAMO CGM in the SPIRTES bocpd-hypo-calibration tab (AUROC 0.679 vs hypoglycemic events).",
     ],
     formula:
       "P(r_t | x_{1:t}) ∝ Σ P(x_t | r_{t-1}, x_past) · P(r_t | r_{t-1}) · P(r_{t-1} | x_{1:t-1})",
     placeholderAssessment:
-      "AWAITING DATA — patient trace not yet wired. Once a CGM / C-peptide series is available, this card fits the run-length posterior online and surfaces the P(new run) trajectory with threshold crossings annotated.",
-    defaultAvailability: "awaiting-data",
-    requiredInputs:
-      "A scalar time series per patient — CGM glucose (5-min cadence), C-peptide AUC (per visit), or daily time-in-range. ~50+ observations for a stable posterior.",
+      "STABLE REGIME — posterior is concentrated on the current run; no recent change-point activity above floor.",
+    defaultAvailability: "ready",
   },
+
+  // ── Distributionally-robust risk (Ghauri 2025 Ω-Robustness, from-spec) ──
+  "cvar-w1": {
+    id: "cvar-w1",
+    abbrev: "CVAR-W₁",
+    fullName: "CVaR — WASSERSTEIN-1 AMBIGUITY",
+    shortDesc:
+      "Distributionally-robust α-CVaR over a W₁ ball — quantifies tail loss with a calibrated ambiguity premium",
+    color: "#7B68EE",
+    methodology: [
+      "Conditional Value-at-Risk (CVaR_α) is the standard coherent risk measure for the upper-α tail of a loss distribution: the expected loss conditional on being in the worst (1−α) fraction of outcomes. For a sorted sample {x_(1) ≤ … ≤ x_(n)} and k = ⌈αn⌉ the empirical estimator is CVaR_α = (1 / ((1−α)n)) · [(k − αn) · x_(k) + Σ_{i>k} x_(i)]. The (k − αn) factor redistributes the boundary order statistic when αn isn't an integer.",
+      "Wasserstein-1 ambiguity hedges against the empirical distribution being wrong. Define a W₁-ball B_ε(P̂_n) of radius ε around the empirical measure; the worst-case CVaR over that ball admits a closed form (Mohajerin Esfahani & Kuhn 2018, Theorem 6.3, specialised to the ReLU envelope (·)_+ that defines CVaR via Rockafellar-Uryasev): sup_{Q ∈ B_ε} CVaR_α(ℓ; Q) = CVaR_α(ℓ; P̂_n) + (L_ℓ · ε) / (1−α). The ambiguity term is a deterministic premium proportional to ε and inversely proportional to (1−α) — it grows as you demand more tail confidence.",
+      "Implementation at src/lib/estimators/cvar-w1.ts. From-spec, derived directly from Ghauri 2025 (D.Eng., Ch. 4 §3 — Ω-Robustness framework). No Python reference exists because the dissertation closed form is the canonical specification. Calibration of ε is domain-specific — typical practice is ε = c · n^{−1/d} where d is the loss dimensionality and c is tuned by cross-validation on a held-out window.",
+    ],
+    formula: "CVaR_α^{W₁}(X) = CVaR_α(X̂) + L · ε / (1 − α)",
+    placeholderAssessment:
+      "READY — operates on per-node ΩF composite values across the live filtered graph. α = 0.9 standard. W₁ ambiguity radius ε = 0 until a calibrated value is wired per profile.",
+    defaultAvailability: "ready",
+  },
+
+  // ── Topology-aware criticality (Ghauri 2025 χ★ artefact, from-spec) ──
+  "chi-star": {
+    id: "chi-star",
+    abbrev: "χ★",
+    fullName: "χ★ — BRIDGE SETS",
+    shortDesc:
+      "Topological load-bearing skeleton — strict bridges + top Bridge-Edge Strength edges that gate the graph's cascade pathways",
+    color: "#7B68EE",
+    methodology: [
+      "Strict bridges via Tarjan (1974): an edge (u, v) is a bridge iff low[v] > disc[u] in the DFS tree — i.e. v's subtree has no back-edge climbing above u. Removing a bridge disconnects the (undirected) graph, so every cascade path between the two resulting components must traverse it. Iterative DFS with parent-edge bookkeeping handles multi-edges correctly (parallel edges between the same pair are NOT bridges since one provides the alternate path). O(V + E).",
+      "Bridge-Edge Strength (BES) is edge betweenness centrality (Brandes 2008) normalised to [0, 1] by the graph's max. Per-source BFS + reverse-order dependency accumulation, divided by 2 to correct the undirected double-count. High BES = high information-flow funnel — the edge participates in many shortest paths even if removing it doesn't formally disconnect the graph. The dissertation's GAT attention head reads BES to bias the replay buffer toward high-bridge edges (Ch. 8 §6, topology-aware rehearsal). O(V · E).",
+      "χ★ = strict bridges ∪ top-k BES edges. The default top-k is max(1, ⌊0.1 · |E|⌋). Implementation at src/lib/estimators/chi-star.ts. From-spec, derived directly from Ghauri 2025 (D.Eng., Ch. 5–8). The artefact is the canonical 'edges most worth hardening, monitoring, or preserving in replay against catastrophic forgetting' set.",
+    ],
+    formula:
+      "χ★(G) = bridges(G) ∪ topK_BES(G);  BES(e) = betweenness(e) / max_betweenness",
+    placeholderAssessment:
+      "READY — operates on the live graph topology. Surfaces strict bridges and the BES distribution; runtime renders the χ★ set highlighted on the graph plus the descending-BES ranking.",
+    defaultAvailability: "ready",
+  },
+
   "transfer-entropy": {
     id: "transfer-entropy",
     abbrev: "TE",

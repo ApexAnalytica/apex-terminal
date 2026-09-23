@@ -63,6 +63,17 @@ export interface TerminalLine {
 // ─── Omega-Fragility Profile ────────────────────────────────────
 export interface OmegaFragilityProfile {
   composite: number;              // ΩF 0-10 headline fragility score
+  /**
+   * The hand-authored / default-weighted composite this node carried
+   * before an active domain profile re-weighted it (see
+   * `recomputeComposite` in src/lib/omega-weighting.ts). Set ONLY when a
+   * profile with `compositeMode: "recomputed"` (e.g. AI-Safety) has
+   * overwritten `composite` with its own pillar weighting. Lets the
+   * inspector surface "reweighted from X.X" so the change stays auditable
+   * and the original tuned score isn't silently lost. Undefined means the
+   * displayed `composite` is the authored/default value itself.
+   */
+  baselineComposite?: number;
   irreplaceability: number;       // I  0-10 how impossible to substitute (capacity share, tech exclusivity)
   restorationLatency: number;     // R  0-10 time to restore equivalent capacity after catastrophic failure
   jurisdictionalHazard: number;   // J  0-10 sanctions, conflict, export controls, regulatory exposure
@@ -108,7 +119,142 @@ export type NodeCategory =
   | "agriculture"
   | "science";
 
-export type EdgeType = "directed" | "confounded" | "temporal";
+/**
+ * Edge-type discriminator. Visual encoding (kept in lockstep across
+ * the four canvas surfaces — see `CausalDAG2D` / `DAGEdge3D` /
+ * `CausalDAGMap` / `CausalDAGRelief`):
+ *
+ *   - `directed`   → cyan, solid, arrow on target. "A → B" causal claim.
+ *   - `temporal`   → amber, solid, arrow on target, animated particle.
+ *                    Lag-correlation: A leads B with a delay.
+ *   - `confounded` → orange, dashed. Latent common cause (no direct link).
+ *   - `flow`       → teal-green, solid, arrow on target, animated
+ *                    particle (faster cadence than temporal). Directed
+ *                    transmission of material / capital / signal through
+ *                    the network. Distinct from `directed` (causal claim)
+ *                    and `temporal` (lag correlation) — `flow` is
+ *                    "stuff is actually moving here".
+ */
+export type EdgeType = "directed" | "confounded" | "temporal" | "flow";
+
+/**
+ * Where an edge attribute (weight, confidence) came from. Surfaces in
+ * EdgeInspector so an analyst can answer "where did this 0.8 come
+ * from?" without leaving the canvas.
+ *
+ * Kinds:
+ *  - author      hand-set during graph construction; no external source
+ *  - literature  point estimate from a published paper / standard
+ *  - regression  fit from a real-data regression on this network
+ *  - discovery   output of a structure-learning run (SPIRTES / FCI / NOTEARS)
+ *  - tarski      value derived from an axiom check / proof trace
+ *
+ * Context fields are kind-flavoured but loose-typed so we can grow
+ * them per-domain without ballooning a discriminated union. Backfill
+ * convention: missing source ≡ `{kind:"author"}` — handled centrally
+ * by `resolveEdgeAttributeSource` in src/lib/edge-provenance.ts so
+ * existing edges don't need to be touched in this PR.
+ */
+export type EdgeAttributeSourceKind =
+  | "author"
+  | "literature"
+  | "regression"
+  | "discovery"
+  | "tarski";
+
+export interface EdgeAttributeSource {
+  kind: EdgeAttributeSourceKind;
+  /** Free-text citation — DOI, paper title, NEJM url, dissertation patch id. */
+  citation?: string;
+  /** Discovery estimator that produced the value (e.g. "FCI", "NOTEARS"). */
+  estimator?: string;
+  /** Regression fit quality (0-1) — populated when kind="regression". */
+  rSquared?: number;
+  /** Free-text caveat / sample size note. Any kind can carry one. */
+  note?: string;
+}
+
+export interface LiveDataHistoryEntry {
+  value: number;
+  observedAt: string;
+}
+
+export interface LiveDataPoint {
+  /** discriminator — multiple feeds can attach distinct signals to one node */
+  kind: "throughput" | "sanctions" | string;
+  /**
+   * Provider id that wrote this signal. Critical for cleanup: when a
+   * provider's batch dispatches, only signals it itself wrote should be
+   * candidates for stale-signal removal. Without this, providers that
+   * share a `kind` (e.g. multiple providers all using "indicator") would
+   * clobber each other on every poll cycle.
+   *
+   * Optional only for backwards compatibility with hand-built test data;
+   * all real provider emissions populate this field.
+   */
+  providerId?: string;
+  /** observed quantity in the unit below (e.g. mb/d for Hormuz) */
+  value: number;
+  /** physical / regulatory ceiling against which value is compared */
+  capacity: number;
+  /** unit string for display ("mb/d", "%", "USD/bbl", ...) */
+  unit: string;
+  /** ISO-8601 timestamp when upstream feed reported this value */
+  observedAt: string;
+  /** human-readable provenance ("EIA v2 / Persian Gulf producers (mock)") */
+  source: string;
+  /**
+   * Past observations for this kind, oldest-first. Populated by
+   * `upsertLiveSignal` accumulating across feed ticks (the previous current
+   * value rolls into the history when a new value arrives). Capped at
+   * `LIVE_HISTORY_MAX` to bound memory. Undefined or [] means no history yet.
+   */
+  history?: LiveDataHistoryEntry[];
+}
+
+/** Cap on the per-signal history array length. */
+export const LIVE_HISTORY_MAX = 60;
+
+/**
+ * Live deltas on top of the static omega profile, surfaced separately so
+ * the underlying baseline stays auditable. Each field is an additive
+ * adjustment in 0..10 ΩF units; positive = elevates fragility, negative =
+ * dampens. `source` carries human-readable provenance ("OFAC sanctions",
+ * "high eigenvector centrality") so a hover/tooltip can explain why.
+ *
+ * Engine-side ΩF wiring (per the session brief):
+ *   - Tarski violations feed pillar J (jurisdictionalHazard).
+ *   - Spirtes network metrics feed pillar C (cascadeLoad).
+ * The static `omegaFragility` profile is the baseline; this overlay is
+ * the live delta. Consumers (ΩF radar, hover, copilot) can render either
+ * the baseline alone, the adjusted total, or the breakdown.
+ */
+export interface OmegaLiveAdjustments {
+  /** Pillar deltas; only set when non-zero. */
+  jurisdictionalHazardDelta?: number;
+  cascadeLoadDelta?: number;
+  /** Per-pillar provenance. */
+  jSource?: string;
+  cSource?: string;
+}
+
+/**
+ * Provenance label for a node's omega/data state. Distinguishes
+ *   - "live": at least one live feed is currently attached.
+ *   - "modeled": synthetic / inferred / static-baseline only (the historic
+ *     default for nodes without live coverage).
+ *   - "blank-needs-data": intentionally blank — the data session has
+ *     decided this node has no defensible free source, so the slot is
+ *     preserved as a known-incomplete TODO marker. UI surfaces this
+ *     explicitly so it isn't confused with "no provider matched yet."
+ *
+ * Derivation rule (see `getDataStatus`): when `dataStatus` is unset on
+ * a node, it's inferred from `liveData` ("live" if any entries exist,
+ * else "modeled"). An explicit value always overrides — that's how the
+ * data session marks a node as Category-C blank-needs-data without
+ * affecting nodes that simply haven't been wired yet.
+ */
+export type DataStatus = "live" | "modeled" | "blank-needs-data";
 
 export interface CausalNode {
   id: string;
@@ -127,6 +273,72 @@ export interface CausalNode {
   isConsequence?: boolean; // spawned by link break tool
   consequenceOf?: string; // edge ID that spawned this node
   datasetColor?: string; // color from imported dataset
+  /** Live API-fed measurements; multiple feeds can co-attach distinct kinds. */
+  liveData?: LiveDataPoint[];
+  /** Live deltas on top of the static omega profile (see OmegaLiveAdjustments). */
+  liveAdjustments?: OmegaLiveAdjustments;
+  /** Provenance label — see `DataStatus`. Optional; defaults to derivation. */
+  dataStatus?: DataStatus;
+}
+
+/**
+ * Resolve a node's data-status, preferring the explicit `dataStatus`
+ * field when set. Without it, derives from `liveData` presence: any
+ * entry → "live", none → "modeled". Never returns "blank-needs-data"
+ * by derivation — that label is only set explicitly by the data
+ * session for category-C nodes.
+ */
+export function getDataStatus(node: CausalNode): DataStatus {
+  if (node.dataStatus) return node.dataStatus;
+  return (node.liveData?.length ?? 0) > 0 ? "live" : "modeled";
+}
+
+/** Pull a single live signal of a given kind from a node. */
+export function getLiveSignal(node: CausalNode, kind: string): LiveDataPoint | undefined {
+  return node.liveData?.find((p) => p.kind === kind);
+}
+
+/** Upsert a live signal into a node's liveData array (immutable; returns new array).
+ *  When replacing a point of the same `kind`, accumulates the previous
+ *  current value into `history`, capped at `LIVE_HISTORY_MAX`. */
+export function upsertLiveSignal(
+  existing: LiveDataPoint[] | undefined,
+  point: LiveDataPoint,
+): LiveDataPoint[] {
+  const without = (existing ?? []).filter((p) => p.kind !== point.kind);
+  const old = (existing ?? []).find((p) => p.kind === point.kind);
+  // Accumulate: previous (value, observedAt) rolls into history, plus any
+  // history the previous point already carried. De-dupe identical timestamps
+  // and cap to LIVE_HISTORY_MAX entries (oldest first).
+  if (old) {
+    const carried: LiveDataHistoryEntry[] = [...(old.history ?? [])];
+    // Only roll the old current into history if the incoming point has a
+    // *different* timestamp — otherwise it's the same observation, no
+    // history change. Also skip if the old timestamp already terminates
+    // the carried history.
+    const oldAlreadyTerminates =
+      carried.length > 0 && carried[carried.length - 1].observedAt === old.observedAt;
+    if (old.observedAt !== point.observedAt && !oldAlreadyTerminates) {
+      carried.push({ value: old.value, observedAt: old.observedAt });
+    }
+    // Honour any pre-existing history on the incoming point too (provider may
+    // have hydrated it from a multi-period upstream response).
+    const merged = [...carried, ...(point.history ?? [])];
+    // Sort by observedAt ascending so the sparkline plots left-to-right.
+    merged.sort((a, b) => a.observedAt.localeCompare(b.observedAt));
+    // De-dupe identical timestamps.
+    const deduped: LiveDataHistoryEntry[] = [];
+    for (const e of merged) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].observedAt !== e.observedAt) {
+        deduped.push(e);
+      }
+    }
+    const trimmed = deduped.length > LIVE_HISTORY_MAX
+      ? deduped.slice(-LIVE_HISTORY_MAX)
+      : deduped;
+    return [...without, { ...point, history: trimmed }];
+  }
+  return [...without, point];
 }
 
 export interface CausalEdge {
@@ -141,6 +353,26 @@ export interface CausalEdge {
   physicalMechanism: string; // e.g. "powers", "constrains supply"
   isSevered?: boolean; // severed by link break tool
   isConsequenceEdge?: boolean; // spawned by link break
+  /**
+   * Where the `weight` value came from. Absent ≡ author-set during
+   * graph construction (see EdgeAttributeSource + resolveEdge-
+   * AttributeSource). Set explicitly when an edge has external
+   * provenance (literature citation, regression fit, discovery run,
+   * Tarski derivation).
+   */
+  weightSource?: EdgeAttributeSource;
+  /** Where the `confidence` value came from. Same semantics as weightSource. */
+  confidenceSource?: EdgeAttributeSource;
+  /**
+   * Registry reference for weight provenance — the id of an entry in the
+   * edge-provenance registry (src/lib/edge-provenance-registry.ts). Lets a
+   * single citation (e.g. "dcct-1993") be authored once and referenced from
+   * many edges instead of re-typed inline on each. Resolved at read time;
+   * an inline `weightSource` takes precedence over the ref if both are set.
+   */
+  weightSourceRef?: string;
+  /** Registry reference for confidence provenance. Same semantics as weightSourceRef. */
+  confidenceSourceRef?: string;
 }
 
 export interface GraphMetadata {
@@ -157,6 +389,86 @@ export interface CausalGraph {
   nodes: CausalNode[];
   edges: CausalEdge[];
   metadata: GraphMetadata;
+}
+
+/**
+ * An INFERRED LATENT node — a hidden common cause the model posits to
+ * explain dependencies among observed nodes that no observed node accounts
+ * for (Dr. Pita's "synthetic node" #1: missing from the MAP, not the
+ * territory). Derived on demand from the `confounded`/FCI latent-common-
+ * cause signal (see `deriveLatentNodes`); it is DELIBERATELY:
+ *
+ *   - NOT a `CausalNode` — it has no measured ΩF, category, or metadata,
+ *     because we don't observe it. Forcing it into the node shape would
+ *     invite the UI to render fake fragility scores for a thing we can't see.
+ *   - NOT stored on `CausalGraph.nodes` — it is computed when the analyst
+ *     opts in, so it can never leak into cascade simulation, ΩF, or the
+ *     system metrics (ΩSF/ΩSX/contagion). Read-only annotation only.
+ *
+ * It earns promotion from the dashed `confounded` edge ONLY when it is the
+ * common cause of 3+ observed nodes (a pairwise hidden cause stays an edge).
+ * Always framed as a hypothesis, never asserted as real (honours the
+ * "nothing synthetic under a real-data label" directive via a persistent
+ * INFERRED badge + provenance tooltip at the render layer).
+ */
+export interface LatentNode {
+  id: string;
+  /** Observed node ids this inferred latent is the common cause of (≥3). */
+  explains: string[];
+  /** How it was inferred. */
+  method: "confounded-cluster" | "fci";
+  /** Inference strength 0-1 (e.g. mean confidence of the source signals). */
+  strength: number;
+  /** Hypothesis-framed label — never an assertion of what the latent IS. */
+  label: string;
+  /**
+   * The hypothesised channel/driver, surfaced verbatim from the
+   * `physicalMechanism` of the cluster's confounded edges (an author-stated
+   * mechanism, e.g. "Gulf route disruption raises freight cost"). Turns the
+   * glyph from "?" into a named hypothesis. NOT an empirically identified
+   * variable — it's the channel the graph author asserted.
+   */
+  hypothesizedDriver?: string;
+  /**
+   * Real-data consistency check on the hypothesis (NOT a discovery claim):
+   * do the member nodes that carry live time-series actually co-move, as a
+   * shared hidden driver would predict? Computed from `liveData.history`.
+   *   - "supported"    : enough aligned data AND members co-move (|r| ≥ thresh)
+   *   - "inconsistent" : enough aligned data BUT members don't co-move
+   *   - "insufficient" : not enough live/aligned data to judge
+   * `statistic` is the mean pairwise correlation; `liveMembers` is how many
+   * members had usable series. Absent ⇒ support not computed.
+   */
+  dataSupport?: {
+    status: "supported" | "inconsistent" | "insufficient";
+    statistic?: number;
+    method?: "pairwise-correlation";
+    liveMembers: number;
+  };
+  /**
+   * Discovery-readiness assessment: can this latent ever be *discovered* from
+   * real data (vs the current authored hypothesis), and if not, what data is
+   * missing? Turns "insufficient" into an actionable acquisition spec — the
+   * prerequisite for honest FCI latent discovery (Phase 2).
+   *   - "ready"   : every member observed + enough date-aligned points for a
+   *                 credible CI test (≥ DISCOVERY_MIN_POINTS)
+   *   - "partial" : every member observed but underpowered (too few aligned pts)
+   *   - "blocked" : a member is unobserved, or alignment is far too sparse
+   * `limitingFactor` names the binding gap; `recommendation` is the concrete
+   * "to discover this for real, acquire X" instruction.
+   */
+  discoveryReadiness?: {
+    status: "ready" | "partial" | "blocked";
+    liveMembers: number;
+    totalMembers: number;
+    maxAlignedPoints: number;
+    /** Member ids that carry no live feed (need instrumentation). */
+    missingFeeds: string[];
+    limitingFactor: "coverage" | "frequency" | "none";
+    recommendation: string;
+  };
+  /** Render position (centroid of explained nodes); set by the render layer. */
+  position3d?: { x: number; y: number; z: number };
 }
 
 // ─── Copilot ─────────────────────────────────────────────────────
@@ -181,8 +493,15 @@ export interface RiskPropagationCard {
 }
 
 // ─── View State ──────────────────────────────────────────────────
-export type ViewMode = "2d" | "3d" | "map";
+export type ViewMode = "2d" | "3d" | "map" | "relief";
 export type TruthFilter = "raw" | "verified";
+/**
+ * Which signal the 3D orbs encode in their radius. `omega` reads as
+ * "criticality" (the most actionable signal for typical users), the two
+ * centrality options reveal network structure (which nodes are influence
+ * hubs vs. bridges).
+ */
+export type NodeSizeMetric = "omega" | "eigenvector" | "betweenness";
 
 // ─── Regime & Doomsday ──────────────────────────────────────────
 export type RegimeType = "STABLE" | "MELT_UP" | "CRASH" | "PHASE_TRANSITION" | "STAGNATION";
@@ -228,6 +547,8 @@ export interface ProofTrace {
   verdict: "REJECTED" | "FLAGGED" | "TIMEOUT";
   solverUsed: "Z3" | "cvc5";
   checkTimeMs: number;
+  /** Optional human-readable detail (e.g. "Hormuz: 18.4/21 mb/d = 87.6% — EIA") */
+  detail?: string;
 }
 
 // ─── Pearl Counterfactuals ──────────────────────────────────────

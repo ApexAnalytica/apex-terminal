@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isExpired, type Tier } from "@/lib/billing";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -31,8 +32,25 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Public routes — no auth required
-  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth"];
+  // Public routes — no auth required at the middleware layer. This
+  // list controls *session-cookie* auth gating; routes here can still
+  // implement their own auth (e.g. API-key header, webhook signature)
+  // inside the handler. Adding `/api/discovery` so the per-route
+  // API-key validator from PR #337 actually gets to run — the
+  // session middleware was 307-redirecting valid API-key requests to
+  // /login before the validator could see them.
+  //
+  // `/api/feeds` is here because every handler under it just proxies
+  // a public data source (FRED, EIA, World Bank, ClinicalTrials.gov,
+  // OFAC, OpenFDA, plus the derivation stub) — no user context, no
+  // per-tier quota, no PII. Routing them through the session check
+  // added a `supabase.auth.getUser()` round-trip on every poll, which
+  // cold-starts to ~18s on the derivations endpoint and starves
+  // Chrome's per-origin connection pool — surfacing as
+  // ERR_CONNECTION_TIMED_OUT spam in the browser console during the
+  // Hormuz demo. Making feeds public eliminates that hop while leaving
+  // session auth on every other API path untouched.
+  const publicRoutes = ["/login", "/trial-signup", "/trusted-signup", "/api/trusted-signup", "/api/webhooks", "/expired", "/forgot-password", "/reset-password", "/auth", "/pricing", "/request-access", "/api/request-access", "/api/discovery", "/api/feeds"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||
@@ -52,12 +70,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check access type and trial expiry
+  // Load tier + period bounds from profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("access_type, trial_expires_at")
+    .select("tier, current_period_end")
     .eq("id", user.id)
-    .single();
+    .single<{ tier: Tier; current_period_end: string | null }>();
 
   if (!profile) {
     // No profile row — redirect to login
@@ -80,19 +98,10 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Trusted users — always allowed
-  if (profile.access_type === "trusted") {
-    return supabaseResponse;
-  }
-
-  // Trial users — check expiry
-  if (profile.access_type === "trial") {
-    const expiresAt = new Date(profile.trial_expires_at);
-    if (expiresAt <= new Date()) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/expired";
-      return NextResponse.redirect(url);
-    }
+  if (isExpired(profile)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/expired";
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

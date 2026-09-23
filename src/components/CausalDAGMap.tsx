@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useMemo, useCallback, useRef, useEffect, useState } from "react";
+import React, { useDeferredValue, useMemo, useCallback, useRef, useEffect, useState } from "react";
 import { Map as MapGL, Source, Layer, Popup, type MapRef } from "@vis.gl/react-maplibre";
 import type { MapLayerMouseEvent } from "@vis.gl/react-maplibre";
 import type { FeatureCollection, Point, LineString, Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { getDomainColor } from "@/lib/graph-data";
+import { getDomainColor } from "@/lib/graph-color";
+import { getDomainCardColor } from "@/lib/domains";
 import { getNodeCoordinates } from "@/lib/geo-coordinates";
+import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import DAGOverlay from "@/components/dag3d/DAGOverlay";
 import EdgeInspector from "@/components/EdgeInspector";
@@ -58,7 +61,15 @@ function CausalDAGMapInner() {
     selectedNodes,
     setSelectedNodes,
     isolateSelection,
+    // Global ablation state. Click in ablation mode toggles ablation
+    // instead of selection; ablated nodes paint with low opacity so
+    // they read as "removed from the cascade" the way they do in 3D.
+    ablationMode,
+    ablatedNodeIds,
+    toggleAblatedNode,
+    visibleEdgeTypes,
   } = useApexStore();
+  const ablatedNodeSet = useMemo(() => new Set(ablatedNodeIds), [ablatedNodeIds]);
   // Use the same filtered graph as 2D and 3D views for consistent data
   const activeGraph = useFilteredGraph();
 
@@ -167,9 +178,22 @@ function CausalDAGMapInner() {
         node.globalConcentration ?? "",
         node.domain,
       );
-      const domainColor = node.datasetColor || getDomainColor(node.domain);
+      // Color priority: domain-card colour (panel ↔ canvas alignment) →
+      // node.datasetColor → raw-domain palette. Same precedence as 2D / 3D.
+      const domainColor =
+        getDomainCardColor(node.domain) ??
+        node.datasetColor ??
+        getDomainColor(node.domain);
       const isSelected = selectedNode === node.id || selectedSet.has(node.id);
-      const isDimmed = isolateSelection && selectedSet.size > 0 && !selectedSet.has(node.id);
+      // Three dim modes (in priority order):
+      //  - ablated     → opacity 0.15 (mirror 3D / 2D — wins regardless)
+      //  - isolate ON  → opacity 0.15
+      //  - multi-select with isolate OFF → opacity 0.35
+      const isMultiSelectActive = selectedSet.size > 0;
+      const isOutOfScope = isMultiSelectActive && !selectedSet.has(node.id);
+      const isAblated = ablatedNodeSet.has(node.id);
+      const isDimmed = isAblated || isOutOfScope;
+      const dimOpacity = isAblated ? 0.15 : isolateSelection ? 0.15 : 0.35;
       const omega = node.omegaFragility.composite;
 
       return {
@@ -185,24 +209,65 @@ function CausalDAGMapInner() {
           color: domainColor,
           isSelected,
           isDimmed,
+          isAblated,
           // Size based on omega score
           radius: Math.max(4, omega * 1.2),
-          opacity: isDimmed ? 0.15 : 1,
+          opacity: isDimmed ? dimOpacity : 1,
           strokeColor: isSelected ? "#00e5ff" : "rgba(255,255,255,0.3)",
           strokeWidth: isSelected ? 2.5 : 0.5,
         },
       };
     });
     return { type: "FeatureCollection", features };
-  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection]);
+  }, [activeGraph.nodes, selectedNode, selectedNodes, isolateSelection, ablatedNodeSet]);
 
   // Build GeoJSON for edges — split into solid and dashed to match 3D conventions:
   //   directed  → cyan (#00e5ff) — solid
   //   temporal  → amber (#ffab00) — solid + animated particle
+  //   flow      → teal (#1de9b6) — solid + animated particle ("material moving")
   //   confounded → orange (#ff6d00) — dashed
   //   inconsistent → red (#ff1744) — dashed  (Tarski)
   //   severed → slate (#78909c) — dashed     (Pearl link-break)
-  const { solidEdgeGeoJSON, dashedEdgeGeoJSON } = useMemo(() => {
+  // χ★ result on the live filtered graph. Powers (a) the violet halo
+  // GeoJSON layer that renders behind the main edge lines, and (b)
+  // the per-edge BES + bridge / top-k context surfaced by the
+  // Topology-stable fingerprint so the chiStar Brandes pass below
+  // (~120K ops on the default graph) doesn't fire on every feed-tick
+  // graphData mutation, AND defers off the launch commit (round 16,
+  // matching CausalDAG3D / CausalDAG2D / CausalDAGRelief).
+  const sig = useMemo(
+    () => graphSignature(activeGraph.nodes, activeGraph.edges),
+    [activeGraph.nodes, activeGraph.edges],
+  );
+  const deferredSig = useDeferredValue(sig);
+
+  // EdgeInspector — same data flow as CausalDAG3D / CausalDAG2D.
+  const chiStarInfo = useMemo(() => {
+    if (activeGraph.edges.length === 0) {
+      return {
+        chiStarSet: new Set<string>(),
+        bridgeSet: new Set<string>(),
+        bes: new Map<string, number>(),
+        rank: new Map<string, number>(),
+      };
+    }
+    const r = chiStar({
+      nodes: activeGraph.nodes,
+      edges: activeGraph.edges.filter((e) => !e.isSevered),
+      metadata: activeGraph.metadata,
+    });
+    const rank = new Map<string, number>();
+    r.besRanking.forEach((entry, idx) => rank.set(entry.edgeId, idx));
+    return {
+      chiStarSet: new Set(r.chiStar),
+      bridgeSet: new Set(r.bridges),
+      bes: r.bes,
+      rank,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
+
+  const { solidEdgeGeoJSON, dashedEdgeGeoJSON, chiStarOutlineGeoJSON } = useMemo(() => {
     const nodeMap = new Map<string, [number, number]>();
     activeGraph.nodes.forEach((node) => {
       nodeMap.set(
@@ -214,20 +279,44 @@ function CausalDAGMapInner() {
     const selectedSet = new Set(selectedNodes);
     const solidFeatures: Feature<LineString>[] = [];
     const dashedFeatures: Feature<LineString>[] = [];
+    // χ★ outline features — wider violet line traced along each χ★
+    // edge's full bezier polyline, rendered BEFORE the main edge
+    // layers so the narrower cyan/amber line draws on top and leaves
+    // a thin violet ring around the edge. Replaces the earlier
+    // midpoint-circle approach — on long ocean-spanning arcs the
+    // midpoint pip lived nowhere near the visible edge, which was
+    // confusing. Tier property ('bridge' / 'top-bes') drives the
+    // line-dasharray paint expression below: solid for bridges,
+    // dashed for top-BES.
+    const outlineFeatures: Feature<LineString>[] = [];
 
     activeGraph.edges.forEach((edge) => {
       const source = nodeMap.get(edge.source);
       const target = nodeMap.get(edge.target);
       if (!source || !target) return;
 
-      // Isolation: hide edges that don't connect two selected nodes (matches 3D behavior)
-      if (
-        isolateSelection &&
-        selectedSet.size > 0 &&
-        !(selectedSet.has(edge.source) && selectedSet.has(edge.target))
-      ) return;
+      // Per-edge-type visibility filter (driven by the DAGOverlay
+      // chip strip). Empty Set = show all (back-compat).
+      if (visibleEdgeTypes.size > 0 && !visibleEdgeTypes.has(edge.type)) return;
 
-      // Curved line via midpoint offset
+      // Three modes for edges when a multi-selection is active:
+      //  - isolate ON   → cull edges that don't connect two selected nodes
+      //  - isolate OFF  → render but dim edges with no selected endpoint
+      //                   (matches 2D's `multiInScope` spotlight)
+      //  - no selection → render normally
+      const inScope =
+        selectedSet.size === 0 ||
+        selectedSet.has(edge.source) ||
+        selectedSet.has(edge.target);
+      const fullScope =
+        selectedSet.size === 0 ||
+        (selectedSet.has(edge.source) && selectedSet.has(edge.target));
+      if (isolateSelection && selectedSet.size > 0 && !fullScope) return;
+      const edgeIsDimmed = !isolateSelection && selectedSet.size > 0 && !inScope;
+
+      // Curved line via midpoint offset (MapLibre renders LineStrings as
+      // straight segments between vertices, so we sample the quadratic
+      // bezier into BEZIER_SAMPLES+1 points to approximate a smooth curve).
       const midLng = (source[0] + target[0]) / 2;
       const midLat = (source[1] + target[1]) / 2;
       const dx = target[0] - source[0];
@@ -243,6 +332,23 @@ function CausalDAGMapInner() {
         perpLat = midLat + (dx / dist) * curveAmount;
       }
 
+      // Sample the quadratic bezier (source, control, target) into a
+      // dense polyline so the rendered line and the particle path
+      // (which lerps along this same array) are visually identical.
+      const BEZIER_SAMPLES = 24;
+      const coordinates: [number, number][] = [];
+      if (dist <= 0.0001) {
+        coordinates.push(source, target);
+      } else {
+        for (let i = 0; i <= BEZIER_SAMPLES; i++) {
+          const t = i / BEZIER_SAMPLES;
+          const u = 1 - t;
+          const lng = u * u * source[0] + 2 * u * t * perpLng + t * t * target[0];
+          const lat = u * u * source[1] + 2 * u * t * perpLat + t * t * target[1];
+          coordinates.push([lng, lat]);
+        }
+      }
+
       // Edge color — matches 3D exactly. Severed gets a distinct slate color
       // so Pearl link-breaks don't look like Tarski-inconsistent edges.
       const isSevered = edge.isSevered ?? false;
@@ -254,18 +360,21 @@ function CausalDAGMapInner() {
             ? "#ffab00"
             : edge.type === "confounded"
               ? "#ff6d00"
-              : "#00e5ff";
+              : edge.type === "flow"
+                ? "#1de9b6"
+                : "#00e5ff";
 
       // Dashed: confounded, inconsistent, or severed (matches 3D isDashed logic)
       const isDashed = edge.type === "confounded" || edge.isInconsistent || isSevered;
 
-      const opacity = isSevered ? 0.45 : 0.5;
+      const baseOpacity = isSevered ? 0.45 : 0.5;
+      const opacity = edgeIsDimmed ? 0.08 : baseOpacity;
 
       const feature: Feature<LineString> = {
         type: "Feature",
         geometry: {
           type: "LineString",
-          coordinates: [source, [perpLng, perpLat], target],
+          coordinates,
         },
         properties: {
           id: edge.id,
@@ -282,83 +391,185 @@ function CausalDAGMapInner() {
       } else {
         solidFeatures.push(feature);
       }
+
+      // χ★ outline: wider violet line tracing the full bezier
+      // polyline. Same coordinates as the main edge, but rendered
+      // BEFORE so the narrower cyan/amber line on top leaves a thin
+      // violet ring around the edge. Skipped on severed (their slate
+      // styling takes priority) and on dimmed multi-selection
+      // out-of-scope edges (would compete with the dim treatment).
+      // Tier property drives the line-dasharray paint expression —
+      // solid for strict bridges, dashed for top-BES.
+      if (chiStarInfo.chiStarSet.has(edge.id) && !isSevered && !edgeIsDimmed) {
+        outlineFeatures.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates },
+          properties: {
+            id: `${edge.id}-chi-outline`,
+            tier: chiStarInfo.bridgeSet.has(edge.id) ? "bridge" : "top-bes",
+            // Outline width derived from the main edge's width — keeps
+            // a consistent ring thickness across thin and thick edges.
+            width: edge.weight * 2 + 4.5,
+          },
+        });
+      }
     });
 
     return {
       solidEdgeGeoJSON: { type: "FeatureCollection" as const, features: solidFeatures },
       dashedEdgeGeoJSON: { type: "FeatureCollection" as const, features: dashedFeatures },
+      chiStarOutlineGeoJSON: { type: "FeatureCollection" as const, features: outlineFeatures },
     };
-  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection]);
+  }, [activeGraph.nodes, activeGraph.edges, selectedNodes, isolateSelection, chiStarInfo, visibleEdgeTypes]);
 
-  // Extract temporal edge paths directly from the solid edge GeoJSON features
-  // so particles follow the exact same curves as the rendered lines
-  const temporalEdgePaths = useMemo(() => {
+  // Extract animated edge paths directly from the solid edge GeoJSON
+  // features so particles follow the exact same sampled bezier polyline
+  // as the rendered line. Two edge types carry a steady "motion" cue:
+  //   - temporal → amber particles (the lag/time signal)
+  //   - flow     → teal particles ("material is actually moving"), the
+  //                MapLibre analog of the 3D particle whoosh + 2D
+  //                marching-ants for type==="flow".
+  // Each path carries its edge color so the particle layer can paint
+  // per-edge (data-driven) rather than a single hardcoded hue.
+  // Pre-compute cumulative arc length per vertex so we can lerp by
+  // distance (not by raw vertex index, which would skew speed through
+  // curvature) and so per-frame advance can be a constant in degrees
+  // rather than a fixed phase fraction. Severed/confounded edges are
+  // dashed (excluded from solidEdgeGeoJSON), and dimmed edges are
+  // filtered by the opacity guard — neither animates.
+  const animatedEdgePaths = useMemo(() => {
     return solidEdgeGeoJSON.features
-      .filter((f) => f.properties?.type === "temporal" && (f.properties?.opacity ?? 1) > 0.1)
-      .map((f) => ({
-        id: f.properties!.id as string,
-        points: f.geometry.coordinates as [number, number][],
-      }));
+      .filter(
+        (f) =>
+          (f.properties?.type === "temporal" || f.properties?.type === "flow") &&
+          (f.properties?.opacity ?? 1) > 0.1,
+      )
+      .map((f) => {
+        const points = f.geometry.coordinates as [number, number][];
+        const cumDist: number[] = [0];
+        for (let i = 1; i < points.length; i++) {
+          const dx = points[i][0] - points[i - 1][0];
+          const dy = points[i][1] - points[i - 1][1];
+          cumDist.push(cumDist[i - 1] + Math.sqrt(dx * dx + dy * dy));
+        }
+        return {
+          id: f.properties!.id as string,
+          color: (f.properties?.color as string) ?? "#ffab00",
+          points,
+          cumDist,
+          totalLen: cumDist[cumDist.length - 1] ?? 0,
+        };
+      });
   }, [solidEdgeGeoJSON]);
 
-  // Animated particle GeoJSON — updated every frame via requestAnimationFrame
-  const [particleGeoJSON, setParticleGeoJSON] = useState<FeatureCollection<Point>>({
-    type: "FeatureCollection",
-    features: [],
-  });
+  // Animated particle source — driven imperatively. Earlier this was a
+  // `useState<FeatureCollection>` whose setter fired on every rAF tick;
+  // each set forced a full React re-render of the Map subtree, which
+  // re-evaluated 5+ Source/Layer JSX expressions just so the
+  // `<Source data={...}>` reconciler could call `source.setData()` on
+  // the underlying maplibre source. Going imperative skips the React
+  // round-trip: the Source mounts once with an empty-FC reference, and
+  // the rAF callback writes new features straight into the maplibre
+  // source via `mapRef.current.getMap().getSource('particles').setData(...)`.
+  // Net effect: per-frame work shrinks from "render + diff + reconcile"
+  // to a single `setData` call (~0.1ms vs ~2-3ms on a 200-edge graph).
+  const PARTICLE_SOURCE_ID = "particles";
+  const PARTICLE_EMPTY_FC = useMemo<FeatureCollection<Point>>(
+    () => ({ type: "FeatureCollection", features: [] }),
+    [],
+  );
   const particlePhases = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    if (temporalEdgePaths.length === 0) {
-      setParticleGeoJSON({ type: "FeatureCollection", features: [] });
-      return;
-    }
-
-    // Initialize random phases
-    temporalEdgePaths.forEach(({ id }) => {
+    // Initialize random phases for any new edges
+    animatedEdgePaths.forEach(({ id }) => {
       if (!particlePhases.current.has(id)) {
         particlePhases.current.set(id, Math.random());
       }
     });
 
-    let animFrameId: number;
+    // Constant geographic-degrees-per-frame so every orb moves at the same
+    // visual speed across the map regardless of edge length. At zoom ~2,
+    // 1° ≈ 12 px, so this is roughly 36 px/s at 60 fps.
+    const SPEED_DEG_PER_FRAME = 0.05;
+
+    // Re-usable feature buffer + FC wrapper. We mutate `.features` in
+    // place each frame and pass the SAME FC object to `setData` — this
+    // avoids one allocation per tick (~60/sec). maplibre treats setData
+    // as a structural replace either way; identity stability isn't a
+    // correctness issue, just a GC win.
+    const buf: Feature<Point>[] = [];
+    const fc: FeatureCollection<Point> = { type: "FeatureCollection", features: buf };
+
+    const writeData = (features: Feature<Point>[]) => {
+      const map = mapRef.current?.getMap();
+      const src = map?.getSource(PARTICLE_SOURCE_ID) as
+        | { setData: (d: FeatureCollection<Point>) => void }
+        | undefined;
+      if (!src?.setData) return; // map / style not ready yet
+      buf.length = 0;
+      for (const f of features) buf.push(f);
+      src.setData(fc);
+    };
+
+    let animFrameId: number | null = null;
     const animate = () => {
+      // No animated edges → push one empty frame and stop the loop
+      // until the next dep change.
+      if (animatedEdgePaths.length === 0) {
+        writeData([]);
+        animFrameId = null;
+        return;
+      }
+
       const features: Feature<Point>[] = [];
 
-      for (const edge of temporalEdgePaths) {
+      for (const edge of animatedEdgePaths) {
         let phase = particlePhases.current.get(edge.id) ?? 0;
-        phase = (phase + 0.003) % 1;
+        // Per-edge dPhase is normalized so the absolute degrees-per-frame
+        // stays constant; long edges advance their phase fraction more
+        // slowly, short edges more quickly — net result: same px/s.
+        const dPhase = edge.totalLen > 0 ? SPEED_DEG_PER_FRAME / edge.totalLen : 0;
+        phase = (phase + dPhase) % 1;
         particlePhases.current.set(edge.id, phase);
 
-        // 2 particles per edge, staggered
+        // 2 particles per edge, staggered by half the edge length.
         for (let p = 0; p < 2; p++) {
           const t = (phase + p * 0.5) % 1;
-          const oneMinusT = 1 - t;
-          // Quadratic bezier in geographic coordinates
-          const lng =
-            oneMinusT * oneMinusT * edge.points[0][0] +
-            2 * oneMinusT * t * edge.points[1][0] +
-            t * t * edge.points[2][0];
-          const lat =
-            oneMinusT * oneMinusT * edge.points[0][1] +
-            2 * oneMinusT * t * edge.points[1][1] +
-            t * t * edge.points[2][1];
+          const targetDist = t * edge.totalLen;
+          // Find the polyline segment containing targetDist. Linear scan
+          // is fine for ~25 segments; binary search is overkill here.
+          let i = 0;
+          while (
+            i < edge.cumDist.length - 2 &&
+            edge.cumDist[i + 1] < targetDist
+          ) {
+            i++;
+          }
+          const segLen = edge.cumDist[i + 1] - edge.cumDist[i];
+          const localT = segLen > 0 ? (targetDist - edge.cumDist[i]) / segLen : 0;
+          const a = edge.points[i];
+          const b = edge.points[i + 1];
+          const lng = a[0] + (b[0] - a[0]) * localT;
+          const lat = a[1] + (b[1] - a[1]) * localT;
 
           features.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: [lng, lat] },
-            properties: { id: `${edge.id}-p${p}` },
+            properties: { id: `${edge.id}-p${p}`, color: edge.color },
           });
         }
       }
 
-      setParticleGeoJSON({ type: "FeatureCollection", features });
+      writeData(features);
       animFrameId = requestAnimationFrame(animate);
     };
 
     animFrameId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animFrameId);
-  }, [temporalEdgePaths]);
+    return () => {
+      if (animFrameId !== null) cancelAnimationFrame(animFrameId);
+    };
+  }, [animatedEdgePaths]);
 
   // Click handler — handles both node and edge clicks
   const onMapClick = useCallback(
@@ -378,7 +589,11 @@ function CausalDAGMapInner() {
         const nodeId = feature.properties?.id;
         if (nodeId) {
           setSelectedEdge(null);
-          if (e.originalEvent.shiftKey) {
+          // Ablation mode preempts both single and shift-select. Same
+          // semantics as 3D / 2D — click toggles ablation, full stop.
+          if (ablationMode) {
+            toggleAblatedNode(nodeId);
+          } else if (e.originalEvent.shiftKey) {
             setSelectedNodes(
               selectedNodes.includes(nodeId)
                 ? selectedNodes.filter((id: string) => id !== nodeId)
@@ -404,7 +619,7 @@ function CausalDAGMapInner() {
         return;
       }
     },
-    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge],
+    [selectedNode, selectedNodes, setSelectedNode, setSelectedNodes, activeGraph.edges, selectedEdge, ablationMode, toggleAblatedNode],
   );
 
   const [hoveredFeature, setHoveredFeature] = useState(false);
@@ -511,16 +726,30 @@ function CausalDAGMapInner() {
     );
   }, [fitKey]);
 
-  // Dark map style matching the app theme
+  // Dark map style matching the app theme.
+  //   - `projection: { type: "globe" }` renders the world as a 3D
+  //     sphere at low zoom, smoothly transitioning to mercator as the
+  //     user zooms in. Gives the "dimension map" / globe look the user
+  //     asked for and stops the basemap reading as a flat sheet.
+  //   - `dark_nolabels` strips street labels / city names so the
+  //     basemap doesn't compete with the causal graph.
+  //   - Tile maxzoom is back at 19 so the user can drill down to
+  //     street level when they need it (the previous cap at 6 was
+  //     correct for the "less busy" complaint but conflicted with the
+  //     "we need street-level when the analysis demands it" follow-up).
+  //     At low zoom the globe projection naturally hides street
+  //     density, so the busy-ness only appears when the user
+  //     deliberately zooms in.
   const mapStyle = useMemo(
     () => ({
       version: 8 as const,
       name: "Apex Dark",
+      projection: { type: "globe" as const },
       sources: {
         "osm-tiles": {
           type: "raster" as const,
           tiles: [
-            "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+            "https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png",
           ],
           tileSize: 256,
           attribution:
@@ -559,6 +788,59 @@ function CausalDAGMapInner() {
         boxZoom={false}
         attributionControl={false}
       >
+        {/* χ★ parallel tracks — TWO thin violet lines running alongside
+            each χ★ edge, offset perpendicular to the line direction
+            using MapLibre's `line-offset` paint property. Solid for
+            strict bridges, dashed for top-BES (driven by a paint
+            expression on the `tier` property). The cyan/amber main
+            line draws below at offset=0, untouched, so the parallel
+            tracks read as a clean "train tracks" outline alongside it
+            rather than smearing the main edge color. */}
+        <Source id="edges-chi-star-track-top" type="geojson" data={chiStarOutlineGeoJSON}>
+          <Layer
+            id="edge-chi-star-track-top"
+            type="line"
+            paint={{
+              "line-color": "#7B68EE",
+              "line-opacity": 0.85,
+              "line-width": 1.5,
+              "line-offset": 3,
+              "line-dasharray": [
+                "case",
+                ["==", ["get", "tier"], "top-bes"],
+                ["literal", [3, 2]],
+                ["literal", [1, 0]],
+              ],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+        <Source id="edges-chi-star-track-bottom" type="geojson" data={chiStarOutlineGeoJSON}>
+          <Layer
+            id="edge-chi-star-track-bottom"
+            type="line"
+            paint={{
+              "line-color": "#7B68EE",
+              "line-opacity": 0.85,
+              "line-width": 1.5,
+              "line-offset": -3,
+              "line-dasharray": [
+                "case",
+                ["==", ["get", "tier"], "top-bes"],
+                ["literal", [3, 2]],
+                ["literal", [1, 0]],
+              ],
+            }}
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+            }}
+          />
+        </Source>
+
         {/* Solid edge lines: directed (cyan) + temporal (amber) */}
         <Source id="edges-solid" type="geojson" data={solidEdgeGeoJSON}>
           <Layer
@@ -646,14 +928,21 @@ function CausalDAGMapInner() {
           />
         </Source>
 
-        {/* Animated particles flowing along temporal edges — native MapLibre rendering */}
-        <Source id="particles" type="geojson" data={particleGeoJSON}>
+        {/* Animated particles flowing along temporal + flow edges —
+            native MapLibre rendering. */}
+        {/* Particle Source mounts once with a stable empty FC. The
+            actual per-frame data is written imperatively into the
+            underlying maplibre source via `setData()` — see the
+            `writeData` helper inside the animated-edge effect. Each
+            particle carries its source edge's color, so temporal orbs
+            read amber and flow orbs read teal (`["get", "color"]`). */}
+        <Source id={PARTICLE_SOURCE_ID} type="geojson" data={PARTICLE_EMPTY_FC}>
           <Layer
             id="particle-glow"
             type="circle"
             paint={{
               "circle-radius": 6,
-              "circle-color": "#ffab00",
+              "circle-color": ["get", "color"],
               "circle-opacity": 0.25,
               "circle-blur": 1,
             }}
@@ -663,7 +952,7 @@ function CausalDAGMapInner() {
             type="circle"
             paint={{
               "circle-radius": 3,
-              "circle-color": "#ffab00",
+              "circle-color": ["get", "color"],
               "circle-opacity": 0.9,
             }}
           />
@@ -757,6 +1046,16 @@ function CausalDAGMapInner() {
             sourceLabel={selectedEdgeSourceLabel}
             targetLabel={selectedEdgeTargetLabel}
             onClose={() => setSelectedEdge(null)}
+            chiStarInfo={
+              chiStarInfo.chiStarSet.has(selectedEdge.id)
+                ? {
+                    isBridge: chiStarInfo.bridgeSet.has(selectedEdge.id),
+                    bes: chiStarInfo.bes.get(selectedEdge.id) ?? 0,
+                    rank: chiStarInfo.rank.get(selectedEdge.id) ?? null,
+                    totalEdges: chiStarInfo.bes.size,
+                  }
+                : null
+            }
           />
         )}
       </AnimatePresence>

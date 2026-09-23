@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Michroma, Geist_Mono } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const michroma = Michroma({
@@ -36,6 +37,7 @@ export default function RootLayout({
         className={`${michroma.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );

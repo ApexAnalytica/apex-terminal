@@ -7,7 +7,13 @@
 // terminal on one dataset and a medical-research terminal on another
 // without forking the codebase.
 
-import type { ManifoldModule } from "./types";
+import type { ManifoldModule, OmegaPillarWeights } from "./types";
+import { DEFAULT_OMEGA_WEIGHTS } from "./types";
+// GEOPOLITICAL_MODULES used to be defined inline here; HeaderBar (on the
+// critical-path bundle) was pulling all 480 LOC of profile data just to
+// render the four tab labels. The constant now lives in `module-tabs.ts`
+// (~40 LOC) and HeaderBar imports from there directly.
+import { MODULE_TABS as GEOPOLITICAL_MODULES } from "./module-tabs";
 
 export type EstimatorId =
   // Criticality engines (graph-derived)
@@ -19,6 +25,10 @@ export type EstimatorId =
   | "transfer-entropy"
   | "moran"
   | "takens"
+  // Distributionally-robust risk + topology-aware criticality
+  // (from-spec, Ghauri 2025)
+  | "cvar-w1"
+  | "chi-star"
   // Clinical / trial estimators (Python reference canonical)
   | "hte-meta"
   | "cox-ph"
@@ -56,49 +66,64 @@ export interface DomainProfile {
   pillarLabels: PillarLabels;
   pillarDetails: Record<PillarKey, PillarDetail>;
   compositeMethodology: string;
+  /**
+   * Per-domain ΩF pillar weighting (must sum to 1.0). The canonical
+   * source of truth for this domain's composite aggregation — both the
+   * runtime recompute (`recomputeComposite`) and the methodology prose
+   * (`formatWeights`) read from here, so the displayed numbers can never
+   * drift from the math again. Default domains carry
+   * `DEFAULT_OMEGA_WEIGHTS`; domains with a deliberate skew (AI-Safety
+   * → cascade + tail — direction sourced from Ghauri 2025, magnitudes by
+   * design) override it.
+   */
+  weights: OmegaPillarWeights;
+  /**
+   * How this profile's `omegaFragility.composite` is sourced for display:
+   *   - "authored"   → trust the hand-authored composite literals in the
+   *                    graph-data modules (and the import-path scorer).
+   *                    Used by domains whose nodes were tuned against the
+   *                    default weighting (Geopolitical, T1D). No recompute.
+   *   - "recomputed" → derive composite = Σ(weightᵢ × pillarᵢ) at
+   *                    graph-build time, stashing the prior value in
+   *                    `baselineComposite`. Required for overlay profiles
+   *                    that borrow another domain's authored pillars under
+   *                    a different lens (AI-Safety rides the `main` graph),
+   *                    where the authored composite reflects the WRONG
+   *                    weighting for this domain.
+   */
+  compositeMode: "authored" | "recomputed";
   criticalityEstimators: EstimatorId[];
+  /**
+   * Optional id of a pre-built relevance-reference JSON
+   * (`public/relevance-references/<id>.json`) that the Pareto card
+   * uses to interpret the live per-selection F score against real
+   * historical event outcomes for this domain.
+   *
+   * When set, the card adds a small line beneath the headline pill:
+   *   "F = 0.71 → 41% historical stress rate in 152 matched windows".
+   *
+   * When unset (or when the JSON 404s), the card renders without the
+   * lookup line — no false signal in profiles that haven't been
+   * calibrated yet.
+   */
+  relevanceReferenceId?: string;
+}
+
+/**
+ * Render a weight set as methodology prose ("I(0.25) + R(0.20) + J(0.15)
+ * + C(0.25) + T(0.15)"). The `compositeMethodology` strings interpolate
+ * this so the numbers an analyst reads are derived from the same
+ * `weights` object the engine aggregates with — they can never drift
+ * apart again (they had: the old geopolitical prose claimed J/C = 0.20
+ * while the constant used J 0.15 / C 0.25).
+ */
+export function formatWeights(w: OmegaPillarWeights): string {
+  const f = (n: number) => n.toFixed(2);
+  return `I(${f(w.irreplaceability)}) + R(${f(w.restorationLatency)}) + J(${f(w.jurisdictionalHazard)}) + C(${f(w.cascadeLoad)}) + T(${f(w.tailDepth)})`;
 }
 
 // ─── Geopolitical / financial (current default) ─────────────────────
 
-const GEOPOLITICAL_MODULES: ManifoldModule[] = [
-  {
-    id: "spirtes",
-    name: "SPIRTES",
-    subtitle: "Structure Discovery",
-    description: "Causal DAG learning from observational data",
-    icon: "\u25C7",
-    color: "var(--accent-cyan)",
-    status: "ACTIVE",
-  },
-  {
-    id: "tarski",
-    name: "TARSKI",
-    subtitle: "Truth Verification",
-    description: "Physical constraint validation \u2014 reject hallucinations",
-    icon: "\u22A2",
-    color: "var(--accent-green)",
-    status: "ACTIVE",
-  },
-  {
-    id: "pearl",
-    name: "PEARL",
-    subtitle: "Counterfactual Engine",
-    description: "do-calculus reasoning \u2014 interventional queries",
-    icon: "\u27D0",
-    color: "var(--accent-amber)",
-    status: "STANDBY",
-  },
-  {
-    id: "pareto",
-    name: "PARETO",
-    subtitle: "Criticality Warning",
-    description: "Strategic risk & \u03A9-fragility assessment",
-    icon: "\u26A0",
-    color: "var(--accent-red)",
-    status: "ALERT",
-  },
-];
 
 const GEOPOLITICAL_PILLARS: PillarLabels = {
   composite: "\u03A9-FRAGILITY",
@@ -147,8 +172,15 @@ const GEOPOLITICAL_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
   },
 };
 
+// Canonical geopolitical/financial weighting = the platform default.
+// The hand-authored composites in graph-data.ts were tuned against these
+// (e.g. East-West Pipeline omega(7.6, 7.0, 7.5, 7.5, 10, 5.0) reproduces
+// 7.6 exactly under this set), so this profile trusts the literals
+// (`compositeMode: "authored"`).
+const GEOPOLITICAL_WEIGHTS: OmegaPillarWeights = DEFAULT_OMEGA_WEIGHTS;
+
 const GEOPOLITICAL_METHODOLOGY =
-  "The \u03A9F (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0\u201310. The composite weights are: I(0.25) + R(0.20) + J(0.20) + C(0.20) + T(0.15). Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.";
+  `The \u03A9F (Omega Fragility) composite score is a weighted aggregation of five orthogonal risk pillars, each scored 0\u201310. The composite weights are: ${formatWeights(GEOPOLITICAL_WEIGHTS)}. Scores above 7.0 indicate elevated systemic fragility; above 9.0 indicates critical nodes where disruption would cascade across multiple domains.`;
 
 export const GEOPOLITICAL_PROFILE: DomainProfile = {
   id: "geopolitical",
@@ -157,7 +189,29 @@ export const GEOPOLITICAL_PROFILE: DomainProfile = {
   pillarLabels: GEOPOLITICAL_PILLARS,
   pillarDetails: GEOPOLITICAL_PILLAR_DETAILS,
   compositeMethodology: GEOPOLITICAL_METHODOLOGY,
-  criticalityEstimators: ["csd", "ph", "lppls"],
+  weights: GEOPOLITICAL_WEIGHTS,
+  compositeMode: "authored",
+  // BOCPD is now live as a fourth criticality estimator (PR #234) — it
+  // runs on the same scoped Ω trajectory CSD/LPPLS already use and produces
+  // a regular F·E·G·S·M breakdown. Including it here makes the analyst
+  // Pareto card show all four tabs by default.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
+  // F → "node-critical (Ω ≥ 9.0) event within next 50 epochs" rate,
+  // built from the committed Manifold graph run through the cascade
+  // simulator. Digital-twin calibration — events are simulator
+  // outcomes (not real-world events). Most directly relevant to the
+  // in-platform analyst use case: "what does my F mean for the
+  // cascade's evolution on THIS graph?"
+  //
+  // Other references in the repo and usable here when we want to
+  // surface a different framing:
+  //   - "nber-recession-10y-yield" (real macro × NBER recessions,
+  //      committed in #355 — 10y yield substrate is structurally
+  //      different from the graph; useful as a cross-substrate
+  //      sanity check, not as the primary in-card lookup)
+  //   - "fred-hy-oas-stress" (FRED HY OAS, when a key + network are
+  //      available — see scripts/build-fred-relevance-reference.ts)
+  relevanceReferenceId: "graph-cascade-buffer-breach",
 };
 
 // ─── Medical / T1D beta-cell restoration ────────────────────────────
@@ -252,8 +306,13 @@ const T1D_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
   },
 };
 
+// T1D "stays at default" \u2014 the medical pillars were authored against the
+// same weighting as geopolitical, so cross-domain comparison stays
+// apples-to-apples and the literals are trusted (`compositeMode: "authored"`).
+const T1D_WEIGHTS: OmegaPillarWeights = DEFAULT_OMEGA_WEIGHTS;
+
 const T1D_METHODOLOGY =
-  "The CRITICALITY composite score aggregates five orthogonal biological risk pillars, each scored 0\u201310: mechanism rarity, restoration latency, regulatory exposure, complication load, and outcome tail. Weights match the geopolitical composite (0.25 / 0.20 / 0.20 / 0.20 / 0.15) so cross-domain comparison stays apples-to-apples. Scores above 7.0 flag mechanisms worth prioritising for intervention; above 9.0 indicates nodes whose failure cascades across metabolic, vascular, and neurological subsystems.";
+  `The CRITICALITY composite score aggregates five orthogonal biological risk pillars, each scored 0\u201310: mechanism rarity, restoration latency, regulatory exposure, complication load, and outcome tail. Weights match the geopolitical composite (${formatWeights(T1D_WEIGHTS)}) so cross-domain comparison stays apples-to-apples. Scores above 7.0 flag mechanisms worth prioritising for intervention; above 9.0 indicates nodes whose failure cascades across metabolic, vascular, and neurological subsystems.`;
 
 export const T1D_PROFILE: DomainProfile = {
   id: "t1d",
@@ -262,6 +321,8 @@ export const T1D_PROFILE: DomainProfile = {
   pillarLabels: T1D_PILLARS,
   pillarDetails: T1D_PILLAR_DETAILS,
   compositeMethodology: T1D_METHODOLOGY,
+  weights: T1D_WEIGHTS,
+  compositeMode: "authored",
   criticalityEstimators: [
     "bocpd",
     "transfer-entropy",
@@ -271,6 +332,159 @@ export const T1D_PROFILE: DomainProfile = {
     "nlme",
     "hlm-cross-species",
   ],
+  // F → "hypoglycemic episode (CGM < 70 mg/dL) within next 30 minutes"
+  // event rate, derived from the live D1NAMO csd-fit-hypo-calibration
+  // run (PR #200): 9 T1D subjects, 8,102 (F, label) pairs, AUROC 0.589
+  // on F → hypo. Real CGM substrate, real labelled hypos. The reference
+  // is a thin shape-conversion of the existing calibration JSON via
+  // scripts/build-d1namo-relevance-reference.ts.
+  relevanceReferenceId: "d1namo-cgm-hypo",
+};
+
+// ─── AI Safety / IDS — endogenous catastrophic failure in AI systems ─
+//
+// Demonstrates the Ω-Robustness framework from Ghauri (2025) JHU D.Eng.
+// dissertation as a third profile alongside Geopolitical and T1D. Failure
+// mode is endogenous (catastrophic forgetting, χ★-bridge cascade,
+// adversarial drift) rather than exogenous shock. Initial empirical
+// substrate: CICIDS-2017, UNSW-NB15, AWID-H23Q intrusion-detection
+// benchmarks (Chapters 5–8 of the dissertation).
+
+const AI_SAFETY_MODULES: ManifoldModule[] = [
+  {
+    id: "spirtes",
+    name: "TOPOLOGY",
+    subtitle: "Architecture Discovery",
+    description:
+      "Causal DAG learning across attention layers, replay buffers, and training dependencies",
+    icon: "◇",
+    color: "var(--accent-cyan)",
+    status: "ACTIVE",
+  },
+  {
+    id: "tarski",
+    name: "INVARIANTS",
+    subtitle: "Threat-Model Verification",
+    description:
+      "Formal threat-model and deployment-axiom verification — reject inconsistent claims",
+    icon: "⊢",
+    color: "var(--accent-green)",
+    status: "ACTIVE",
+  },
+  {
+    id: "pearl",
+    name: "INTERVENTION",
+    subtitle: "Architectural Counterfactual",
+    description:
+      "do-calculus on architecture — which mechanism if compromised, what fallback restores capability",
+    icon: "⟐",
+    color: "var(--accent-amber)",
+    status: "STANDBY",
+  },
+  {
+    id: "pareto",
+    name: "FRAGILITY",
+    subtitle: "Endogenous Failure Detection",
+    description:
+      "Catastrophic forgetting, adversarial bridging, χ⋆-edge cascade analysis",
+    icon: "⚠",
+    color: "var(--accent-red)",
+    status: "ALERT",
+  },
+];
+
+const AI_SAFETY_PILLARS: PillarLabels = {
+  composite: "ENDOGENOUS FRAGILITY",
+  irreplaceability: "MECHANISM RARITY",
+  restorationLatency: "FORGETTING LATENCY",
+  jurisdictionalHazard: "THREAT-MODEL EXPOSURE",
+  cascadeLoad: "CASCADE SUSCEPTIBILITY",
+  tailDepth: "ADVERSARIAL TAIL DEPTH",
+};
+
+const AI_SAFETY_PILLAR_DETAILS: Record<PillarKey, PillarDetail> = {
+  irreplaceability: {
+    label: AI_SAFETY_PILLARS.irreplaceability,
+    short: "How rare is this AI mechanism — can a deployed alternative substitute under compromise?",
+    detail:
+      "Measures architectural substitutability. A unique attention pattern, training paradigm, or capability scoring 10 means no alternative architecture preserves the function if this mechanism is compromised. A commodity component scoring 2 has many drop-in replacements. Derived from architecture diversity in the model registry, capability uniqueness benchmarks, and Pearl-engine counterfactual substitution analysis.",
+    formula: "I = f(architecture_uniqueness, capability_diversity, drop_in_alternatives)",
+  },
+  restorationLatency: {
+    label: AI_SAFETY_PILLARS.restorationLatency,
+    short: "How costly is recovery from catastrophic forgetting onset?",
+    detail:
+      "Captures the rate of knowledge decay (Forgetting Rate, FR) and reinforcement cost to restore the model after catastrophic forgetting. Nodes with high FR need long retraining cycles or significant rehearsal; nodes with low FR are stable. Drawn from continual-learning evaluation: peak-task performance vs current performance, replay-buffer recovery curves, EWC regularisation cost. Per Ghauri (2025) Chapter 4.",
+    formula: "R = g(forgetting_rate, replay_cost, retraining_horizon)",
+  },
+  jurisdictionalHazard: {
+    label: AI_SAFETY_PILLARS.jurisdictionalHazard,
+    short: "How exposed is this deployment to regulatory, adversarial, or operational threat-models?",
+    detail:
+      "Reflects threat-model exposure: jurisdictions where the model is deployed (EU AI Act, NIST AI RMF), classes of adversaries assumed by the threat model, and regulatory tier. A healthcare deployment under EU AI Act with adversarial-injection threat model scores high; internal-tooling under assumed-friendly users scores low. Tarski engine verifies formal threat-model claims as axioms.",
+    formula: "J = h(regulatory_tier, adversary_class, axiom_verification_score)",
+  },
+  cascadeLoad: {
+    label: AI_SAFETY_PILLARS.cascadeLoad,
+    short: "How structurally vulnerable is this architecture to cross-component cascade failure?",
+    detail:
+      "Topological vulnerability to cross-component cascade. Measured by χ⋆ bridge density (top-5% high-betweenness, CVaR-impact edges identified by Ω-Robustness solvers) and BES (Bridge-Edge Strength) as a temporal indicator that model attention is concentrating on χ⋆ edges — predictive of cascade onset by 0–1 windows in continual-learning settings (Ghauri 2025, Chapter 8 §4.1). Spirtes topology metrics provide the structural baseline; χ⋆ and BES extend it.",
+    formula: "C = density(χ⋆) + temporal_BES(χ⋆) + spirtes_topology",
+  },
+  tailDepth: {
+    label: AI_SAFETY_PILLARS.tailDepth,
+    short: "How severe is the worst-case adversarial outcome under distributional ambiguity?",
+    detail:
+      "Conditional Value-at-Risk under Wasserstein-1 ambiguity ball over plausible adversarial-attack distributions. Captures worst-α% adversarial outcomes (e.g., α = 0.05 for worst 5% of attack scenarios). Strong-duality reformulation gives a tractable convex program even for non-trivial sample sizes (Mohajerin Esfahani & Kuhn 2018; Ghauri 2025 §5.3).",
+    formula: "T = inf_t { t + (1/(αN)) Σ max{ℓ(x, ξ_i) − t, 0} + δ ‖x‖_* }",
+  },
+};
+
+// AI-Safety deliberately diverges from the platform default that Geopolitical
+// and T1D keep (their authored composites were tuned against the default, so
+// staying there preserves cross-domain comparability). The skew toward Cascade
+// (C) and Tail (T) is sourced IN DIRECTION from Ghauri (2025): cascade-bridge
+// attention predicts endogenous failure far more strongly than generic
+// connectivity (ρ(FR,BES) ≈ 0.76 vs ρ(FR,HES) ≈ 0.25, Ch 8 Table 8.1; the χ⋆
+// bridge set drives ~80% of attainable CVaR reduction, Ch 7), and CVaR under
+// Wasserstein-1 ambiguity is the framework's governing tail metric (Ch 3).
+// That evidence fixes the RANK-ORDER (C ≈ T > R > I ≈ J) — NOT the magnitudes:
+// the values below are a deliberate domain design choice, not an empirical
+// calibration (the dissertation calibrates per-pillar estimators — CVaR→T,
+// χ⋆→C, FR→R — not a five-pillar mixture). AI-Safety has no nodes of its own
+// (the `ai-safety-ids` card overlays the `main` graph), so the borrowed
+// authored composites reflect the GEOPOLITICAL weighting; `compositeMode:
+// "recomputed"` re-derives them under this skew at graph-build time.
+const AI_SAFETY_WEIGHTS: OmegaPillarWeights = {
+  irreplaceability: 0.10,
+  restorationLatency: 0.20,
+  jurisdictionalHazard: 0.10,
+  cascadeLoad: 0.30,
+  tailDepth: 0.30,
+};
+
+const AI_SAFETY_METHODOLOGY =
+  `The ENDOGENOUS FRAGILITY composite aggregates five orthogonal AI-system risk pillars, each scored 0–10: mechanism rarity, forgetting latency, threat-model exposure, cascade susceptibility, adversarial tail depth. The weighting skews toward cascade (C) and tail (T): ${formatWeights(AI_SAFETY_WEIGHTS)}. This rank-order follows Ghauri (2025) — cascade-bridge attention predicts endogenous failure far more strongly than generic connectivity (ρ ≈ 0.76 vs ≈ 0.25), and CVaR under distributional ambiguity is the governing tail metric — while the specific magnitudes are a domain design choice rather than an empirical calibration. Scores above 7.0 flag mechanisms worth structural hardening (χ⋆-edge intervention, topology-aware replay); above 9.0 indicates architectural Achilles' heels where compromise cascades across reasoning, memory, and decision subsystems.`;
+
+export const AI_SAFETY_PROFILE: DomainProfile = {
+  id: "ai-safety",
+  displayName: "AI Safety / Endogenous Catastrophe",
+  modules: AI_SAFETY_MODULES,
+  pillarLabels: AI_SAFETY_PILLARS,
+  pillarDetails: AI_SAFETY_PILLAR_DETAILS,
+  compositeMethodology: AI_SAFETY_METHODOLOGY,
+  weights: AI_SAFETY_WEIGHTS,
+  compositeMode: "recomputed",
+  // Pareto criticality strip = four time-series estimators that share
+  // a common shape (observed-vs-model fit on a Ω-trajectory, with an
+  // "epochs to critical" reading). cvar-w1 and chi-star are SNAPSHOT
+  // estimators — they read the per-node ΩF distribution / graph
+  // topology in one shot, with no time axis and no observed-vs-model
+  // fit. Forcing them into this strip required synthesising a fake
+  // "epochs" reading and confused users about what they were looking
+  // at, so they live in the SnapshotDiagnostics panel instead.
+  // FR + BES temporal monitoring arrive in Phase 3.
+  criticalityEstimators: ["csd", "ph", "lppls", "bocpd"],
 };
 
 // ─── Resolution ─────────────────────────────────────────────────────
@@ -285,8 +499,14 @@ const PROFILES_BY_DOMAIN_ID: Record<string, DomainProfile> = {
   "infrastructure": GEOPOLITICAL_PROFILE,
   "defense-isr": GEOPOLITICAL_PROFILE,
   "frontier-science": GEOPOLITICAL_PROFILE,
+  // Macro Impact sub-domains (geopolitical-profile vocabulary applies)
+  "macro-labor": GEOPOLITICAL_PROFILE,
+  "macro-inflation": GEOPOLITICAL_PROFILE,
   // Life sciences
   "t1d-beta-cell": T1D_PROFILE,
+  "t1d-vx880": T1D_PROFILE,
+  // AI Safety / endogenous catastrophe (Ghauri 2025 D.Eng. dissertation)
+  "ai-safety-ids": AI_SAFETY_PROFILE,
 };
 
 export function resolveDomainProfile(

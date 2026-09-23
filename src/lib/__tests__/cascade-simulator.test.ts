@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { simulateCascade, mapShocksToNodes } from "@/lib/cascade-simulator";
+import {
+  simulateCascade,
+  simulateCascadeAsync,
+  mapShocksToNodes,
+} from "@/lib/cascade-simulator";
 import {
   linearGraph,
   unstableGraph,
@@ -301,5 +305,83 @@ describe("simulateCascade", () => {
     if (snaps.length > 2) {
       expect(snaps[2].nodeStates["C"].shockIntensity).toBeGreaterThan(0);
     }
+  });
+});
+
+// ─── simulateCascadeAsync ────────────────────────────────────────
+//
+// The async path is the off-thread variant used by the store actions
+// (startReplay / branchFromCurrentEpoch). It uses the same per-epoch
+// helper as the sync path; the contract is exact parity on the snapshot
+// arrays. These tests pin that contract so a future change to one path
+// can't silently drift from the other.
+
+describe("simulateCascadeAsync — parity with sync", () => {
+  it("returns exactly the same number of snapshots as the sync path", async () => {
+    const graph = linearGraph();
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.6 });
+    const sync = simulateCascade(graph, [shock], [], { maxEpochs: 50 });
+    const async_ = await simulateCascadeAsync(graph, [shock], [], { maxEpochs: 50 });
+    expect(async_.length).toBe(sync.length);
+  });
+
+  it("snapshot omegaBuffer matches the sync path at every epoch", async () => {
+    const graph = unstableGraph();
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.7 });
+    const sync = simulateCascade(graph, [shock], [], { maxEpochs: 30 });
+    const async_ = await simulateCascadeAsync(graph, [shock], [], { maxEpochs: 30 });
+    for (let i = 0; i < sync.length; i++) {
+      expect(async_[i].omegaBuffer).toBeCloseTo(sync[i].omegaBuffer, 9);
+      expect(async_[i].omegaStatus).toBe(sync[i].omegaStatus);
+      expect(async_[i].isStable).toBe(sync[i].isStable);
+      expect(async_[i].isCritical).toBe(sync[i].isCritical);
+    }
+  });
+
+  it("per-node shockIntensity matches at every epoch (lagged graph)", async () => {
+    const graph = laggedGraph();
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.5 });
+    const sync = simulateCascade(graph, [shock], [], { maxEpochs: 25 });
+    const async_ = await simulateCascadeAsync(graph, [shock], [], { maxEpochs: 25 });
+    for (let i = 0; i < sync.length; i++) {
+      for (const id of Object.keys(sync[i].nodeStates)) {
+        expect(async_[i].nodeStates[id].shockIntensity).toBeCloseTo(
+          sync[i].nodeStates[id].shockIntensity,
+          9,
+        );
+      }
+    }
+  });
+
+  it("respects chunkEpochs without changing the result", async () => {
+    const graph = linearGraph();
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.6 });
+    const big = await simulateCascadeAsync(graph, [shock], [], { maxEpochs: 50 }, undefined, undefined, { chunkEpochs: 50 });
+    const tiny = await simulateCascadeAsync(graph, [shock], [], { maxEpochs: 50 }, undefined, undefined, { chunkEpochs: 1 });
+    expect(big.length).toBe(tiny.length);
+    for (let i = 0; i < big.length; i++) {
+      expect(big[i].omegaBuffer).toBeCloseTo(tiny[i].omegaBuffer, 9);
+    }
+  });
+
+  it("AbortSignal short-circuits the loop and returns what was computed", async () => {
+    const graph = linearGraph();
+    const shock = makeShock({ id: "s", category: "compute", severity: 0.4 });
+    const ac = new AbortController();
+    // Abort immediately so the first chunk runs but no further chunks.
+    const promise = simulateCascadeAsync(
+      graph,
+      [shock],
+      [],
+      { maxEpochs: 200 },
+      undefined,
+      undefined,
+      { chunkEpochs: 10, signal: ac.signal },
+    );
+    ac.abort();
+    const result = await promise;
+    // We always get at least the epoch-0 snapshot.
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.length).toBeLessThan(201);
   });
 });

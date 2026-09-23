@@ -1,0 +1,89 @@
+{
+  "referenceId": "d1namo-cgm-hypo",
+  "substrateId": "cgm_glucose_mgdl",
+  "eventLabel": "Hypoglycemic episode (CGM < 70 mg/dL) within next 30 minutes",
+  "windowSize": 24,
+  "lookahead": 6,
+  "totalWindows": 8102,
+  "totalEvents": 960,
+  "baseRate": 0.11848926191063935,
+  "bins": [
+    {
+      "binLow": 0,
+      "binHigh": 0.1,
+      "count": 1999,
+      "eventCount": 260,
+      "eventRate": 0.13006503251625812
+    },
+    {
+      "binLow": 0.1,
+      "binHigh": 0.2,
+      "count": 1148,
+      "eventCount": 65,
+      "eventRate": 0.05662020905923345
+    },
+    {
+      "binLow": 0.2,
+      "binHigh": 0.3,
+      "count": 1312,
+      "eventCount": 103,
+      "eventRate": 0.07850609756097561
+    },
+    {
+      "binLow": 0.3,
+      "binHigh": 0.4,
+      "count": 1192,
+      "eventCount": 82,
+      "eventRate": 0.06879194630872483
+    },
+    {
+      "binLow": 0.4,
+      "binHigh": 0.5,
+      "count": 711,
+      "eventCount": 52,
+      "eventRate": 0.07313642756680731
+    },
+    {
+      "binLow": 0.5,
+      "binHigh": 0.6,
+      "count": 555,
+      "eventCount": 52,
+      "eventRate": 0.0936936936936937
+    },
+    {
+      "binLow": 0.6,
+      "binHigh": 0.7,
+      "count": 374,
+      "eventCount": 37,
+      "eventRate": 0.09893048128342247
+    },
+    {
+      "binLow": 0.7,
+      "binHigh": 0.8,
+      "count": 280,
+      "eventCount": 28,
+      "eventRate": 0.1
+    },
+    {
+      "binLow": 0.8,
+      "binHigh": 0.9,
+      "count": 145,
+      "eventCount": 18,
+      "eventRate": 0.12413793103448276
+    },
+    {
+      "binLow": 0.9,
+      "binHigh": 1,
+      "count": 386,
+      "eventCount": 263,
+      "eventRate": 0.6813471502590673
+    }
+  ],
+  "buildMeta": {
+    "builderVersion": "0.1.0",
+    "builtAt": "2026-05-21T01:46:29.301Z",
+    "source": "Derived from the live D1NAMO csd-fit-hypo-calibration run shipped in PR #200 (cohort: d1namo-2018, 9 T1D subjects, AUROC 0.589 on F → hypo). Real CGM substrate, real hypoglycemic event ground truth. Converter only: no re-computation, just a shape transformation from the discovery-run JSON to the relevance-reference JSON.",
+    "cohortFrom": "2026-05-03T17:21:56.475Z",
+    "cohortTo": "2026-05-03T17:21:56.592Z"
+  }
+}

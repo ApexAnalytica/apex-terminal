@@ -37,3 +37,21 @@ export type {
   BettiAtEpsilon,
   PersistenceBar,
 } from "./persistent-homology";
+
+export { cvarW1, tailDepthScore } from "./cvar-w1";
+export type { CvarW1Options, CvarW1Result } from "./cvar-w1";
+
+export {
+  findBridges,
+  edgeBetweenness,
+  bridgeEdgeStrength,
+  chiStar,
+  resolveChiStarEdges,
+} from "./chi-star";
+export type { ChiStarOptions, ChiStarResult } from "./chi-star";
+
+export { omegaBridgeDensity } from "./omega-bridge-density";
+export type {
+  OmegaBridgeDensityOptions,
+  OmegaBridgeDensityResult,
+} from "./omega-bridge-density";

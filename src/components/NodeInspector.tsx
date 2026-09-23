@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-data";
+import { getCategoryColor, getDomainColor, getCategoryLabel } from "@/lib/graph-color";
 import { useTemporalGraph } from "@/hooks/useTemporalGraph";
 import type { NodeTemporalState } from "@/lib/temporal-data";
 import { getNodeDataDescription } from "@/lib/real-timeseries";
-import { resolveDomainProfile, type PillarKey } from "@/lib/domain-profiles";
+import { resolveDomainProfile, formatWeights, type PillarKey } from "@/lib/domain-profiles";
+import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
+import { buildContextualReview } from "@/lib/contextual-review";
 
 function getBarColor(value: number): string {
   if (value > 9) return "#ff1744";
@@ -16,11 +19,175 @@ function getBarColor(value: number): string {
   return "#00e676";
 }
 
+const PILLAR_SHORT: Record<PillarKey, string> = {
+  irreplaceability: "I",
+  restorationLatency: "R",
+  jurisdictionalHazard: "J",
+  cascadeLoad: "C",
+  tailDepth: "T",
+};
+
+const RADAR_SIZE = 220;
+const RADAR_CX = RADAR_SIZE / 2;
+const RADAR_CY = RADAR_SIZE / 2;
+const RADAR_R = RADAR_SIZE * 0.34;
+const RADAR_LABEL_R = RADAR_R * 1.42;
+
+function PillarRadar({
+  axes,
+  composite,
+  selectedKey,
+  onSelect,
+}: {
+  axes: { key: PillarKey; value: number }[];
+  composite: number;
+  selectedKey: PillarKey | null;
+  onSelect: (key: PillarKey) => void;
+}) {
+  if (axes.length === 0) return null;
+  const angles = axes.map((_, i) => ((i * 360) / axes.length) * (Math.PI / 180));
+  const vertex = (angle: number, dist: number) => ({
+    x: RADAR_CX + dist * Math.sin(angle),
+    y: RADAR_CY - dist * Math.cos(angle),
+  });
+  const valuePts = axes.map((a, i) => vertex(angles[i], RADAR_R * Math.max(0, Math.min(1, a.value / 10))));
+  const valuePath = valuePts.map((p) => `${p.x},${p.y}`).join(" ");
+  const rings = [0.2, 0.4, 0.6, 0.8, 1.0].map((scale) =>
+    angles.map((a) => vertex(a, RADAR_R * scale)).map((p) => `${p.x},${p.y}`).join(" "),
+  );
+  const accent = "#00e5ff";
+  const compositeColor = getBarColor(composite);
+  return (
+    <svg
+      width={RADAR_SIZE}
+      height={RADAR_SIZE}
+      viewBox={`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`}
+      className="mx-auto block"
+    >
+      {rings.map((points, i) => (
+        <polygon
+          key={i}
+          points={points}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={1}
+        />
+      ))}
+      {angles.map((a, i) => {
+        const end = vertex(a, RADAR_R);
+        return (
+          <line
+            key={i}
+            x1={RADAR_CX}
+            y1={RADAR_CY}
+            x2={end.x}
+            y2={end.y}
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth={1}
+          />
+        );
+      })}
+      <polygon
+        points={valuePath}
+        fill="rgba(0,229,255,0.15)"
+        stroke={accent}
+        strokeWidth={1.5}
+        style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.35))" }}
+      />
+      {axes.map((a, i) => (
+        <circle
+          key={a.key}
+          cx={valuePts[i].x}
+          cy={valuePts[i].y}
+          r={3}
+          fill={getBarColor(a.value)}
+        />
+      ))}
+      <text
+        x={RADAR_CX}
+        y={RADAR_CY - 4}
+        textAnchor="middle"
+        style={{ fontSize: 8, fill: "var(--text-muted)" }}
+        className="font-mono tracking-widest"
+      >
+        ΩF
+      </text>
+      <text
+        x={RADAR_CX}
+        y={RADAR_CY + 12}
+        textAnchor="middle"
+        style={{ fontSize: 18, fill: compositeColor, fontWeight: 700 }}
+        className="font-mono"
+      >
+        {composite.toFixed(2)}
+      </text>
+      {axes.map((a, i) => {
+        const lp = vertex(angles[i], RADAR_LABEL_R);
+        const isSelected = selectedKey === a.key;
+        return (
+          <g
+            key={a.key}
+            onClick={() => onSelect(a.key)}
+            style={{ cursor: "pointer" }}
+          >
+            {/* Transparent hit target — generous tap area around the letter+value pair */}
+            <rect
+              x={lp.x - 14}
+              y={lp.y - 12}
+              width={28}
+              height={26}
+              fill="transparent"
+            />
+            {isSelected && (
+              <circle
+                cx={lp.x}
+                cy={lp.y + 1}
+                r={13}
+                fill={`${accent}14`}
+                stroke={accent}
+                strokeWidth={1}
+                style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.5))" }}
+              />
+            )}
+            <text
+              x={lp.x}
+              y={lp.y - 1}
+              textAnchor="middle"
+              style={{
+                fontSize: isSelected ? 13 : 11,
+                fill: accent,
+                fontWeight: 700,
+              }}
+              className="font-mono"
+            >
+              {PILLAR_SHORT[a.key]}
+            </text>
+            <text
+              x={lp.x}
+              y={lp.y + 10}
+              textAnchor="middle"
+              style={{ fontSize: 8, fill: getBarColor(a.value) }}
+              className="font-mono"
+            >
+              {a.value.toFixed(1)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 // Descriptions + methodology now live on the DomainProfile so T1D / geopolitical
 // / future verticals each carry their own vocabulary without branching here.
 
 export default function NodeInspector() {
-  const [expandedPillar, setExpandedPillar] = useState<string | null>(null);
+  // expandedPillar lifted to the zustand store so the onboarding tour
+  // can gate its "click a pillar vertex" step on real interaction.
+  // The store resets it to null whenever selectedNode changes, so we
+  // don't carry an explanation card from a previous node forward.
+  const expandedPillar = useApexStore((s) => s.expandedPillar);
+  const setExpandedPillar = useApexStore((s) => s.setExpandedPillar);
   const [showMethodology, setShowMethodology] = useState(false);
   const [showDataExplainer, setShowDataExplainer] = useState(false);
   const selectedNode = useApexStore((s) => s.selectedNode);
@@ -47,12 +214,57 @@ export default function NodeInspector() {
     );
   }, [selectedNode, graphData.edges]);
 
+  // χ★ bridge-set membership for the live graph. Bridge-centrality
+  // = how many of this node's edges are in χ★ — answers "is this
+  // node embedded in the load-bearing skeleton?". Computed once
+  // per graph (Brandes O(V·E)), independent of which node is
+  // selected, so node-flip is free. Keyed on `deferredSig` (round 16):
+  // a topology-stable fingerprint so feed-tick liveData mutations don't
+  // re-run the ~120K-op Brandes pass, and deferred so the inspector
+  // mounts before chi-star tier highlighting catches up.
+  const sig = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
+  const deferredSig = useDeferredValue(sig);
+  const chiStarSet = useMemo(() => {
+    if (graphData.edges.length === 0) return new Set<string>();
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    return new Set(r.chiStar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSig]);
+  const bridgeCentrality = useMemo(
+    () => connectedEdges.filter((e) => chiStarSet.has(e.id)).length,
+    [connectedEdges, chiStarSet],
+  );
+
   // Get temporal history for this node (for data context)
   const nodeHistory = useMemo<NodeTemporalState[]>(() => {
     if (!selectedNode || !temporalData) return [];
     const data = temporalData.nodes.get(selectedNode);
     return data?.history ?? [];
   }, [selectedNode, temporalData]);
+
+  // Smart contextual review — synthesises 1-3 verb-led recommendations
+  // about the selected node (axiom hits on incident edges, ΩF velocity,
+  // unpromoted bridges, cascade saturation, confounder, χ★ membership).
+  // Pure function in `lib/contextual-review.ts` so it's testable in
+  // isolation from the JSX rendering layer.
+  const tarskiReport = useApexStore((s) => s.tarskiReport);
+  const reviewRecommendations = useMemo(() => {
+    if (!node) return [];
+    return buildContextualReview({
+      node,
+      graph: graphData,
+      tarskiReport,
+      history: nodeHistory,
+      chiStarSet,
+    });
+  }, [node, graphData, tarskiReport, nodeHistory, chiStarSet]);
 
   const axes: { key: PillarKey; label: string; value: number }[] = node
     ? [
@@ -111,6 +323,52 @@ export default function NodeInspector() {
                 &times;
               </button>
             </div>
+
+            {/* REVIEW — smart contextual recommendations specific to the
+                selected node. Renders only when at least one signal fires
+                (axiom hits, cascade saturation, ΩF velocity, etc.) so
+                we don't paint dead chrome on healthy nodes. Tone-coloured
+                dot · bold verb-led title · supporting clause. */}
+            {reviewRecommendations.length > 0 && (
+              <div className="px-2 py-2 rounded border border-border bg-surface-elevated/50">
+                <div className="flex items-baseline justify-between mb-1">
+                  <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-secondary">
+                    REVIEW
+                  </div>
+                  <div className="text-[7px] font-mono text-text-muted/60">
+                    what to look at
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {reviewRecommendations.map((r, i) => (
+                    <div
+                      key={`${r.title}-${i}`}
+                      className="text-[9px] font-mono leading-snug flex items-baseline gap-1.5"
+                    >
+                      <span
+                        style={{
+                          color:
+                            r.tone === "red"
+                              ? "#ff1744"
+                              : r.tone === "green"
+                              ? "#00e676"
+                              : "#ffab00",
+                        }}
+                        className="text-[8px] leading-none flex-shrink-0"
+                      >
+                        ●
+                      </span>
+                      <span className="min-w-0">
+                        <span className="text-foreground font-semibold">
+                          {r.title}
+                        </span>
+                        <span className="text-text-muted/70"> — {r.detail}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Data Explainer — collapsible panel explaining what data this node represents */}
             <div className="rounded border border-border/50 overflow-hidden">
@@ -247,23 +505,45 @@ export default function NodeInspector() {
               )}
             </div>
 
-            {/* Omega Composite */}
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="text-[28px] font-bold font-mono"
-                  style={{ color: getBarColor(node.omegaFragility.composite) }}
+            {/* \u03A9F Pentagon \u2014 radar plot of all five pillars with composite at the
+                center. Replaces the gauge-bar stack; the pillar legend below
+                keeps click-to-expand affordance for description / formula.
+
+                `data-tour="pillar-radar"` so the onboarding tour's
+                node-inspector step can pulse this specific element (the
+                radar pentagon) when prompting the user to click a pillar
+                letter, rather than pulsing the full module-panel which is
+                ~5\u00D7 larger and visually unfocused. */}
+            <div data-tour="pillar-radar">
+              <PillarRadar
+                axes={axes}
+                composite={node.omegaFragility.composite}
+                selectedKey={expandedPillar}
+                onSelect={(k) => setExpandedPillar(expandedPillar === k ? null : k)}
+              />
+              {/* Audit trail when the active profile re-weighted this node's
+                  composite (compositeMode: "recomputed", e.g. AI-Safety on the
+                  borrowed `main` graph) — surfaces the original authored score
+                  so the reweighting isn't silent. */}
+              {node.omegaFragility.baselineComposite != null &&
+                node.omegaFragility.baselineComposite !== node.omegaFragility.composite && (
+                  <div className="flex justify-center mt-1">
+                    <span
+                      className="text-[7px] font-mono text-accent-amber/80 tracking-wider cursor-help"
+                      title={`Re-weighted under the ${profile.displayName} profile (${formatWeights(profile.weights)}). Authored / default-weighted score was ${node.omegaFragility.baselineComposite.toFixed(1)}.`}
+                    >
+                      ↻ REWEIGHTED FROM {node.omegaFragility.baselineComposite.toFixed(1)} · {profile.displayName.toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              <div className="flex justify-center mt-1">
+                <button
+                  onClick={() => setShowMethodology((v) => !v)}
+                  className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors tracking-wider"
                 >
-                  {"\u03A9"} {node.omegaFragility.composite.toFixed(1)}
-                </span>
-                <span className="text-[10px] text-text-muted font-mono">/ 10.0</span>
+                  {showMethodology ? "▾ HIDE METHODOLOGY" : `▸ HOW IS ${profile.pillarLabels.composite} COMPUTED?`}
+                </button>
               </div>
-              <button
-                onClick={() => setShowMethodology((v) => !v)}
-                className="text-[7px] font-mono text-accent-cyan/70 hover:text-accent-cyan transition-colors mt-0.5 tracking-wider"
-              >
-                {showMethodology ? "▾ HIDE METHODOLOGY" : `▸ HOW IS ${profile.pillarLabels.composite} COMPUTED?`}
-              </button>
               <AnimatePresence>
                 {showMethodology && (
                   <motion.div
@@ -281,64 +561,58 @@ export default function NodeInspector() {
               </AnimatePresence>
             </div>
 
-            {/* 5-axis bars with expandable descriptions */}
-            <div className="space-y-2">
-              {axes.map((axis) => {
-                const desc = pillarDetails[axis.key];
-                const isExpanded = expandedPillar === axis.key;
-                return (
-                  <div key={axis.key}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <button
-                        onClick={() => setExpandedPillar(isExpanded ? null : axis.key)}
-                        className="text-[8px] text-text-muted font-mono hover:text-accent-cyan transition-colors text-left flex items-center gap-1"
-                      >
-                        <span className="text-[7px] opacity-50">{isExpanded ? "▾" : "▸"}</span>
-                        {axis.label}
-                      </button>
-                      <span
-                        className="text-[9px] font-mono font-bold"
-                        style={{ color: getBarColor(axis.value) }}
-                      >
-                        {axis.value.toFixed(1)}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${(axis.value / 10) * 100}%`,
-                          backgroundColor: getBarColor(axis.value),
-                        }}
-                      />
-                    </div>
-                    <AnimatePresence>
-                      {isExpanded && desc && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                          className="overflow-hidden"
+            {/* Pillar description — only visible when a vertex is clicked.
+                Replaces the always-on legend rows; no real estate consumed in
+                the default state. */}
+            <AnimatePresence>
+              {expandedPillar && pillarDetails[expandedPillar] && (
+                <motion.div
+                  key={expandedPillar}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-2.5 rounded border border-accent-cyan/30 bg-surface-elevated space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[11px] font-mono font-bold text-accent-cyan flex-shrink-0 w-3 text-center">
+                          {PILLAR_SHORT[expandedPillar]}
+                        </span>
+                        <span className="text-[10px] text-foreground font-mono truncate">
+                          {pillarDetails[expandedPillar].label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span
+                          className="text-[11px] font-mono font-bold"
+                          style={{ color: getBarColor(node.omegaFragility[expandedPillar]) }}
                         >
-                          <div className="mt-1 p-2 rounded border border-border bg-surface-elevated space-y-1.5">
-                            <div className="text-[8px] font-mono text-foreground/90 leading-relaxed">
-                              {desc.short}
-                            </div>
-                            <div className="text-[7px] font-mono text-text-muted leading-relaxed">
-                              {desc.detail}
-                            </div>
-                            <div className="text-[7px] font-mono text-accent-cyan/60 leading-relaxed border-t border-border pt-1">
-                              {desc.formula}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                          {node.omegaFragility[expandedPillar].toFixed(1)}
+                        </span>
+                        <button
+                          onClick={() => setExpandedPillar(null)}
+                          className="text-[10px] text-text-muted hover:text-foreground transition-colors"
+                          aria-label="Close pillar description"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-mono text-foreground/90 leading-relaxed">
+                      {pillarDetails[expandedPillar].short}
+                    </div>
+                    <div className="text-[9px] font-mono text-text-muted leading-relaxed">
+                      {pillarDetails[expandedPillar].detail}
+                    </div>
+                    <div className="text-[9px] font-mono text-accent-cyan/70 leading-relaxed border-t border-border pt-1.5">
+                      {pillarDetails[expandedPillar].formula}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Metadata */}
             <div className="text-[9px] font-mono space-y-1 pt-1 border-t border-border">
@@ -373,6 +647,19 @@ export default function NodeInspector() {
                   RESTRICTED
                 </span>
               )}
+              {bridgeCentrality > 0 && (
+                <span
+                  className="text-[7px] px-1.5 py-0.5 rounded font-mono"
+                  style={{
+                    color: "#7B68EE",
+                    backgroundColor: "rgba(123,104,238,0.08)",
+                    border: "1px solid rgba(123,104,238,0.30)",
+                  }}
+                  title={`${bridgeCentrality} of ${connectedEdges.length} edges from this node are in χ★ (Tarjan strict bridges ∪ top-k Bridge-Edge Strength). High bridge-centrality means this node sits on the load-bearing skeleton.`}
+                >
+                  χ★ × {bridgeCentrality}
+                </span>
+              )}
             </div>
 
             {/* Connected Edges */}
@@ -387,10 +674,19 @@ export default function NodeInspector() {
                     const otherNode = graphData.nodes.find(
                       (n) => n.id === (isSource ? edge.target : edge.source)
                     );
+                    const isInChiStar = chiStarSet.has(edge.id);
                     return (
                       <div
                         key={edge.id}
-                        className="edge-card text-[8px] font-mono p-1.5 rounded border border-border bg-surface-elevated min-w-0"
+                        className="edge-card text-[8px] font-mono p-1.5 rounded border bg-surface-elevated min-w-0"
+                        style={{
+                          borderColor: isInChiStar
+                            ? "rgba(123,104,238,0.45)"
+                            : "var(--border)",
+                          boxShadow: isInChiStar
+                            ? "inset 0 0 0 1px rgba(123,104,238,0.12)"
+                            : undefined,
+                        }}
                       >
                         <div className="flex items-start gap-1">
                           <span className="text-text-muted">
@@ -399,6 +695,15 @@ export default function NodeInspector() {
                           <span className="text-foreground truncate flex-1">
                             {otherNode?.shortLabel ?? "?"}
                           </span>
+                          {isInChiStar && (
+                            <span
+                              className="text-[7px] tracking-wider flex-shrink-0"
+                              style={{ color: "#7B68EE" }}
+                              title="Edge is in \u03c7\u2605 \u2014 strict bridge or top-k Bridge-Edge Strength"
+                            >
+                              \u03c7\u2605
+                            </span>
+                          )}
                         </div>
                         <span className="edge-meta-hidden text-text-muted text-[7px] min-w-0 break-words block mt-0.5">
                           {edge.physicalMechanism}

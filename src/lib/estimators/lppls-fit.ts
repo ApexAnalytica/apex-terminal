@@ -1,28 +1,31 @@
 // LPPLS grid fit
 // ─────────────────────────────────────────────────────────────────────────────
 // Fits the Log-Periodic Power Law Singularity model by coarse-to-fine grid
-// search over (tc, ω, m). Uses the same model form as the Pareto panel's
+// search over (tc, ω, m, φ). Uses the same model form as the Pareto panel's
 // original LPPLS template:
 //
 //   y(t) = 1 − (tc − t)^m · [1 + 0.2 · cos(ω · ln(tc − t) + φ)]
 //
-// where t is the normalised time index in [0, 1] over the observed window,
-// φ is a fixed phase (supplied by the caller; the panel ties it to the mean
-// Ω of the graph), and A = 1, B = −1, C = 0.2 are hardcoded to match the
-// original template shape.
+// where t is the normalised time index in [0, 1] over the observed window
+// and A = 1, B = −1, C = 0.2 are hardcoded to match the original template.
 //
 // Fitting free parameters:
 //   tc  critical time as a fraction of window length (beyond 1.0)
 //   ω   angular frequency of the log-periodic oscillation
 //   m   power-law exponent
+//   φ   phase of the log-periodic oscillation, in radians ∈ [−π, π]
 //
-// Phase φ is not fit here — callers that want to fit it should loop over a
-// coarse φ grid externally and pick the best fit. Keeping φ out of the grid
-// holds scope tight and preserves parity with the original template.
+// Phase used to be hardcoded by callers (the panel tied it to mean-Ω × 0.3,
+// which is not a phase in any meaningful sense — it's a graph-derived
+// pseudo-constant). Adding φ to the grid means LPPLS finds the actual best
+// alignment of the oscillation against the data instead of fighting against
+// a misaligned phase. Coarse grid covers a single full period; refine pass
+// hunts sub-grid precision around the coarse best.
 //
 // Two-stage grid: a wide coarse pass locates the basin, then a narrow refine
 // pass hunts sub-grid precision. Seed values (the previously-used derived
-// tc/ω/m) are evaluated explicitly so we never regress below the seed's SSE.
+// tc/ω/m and the caller-supplied φ if any) are evaluated explicitly so we
+// never regress below the seed's SSE.
 
 export interface LpplsGridSpec {
   min: number;
@@ -37,10 +40,22 @@ export interface LpplsFitOptions {
   omegaGrid?: LpplsGridSpec;
   /** Coarse grid over m. Default: [0.1, 0.9] × 16. */
   mGrid?: LpplsGridSpec;
-  /** Phase φ in the log-periodic term. Default: 0. */
+  /**
+   * Coarse grid over phase φ ∈ [−π, π]. Default: [−π, π) × 8 (one period).
+   * Set `steps: 1` to fix the phase at the supplied value (or 0 by default).
+   */
+  phaseGrid?: LpplsGridSpec;
+  /**
+   * Initial / fixed phase. Used when phaseGrid has steps=1, and as the
+   * fallback for the seed if the seed doesn't supply a phase explicitly.
+   * Default 0.
+   */
   phase?: number;
-  /** Seed point to always include (typically the previously-used derived values). */
-  seed?: { tc: number; omega: number; m: number };
+  /**
+   * Seed point to always include (typically the previously-used derived
+   * values). `phase` on the seed is optional; falls back to `options.phase`.
+   */
+  seed?: { tc: number; omega: number; m: number; phase?: number };
   /** Refine pass: how many steps per axis around the coarse best. Default 7. */
   refineSteps?: number;
   /** Refine pass: radius as a fraction of the coarse step. Default 1.5. */
@@ -51,6 +66,8 @@ export interface LpplsFitResult {
   tc: number;
   omega: number;
   m: number;
+  /** Best-fit phase φ (radians). */
+  phase: number;
   /** Model series of length observed.length, evaluated at matching t indices. */
   modelSeries: number[];
   /** Sum of squared residuals at the fitted parameters. */
@@ -64,6 +81,10 @@ export interface LpplsFitResult {
 const DEFAULT_TC: LpplsGridSpec = { min: 1.01, max: 1.5, steps: 20 };
 const DEFAULT_OMEGA: LpplsGridSpec = { min: 4, max: 13, steps: 20 };
 const DEFAULT_M: LpplsGridSpec = { min: 0.1, max: 0.9, steps: 16 };
+// Cover one full period of φ ∈ [−π, π) with 8 coarse steps (45° spacing).
+// Refine pass closes the gap in radians — for typical D1NAMO-shape windows,
+// final precision ≈ 5–10° after refine.
+const DEFAULT_PHASE: LpplsGridSpec = { min: -Math.PI, max: Math.PI, steps: 8 };
 
 /** Evaluate a single LPPLS sample at normalised time t ∈ [0, 1]. */
 export function lpplsSample(
@@ -111,7 +132,8 @@ export function fitLppls(
   const tcSpec = options.tcGrid ?? DEFAULT_TC;
   const omegaSpec = options.omegaGrid ?? DEFAULT_OMEGA;
   const mSpec = options.mGrid ?? DEFAULT_M;
-  const phase = options.phase ?? 0;
+  const phaseSpec = options.phaseGrid ?? DEFAULT_PHASE;
+  const fixedPhase = options.phase ?? 0;
   const refineSteps = options.refineSteps ?? 7;
   const refineSpan = options.refineSpan ?? 1.5;
 
@@ -124,13 +146,24 @@ export function fitLppls(
       tc: (tcSpec.min + tcSpec.max) / 2,
       omega: (omegaSpec.min + omegaSpec.max) / 2,
       m: (mSpec.min + mSpec.max) / 2,
+      phase: fixedPhase,
     };
+    const phase = seed.phase ?? fixedPhase;
     const modelSeries = lpplsSeries(n, seed.tc, seed.omega, seed.m, phase);
-    return { ...seed, modelSeries, ssRes: 0, rSquared: 0, evaluations: 0 };
+    return {
+      tc: seed.tc,
+      omega: seed.omega,
+      m: seed.m,
+      phase,
+      modelSeries,
+      ssRes: 0,
+      rSquared: 0,
+      evaluations: 0,
+    };
   }
 
-  // ssRes as a function of (tc, ω, m); precomputes t samples once per call.
-  const sse = (tc: number, omega: number, m: number): number => {
+  // ssRes as a function of (tc, ω, m, φ); recomputes t samples per call.
+  const sse = (tc: number, omega: number, m: number, phase: number): number => {
     let s = 0;
     for (let i = 0; i < n; i++) {
       const y = lpplsSample(i / denom, tc, omega, m, phase);
@@ -144,29 +177,45 @@ export function fitLppls(
     tc: NaN,
     omega: NaN,
     m: NaN,
+    phase: NaN,
     ssRes: Number.POSITIVE_INFINITY,
   };
   let evaluations = 0;
 
-  const update = (tc: number, omega: number, m: number) => {
-    const s = sse(tc, omega, m);
+  const update = (tc: number, omega: number, m: number, phase: number) => {
+    const s = sse(tc, omega, m, phase);
     evaluations++;
     if (s < best.ssRes) {
-      best = { tc, omega, m, ssRes: s };
+      best = { tc, omega, m, phase, ssRes: s };
     }
   };
 
   // Seed evaluation first, so a grid miss can't beat the caller's known point
   // only to lose R² downstream.
   if (options.seed) {
-    update(options.seed.tc, options.seed.omega, options.seed.m);
+    update(
+      options.seed.tc,
+      options.seed.omega,
+      options.seed.m,
+      options.seed.phase ?? fixedPhase,
+    );
   }
 
+  // Phase grid: when steps=1, behave as the legacy fixed-phase fit (use
+  // options.phase). Otherwise sweep the phase grid.
+  const phaseGridValues =
+    phaseSpec.steps <= 1 ? [fixedPhase] : linspace(phaseSpec);
+
   // ── Coarse pass ──
-  for (const tc of linspace(tcSpec)) {
-    for (const omega of linspace(omegaSpec)) {
-      for (const m of linspace(mSpec)) {
-        update(tc, omega, m);
+  // tc/ω/m are the dominant axes; sweeping phase as the outermost loop keeps
+  // the coarse grid evaluation count manageable (8 × 20 × 20 × 16 = 51,200
+  // vs single-phase 6,400). Refine pass shrinks all four axes simultaneously.
+  for (const phase of phaseGridValues) {
+    for (const tc of linspace(tcSpec)) {
+      for (const omega of linspace(omegaSpec)) {
+        for (const m of linspace(mSpec)) {
+          update(tc, omega, m, phase);
+        }
       }
     }
   }
@@ -175,20 +224,30 @@ export function fitLppls(
   const tcStep = (tcSpec.max - tcSpec.min) / Math.max(1, tcSpec.steps - 1);
   const omegaStep = (omegaSpec.max - omegaSpec.min) / Math.max(1, omegaSpec.steps - 1);
   const mStep = (mSpec.max - mSpec.min) / Math.max(1, mSpec.steps - 1);
+  const phaseStep =
+    phaseSpec.steps <= 1
+      ? 0
+      : (phaseSpec.max - phaseSpec.min) / Math.max(1, phaseSpec.steps - 1);
 
   const refineTc = refineWindow(best.tc, tcStep * refineSpan, refineSteps, tcSpec);
   const refineOmega = refineWindow(best.omega, omegaStep * refineSpan, refineSteps, omegaSpec);
   const refineM = refineWindow(best.m, mStep * refineSpan, refineSteps, mSpec);
+  const refinePhase =
+    phaseStep > 0
+      ? refineWindow(best.phase, phaseStep * refineSpan, refineSteps, phaseSpec)
+      : [best.phase];
 
-  for (const tc of refineTc) {
-    for (const omega of refineOmega) {
-      for (const m of refineM) {
-        update(tc, omega, m);
+  for (const phase of refinePhase) {
+    for (const tc of refineTc) {
+      for (const omega of refineOmega) {
+        for (const m of refineM) {
+          update(tc, omega, m, phase);
+        }
       }
     }
   }
 
-  const modelSeries = lpplsSeries(n, best.tc, best.omega, best.m, phase);
+  const modelSeries = lpplsSeries(n, best.tc, best.omega, best.m, best.phase);
   let mean = 0;
   for (const v of observed) mean += v;
   mean /= n;
@@ -200,6 +259,7 @@ export function fitLppls(
     tc: best.tc,
     omega: best.omega,
     m: best.m,
+    phase: best.phase,
     modelSeries,
     ssRes: best.ssRes,
     rSquared,

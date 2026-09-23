@@ -1,0 +1,47 @@
+{
+  "id": "7e24a197-036d-48fa-903a-314b89758d7a",
+  "cohortId": "d1namo-2018",
+  "cohortSourceHash": "89db2ac2dc915929514bae3eae06dcff3e3870d21b5ff4531f80d09eadb7101d",
+  "algorithm": {
+    "id": "pcmci-linear",
+    "version": "0.1.0"
+  },
+  "params": {
+    "maxLagSeconds": 1800,
+    "gridSeconds": 300,
+    "pcAlpha": 0.2,
+    "mciAlpha": 0.05,
+    "maxCondsDim": 3,
+    "maxCondsDimMci": 5,
+    "minSubjects": 2,
+    "minGridPoints": 50
+  },
+  "startedAt": "2026-04-30T03:17:23.170Z",
+  "completedAt": "2026-04-30T03:17:23.300Z",
+  "status": "succeeded",
+  "result": {
+    "variables": [
+      "cgm_glucose_mgdl",
+      "meal_event",
+      "insulin_fast_units",
+      "insulin_slow_units"
+    ],
+    "edges": [],
+    "diagnostics": {
+      "nSubjectsUsed": 9,
+      "nFinalCandidates": 17,
+      "nEdgesAfterFDR": 0,
+      "averageCondSize": 4.352941176470588,
+      "params": {
+        "maxLagSeconds": 1800,
+        "gridSeconds": 300,
+        "pcAlpha": 0.2,
+        "mciAlpha": 0.05,
+        "maxCondsDim": 3,
+        "maxCondsDimMci": 5,
+        "minSubjects": 2,
+        "minGridPoints": 50
+      }
+    }
+  }
+}

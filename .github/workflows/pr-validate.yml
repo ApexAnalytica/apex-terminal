@@ -1,0 +1,67 @@
+# ─── PR validation ─────────────────────────────────────────────────────
+#
+# Runs on every PR (and main pushes) — same checks Vercel runs at deploy
+# time, plus the test suite. Goal: catch production-only build failures
+# at PR review time, not after merge.
+#
+# Concretely guards against the failure mode that caused the 9-hour
+# outage on 2026-04-30: a code change that compiled fine locally and
+# passed `vitest run` but broke `next build` in Vercel's Node-only
+# environment (in that case, `node:`-prefixed imports interacting with
+# vitest's default `happy-dom` environment).
+#
+# Concurrency: cancels stale runs when a PR is force-pushed.
+
+name: PR validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # ─── The gate that would have caught PR #137's first nine attempts.
+      # Runs the same `next build` Vercel runs in production. Any failure
+      # here means the PR cannot deploy, full stop.
+      #
+      # NOTE: lint is intentionally NOT gated here. main currently has
+      # ~36 pre-existing lint errors; gating on lint would block every
+      # PR for unrelated reasons. The job is scoped to the failure mode
+      # the 9-hour outage taught us about: code that compiles locally
+      # but breaks `next build` in Vercel's Node-only environment.
+      - name: Build (production)
+        run: npm run build
+        env:
+          # Build needs envs that are read at module load time. Use harmless
+          # placeholders so the build can complete; runtime values come from
+          # Vercel.
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          SUPABASE_SERVICE_ROLE_KEY: "placeholder-service-role-key"
+          GITHUB_WEBHOOK_SECRET: "placeholder-webhook-secret"

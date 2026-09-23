@@ -1,0 +1,155 @@
+{
+  "id": "c59ff404-56ac-4e0c-9403-fb51d5b92df6",
+  "cohortId": "d1namo-2018",
+  "cohortSourceHash": "89db2ac2dc915929514bae3eae06dcff3e3870d21b5ff4531f80d09eadb7101d",
+  "algorithm": {
+    "id": "lag-correlation",
+    "version": "0.1.0"
+  },
+  "params": {
+    "maxLagSeconds": 1800,
+    "gridSeconds": 300,
+    "alpha": 0.05,
+    "minAbsR": 0.1,
+    "minSubjects": 2,
+    "minGridPoints": 50
+  },
+  "startedAt": "2026-04-30T02:48:48.904Z",
+  "completedAt": "2026-04-30T02:48:48.925Z",
+  "status": "succeeded",
+  "result": {
+    "variables": [
+      "cgm_glucose_mgdl",
+      "meal_event",
+      "insulin_fast_units",
+      "insulin_slow_units"
+    ],
+    "edges": [
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 1800,
+        "strength": 0.09193329212381592,
+        "pValue": 5.121147950148952e-11,
+        "evidence": "Fisher meta r=0.092 across 9 subjects at lag 1800s; BH-adjusted p=5.12e-11."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 1500,
+        "strength": 0.0902553945305092,
+        "pValue": 8.569855936002568e-11,
+        "evidence": "Fisher meta r=0.090 across 9 subjects at lag 1500s; BH-adjusted p=8.57e-11."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 1200,
+        "strength": 0.0884045076770615,
+        "pValue": 2.0480654209601804e-10,
+        "evidence": "Fisher meta r=0.088 across 9 subjects at lag 1200s; BH-adjusted p=2.05e-10."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 900,
+        "strength": 0.08647094406182344,
+        "pValue": 5.527771573810014e-10,
+        "evidence": "Fisher meta r=0.086 across 9 subjects at lag 900s; BH-adjusted p=5.53e-10."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 600,
+        "strength": 0.0844968881602059,
+        "pValue": 1.5538198283593375e-9,
+        "evidence": "Fisher meta r=0.084 across 9 subjects at lag 600s; BH-adjusted p=1.55e-9."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 300,
+        "strength": 0.08265773149523782,
+        "pValue": 4.06333588998109e-9,
+        "evidence": "Fisher meta r=0.083 across 9 subjects at lag 300s; BH-adjusted p=4.06e-9."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 0,
+        "strength": 0.08086926200914961,
+        "pValue": 8.872709789109479e-9,
+        "evidence": "Fisher meta r=0.081 across 9 subjects at lag 0s; BH-adjusted p=8.87e-9."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 0,
+        "strength": 0.08086926200914961,
+        "pValue": 8.872709789109479e-9,
+        "evidence": "Fisher meta r=0.081 across 9 subjects at lag 0s; BH-adjusted p=8.87e-9."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 300,
+        "strength": 0.07876019434624444,
+        "pValue": 2.7154255436793544e-8,
+        "evidence": "Fisher meta r=0.079 across 9 subjects at lag 300s; BH-adjusted p=2.72e-8."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 600,
+        "strength": 0.07678604772826286,
+        "pValue": 7.436068161226217e-8,
+        "evidence": "Fisher meta r=0.077 across 9 subjects at lag 600s; BH-adjusted p=7.44e-8."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 900,
+        "strength": 0.07626806238992813,
+        "pValue": 8.146771806655745e-8,
+        "evidence": "Fisher meta r=0.076 across 9 subjects at lag 900s; BH-adjusted p=8.15e-8."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 1200,
+        "strength": 0.07578021374326102,
+        "pValue": 8.856032899610493e-8,
+        "evidence": "Fisher meta r=0.076 across 9 subjects at lag 1200s; BH-adjusted p=8.86e-8."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 1500,
+        "strength": 0.07531730569017252,
+        "pValue": 9.696090901119175e-8,
+        "evidence": "Fisher meta r=0.075 across 9 subjects at lag 1500s; BH-adjusted p=9.70e-8."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 1800,
+        "strength": 0.07480038142302416,
+        "pValue": 1.1186239157190414e-7,
+        "evidence": "Fisher meta r=0.075 across 9 subjects at lag 1800s; BH-adjusted p=1.12e-7."
+      }
+    ],
+    "diagnostics": {
+      "nSubjectsUsed": 9,
+      "nCandidates": 14,
+      "nEdgesAfterFDR": 14,
+      "params": {
+        "maxLagSeconds": 1800,
+        "gridSeconds": 300,
+        "alpha": 0.05,
+        "minAbsR": 0.1,
+        "minSubjects": 2,
+        "minGridPoints": 50
+      }
+    }
+  }
+}

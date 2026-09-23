@@ -1,0 +1,245 @@
+"use client";
+
+import { useEffect, useMemo } from "react";
+import { useApexStore } from "@/stores/useApexStore";
+import {
+  availableCalculations,
+  type CalculationContext,
+} from "@/lib/calculations/registry";
+
+// ─── CalculationsPanel ────────────────────────────────────────────────
+//
+// Right-rail block that runs every calculation in
+// CALCULATION_REGISTRY whose `appliesWhen` predicate passes for the
+// current context (graph + selected node + active domains). Each row
+// renders the calculation's label, scalar value, and supporting
+// detail. Tone-coloured dot mirrors AT A GLANCE / REVIEW so the
+// three blocks read as a single context-signal column.
+//
+// "→ DIAL" affordance — calcs that implement `toSnapshot` (node-
+// scoped) or `toGraphSnapshot` (graph-wide) get a push button that
+// records the current value AND auto-pins the trajectory into the
+// bottom watchlist + chart so the user immediately sees the curve
+// appear (without having to manually pin afterwards):
+//   - Node-scoped: appends to the selected node's liveData[] via
+//     pushCalculationSnapshot + auto-pins the node via
+//     togglePinnedTimeSeries (one-shot — only when not already pinned).
+//   - Graph-wide: appends to graphCalcHistory[calc.id] via
+//     pushGraphCalcSnapshot + auto-pins the calc id via
+//     togglePinnedCalcSeries; TimeSeriesOverlay reads pinnedCalcSeries
+//     and renders one calc-typed row in the watchlist plus a chart
+//     curve from graphCalcHistory[calcId]. The inline sparkline next
+//     to the value stays as a redundant preview for when the bottom
+//     panel is scrolled / collapsed.
+//
+// Renders nothing when no calculations apply, so empty graphs don't
+// paint dead chrome.
+
+function toneColor(tone: "amber" | "red" | "green" | undefined): string {
+  if (tone === "red") return "#ff1744";
+  if (tone === "green") return "#00e676";
+  if (tone === "amber") return "#ffab00";
+  return "#7c8a99"; // neutral muted
+}
+
+function formatScalar(value: number, precision = 2, unit?: string): string {
+  const fixed =
+    precision === 0
+      ? Math.round(value).toLocaleString()
+      : value.toFixed(precision);
+  return unit ? `${fixed} ${unit}` : fixed;
+}
+
+interface InlineSparklineProps {
+  history: { value: number }[];
+  color: string;
+  width?: number;
+  height?: number;
+}
+
+function InlineSparkline({
+  history,
+  color,
+  width = 48,
+  height = 12,
+}: InlineSparklineProps) {
+  if (history.length < 2) return null;
+  const values = history.map((h) => h.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const stepX = width / (history.length - 1);
+  const toY = (v: number) => height - 1 - ((v - min) / range) * (height - 2);
+  const points = history
+    .map((h, i) => `${(i * stepX).toFixed(1)},${toY(h.value).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg
+      width={width}
+      height={height}
+      className="flex-shrink-0"
+      aria-hidden="true"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={1}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function CalculationsPanel() {
+  const graphData = useApexStore((s) => s.graphData);
+  const selectedNode = useApexStore((s) => s.selectedNode);
+  const selectedDomains = useApexStore((s) => s.selectedDomains);
+  const pushCalculationSnapshot = useApexStore(
+    (s) => s.pushCalculationSnapshot,
+  );
+  const pushGraphCalcSnapshot = useApexStore((s) => s.pushGraphCalcSnapshot);
+  const graphCalcHistory = useApexStore((s) => s.graphCalcHistory);
+  const hydrateGraphCalcHistory = useApexStore(
+    (s) => s.hydrateGraphCalcHistory,
+  );
+  const hydrateNodeCalcHistory = useApexStore(
+    (s) => s.hydrateNodeCalcHistory,
+  );
+  // Auto-pin actions so the user immediately sees a curve in the
+  // bottom time-series panel after pressing "→ DIAL" — closes the
+  // "where is my trajectory" gap.
+  const pinnedTimeSeriesNodes = useApexStore((s) => s.pinnedTimeSeriesNodes);
+  const togglePinnedTimeSeries = useApexStore((s) => s.togglePinnedTimeSeries);
+  const pinnedCalcSeries = useApexStore((s) => s.pinnedCalcSeries);
+  const togglePinnedCalcSeries = useApexStore((s) => s.togglePinnedCalcSeries);
+
+  // Hydrate persisted calc history once, after mount. Done here
+  // rather than at store-create time so the server-rendered HTML (empty
+  // history) matches the client's first render — the persisted data is
+  // merged in post-hydration, which only adds sparklines that weren't
+  // in the SSR output (purely additive, no mismatch on existing DOM).
+  // Covers both graph-wide (graphCalcHistory) and node-scoped
+  // (nodeCalcHistory replayed into node.liveData) trajectories.
+  useEffect(() => {
+    hydrateGraphCalcHistory();
+    hydrateNodeCalcHistory();
+  }, [hydrateGraphCalcHistory, hydrateNodeCalcHistory]);
+
+  const ctx: CalculationContext = useMemo(
+    () => ({
+      graph: { nodes: graphData.nodes, edges: graphData.edges },
+      selectedNode,
+      selectedDomains,
+    }),
+    [graphData, selectedNode, selectedDomains],
+  );
+
+  const rows = useMemo(() => {
+    return availableCalculations(ctx)
+      .map((calc) => {
+        const result = calc.compute(ctx);
+        if (!result) return null;
+        const nodeSnapshot = calc.toSnapshot?.(result, ctx) ?? null;
+        const graphSnapshot = calc.toGraphSnapshot?.(result, ctx) ?? null;
+        return { calc, result, nodeSnapshot, graphSnapshot };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [ctx]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div
+      data-tour="calculations-panel"
+      className="px-2 py-2 mt-1 rounded border border-border bg-surface-elevated/50"
+    >
+      <div className="flex items-baseline justify-between mb-0.5">
+        <div className="text-[8px] font-[family-name:var(--font-michroma)] tracking-wider text-text-secondary">
+          CALCULATIONS
+        </div>
+        <div className="text-[7px] font-mono text-text-muted/60">
+          {selectedNode ? "node-scoped" : "graph-wide"}
+        </div>
+      </div>
+      <div className="space-y-1 mt-1">
+        {rows.map(({ calc, result, nodeSnapshot, graphSnapshot }) => {
+          const history = graphCalcHistory[calc.id] ?? [];
+          const pushDisabled = !nodeSnapshot && !graphSnapshot;
+          // On "→ DIAL": (a) snapshot the value, (b) auto-pin so the
+          // bottom watchlist + chart immediately picks it up. The auto-
+          // pin is one-shot — toggle only when not yet pinned, so the
+          // user keeps control over what's in the watchlist (no
+          // surprise re-pinning if they unpinned manually).
+          const onPush = nodeSnapshot
+            ? () => {
+                pushCalculationSnapshot(
+                  nodeSnapshot.nodeId,
+                  nodeSnapshot.point,
+                );
+                if (!pinnedTimeSeriesNodes.includes(nodeSnapshot.nodeId)) {
+                  togglePinnedTimeSeries(nodeSnapshot.nodeId);
+                }
+              }
+            : graphSnapshot
+              ? () => {
+                  pushGraphCalcSnapshot(calc.id, graphSnapshot.value);
+                  if (!pinnedCalcSeries.includes(calc.id)) {
+                    togglePinnedCalcSeries(calc.id);
+                  }
+                }
+              : undefined;
+          return (
+            <div
+              key={calc.id}
+              className="text-[9px] font-mono leading-tight flex items-baseline gap-1.5"
+              title={calc.description}
+            >
+              <span
+                style={{ color: toneColor(result.tone) }}
+                className="text-[8px] leading-none flex-shrink-0"
+              >
+                ●
+              </span>
+              <span className="text-text-muted">{calc.name}</span>
+              <span className="text-foreground tabular-nums">
+                {result.value.kind === "scalar"
+                  ? formatScalar(
+                      result.value.value,
+                      result.value.precision,
+                      result.value.unit,
+                    )
+                  : result.value.value}
+              </span>
+              {result.detail && (
+                <span className="text-text-muted/70 truncate flex-1 min-w-0">
+                  — {result.detail}
+                </span>
+              )}
+              {graphSnapshot && history.length >= 2 && (
+                <InlineSparkline
+                  history={history}
+                  color={toneColor(result.tone)}
+                />
+              )}
+              {!pushDisabled && (
+                <button
+                  onClick={onPush}
+                  data-tour="calc-dial-button"
+                  className="ml-auto flex-shrink-0 text-[7px] font-[family-name:var(--font-michroma)] tracking-wider px-1.5 py-0.5 rounded border border-accent-cyan/30 text-accent-cyan/80 hover:text-accent-cyan hover:border-accent-cyan/60 transition-colors"
+                  title={
+                    nodeSnapshot
+                      ? `Push current ${calc.name} value to the selected node's TimeDial history. First press auto-pins the node to the bottom watchlist + chart. Each press appends a snapshot to the trajectory.`
+                      : `Push current ${calc.name} value to graph-wide history. First press auto-pins the calc to the bottom watchlist + chart. Each press appends a snapshot to the trajectory.`
+                  }
+                >
+                  → DIAL
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

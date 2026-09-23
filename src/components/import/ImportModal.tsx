@@ -6,6 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { parseFile } from "@/lib/import/parsers";
 import { parseCSV } from "@/lib/import/parsers/csv-parser";
 import { validateParsedGraph } from "@/lib/import/validation";
+import { resolveDomainProfile } from "@/lib/domain-profiles";
 import { mergeGraphs } from "@/lib/import/merge";
 import {
   ImportStep,
@@ -206,7 +207,12 @@ export default function ImportModal() {
       // Run the same cross-file resolution and stub creation
       resolveEdgeReferences(combined.nodes, combined.edges, combined.warnings, breakdown);
 
-      const result = validateParsedGraph(combined, graphData);
+      // Score imported nodes against the active profile's pillar weighting
+      // (defaults to the platform default for the geopolitical/empty selection).
+      const importWeights = resolveDomainProfile(
+        useApexStore.getState().selectedDomains,
+      ).weights;
+      const result = validateParsedGraph(combined, graphData, importWeights);
       setValidationResult(result);
       setFileBreakdown(breakdown);
       setStep("preview");
@@ -267,7 +273,12 @@ export default function ImportModal() {
         warnings: allWarnings,
       };
 
-      const result = validateParsedGraph(combined, graphData);
+      // Score imported nodes against the active profile's pillar weighting
+      // (defaults to the platform default for the geopolitical/empty selection).
+      const importWeights = resolveDomainProfile(
+        useApexStore.getState().selectedDomains,
+      ).weights;
+      const result = validateParsedGraph(combined, graphData, importWeights);
       setValidationResult(result);
       setFileBreakdown(breakdown);
       setStep("preview");

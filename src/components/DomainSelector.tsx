@@ -1,25 +1,52 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
-import { MAIN_GRAPH, EMPTY_GRAPH } from "@/lib/graph-data";
-import { ATHENA_GRAPH, BRIDGE_EDGES } from "@/lib/athena-graph-data";
-import { T1D_GRAPH } from "@/lib/t1d-graph-data";
-import { VX880_GRAPH } from "@/lib/t1d-vx880-graph-data";
-import { mergeGraphs } from "@/lib/import/merge";
-import type { NodeCategory, CausalGraph } from "@/lib/types";
+import { useUserAccess } from "@/hooks/useUserAccess";
+import {
+  DOMAIN_CARDS,
+  DOMAIN_GROUPS,
+  PERSONAS,
+  PERSONA_GROUPS,
+  type DomainCard,
+  type Persona,
+} from "@/lib/domains";
+import {
+  buildGraphFromDomains,
+  DATASET_NODE_COUNTS,
+} from "@/lib/build-domain-graph";
+import type { NodeCategory } from "@/lib/types";
+import TTSControls from "@/components/TTSControls";
+import DomainIcon, { type DomainIconName } from "@/components/DomainIcon";
+import { WELCOME_DESCRIPTION } from "@/lib/tour-steps";
+import { DemoFlowPicker } from "@/components/DemoFlowPlayer";
 
-const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: string }[] = [
-  { id: "economic", label: "ECONOMIC", icon: "📊" },
-  { id: "finance", label: "FINANCE", icon: "💰" },
-  { id: "energy", label: "ENERGY", icon: "⚡" },
-  { id: "infrastructure", label: "INFRASTRUCTURE", icon: "🏗" },
-  { id: "manufacturing", label: "MANUFACTURING", icon: "🏭" },
-  { id: "agriculture", label: "AGRICULTURE", icon: "🌾" },
-  { id: "geopolitical", label: "GEOPOLITICAL", icon: "🌐" },
-  { id: "communications", label: "COMMUNICATIONS", icon: "📡" },
-  { id: "science", label: "SCIENCE", icon: "🔬" },
+// Re-export catalog/builder from this module's old surface so any
+// straggling caller keeps compiling. Prefer importing directly from
+// `@/lib/domains` / `@/lib/build-domain-graph` for new code.
+export { DOMAIN_CARDS } from "@/lib/domains";
+export { buildGraphFromDomains } from "@/lib/build-domain-graph";
+
+// Category icons swapped from OS-rendered emojis to the same hand-drawn
+// monochrome line-art SVG system as the domain cards (PR #344). The
+// DATA LAYERS accordion sits one click into the Domain Workspace modal;
+// before this, expanding it surfaced the same 📊 💰 ⚡ 🏗 🏭 🌾 🌐 📡 🔬
+// glyphs we just spent PR #344 retiring from the landing-page cards.
+// Most categories reuse icons already defined for domains (chart-bar /
+// bank / bolt / factory / globe) — `wheat` / `antenna` / `flask` /
+// `tower` are new, added to `DomainIcon` so the same component renders
+// both surfaces.
+const NODE_CATEGORIES: { id: NodeCategory; label: string; icon: DomainIconName }[] = [
+  { id: "economic", label: "ECONOMIC", icon: "chart-bar" },
+  { id: "finance", label: "FINANCE", icon: "bank" },
+  { id: "energy", label: "ENERGY", icon: "bolt" },
+  { id: "infrastructure", label: "INFRASTRUCTURE", icon: "tower" },
+  { id: "manufacturing", label: "MANUFACTURING", icon: "factory" },
+  { id: "agriculture", label: "AGRICULTURE", icon: "wheat" },
+  { id: "geopolitical", label: "GEOPOLITICAL", icon: "globe" },
+  { id: "communications", label: "COMMUNICATIONS", icon: "antenna" },
+  { id: "science", label: "SCIENCE", icon: "flask" },
 ];
 
 const DISCOVERY_SOURCES = [
@@ -29,269 +56,10 @@ const DISCOVERY_SOURCES = [
   { id: "merged", label: "MERGED", desc: "Cross-engine" },
 ];
 
-// ─── Grouped domain structure ────────────────────────────────────
-// Each domain knows which dataset it pulls from (for auto-loading)
-
-interface DomainCard {
-  id: string;
-  label: string;
-  icon: string;
-  color: string;
-  colorVar: string;
-  description: string;
-  hasData: boolean;
-  dataset: "main" | "athena" | "t1d" | "vx880"; // which graph to load
-}
-
-interface DomainGroup {
-  label: string;
-  color: string;
-  domains: DomainCard[];
-}
-
-type Persona =
-  | "scientist"
-  | "financial"
-  | "macro"
-  | "geopolitical"
-  | "cross";
-
-const PERSONAS: { id: Persona; label: string; desc: string }[] = [
-  { id: "financial", label: "FINANCIAL", desc: "Markets · Credit · Sovereign" },
-  { id: "macro", label: "MACRO", desc: "Growth · Inflation · Policy" },
-  { id: "geopolitical", label: "GEOPOLITICAL", desc: "Energy · Infra · Defense" },
-  { id: "scientist", label: "SCIENTIST", desc: "Life Sciences" },
-  { id: "cross", label: "CROSS-DOMAIN", desc: "All domains · multi-select" },
-];
-
-// Each persona shows a subset of domain groups (by group label).
-// CROSS shows everything and is the only persona allowed to multi-select
-// across different datasets.
-const PERSONA_GROUPS: Record<Persona, Set<string>> = {
-  financial: new Set(["FINANCIAL & SOVEREIGN", "MENA ENERGY & COMMODITIES"]),
-  macro: new Set(["MACRO IMPACT", "FINANCIAL & SOVEREIGN"]),
-  geopolitical: new Set([
-    "MENA ENERGY & COMMODITIES",
-    "INFRASTRUCTURE & DEFENSE",
-    "FINANCIAL & SOVEREIGN",
-  ]),
-  scientist: new Set(["LIFE SCIENCES", "FRONTIER"]),
-  cross: new Set([
-    "MENA ENERGY & COMMODITIES",
-    "FINANCIAL & SOVEREIGN",
-    "INFRASTRUCTURE & DEFENSE",
-    "MACRO IMPACT",
-    "LIFE SCIENCES",
-    "FRONTIER",
-  ]),
-};
-
-const DOMAIN_GROUPS: DomainGroup[] = [
-  {
-    label: "MENA ENERGY & COMMODITIES",
-    color: "#ff1744",
-    domains: [
-      {
-        id: "energy-systems",
-        label: "Energy Systems",
-        icon: "\u{26A1}",
-        color: "#ff1744",
-        colorVar: "var(--accent-red)",
-        description: "Saudi Aramco crude/gas infrastructure, QatarEnergy LNG export chains",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "manufacturing",
-        label: "Fertilizer & Agrochemical",
-        icon: "\u{1F3ED}",
-        color: "#448aff",
-        colorVar: "var(--accent-blue)",
-        description: "QAFCO urea/ammonia complex, Ma'aden phosphate supply chains, food price transmission",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "supply-chain",
-        label: "Supply Chain Shock Risk",
-        icon: "\u{1F517}",
-        color: "#00e5ff",
-        colorVar: "var(--accent-cyan)",
-        description: "MENA food security, Bunge/Almarai supply chains, wheat price transmission",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "FINANCIAL & SOVEREIGN",
-    color: "#ffab00",
-    domains: [
-      {
-        id: "financial-contagion",
-        label: "Financial Contagion Risk",
-        icon: "\u{1F3E6}",
-        color: "#ff6d00",
-        colorVar: "var(--accent-orange)",
-        description: "Systemic banking failures, credit default cascades, liquidity traps",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "sovereign-risk",
-        label: "Emerging Market Sovereign Risk",
-        icon: "\u{1F30D}",
-        color: "#ffab00",
-        colorVar: "var(--accent-amber)",
-        description: "Currency crises, debt restructuring, capital flight contagion",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "INFRASTRUCTURE & DEFENSE",
-    color: "#7c4dff",
-    domains: [
-      {
-        id: "infrastructure",
-        label: "Infrastructure Resilience",
-        icon: "\u{1F3D7}",
-        color: "#7c4dff",
-        colorVar: "var(--accent-purple)",
-        description: "Undersea cable systems, Red Sea exposure, Telecom Egypt/Orange Marine",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "defense-isr",
-        label: "Defense & ISR",
-        icon: "\u{1F6E1}\uFE0F",
-        color: "#00e676",
-        colorVar: "var(--accent-green)",
-        description: "Drone swarms, SATCOM, ISR fusion, chip embargo, secure compute, kill chain",
-        hasData: true,
-        dataset: "athena",
-      },
-    ],
-  },
-  {
-    label: "MACRO IMPACT",
-    color: "#40c4ff",
-    domains: [
-      {
-        id: "macro-labor",
-        label: "Labor, Growth & Housing",
-        icon: "\u{1F4CA}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-cyan)",
-        description: "Nonfarm payrolls, unemployment, wages, JOLTS, GDP, retail sales, industrial production, ISM PMI, housing",
-        hasData: true,
-        dataset: "main",
-      },
-      {
-        id: "macro-inflation",
-        label: "Inflation & Policy",
-        icon: "\u{1F4B9}",
-        color: "#ff80ab",
-        colorVar: "var(--accent-pink)",
-        description: "CPI/PPI/PCE inflation, breakeven expectations, Fed funds rate, SOFR, Fed policy transmission",
-        hasData: true,
-        dataset: "main",
-      },
-    ],
-  },
-  {
-    label: "LIFE SCIENCES",
-    color: "#40c4ff",
-    domains: [
-      {
-        id: "t1d-beta-cell",
-        label: "T1D \u03B2-Cell Restoration",
-        icon: "\u{1F9EC}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-blue)",
-        description: "Autoimmune \u2192 \u03B2-cell loss \u2192 glycemic collapse \u2192 complications; teplizumab / stem-cell intervention paths",
-        hasData: true,
-        dataset: "t1d",
-      },
-      {
-        id: "t1d-vx880",
-        label: "T1D Stem-Cell Transplant (VX-880)",
-        icon: "\u{1F489}",
-        color: "#40c4ff",
-        colorVar: "var(--accent-blue)",
-        description: "Vertex VX-880 trial topology: HLA/autoantibody risk \u2192 dose + immunosuppression \u2192 engraftment \u2192 graft \u03B2-mass \u2192 MMTT / insulin-independence / severe-hypo endpoints",
-        hasData: true,
-        dataset: "vx880",
-      },
-    ],
-  },
-  {
-    label: "FRONTIER",
-    color: "#e040fb",
-    domains: [
-      {
-        id: "frontier-science",
-        label: "Frontier Science",
-        icon: "\u269B\uFE0F",
-        color: "#e040fb",
-        colorVar: "var(--accent-magenta)",
-        description: "Post-Standard Model physics, neutrino frontier, quantum gravity, dark sector detection",
-        hasData: false,
-        dataset: "main",
-      },
-    ],
-  },
-];
-
-// Flat list for export (used by HeaderBar etc.)
-export const DOMAIN_CARDS = DOMAIN_GROUPS.flatMap((g) => g.domains);
-
-// Build the graph from selected domains — auto-includes the right datasets
-export function buildGraphFromDomains(domainIds: string[]): CausalGraph {
-  const selectedDomains = domainIds.map((id) =>
-    DOMAIN_CARDS.find((d) => d.id === id)
-  ).filter(Boolean) as DomainCard[];
-
-  const needsMain = selectedDomains.some((d) => d.dataset === "main");
-  const needsAthena = selectedDomains.some((d) => d.dataset === "athena");
-  const needsT1D = selectedDomains.some((d) => d.dataset === "t1d");
-  const needsVX880 = selectedDomains.some((d) => d.dataset === "vx880");
-
-  let graph: CausalGraph = { nodes: [], edges: [], metadata: EMPTY_GRAPH.metadata };
-
-  if (needsMain) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: MAIN_GRAPH.nodes, edges: MAIN_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsAthena) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: ATHENA_GRAPH.nodes, edges: ATHENA_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsT1D) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: T1D_GRAPH.nodes, edges: T1D_GRAPH.edges });
-    graph = merged;
-  }
-  if (needsVX880) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: VX880_GRAPH.nodes, edges: VX880_GRAPH.edges });
-    graph = merged;
-  }
-
-  // When both MAIN and ATHENA are loaded, splice in the bridge edges that
-  // wire civilian/energy/financial domains into the defense substrate.
-  // mergeGraphs will silently skip any bridge whose endpoints aren't present.
-  if (needsMain && needsAthena) {
-    const { graph: merged } = mergeGraphs(graph, { nodes: [], edges: BRIDGE_EDGES });
-    graph = merged;
-  }
-
-  return graph;
-}
-
 export default function DomainSelector() {
   const domainSelectorOpen = useApexStore((s) => s.domainSelectorOpen);
   const setDomainSelectorOpen = useApexStore((s) => s.setDomainSelectorOpen);
+  const setTourActive = useApexStore((s) => s.setTourActive);
   const setIsMultiDomainMode = useApexStore((s) => s.setIsMultiDomainMode);
   const setSelectedDomains = useApexStore((s) => s.setSelectedDomains);
   const setVisibleCategories = useApexStore((s) => s.setVisibleCategories);
@@ -313,6 +81,20 @@ export default function DomainSelector() {
   const [localCategories, setLocalCategories] = useState<Set<string>>(new Set());
   const [localSources, setLocalSources] = useState<Set<string>>(new Set());
   const [showDataLayers, setShowDataLayers] = useState(false);
+
+  // Tier-based domain access. While `access` is loading we leave
+  // everything unlocked to avoid a visual flash; the API-level gate
+  // is the authoritative check. Once loaded, any domain not in the
+  // user's effective access is rendered locked + non-clickable.
+  const { access } = useUserAccess();
+  const lockedIds = useMemo(() => {
+    if (!access) return new Set<string>();
+    return new Set(
+      DOMAIN_CARDS
+        .filter((d) => !access.domains.includes(d.id))
+        .map((d) => d.id)
+    );
+  }, [access]);
 
   // Cards visible for the active persona (filtered by domain group)
   const allowedGroups = PERSONA_GROUPS[activePersona];
@@ -336,6 +118,8 @@ export default function DomainSelector() {
 
   const toggleDomain = useCallback(
     (id: string) => {
+      // Defense-in-depth — UI also disables onClick for locked cards.
+      if (lockedIds.has(id)) return;
       setLocalSelected((prev) => {
         if (prev.includes(id)) return prev.filter((d) => d !== id);
         if (!localMulti) return [id];
@@ -354,7 +138,7 @@ export default function DomainSelector() {
         return [...prev, id];
       });
     },
-    [localMulti, activePersona]
+    [localMulti, activePersona, lockedIds]
   );
 
   const switchMode = useCallback(
@@ -411,7 +195,11 @@ export default function DomainSelector() {
   const willLoadAthena = selectedCards.some((d) => d.dataset === "athena");
   const willLoadT1D = selectedCards.some((d) => d.dataset === "t1d");
   const willLoadVX880 = selectedCards.some((d) => d.dataset === "vx880");
-  const totalNodes = (willLoadMain ? MAIN_GRAPH.nodes.length : 0) + (willLoadAthena ? ATHENA_GRAPH.nodes.length : 0) + (willLoadT1D ? T1D_GRAPH.nodes.length : 0) + (willLoadVX880 ? VX880_GRAPH.nodes.length : 0);
+  const totalNodes =
+    (willLoadMain ? DATASET_NODE_COUNTS.main : 0) +
+    (willLoadAthena ? DATASET_NODE_COUNTS.athena : 0) +
+    (willLoadT1D ? DATASET_NODE_COUNTS.t1d : 0) +
+    (willLoadVX880 ? DATASET_NODE_COUNTS.vx880 : 0);
 
   return (
     <AnimatePresence>
@@ -429,7 +217,19 @@ export default function DomainSelector() {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.2 }}
             data-tour="domain-selector-modal"
-            className="w-full max-w-2xl mx-4 rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
+            // `max-h-[calc(100vh-2rem)] flex flex-col` caps the modal to
+            // viewport height with a 1rem gutter top/bottom. Header,
+            // persona pills, mode switch, and footer stay anchored as
+            // flex items at their natural height. The middle scrollable
+            // region (cards + DATA LAYERS + demo picker) absorbs the
+            // remaining vertical space and scrolls internally — before
+            // this, selecting many domains or expanding DATA LAYERS
+            // could push the modal taller than the viewport, and the
+            // `items-center justify-center` parent would centre it
+            // vertically, clipping equal slivers off the top AND bottom
+            // (the launch button at the bottom was the most reported
+            // casualty).
+            className="w-full max-w-2xl mx-4 rounded-lg border border-border bg-background shadow-2xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -440,6 +240,23 @@ export default function DomainSelector() {
                 <span className="text-[9px] font-mono text-text-muted tracking-wider">
                   Select risk domain{localMulti ? "s" : ""} to initialize causal graph
                 </span>
+              </div>
+              {/* Tutorial controls — speaker (read-aloud), language picker
+                  (any installed system voice), and the visual feature tour.
+                  Reachable before the user has even committed to a domain. */}
+              <div className="flex items-center gap-1.5">
+                <TTSControls
+                  text={WELCOME_DESCRIPTION}
+                  ariaLabel="Read tutorial aloud"
+                />
+                <button
+                  onClick={() => setTourActive(true)}
+                  className="flex items-center justify-center w-7 h-7 rounded border border-border text-[11px] font-[family-name:var(--font-michroma)] text-text-muted hover:text-accent-cyan hover:border-accent-cyan/40 transition-colors shrink-0"
+                  title="Feature tour"
+                  aria-label="Launch feature tour"
+                >
+                  ?
+                </button>
               </div>
             </div>
 
@@ -503,8 +320,20 @@ export default function DomainSelector() {
               )}
             </div>
 
+            {/* Middle scrollable region — wraps the domain cards,
+                DATA LAYERS accordion, and demo picker as one scroll
+                container so they grow/shrink together inside the
+                viewport-capped modal. Previously the cards section had
+                its own `max-h-[420px] overflow-y-auto` while DATA
+                LAYERS + demo picker sat outside as separate vertical
+                children of the modal, which meant expanding DATA
+                LAYERS pushed the modal taller than the viewport. With
+                this wrap the whole middle region shrinks down and a
+                single scrollbar appears at the modal edge when content
+                exceeds the available vertical space. */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
             {/* Grouped Domain Cards */}
-            <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-4">
+            <div className="px-6 py-4 space-y-4">
               {visibleGroups.map((group) => (
                 <div key={group.label}>
                   <div
@@ -516,12 +345,19 @@ export default function DomainSelector() {
                   <div className="grid gap-1.5">
                     {group.domains.map((domain) => {
                       const isSelected = localSelected.includes(domain.id);
-                      const isDisabled = !domain.hasData;
+                      const isComingSoon = !domain.hasData;
+                      const isLocked = lockedIds.has(domain.id);
+                      const isDisabled = isComingSoon || isLocked;
 
                       return (
                         <button
                           key={domain.id}
                           onClick={() => !isDisabled && toggleDomain(domain.id)}
+                          title={
+                            isLocked
+                              ? `Not included in your ${access?.tier ?? ""} tier — contact sales to upgrade`
+                              : undefined
+                          }
                           className="flex items-center gap-3 px-4 py-2.5 rounded border transition-all text-left"
                           style={{
                             borderColor: isSelected ? domain.color : "var(--border)",
@@ -535,16 +371,26 @@ export default function DomainSelector() {
                               : "none",
                           }}
                         >
-                          <span className="text-xl flex-shrink-0">{domain.icon}</span>
+                          <DomainIcon
+                            name={domain.icon}
+                            size={22}
+                            color={isSelected || domain.hasData ? domain.color : "var(--text-muted)"}
+                            className="flex-shrink-0"
+                          />
                           <div className="flex-1 min-w-0">
                             <div
                               className="text-[10px] font-[family-name:var(--font-michroma)] tracking-wider flex items-center gap-2"
                               style={{ color: isSelected ? domain.color : domain.hasData ? "var(--foreground)" : "var(--text-muted)" }}
                             >
                               {domain.label.toUpperCase()}
-                              {!domain.hasData && (
+                              {isComingSoon && (
                                 <span className="text-[7px] px-1.5 py-0.5 rounded border border-border text-text-muted bg-surface/50">
                                   COMING SOON
+                                </span>
+                              )}
+                              {isLocked && !isComingSoon && (
+                                <span className="text-[7px] px-1.5 py-0.5 rounded border border-accent-amber/40 text-accent-amber bg-accent-amber/10 tracking-wider">
+                                  UPGRADE
                                 </span>
                               )}
                             </div>
@@ -605,7 +451,7 @@ export default function DomainSelector() {
                               <button
                                 key={cat.id}
                                 onClick={() => toggleCategory(cat.id)}
-                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all"
+                                className="px-2 py-1 rounded border text-[8px] font-mono transition-all inline-flex items-center gap-1.5"
                                 style={{
                                   borderColor: localCategories.has(cat.id) ? "var(--accent-cyan)" : "var(--border)",
                                   backgroundColor: localCategories.has(cat.id) ? "rgba(0,229,255,0.08)" : "transparent",
@@ -613,7 +459,8 @@ export default function DomainSelector() {
                                   opacity: active ? 1 : 0.4,
                                 }}
                               >
-                                {cat.icon} {cat.label}
+                                <DomainIcon name={cat.icon} size={11} />
+                                {cat.label}
                               </button>
                             );
                           })}
@@ -663,6 +510,17 @@ export default function DomainSelector() {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Demo flow picker — guided cause-and-effect tours through the
+                graph. Discoverable but unobtrusive: bottom of the modal,
+                before the footer, so first-time visitors see the offer
+                without it crowding the domain cards. */}
+            <div className="px-6 pb-4">
+              <DemoFlowPicker
+                onPick={() => setDomainSelectorOpen(false)}
+              />
+            </div>
+            </div>{/* /flex-1 min-h-0 overflow-y-auto — middle scrollable region */}
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-border flex items-center justify-between">

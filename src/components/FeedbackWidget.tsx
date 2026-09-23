@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 const REQUEST_TYPES = [
   { value: "feedback", label: "FEEDBACK" },
@@ -19,10 +18,20 @@ export default function FeedbackWidget() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email) setUserEmail(user.email);
+    // Lazy-import the supabase client so the @supabase/ssr chunk stays
+    // off the eager bundle. We only need it for the email lookup on
+    // mount; the result populates the feedback form's "from" field.
+    let cancelled = false;
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      if (cancelled) return;
+      const supabase = createClient();
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!cancelled && user?.email) setUserEmail(user.email);
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {

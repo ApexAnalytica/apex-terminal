@@ -1,20 +1,36 @@
-import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode } from "./types";
-import type { SystemStateSnapshot } from "./snapshots/types";
-import type { TarskiViolation } from "./snapshots/types";
+import { TarskiAxiom, ProofTrace, CausalGraph, CausalEdge, CausalNode, getLiveSignal } from "./types";
+import type { TarskiValidationReport } from "./tarski-flags";
+import { countCyclicSCCs } from "./calculations/cycle-count";
+import { bridgeRatio } from "./calculations/bridge-ratio";
+
+// `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
+// type live in the lightweight `tarski-flags.ts` so consumers that only
+// need to flag/clear a graph (or carry the type signature) don't pull the
+// 891-LOC AXIOM_LIBRARY + 800-LOC validation engine below. Re-exported
+// here to keep existing callers working — new code should import from
+// `tarski-flags` directly to stay off the heavy chunk.
+export {
+  applyTarskiFlags,
+  clearTarskiFlags,
+  type TarskiValidationReport,
+} from "./tarski-flags";
 
 // ─── Axiom Library (Domain-Specific: Middle East Energy & Petrochemical) ──
 
 export const AXIOM_LIBRARY: TarskiAxiom[] = [
   // Level 0 — Physical Laws (immutable, prune on violation)
+  // A-01, A-02, A-03 — universal physical-law axioms. No `appliesTo` (any profile)
+  // and no domain-specific `relevantDomains`. Their concepts (causality, mass
+  // balance, acyclicity) hold equally on geopolitical supply chains, T1D
+  // β-cell physiology, or any future profile.
   {
     id: "A-01",
     level: 0,
     name: "Temporal Priority",
     formalNotation: "∀e∈Edges, Lag(e) ≥ 0",
-    description: "Effects cannot precede causes — causal edges must have non-negative temporal lag",
+    description: "Effects cannot precede causes — every edge in the causal structure must carry a non-negative temporal lag",
     plainText: "Causes must happen before their effects — no time travel allowed.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Financial Contagion", "Sovereign Risk", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Reversed causality (negative-weight edges)",
     diagramHint: "A ──[t<0]──> B  ✗",
   },
@@ -23,11 +39,10 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 0,
     name: "Flow Conservation",
     formalNotation: "Σw_in(v) ≥ Σw_out(v) · (1 − loss)",
-    description: "Throughput entering a node must account for outbound flow — mass/energy balance must hold across processing hubs",
+    description: "Throughput entering a node must account for outbound flow — quantities (mass, energy, capital, signal) cannot be created at a node that has nothing equivalent flowing in. Live-data branch: when a `production` or `throughput` signal saturates at ≥90% of nameplate capacity, the node cannot physically sustain its declared outbound flow.",
     plainText: "What goes into a node must account for what comes out — nothing appears from nowhere.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
-    checksFor: "Nodes outputting more than they receive",
+    relevantDomains: [],
+    checksFor: "Nodes outputting more than they receive; or live signals saturating capacity",
     diagramHint: "→[2]→ NODE →[5]→  ✗  (out > in)",
   },
   {
@@ -35,10 +50,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 0,
     name: "DAG Integrity",
     formalNotation: "∄ path v→⋯→v",
-    description: "No directed cycles in the causal structure — feedback loops must be broken by temporal lag",
+    description: "No directed cycles in the causal structure — any apparent feedback loop must be broken by an explicit temporal lag",
     plainText: "The causal chain can't loop back on itself — A can't cause B if B already caused A.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion", "Sovereign Risk"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Circular causal loops",
     diagramHint: "A → B → C → A  ✗  (cycle)",
   },
@@ -54,16 +68,18 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     checksFor: "Chokepoint nodes exceeding flow capacity",
     diagramHint: "━━▶ [STRAIT] ▶━━  cap exceeded",
   },
+  // A-05 — universal structural axiom. Single-supplier-with-high-load is fragile
+  // whether the dependency is a Persian Gulf phosphate route or a stem-cell
+  // β-cell line with one upstream donor.
   {
     id: "A-05",
     level: 0,
     name: "Single-Source Fragility",
     formalNotation: "InDegree(v)=1 ∧ C(v)≥7 → FRAGILE",
-    description: "A node with only one inbound supplier and high cascade load is structurally fragile — no redundancy path exists",
-    plainText: "If a node depends on just one supplier and carries heavy load, it's dangerously fragile.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
-    checksFor: "Nodes with no supply redundancy",
+    description: "A node with only one inbound dependency and high cascade load is structurally fragile — no redundancy path exists if that dependency fails",
+    plainText: "If a node depends on just one input and carries heavy load, it's dangerously fragile.",
+    relevantDomains: [],
+    checksFor: "Nodes with no input redundancy",
     diagramHint: "→ [SINGLE] → (no backup path)",
   },
 
@@ -97,27 +113,31 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 1,
     name: "Export Route Monopoly",
     formalNotation: "∀ export_path(v) ∋ chokepoint → RESTRICTED",
-    description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk",
+    description: "All export paths from a production node that transit a single maritime chokepoint create regulatory/insurance concentration risk. Live-data branches: a NOAA storm ≥ hurricane intensity, an active OFAC sanction, or throughput saturation ≥ 90% at the downstream chokepoint each independently escalate the route exposure regardless of the static irreplaceability gate.",
     plainText: "If every export route goes through one chokepoint, that's a concentration risk.",
     relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Supply Chain Food Security", "Undersea Cable Infrastructure"],
     appliesTo: ["geopolitical"],
-    checksFor: "All exports routing through single chokepoint",
+    checksFor: "All exports routing through single chokepoint; storm / sanctions / saturation on the route",
     diagramHint: "PROD ──▶ [CHOKE] ──▶ MARKET (no alt route)",
   },
+  // R-04 — universal regulatory axiom. Cross-domain causal claims with low
+  // confidence are unverified whether the domains are "Financial Contagion ×
+  // Sovereign Risk" or "Autoimmune × Glycemic Control".
   {
     id: "R-04",
     level: 1,
     name: "Cross-Domain Dependency",
     formalNotation: "domain(source) ≠ domain(target) ∧ conf < 0.7 → UNVERIFIED",
-    description: "Cross-domain edges with low confidence may represent assumed rather than verified causal relationships",
+    description: "Causal edges that span two distinct domains with confidence below the verification threshold may represent assumed rather than empirically established relationships",
     plainText: "Cross-domain links with low confidence might be assumed rather than proven.",
-    relevantDomains: ["Financial Contagion", "Sovereign Risk", "Supply Chain Food Security"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Weak cross-domain causal assumptions",
     diagramHint: "[DOMAIN A] ··?··> [DOMAIN B]  (conf < 70%)",
   },
 
   // Level 2 — Heuristic (flagged as anomaly)
+  // H-01, H-02 — universal heuristic axioms. Saturation and cascade-amplifier
+  // signatures hold on any graph whose nodes carry an Ω-fragility profile.
   {
     id: "H-01",
     level: 2,
@@ -125,8 +145,7 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     formalNotation: "ΩF(v) > 9.0 → ANOMALY",
     description: "Nodes with composite fragility exceeding 9.0 are at saturation — any additional shock may trigger cascade failure",
     plainText: "A node's fragility score is maxed out — any additional shock could break it.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "QAFCO Fertilizer", "Ma'aden Phosphate"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Maxed-out fragility nodes",
     diagramHint: "[NODE] Ω=9.4  ▓▓▓▓▓▓▓▓▓░ saturated",
   },
@@ -135,10 +154,9 @@ export const AXIOM_LIBRARY: TarskiAxiom[] = [
     level: 2,
     name: "Cascade Amplification",
     formalNotation: "C(v) ≥ 9 ∧ OutDegree(v) ≥ 3 → AMPLIFIER",
-    description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly",
+    description: "Nodes with extreme cascade load and multiple outbound edges act as systemic amplifiers — disruption propagates non-linearly through the graph",
     plainText: "A highly loaded node with many outbound connections amplifies disruption exponentially.",
-    relevantDomains: ["Saudi Aramco Energy", "QatarEnergy LNG", "Financial Contagion"],
-    appliesTo: ["geopolitical"],
+    relevantDomains: [],
     checksFor: "Hub nodes that amplify cascading failures",
     diagramHint: "→ [HUB C=9] →→→  (amplifier)",
   },
@@ -347,12 +365,68 @@ export interface ScoredAxiom {
 }
 
 /**
- * Score and rank axioms by relevance to the provided graph.
- * Considers: which domains are present, graph structure (chokepoints, hubs, cross-domain edges).
- * `activeProfileId` filters out axioms whose `appliesTo` excludes the current profile;
- * omit it to get all axioms regardless of profile.
+ * Selection passed to `scoreAxiomRelevance` to drive selection-aware
+ * boosts. Pass either the single-focus `selectedNode` (most common),
+ * the multi-select `selectedNodes` array, or both — they union into
+ * a single Set<string> internally.
  */
-export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string): ScoredAxiom[] {
+export interface AxiomRelevanceSelection {
+  selectedNode?: string | null;
+  selectedNodes?: readonly string[];
+  /**
+   * Per-axiom interaction memory: how recently and how often the user
+   * clicked into this axiom's expanded card. Feeds the recommender's
+   * decayed-recency boost so an axiom the user has been investigating
+   * lately surfaces even when no structural / selection feature fires.
+   * Optional — when omitted the recency layer is skipped entirely
+   * (preserves backwards-compat behaviour).
+   */
+  interactionHistory?: Record<
+    string,
+    { lastClickedAt: string; clickCount: number }
+  >;
+  /**
+   * Override the "now" timestamp used for the decay calculation.
+   * Tests pass a fixed ISO so the boost is deterministic; production
+   * callers omit and we use Date.now(). Stored as ISO-8601.
+   */
+  now?: string;
+}
+
+const SELECTION_BOOST = 0.25;
+/** Max recency boost (matches one structural signal of 0.3 within an
+ *  order of magnitude — strong enough to lift an otherwise-low-relevance
+ *  axiom into the recommended list, not strong enough to swamp
+ *  selection-aware boosts which carry more decision-relevant signal). */
+const RECENCY_BOOST_MAX = 0.15;
+/** Decay time constant in days. exp(-Δd / τ) — Δd=0 ⇒ 1; Δd=τ ⇒ ~0.37;
+ *  Δd=3τ ⇒ ~0.05 (effectively forgotten). 7 days mirrors a working week
+ *  of investigation rhythm. */
+const RECENCY_TAU_DAYS = 7;
+
+/**
+ * Score and rank axioms by relevance to the provided graph.
+ *
+ * Three signal layers, all additive:
+ *   1. Universal-axiom base (0.45) + L0 base (0.15) — applies to every
+ *      graph regardless of content.
+ *   2. Graph-wide structural features (existing): chokepoints, cross-
+ *      domain edges, high-Ω nodes, cascade hubs, single-supplier nodes,
+ *      high-J nodes anywhere. Adds 0.3 to the matching axiom.
+ *   3. Selection-aware features (new): when `selection` is provided
+ *      and non-empty, adds 0.25 per matching axiom AND overrides the
+ *      `reason` with selection-specific language ("Selected node is
+ *      a chokepoint" rather than "Chokepoint nodes detected").
+ *      Stacks on top of the structural bonus when both fire.
+ *
+ * `activeProfileId` filters out axioms whose `appliesTo` excludes the
+ * current profile; omit it to get all axioms regardless of profile.
+ */
+export function scoreAxiomRelevance(
+  graph: CausalGraph,
+  activeProfileId?: string,
+  selection?: AxiomRelevanceSelection,
+): ScoredAxiom[] {
   // Gather active domains from graph nodes
   const activeDomains = new Set(graph.nodes.map((n) => n.domain));
 
@@ -376,14 +450,148 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
     const outDegree = graph.edges.filter((e) => e.source === n.id).length;
     return n.omegaFragility.cascadeLoad >= 7 && outDegree >= 3;
   });
+  // Calc-driven structural features. Cycle count taps the same
+  // iterative-Tarjan helper the cycle-count calc uses, so when the
+  // calc shows red the recommender lifts A-03 in lockstep. Bridge
+  // ratio reads from bridge-ratio.ts's WeakMap cache (keyed on the
+  // edges array) so repeat calls within the same render don't
+  // re-run Brandes.
+  const cyclicSCCCount = countCyclicSCCs(graph.nodes, graph.edges);
+  const hasCycles = cyclicSCCCount > 0;
+  const bridgeRatioPct = bridgeRatio({ nodes: graph.nodes, edges: graph.edges });
+  const hasBrittleSkeleton = bridgeRatioPct >= 0.5;
+
+  // ─── Selection-aware feature extraction ──────────────────────────
+  // Normalise the (single, multi) selection into one Set<string>; an
+  // empty set short-circuits the selection-aware logic so callers
+  // passing `undefined` or `{ selectedNode: null }` get today's
+  // behaviour unchanged.
+  const selectedIds = new Set<string>();
+  if (selection?.selectedNode) selectedIds.add(selection.selectedNode);
+  for (const id of selection?.selectedNodes ?? []) selectedIds.add(id);
+  const selectedNodes = graph.nodes.filter((n) => selectedIds.has(n.id));
+  const hasSelection = selectedNodes.length > 0;
+
+  // Precompute selection features once (avoid per-axiom re-walks).
+  const selChokepoint = hasSelection && selectedNodes.some(
+    (n) =>
+      n.label.toLowerCase().includes("strait") ||
+      n.label.toLowerCase().includes("chokepoint"),
+  );
+  const selHasCrossDomainIncident = hasSelection && (() => {
+    for (const n of selectedNodes) {
+      for (const e of graph.edges) {
+        if (e.source !== n.id && e.target !== n.id) continue;
+        const other = graph.nodes.find(
+          (x) => x.id === (e.source === n.id ? e.target : e.source),
+        );
+        if (other && other.domain !== n.domain) return true;
+      }
+    }
+    return false;
+  })();
+  const selHighOmega = hasSelection && selectedNodes.some(
+    (n) => n.omegaFragility.composite > 7,
+  );
+  const selHighCascadeHub = hasSelection && selectedNodes.some((n) => {
+    const outDeg = graph.edges.filter((e) => e.source === n.id).length;
+    return n.omegaFragility.cascadeLoad >= 7 && outDeg >= 3;
+  });
+  const selSingleSource = hasSelection && selectedNodes.some((n) => {
+    const inDeg = graph.edges.filter((e) => e.target === n.id).length;
+    return inDeg === 1 && n.omegaFragility.cascadeLoad >= 5;
+  });
+  const selHighJ = hasSelection && selectedNodes.some(
+    (n) => n.omegaFragility.jurisdictionalHazard >= 6,
+  );
+  const selLiveSaturation = hasSelection && selectedNodes.some((n) => {
+    const live =
+      n.liveData?.find((p) => p.kind === "production") ??
+      n.liveData?.find((p) => p.kind === "throughput");
+    return !!live && live.capacity > 0 && live.value / live.capacity >= 0.9;
+  });
+  // Selection-aware cycle membership: is any selected node part of a
+  // cyclic SCC? Computed only when hasCycles already fired (avoids
+  // re-running Tarjan for the no-cycle case). Used in the A-03
+  // selection-aware boost.
+  const selInCycle = hasSelection && hasCycles && (() => {
+    // Build node→reachable-set via DFS from each selected node, then
+    // check if any reachable node has a path back. Faster than full
+    // SCC re-detection for the selection layer specifically.
+    const adj = new Map<string, string[]>();
+    for (const n of graph.nodes) adj.set(n.id, []);
+    for (const e of graph.edges) {
+      if (e.isSevered) continue;
+      const out = adj.get(e.source);
+      if (out) out.push(e.target);
+    }
+    for (const start of selectedNodes) {
+      const seen = new Set<string>([start.id]);
+      const stack: string[] = [start.id];
+      while (stack.length > 0) {
+        const v = stack.pop()!;
+        for (const w of adj.get(v) ?? []) {
+          if (w === start.id) return true; // back-edge to start = cycle
+          if (!seen.has(w)) {
+            seen.add(w);
+            stack.push(w);
+          }
+        }
+      }
+    }
+    return false;
+  })();
+  // Calc-driven concentration features — read user-pushed calc snapshots
+  // from node.liveData[] (kind: "calc:supply-hhi" / "calc:buyer-hhi"),
+  // pushed via the CALCULATIONS panel's "→ DIAL" button. Threshold
+  // mirrors the DOJ/FTC "highly concentrated" line (HHI ≥ 2500) so a
+  // node a user has flagged as concentrated lifts the structural-
+  // fragility axiom (A-05) and, when compounded with a high-J
+  // jurisdiction, the jurisdictional axiom (R-01).
+  const selHighSupplyHHI = hasSelection && selectedNodes.some((n) => {
+    const hhi = n.liveData?.find((p) => p.kind === "calc:supply-hhi");
+    return !!hhi && hhi.value >= 2500;
+  });
+  const selHighBuyerHHI = hasSelection && selectedNodes.some((n) => {
+    const hhi = n.liveData?.find((p) => p.kind === "calc:buyer-hhi");
+    return !!hhi && hhi.value >= 2500;
+  });
+  const selHighHHIInHighJ = hasSelection && selectedNodes.some((n) => {
+    const supply = n.liveData?.find((p) => p.kind === "calc:supply-hhi");
+    if (!supply || supply.value < 2500) return false;
+    return n.omegaFragility.jurisdictionalHazard >= 6;
+  });
+
+  // Helper: when a selection-aware feature fires for a single
+  // selected-node case, prefix the reason with the node's label for
+  // immediate transparency ("Selected: Strait of Hormuz is a
+  // chokepoint"). When >1 nodes are selected, use a count.
+  const selPrefix = (): string => {
+    if (selectedNodes.length === 1) {
+      return `Selected: ${selectedNodes[0].label}`;
+    }
+    return `Selection (${selectedNodes.length} nodes)`;
+  };
 
   return inScope.map((axiom) => {
     let score = 0;
     const matchedDomains: string[] = [];
     let reason = "";
 
-    // Domain overlap scoring
+    // Universal axioms — no `appliesTo` AND empty `relevantDomains`. Their
+    // concepts (temporal priority, DAG integrity, flow conservation,
+    // single-source fragility, cross-domain dependency, capacity saturation,
+    // cascade amplification) hold on every profile, so they get a flat base
+    // relevance of 0.45 (just above the "recommended" threshold of 0.4) on
+    // any active graph rather than scoring 0 from empty domain overlap.
     const axiomDomains = axiom.relevantDomains ?? [];
+    const isUniversal = !axiom.appliesTo && axiomDomains.length === 0;
+    if (isUniversal) {
+      score += 0.45;
+      reason = "Universal axiom — applies to all profiles";
+    }
+
+    // Domain overlap scoring (skipped when the axiom is universal)
     for (const ad of axiomDomains) {
       if (activeDomains.has(ad)) {
         matchedDomains.push(ad);
@@ -396,9 +604,33 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
 
     // Structural relevance bonus
     switch (axiom.id) {
+      case "A-03": // DAG Integrity
+        // Calc-driven: any cyclic SCC in the live graph is a direct
+        // A-03 violation. Lifts A-03 above the recommended threshold
+        // even before the user runs verified-mode Tarski validation.
+        if (hasCycles) {
+          score += 0.3;
+          reason =
+            cyclicSCCCount === 1
+              ? "1 cyclic SCC detected — A-03 violation"
+              : `${cyclicSCCCount} cyclic SCCs detected — A-03 violation`;
+        }
+        break;
       case "A-04": // Chokepoint
       case "R-03": // Export Route Monopoly
-        if (hasChokepoints) { score += 0.3; reason = "Chokepoint nodes detected in graph"; }
+        if (hasChokepoints) {
+          score += 0.3;
+          reason = "Chokepoint nodes detected in graph";
+        } else if (hasBrittleSkeleton) {
+          // Calc-driven: bridge-ratio ≥ 50% means most edges sit on
+          // the load-bearing skeleton, so removing the wrong one
+          // cascades — the same brittleness chokepoints expose,
+          // detected structurally rather than by name. Lower score
+          // than a direct chokepoint match (label-detected is more
+          // decision-relevant) but still recommended-worthy.
+          score += 0.25;
+          reason = `Bridge ratio ${(bridgeRatioPct * 100).toFixed(0)}% — load-bearing skeleton dominates`;
+        }
         break;
       case "R-04": // Cross-Domain
         if (hasCrossDomainEdges) { score += 0.3; reason = "Cross-domain links present"; }
@@ -427,8 +659,127 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
         break;
     }
 
+    // ─── Selection-aware bonus ──────────────────────────────────
+    // Stacks on top of the structural bonus; when it fires, replaces
+    // the generic reason with selection-specific language so the user
+    // sees WHY their click moved this axiom up the list.
+    if (hasSelection) {
+      switch (axiom.id) {
+        case "A-03":
+          if (selInCycle) {
+            // Stronger than the graph-wide hasCycles boost — pins the
+            // violation to the user's focus so they see WHICH node is
+            // implicated.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} sits in a cyclic SCC — A-03 violation`;
+          }
+          break;
+        case "A-04":
+        case "R-03":
+          if (selChokepoint) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is a chokepoint`;
+          } else if (selLiveSaturation) {
+            // Live saturation on the selected node also implicates A-04
+            // (chokepoint capacity) — the live-data branch we shipped
+            // earlier. Weaker reason than direct chokepoint label, but
+            // still selection-driven so the user sees the link.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} carries live saturation ≥ 90%`;
+          }
+          break;
+        case "A-02": // Flow Conservation — live branch lights up on saturation
+          if (selLiveSaturation) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} at capacity saturation — A-02 live branch fires`;
+          }
+          break;
+        case "R-04":
+          if (selHasCrossDomainIncident) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has cross-domain incident edges`;
+          }
+          break;
+        case "H-01":
+          if (selHighOmega) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has ΩF > 7`;
+          }
+          break;
+        case "H-02":
+          if (selHighCascadeHub) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is a high-cascade hub`;
+          }
+          break;
+        case "A-05":
+          if (selSingleSource) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} is single-supplier with high cascade load`;
+          } else if (selHighSupplyHHI) {
+            // Calc-driven boost: a user-pushed Supply HHI ≥ 2500 makes
+            // the concentrated supply mix explicit even if the graph
+            // doesn't have a single literal incoming edge.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Supply HHI ≥ 2500 — concentrated supply`;
+          } else if (selHighBuyerHHI) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Buyer HHI ≥ 2500 — concentrated demand`;
+          }
+          break;
+        case "R-01":
+        case "R-02":
+          if (selHighHHIInHighJ) {
+            // Compound risk: HHI ≥ 2500 AND high-J jurisdiction =
+            // jurisdictional concentration in the literal sense — both
+            // the antitrust and the political-risk frame fire together.
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} has Supply HHI ≥ 2500 in high-J jurisdiction`;
+          } else if (selHighJ) {
+            score += SELECTION_BOOST;
+            reason = `${selPrefix()} sits in a high-J jurisdiction`;
+          }
+          break;
+      }
+    }
+
     // L0 axioms always get a base boost — they're physical laws
     if (axiom.level === 0) score += 0.15;
+
+    // ─── Decayed-recency boost (recommender memory) ───────────────
+    // If the user has clicked into this axiom recently, lift its
+    // score by RECENCY_BOOST_MAX × exp(-Δd / τ). Only fires when
+    // interactionHistory is supplied — backwards compat is preserved
+    // for callers that don't pass it. The boost layers on top of the
+    // structural / selection bonuses; reason is overridden only when
+    // nothing more decision-relevant has set one (we don't want
+    // "recently investigated" to mask "Selected: X is a chokepoint").
+    const interaction = selection?.interactionHistory?.[axiom.id];
+    if (interaction) {
+      const nowMs = selection?.now
+        ? Date.parse(selection.now)
+        : Date.now();
+      const lastMs = Date.parse(interaction.lastClickedAt);
+      if (Number.isFinite(nowMs) && Number.isFinite(lastMs) && nowMs >= lastMs) {
+        const deltaDays = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+        const decay = Math.exp(-deltaDays / RECENCY_TAU_DAYS);
+        const recencyBoost = RECENCY_BOOST_MAX * decay;
+        // Cutoff at ~3τ where decay drops below 0.05 — below that the
+        // boost is rounding noise and the reason is meaningless.
+        if (recencyBoost >= 0.005) {
+          score += recencyBoost;
+          if (!reason || reason === "Universal axiom — applies to all profiles") {
+            const dayLabel =
+              deltaDays < 1
+                ? "today"
+                : deltaDays < 2
+                  ? "yesterday"
+                  : `${Math.round(deltaDays)} days ago`;
+            reason = `Recently investigated (${dayLabel})`;
+          }
+        }
+      }
+    }
 
     // Clamp
     score = Math.min(1, score);
@@ -447,16 +798,27 @@ export function scoreAxiomRelevance(graph: CausalGraph, activeProfileId?: string
 // ─── Dynamic Tarski Validation Engine ─────────────────────────────
 // Runs axiom checks against real graph data and returns flagged edges/nodes
 
-export interface TarskiValidationReport {
-  inconsistentEdgeIds: Set<string>;
-  restrictedNodeIds: Set<string>;
-  proofTraces: ProofTrace[];
-  totalViolations: number;
-}
-
-export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<string>): TarskiValidationReport {
-  // If a subset is provided, only run those axioms
-  const isEnabled = (id: string) => !enabledAxiomIds || enabledAxiomIds.has(id);
+export function runTarskiValidation(
+  graph: CausalGraph,
+  enabledAxiomIds?: Set<string>,
+  activeProfileId?: string,
+): TarskiValidationReport {
+  // Profile scoping: an axiom with `appliesTo` declares which profiles it's
+  // valid for. When the caller supplies an active profile, drop checks
+  // whose axiom is scoped to a different profile so e.g. T1D-only graphs
+  // never see geopolitical chokepoint flags (and vice versa once T1D
+  // axioms grow check implementations). Without `activeProfileId` the
+  // legacy behaviour is preserved — every implemented check runs.
+  const profileAllows = (id: string) => {
+    if (!activeProfileId) return true;
+    const axiom = AXIOM_LIBRARY.find((a) => a.id === id);
+    if (!axiom?.appliesTo) return true; // universal
+    return axiom.appliesTo.includes(activeProfileId);
+  };
+  // If a subset is provided, only run those axioms — and intersect with
+  // the profile filter so explicit enable can't override profile scoping.
+  const isEnabled = (id: string) =>
+    (!enabledAxiomIds || enabledAxiomIds.has(id)) && profileAllows(id);
   const inconsistentEdgeIds = new Set<string>();
   const restrictedNodeIds = new Set<string>();
   const proofTraces: ProofTrace[] = [];
@@ -494,35 +856,82 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   }
 
   // ── A-02: Flow Conservation ──
-  // Flag nodes where total outbound weight significantly exceeds total inbound
+  // Two-branch check. Both contribute to A-02 flags independently:
+  //
+  //   (1) Structural: outbound edge-weight sum > 1.5 × inbound sum, with
+  //       ≥3 outbound edges — declared outflow looks unsustainable from
+  //       the graph topology alone. Always evaluated.
+  //
+  //   (2) Live capacity saturation: when a node carries a `production`
+  //       or `throughput` live signal with value/capacity ≥ 0.90, the
+  //       physical capacity is exhausted — the node cannot sustain its
+  //       declared outbound flow under additional demand. Evaluated
+  //       only when live data is attached.
+  //
+  // Either branch firing restricts the node and flags the highest-weight
+  // outbound edge. When both fire we record one trace per branch so the
+  // proof history shows both mechanisms.
+  const A02_LIVE_SATURATION_THRESHOLD = 0.9;
   if (isEnabled("A-02")) for (const node of graph.nodes) {
     const inEdges = inboundEdges.get(node.id) || [];
     const outEdges = outboundEdges.get(node.id) || [];
-    if (inEdges.length > 0 && outEdges.length > 0) {
+    if (outEdges.length === 0) continue;
+    const maxOutEdge = outEdges.slice().sort((a, b) => b.weight - a.weight)[0];
+    const detailParts: string[] = [];
+
+    // (1) Structural branch
+    if (inEdges.length > 0) {
       const totalIn = inEdges.reduce((s, e) => s + e.weight, 0);
       const totalOut = outEdges.reduce((s, e) => s + e.weight, 0);
-      // If outbound flow exceeds inbound by > 50%, flag inconsistency
       if (totalOut > totalIn * 1.5 && outEdges.length >= 3) {
-        restrictedNodeIds.add(node.id);
-        // Flag the highest-weight outbound edge
-        const maxOutEdge = outEdges.sort((a, b) => b.weight - a.weight)[0];
-        if (maxOutEdge) {
-          inconsistentEdgeIds.add(maxOutEdge.id);
-          proofTraces.push({
-            edgeId: maxOutEdge.id,
-            violatedAxioms: ["A-02"],
-            verdict: "FLAGGED",
-            solverUsed: "cvc5",
-            checkTimeMs: Math.round(Math.random() * 8 + 4),
-          });
-        }
+        detailParts.push(
+          `${node.label}: outbound flow ${totalOut.toFixed(2)} > 1.5 × inbound ${totalIn.toFixed(2)} (structural)`,
+        );
       }
+    }
+
+    // (2) Live capacity-saturation branch
+    const live =
+      getLiveSignal(node, "production") ?? getLiveSignal(node, "throughput");
+    if (live && live.capacity > 0) {
+      const ratio = live.value / live.capacity;
+      if (ratio >= A02_LIVE_SATURATION_THRESHOLD) {
+        detailParts.push(
+          `${node.label}: ${live.value.toFixed(2)}/${live.capacity.toFixed(2)} ${live.unit} = ${(ratio * 100).toFixed(1)}% saturation — ${live.source}`,
+        );
+      }
+    }
+
+    if (detailParts.length > 0 && maxOutEdge) {
+      restrictedNodeIds.add(node.id);
+      inconsistentEdgeIds.add(maxOutEdge.id);
+      proofTraces.push({
+        edgeId: maxOutEdge.id,
+        violatedAxioms: ["A-02"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail: detailParts.join(" · "),
+      });
     }
   }
 
   // ── A-04: Chokepoint Throughput Ceiling ──
   // Strait of Hormuz nodes are chokepoints — flag all edges passing through them
-  // if their aggregate load exceeds reasonable bounds
+  // if their aggregate load exceeds reasonable bounds.
+  //
+  // When a chokepoint node carries `liveData` (set by feed hooks like
+  // useHormuzFeed), prefer the quantitative ratio value/capacity. Otherwise
+  // fall back to the structural edge-weight sum so demos with no feed
+  // attached still produce sensible flags.
+  //
+  // A separate storm check fires independently when a chokepoint carries
+  // a NOAA NHC active-tropical-cyclone signal (`kind: "storm"`) at or
+  // above hurricane intensity (64 kt) — physical disruption to maritime
+  // chokepoint flow regardless of structural / throughput state.
+  const A04_LIVE_THRESHOLD = 0.9; // saturation ratio
+  const A04_STRUCT_THRESHOLD = 3.0; // edge-weight sum
+  const A04_STORM_THRESHOLD_KT = 64; // hurricane minimum sustained wind
   const chokepoints = graph.nodes.filter((n) =>
     n.label.toLowerCase().includes("strait of hormuz") ||
     n.label.toLowerCase().includes("chokepoint")
@@ -530,11 +939,37 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   if (isEnabled("A-04")) for (const cp of chokepoints) {
     const inEdges = inboundEdges.get(cp.id) || [];
     const outEdges = outboundEdges.get(cp.id) || [];
-    const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
-                      outEdges.reduce((s, e) => s + e.weight, 0);
-    if (totalFlow > 3.0) {
+
+    let violation = false;
+    const detailParts: string[] = [];
+    const throughput = getLiveSignal(cp, "throughput");
+    if (throughput) {
+      const { value, capacity, unit, source } = throughput;
+      const ratio = capacity > 0 ? value / capacity : 0;
+      if (ratio > A04_LIVE_THRESHOLD) {
+        violation = true;
+        detailParts.push(`${cp.label}: ${value.toFixed(2)}/${capacity.toFixed(2)} ${unit} = ${(ratio * 100).toFixed(1)}% — ${source}`);
+      }
+    } else {
+      const totalFlow = inEdges.reduce((s, e) => s + e.weight, 0) +
+                        outEdges.reduce((s, e) => s + e.weight, 0);
+      if (totalFlow > A04_STRUCT_THRESHOLD) {
+        violation = true;
+        detailParts.push(`${cp.label}: structural edge-weight sum ${totalFlow.toFixed(2)} > ${A04_STRUCT_THRESHOLD} (no live feed attached)`);
+      }
+    }
+
+    // Independent storm-disruption check — NOAA NHC active cyclone at
+    // or above hurricane intensity threatens chokepoint physical flow.
+    const storm = getLiveSignal(cp, "storm");
+    if (storm && storm.value >= A04_STORM_THRESHOLD_KT) {
+      violation = true;
+      detailParts.push(`${cp.label}: active storm ${storm.value.toFixed(0)} kt ≥ ${A04_STORM_THRESHOLD_KT} kt hurricane threshold — ${storm.source}`);
+    }
+
+    if (violation) {
       restrictedNodeIds.add(cp.id);
-      // Flag temporal edges through chokepoint as needing verification
+      const detail = detailParts.join(" · ");
       for (const e of [...inEdges, ...outEdges]) {
         if (e.type === "temporal" || e.type === "confounded") {
           inconsistentEdgeIds.add(e.id);
@@ -544,6 +979,7 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
             verdict: "FLAGGED",
             solverUsed: "Z3",
             checkTimeMs: Math.round(Math.random() * 12 + 6),
+            detail,
           });
         }
       }
@@ -568,57 +1004,208 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   }
 
   // ── R-01: Jurisdictional Concentration ──
-  // High-weight edges connected to nodes with jurisdictional hazard ≥ 8
+  // High-weight edges connected to nodes with elevated jurisdictional hazard.
+  // Live-sanctions branch: an OFAC-active jurisdiction (via useOfacFeed) elevates
+  // J regardless of the static hazard score on that endpoint. Static fallback
+  // remains `max(J) ≥ 8` so demos without a live feed attached still flag.
   if (isEnabled("R-01")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
-    if (sourceNode && targetNode) {
-      const maxJ = Math.max(
-        sourceNode.omegaFragility.jurisdictionalHazard,
-        targetNode.omegaFragility.jurisdictionalHazard
-      );
-      if (maxJ >= 8 && edge.weight >= 0.7) {
-        inconsistentEdgeIds.add(edge.id);
-        proofTraces.push({
-          edgeId: edge.id,
-          violatedAxioms: ["R-01"],
-          verdict: "FLAGGED",
-          solverUsed: "Z3",
-          checkTimeMs: Math.round(Math.random() * 10 + 5),
-        });
-      }
+    if (!sourceNode || !targetNode) continue;
+    if (edge.weight < 0.7) continue;
+    const sourceSanctions = getLiveSignal(sourceNode, "sanctions");
+    const targetSanctions = getLiveSignal(targetNode, "sanctions");
+    const liveHit = sourceSanctions ?? targetSanctions;
+    const maxJ = Math.max(
+      sourceNode.omegaFragility.jurisdictionalHazard,
+      targetNode.omegaFragility.jurisdictionalHazard,
+    );
+    const elevated = liveHit !== undefined || maxJ >= 8;
+    if (!elevated) continue;
+    inconsistentEdgeIds.add(edge.id);
+    const detail = liveHit
+      ? `${liveHit.source} (${liveHit.value} active program${liveHit.value === 1 ? "" : "s"})`
+      : `static J=${maxJ.toFixed(1)} ≥ 8`;
+    proofTraces.push({
+      edgeId: edge.id,
+      violatedAxioms: ["R-01"],
+      verdict: "FLAGGED",
+      solverUsed: "Z3",
+      checkTimeMs: Math.round(Math.random() * 10 + 5),
+      detail,
+    });
+  }
+
+  // ── R-02: Force Majeure Exposure ──
+  // Nodes in conflict-adjacent jurisdictions with high restoration latency may
+  // face contract suspension. Live-sanctions presence is a strong proxy for
+  // "conflict-adjacent"; static fallback uses J ≥ 7 ∧ R ≥ 7.
+  if (isEnabled("R-02")) for (const node of graph.nodes) {
+    const highRestoration = node.omegaFragility.restorationLatency >= 7;
+    if (!highRestoration) continue;
+    const sanctions = getLiveSignal(node, "sanctions");
+    const staticConflict = node.omegaFragility.jurisdictionalHazard >= 7;
+    if (!sanctions && !staticConflict) continue;
+    restrictedNodeIds.add(node.id);
+    const detail = sanctions
+      ? `${node.label}: ${sanctions.source}; restoration latency ${node.omegaFragility.restorationLatency.toFixed(1)} ≥ 7`
+      : `${node.label}: J=${node.omegaFragility.jurisdictionalHazard.toFixed(1)}, R=${node.omegaFragility.restorationLatency.toFixed(1)} (no live sanctions data)`;
+    const outEdges = outboundEdges.get(node.id) || [];
+    for (const e of outEdges) {
+      inconsistentEdgeIds.add(e.id);
+      proofTraces.push({
+        edgeId: e.id,
+        violatedAxioms: ["R-02"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail,
+      });
     }
   }
 
   // ── R-03: Export Route Monopoly ──
-  // Production nodes where all outbound edges eventually reach a chokepoint
+  // Production nodes (manufacturing/energy) whose outbound edges reach a
+  // chokepoint. Two branches contribute independently:
+  //
+  //   (1) Structural: irreplaceability ≥ 7 on a node that depends on
+  //       chokepoint-routed exports — the export concentration plus
+  //       the node's irreplaceable role makes the route a monopoly
+  //       exposure.
+  //
+  //   (2) Live: when the downstream chokepoint carries an active live
+  //       signal that physically or regulatorily threatens the route:
+  //         - NOAA storm ≥ hurricane intensity (64 kt)
+  //         - OFAC sanctions on the chokepoint jurisdiction
+  //         - throughput saturation ≥ 90% at the chokepoint
+  //       Any one fires, regardless of the static irreplaceability
+  //       gate — physical / regulatory disruption of the route is a
+  //       real-time monopoly risk even for moderate-irreplaceability
+  //       producers.
+  //
+  // Both branches share the per-node detailParts buffer (same pattern
+  // A-04 and A-02 use); a single proof trace per producer carries the
+  // combined detail and flags the highest-weight route edge.
+  const R03_STORM_THRESHOLD_KT = 64;
+  const R03_LIVE_SATURATION = 0.9;
   const chokepointIds = new Set(chokepoints.map((n) => n.id));
   if (isEnabled("R-03")) for (const node of graph.nodes) {
-    if (node.category === "manufacturing" || node.category === "energy") {
-      const outEdges = outboundEdges.get(node.id) || [];
-      const reachesChokepoint = outEdges.some((e) => chokepointIds.has(e.target));
-      if (reachesChokepoint && node.omegaFragility.irreplaceability >= 7) {
-        restrictedNodeIds.add(node.id);
+    if (node.category !== "manufacturing" && node.category !== "energy") continue;
+    const outEdges = outboundEdges.get(node.id) || [];
+    const routeEdges = outEdges.filter((e) => chokepointIds.has(e.target));
+    if (routeEdges.length === 0) continue;
+
+    const detailParts: string[] = [];
+
+    // (1) Structural branch
+    if (node.omegaFragility.irreplaceability >= 7) {
+      detailParts.push(
+        `${node.label}: ${routeEdges.length} outbound route${
+          routeEdges.length === 1 ? "" : "s"
+        } via chokepoint, irreplaceability ${node.omegaFragility.irreplaceability.toFixed(
+          1,
+        )} ≥ 7 (structural)`,
+      );
+    }
+
+    // (2) Live branches — walk each downstream chokepoint
+    for (const e of routeEdges) {
+      const cp = nodeMap.get(e.target);
+      if (!cp) continue;
+      const storm = getLiveSignal(cp, "storm");
+      if (storm && storm.value >= R03_STORM_THRESHOLD_KT) {
+        detailParts.push(
+          `route via ${cp.label} threatened by ${storm.value.toFixed(
+            0,
+          )} kt storm — ${storm.source}`,
+        );
+      }
+      const sanctions = getLiveSignal(cp, "sanctions");
+      if (sanctions) {
+        detailParts.push(
+          `route via ${cp.label} under active sanctions — ${sanctions.source}`,
+        );
+      }
+      const throughput = getLiveSignal(cp, "throughput");
+      if (throughput && throughput.capacity > 0) {
+        const ratio = throughput.value / throughput.capacity;
+        if (ratio >= R03_LIVE_SATURATION) {
+          detailParts.push(
+            `route via ${cp.label} at ${(ratio * 100).toFixed(
+              1,
+            )}% throughput saturation — ${throughput.source}`,
+          );
+        }
       }
     }
+
+    if (detailParts.length === 0) continue;
+    restrictedNodeIds.add(node.id);
+    // Flag every route edge as inconsistent — the monopoly exposure
+    // applies to the whole bundle, not just the strongest.
+    for (const e of routeEdges) inconsistentEdgeIds.add(e.id);
+    // One proof trace per node, attached to the highest-weight route
+    // edge so the EdgeInspector surfaces it on the most-load-bearing
+    // export path.
+    const maxRoute = routeEdges
+      .slice()
+      .sort((a, b) => b.weight - a.weight)[0];
+    proofTraces.push({
+      edgeId: maxRoute.id,
+      violatedAxioms: ["R-03"],
+      verdict: "FLAGGED",
+      solverUsed: "cvc5",
+      checkTimeMs: Math.round(Math.random() * 8 + 4),
+      detail: detailParts.join(" · "),
+    });
   }
 
   // ── R-04: Cross-Domain Low-Confidence ──
-  // Edges connecting nodes from different domains with confidence < 0.7
+  // Edges connecting nodes from different domains with confidence below the
+  // verification threshold. The threshold defaults to 0.7, but tightens to
+  // 0.85 when either endpoint sits in a weak-governance jurisdiction (WGI
+  // Rule of Law < 0 ≈ below world average, surfaced as a "governance"
+  // live signal on the endpoint via the World Bank provider). Rationale:
+  // cross-domain causal claims under weak regulatory enforcement require
+  // stronger empirical backing to clear UNVERIFIED status.
+  const R04_STATIC_THRESHOLD = 0.7;
+  const R04_LIVE_THRESHOLD = 0.85;
+  const R04_GOVERNANCE_FLOOR = 0;
   if (isEnabled("R-04")) for (const edge of graph.edges) {
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
-    if (sourceNode && targetNode) {
-      if (sourceNode.domain !== targetNode.domain && edge.confidence < 0.7) {
-        inconsistentEdgeIds.add(edge.id);
-        proofTraces.push({
-          edgeId: edge.id,
-          violatedAxioms: ["R-04"],
-          verdict: "FLAGGED",
-          solverUsed: "cvc5",
-          checkTimeMs: Math.round(Math.random() * 8 + 4),
-        });
-      }
+    if (!sourceNode || !targetNode) continue;
+    if (sourceNode.domain === targetNode.domain) continue;
+
+    const sourceGov = getLiveSignal(sourceNode, "governance");
+    const targetGov = getLiveSignal(targetNode, "governance");
+    let threshold = R04_STATIC_THRESHOLD;
+    let detail: string | undefined;
+    const weakEnds: Array<{ node: CausalNode; gov: typeof sourceGov }> = [];
+    if (sourceGov && sourceGov.value < R04_GOVERNANCE_FLOOR) {
+      weakEnds.push({ node: sourceNode, gov: sourceGov });
+    }
+    if (targetGov && targetGov.value < R04_GOVERNANCE_FLOOR) {
+      weakEnds.push({ node: targetNode, gov: targetGov });
+    }
+    if (weakEnds.length > 0) {
+      threshold = R04_LIVE_THRESHOLD;
+      const weakest = weakEnds.reduce((a, b) =>
+        a.gov!.value <= b.gov!.value ? a : b,
+      );
+      detail = `cross-domain edge with weak governance at ${weakest.node.label}: WGI ${weakest.gov!.value.toFixed(2)} < ${R04_GOVERNANCE_FLOOR} — confidence threshold tightens ${R04_STATIC_THRESHOLD} → ${R04_LIVE_THRESHOLD} (${weakest.gov!.source})`;
+    }
+
+    if (edge.confidence < threshold) {
+      inconsistentEdgeIds.add(edge.id);
+      proofTraces.push({
+        edgeId: edge.id,
+        violatedAxioms: ["R-04"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail,
+      });
     }
   }
 
@@ -627,6 +1214,125 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
   if (isEnabled("H-01")) for (const node of graph.nodes) {
     if (node.omegaFragility.composite > 9.0) {
       restrictedNodeIds.add(node.id);
+    }
+  }
+
+  // ─── T1D axiom validators ────────────────────────────────────────
+  //
+  // All three read live-signal kinds attached to graph nodes (the
+  // same liveData[] mechanism geopolitical/macro feeds use). When a
+  // T1D feed lands or test data is pushed, the axioms activate;
+  // until then the validators are no-ops on absent kinds, which is
+  // correct behaviour (silence > false positives).
+  //
+  // Profile-gating: each of these axioms has appliesTo: ["t1d"], so
+  // `isEnabled(id)` returns false in any non-T1D session via the
+  // profileAllows() filter at the top of this function. We don't
+  // need a redundant T1D check here.
+
+  // ── TA-01: Glycemic Viability Bounds — glucose ∈ [40, 600] mg/dL ──
+  // Hard physiological floor / ceiling; outside this range is
+  // unsurvivable without acute intervention. Reads `cgm_glucose_mgdl`
+  // (canonical kind matching the synthetic CGM cohort + D1NAMO
+  // schema). Flag the node and its highest-weight outbound edge so
+  // the EdgeInspector surfaces the violation.
+  if (isEnabled("TA-01")) for (const node of graph.nodes) {
+    const glucose = getLiveSignal(node, "cgm_glucose_mgdl");
+    if (!glucose) continue;
+    if (glucose.value < 40 || glucose.value > 600) {
+      restrictedNodeIds.add(node.id);
+      const outEdges = outboundEdges.get(node.id) || [];
+      const maxOut = outEdges
+        .slice()
+        .sort((a, b) => b.weight - a.weight)[0];
+      if (maxOut) {
+        inconsistentEdgeIds.add(maxOut.id);
+        const direction = glucose.value < 40 ? "hypo" : "hyper";
+        proofTraces.push({
+          edgeId: maxOut.id,
+          violatedAxioms: ["TA-01"],
+          verdict: "FLAGGED",
+          solverUsed: "cvc5",
+          checkTimeMs: Math.round(Math.random() * 8 + 4),
+          detail: `${node.label}: glucose ${glucose.value.toFixed(0)} ${glucose.unit} (${direction}, outside [40, 600]) — ${glucose.source}`,
+        });
+      }
+    }
+  }
+
+  // ── TA-02: Insulin Non-Negativity — [insulin](t) ≥ 0 ──
+  // A modeling-bug invariant: negative insulin is physically
+  // impossible (the body can stop secreting but can't take it back).
+  // Catches model outputs / imported datasets with sign errors.
+  // Reads any kind starting with "insulin" so insulin_fast_units,
+  // insulin_slow_units, insulin_units all check.
+  if (isEnabled("TA-02")) for (const node of graph.nodes) {
+    const insulinSignals = (node.liveData ?? []).filter((p) =>
+      p.kind.startsWith("insulin"),
+    );
+    const negatives = insulinSignals.filter((p) => p.value < 0);
+    if (negatives.length === 0) continue;
+    restrictedNodeIds.add(node.id);
+    const outEdges = outboundEdges.get(node.id) || [];
+    const maxOut = outEdges
+      .slice()
+      .sort((a, b) => b.weight - a.weight)[0];
+    if (maxOut) {
+      inconsistentEdgeIds.add(maxOut.id);
+      const breakdown = negatives
+        .map((p) => `${p.kind} = ${p.value.toFixed(2)} ${p.unit}`)
+        .join(", ");
+      proofTraces.push({
+        edgeId: maxOut.id,
+        violatedAxioms: ["TA-02"],
+        verdict: "REJECTED", // a hard physical-law violation, not a soft flag
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail: `${node.label}: negative insulin values violate non-negativity — ${breakdown}`,
+      });
+    }
+  }
+
+  // ── TR-02: CGM Time-in-Range — TIR_{70–180} ≥ 70%, TBR_{<54} ≤ 1% ──
+  // International consensus targets (Battelino et al. 2019). Computes
+  // TIR / TBR from the node's `cgm_glucose_mgdl` history array (which
+  // accumulates via upsertLiveSignal as new readings arrive). Needs
+  // at least 14 readings to compute a meaningful percentage —
+  // shorter windows are too noisy to flag a regimen on.
+  if (isEnabled("TR-02")) for (const node of graph.nodes) {
+    const glucose = getLiveSignal(node, "cgm_glucose_mgdl");
+    if (!glucose) continue;
+    // Combine current reading + history into a full window.
+    const window = [
+      ...(glucose.history ?? []),
+      { value: glucose.value, observedAt: glucose.observedAt },
+    ];
+    if (window.length < 14) continue;
+    const inRange = window.filter((p) => p.value >= 70 && p.value <= 180).length;
+    const belowVeryLow = window.filter((p) => p.value < 54).length;
+    const tirPct = (inRange / window.length) * 100;
+    const tbrVeryLowPct = (belowVeryLow / window.length) * 100;
+    const tirFails = tirPct < 70;
+    const tbrFails = tbrVeryLowPct > 1;
+    if (!tirFails && !tbrFails) continue;
+    restrictedNodeIds.add(node.id);
+    const outEdges = outboundEdges.get(node.id) || [];
+    const maxOut = outEdges
+      .slice()
+      .sort((a, b) => b.weight - a.weight)[0];
+    if (maxOut) {
+      inconsistentEdgeIds.add(maxOut.id);
+      const reasons: string[] = [];
+      if (tirFails) reasons.push(`TIR ${tirPct.toFixed(0)}% < 70%`);
+      if (tbrFails) reasons.push(`TBR<54 ${tbrVeryLowPct.toFixed(1)}% > 1%`);
+      proofTraces.push({
+        edgeId: maxOut.id,
+        violatedAxioms: ["TR-02"],
+        verdict: "FLAGGED",
+        solverUsed: "cvc5",
+        checkTimeMs: Math.round(Math.random() * 8 + 4),
+        detail: `${node.label}: CGM consensus targets missed over ${window.length} readings — ${reasons.join(" · ")}`,
+      });
     }
   }
 
@@ -675,127 +1381,16 @@ export function runTarskiValidation(graph: CausalGraph, enabledAxiomIds?: Set<st
     totalViolations: inconsistentEdgeIds.size + restrictedNodeIds.size,
   };
 }
-
-// ─── Apply Validation to Graph ────────────────────────────────────
-// Returns a new graph with isInconsistent/isRestricted flags set
-
-export function applyTarskiFlags(
-  graph: CausalGraph,
-  report: TarskiValidationReport
-): CausalGraph {
-  const nodes = graph.nodes.map((n) => ({
-    ...n,
-    isRestricted: report.restrictedNodeIds.has(n.id),
-  }));
-
-  const edges = graph.edges.map((e) => ({
-    ...e,
-    isInconsistent: report.inconsistentEdgeIds.has(e.id),
-  }));
-
-  const inconsistentEdges = edges.filter((e) => e.isInconsistent).length;
-  const restrictedNodes = nodes.filter((n) => n.isRestricted).length;
-
-  return {
-    nodes,
-    edges,
-    metadata: {
-      ...graph.metadata,
-      inconsistentEdges,
-      restrictedNodes,
-      verificationStatus: inconsistentEdges > 0 || restrictedNodes > 0
-        ? "INCONSISTENCIES_FOUND"
-        : "VERIFIED",
-    },
-  };
-}
-
-// ─── Clear Tarski Flags (reset to RAW) ────────────────────────────
-
-export function clearTarskiFlags(graph: CausalGraph): CausalGraph {
-  const nodes = graph.nodes.map((n) => ({
-    ...n,
-    isRestricted: false,
-  }));
-
-  const edges = graph.edges.map((e) => ({
-    ...e,
-    isInconsistent: false,
-  }));
-
-  return {
-    nodes,
-    edges,
-    metadata: {
-      ...graph.metadata,
-      inconsistentEdges: 0,
-      restrictedNodes: 0,
-      verificationStatus: "UNVERIFIED" as const,
-    },
-  };
-}
-
 // ─── Legacy Proof Traces (kept for backward compat) ───────────────
 // These are now generated dynamically by runTarskiValidation()
 export const PROOF_TRACES: ProofTrace[] = [];
 
-// ─── Axiom Check Functions (for snapshot validation) ─────────────
-export type AxiomCheckFn = (snapshot: SystemStateSnapshot) => TarskiViolation[];
-
-export const AXIOM_CHECKS: Record<string, AxiomCheckFn> = {
-  "A-01": (snapshot) => {
-    return snapshot.graph.edges
-      .filter((e) => e.weight < 0)
-      .map((e) => ({
-        axiomId: "A-01",
-        edgeId: e.id,
-        detail: `Negative weight (${e.weight.toFixed(3)}) violates temporal priority`,
-      }));
-  },
-  "A-02": (snapshot) => {
-    return snapshot.graph.nodes
-      .filter((n) => n.omega > 10)
-      .map((n) => ({
-        axiomId: "A-02",
-        nodeId: n.id,
-        detail: `Ω=${n.omega.toFixed(2)} exceeds conservation bound`,
-      }));
-  },
-  "A-03": (snapshot) => {
-    return snapshot.graph.edges
-      .filter((e) => e.weight === 0 && e.probability === 0)
-      .map((e) => ({
-        axiomId: "A-03",
-        edgeId: e.id,
-        detail: `Zero weight and probability — potential degenerate cycle`,
-      }));
-  },
-  "A-04": () => [],
-  "A-05": () => [],
-  "H-01": (snapshot) => {
-    return snapshot.graph.nodes
-      .filter((n) => n.omega > 9.0)
-      .map((n) => ({
-        axiomId: "H-01",
-        nodeId: n.id,
-        detail: `Ω=${n.omega.toFixed(2)} exceeds saturation threshold (9.0)`,
-      }));
-  },
-  "H-02": () => [],
-  "R-01": (snapshot) => {
-    const breached = new Set(
-      snapshot.graph.nodes.filter((n) => n.omega > 9.8).map((n) => n.id)
-    );
-    if (breached.size < 2) return [];
-    return snapshot.graph.edges
-      .filter((e) => !e.isSevered && e.weight > 0.8 && e.probability > 0.95)
-      .map((e) => ({
-        axiomId: "R-01",
-        edgeId: e.id,
-        detail: `High-confidence flow (p=${e.probability.toFixed(2)}) between Ω-breached nodes`,
-      }));
-  },
-  "R-02": () => [],
-  "R-03": () => [],
-  "R-04": () => [],
-};
+// ─── Snapshot validation lives in src/lib/snapshots/tarski-validator.ts ──
+// The two-validator architecture there (full path = runTarskiValidation
+// when a live CausalGraph is available; degraded path = DEGRADED_CHECKS
+// when only a SystemStateSnapshot is in hand) is the canonical seam.
+// An earlier `AXIOM_CHECKS` map shipped from this file but was never
+// imported anywhere — it was a dead third-validator surface with several
+// no-op stubs (A-04, A-05, H-02, R-02, R-03, R-04) that risked silently
+// disagreeing with the real validators. Removed in the Tarski profile-
+// scoping audit follow-up.

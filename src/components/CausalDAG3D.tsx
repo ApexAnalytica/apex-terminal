@@ -1,15 +1,23 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useApexStore } from "@/stores/useApexStore";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
-import { computeLayout3D, computeNetworkMetrics, NodePosition, NodeMetrics } from "@/lib/graph-layout";
+import type { NodePosition, NodeMetrics } from "@/lib/graph-layout";
+import { requestLayout3D, type LayoutResult } from "@/lib/workers/layout3d-client";
+import { chiStar } from "@/lib/estimators/chi-star";
+import { graphSignature } from "@/lib/graph-layout-2d";
 import { severEdgeAndSpawnConsequences } from "@/lib/intervention-engine";
 import { getNodeDomainMap } from "@/lib/graph-data";
 import DAGNode3D, { orbitActiveRef } from "./dag3d/DAGNode3D";
+import { cascadeActivationOrder } from "@/lib/cascade-activation-order";
+import {
+  cascadeEdgeActivationOrder,
+  type EdgeActivationInfo,
+} from "@/lib/cascade-edge-activation-order";
 import DAGEdge3D from "./dag3d/DAGEdge3D";
 import DAGOverlay from "./dag3d/DAGOverlay";
 import EdgeInspector from "./EdgeInspector";
@@ -18,6 +26,7 @@ import CanvasWatermark from "./CanvasWatermark";
 import { useReplayTick } from "@/lib/useReplayTick";
 import { AnimatePresence } from "framer-motion";
 import { EpochSnapshot, CausalEdge } from "@/lib/types";
+import { mark, measureBetween } from "@/lib/perf/instrument";
 
 // Error boundary to catch WebGL context loss and recover
 class DAGErrorBoundary extends React.Component<
@@ -59,7 +68,6 @@ class DAGErrorBoundary extends React.Component<
   }
 }
 
-const HOME_POS = new THREE.Vector3(40, 30, 80);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
 function CameraRig({
@@ -81,14 +89,18 @@ function CameraRig({
   const endPos = useRef(new THREE.Vector3());
   const startTarget = useRef(new THREE.Vector3());
   const endTarget = useRef(new THREE.Vector3());
-  // Keep a ref to posMap so the effect can read current positions without depending on them
+  // Keep a ref to posMap so the effect can read current positions without
+  // depending on them. Updating the ref in an effect (instead of during
+  // render) keeps the render function pure.
   const posMapRef = useRef(posMap);
-  posMapRef.current = posMap;
+  useEffect(() => {
+    posMapRef.current = posMap;
+  }, [posMap]);
   // Track previous selection to only animate on actual changes
   const prevSelectionKey = useRef("");
   const prevTopologyKey = useRef(topologyKey);
 
-  const orbitControlsRef = useRef<any>(null);
+  const orbitControlsRef = useRef<React.ComponentRef<typeof OrbitControls> | null>(null);
 
   // Helper: compute centroid and camera position to fit a set of node positions
   const computeFitCamera = useCallback((nodeIds: string[], currentPosMap: Record<string, [number, number, number]>) => {
@@ -155,6 +167,11 @@ function CameraRig({
         endTarget.current.copy(fit.target);
         progress.current = 0;
         animating.current = true;
+        // Event-driven external-system sync: disable orbit controls while the
+        // scripted camera animation runs. The cascading render the lint rule
+        // worries about is bounded — the effect bails on subsequent fires via
+        // the prevSelectionKey guard above.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setControlsEnabled(false);
       }
       return;
@@ -299,22 +316,47 @@ function useWebGLRecovery() {
   return canvasKey;
 }
 
-// Monitors frame rendering inside the R3F canvas — if no frames render for 3s,
-// forces a scene invalidate to recover from frozen/black state
+// Safety-net invalidator. The Canvas runs in demand mode (frameloop="demand"),
+// so frames only paint when something explicitly calls invalidate(). That's
+// usually what we want — but if a state mutation slips past every invalidator
+// (StoreInvalidator, ReplayInvalidator, hover handler, etc.) the canvas could
+// freeze. This interval kicks invalidate() if no frame has rendered for 3s as
+// a backstop.
+//
+// Previously this also logged a `[DAG3D] No frames for 3s — forcing invalidate`
+// warning on every fire. That warning was noisy in normal operation: during the
+// chunked async cascade simulation (`simulateCascadeAsync`) the canvas
+// legitimately has nothing to paint for the duration of the run — `shockIntensity`
+// is sourced from epoch frames that only land *after* simulation completes, and
+// no other watched store slice changes in that window. Demo step transitions
+// that injected shocks therefore tripped the warning twice per Hormuz playthrough
+// without anything actually being wrong. Dropping the warn keeps the backstop
+// invalidate (which is harmless) and removes the false-alarm noise; if the canvas
+// genuinely freezes the lack of frames will still surface in user feedback rather
+// than as a benign console line buried among 2000 logs.
 function FrameMonitor() {
   const { invalidate, gl } = useThree();
-  const lastFrameTime = useRef(performance.now());
+  // Initialize to 0 and set on mount — calling performance.now() during
+  // render is impure. The useFrame callback below replaces this on the
+  // first rendered frame, so the 0 value is observed for at most one
+  // tick before useFrame fires.
+  const lastFrameTime = useRef(0);
 
   useFrame(() => {
     lastFrameTime.current = performance.now();
   });
 
   useEffect(() => {
+    lastFrameTime.current = performance.now();
+  }, []);
+
+  useEffect(() => {
     const check = setInterval(() => {
       const elapsed = performance.now() - lastFrameTime.current;
       if (elapsed > 3000) {
-        console.warn("[DAG3D] No frames for 3s — forcing invalidate");
-        // Check if context is still alive
+        // Check if context is still alive before re-arming. Lost-context
+        // recovery is handled by the dedicated webglcontextlost listener;
+        // an invalidate() against a dead context would throw.
         const ctx = gl.getContext();
         if (ctx && !ctx.isContextLost()) {
           invalidate();
@@ -347,12 +389,12 @@ function StoreInvalidator() {
   const severedEdges = useApexStore((s) => s.severedEdges);
   const currentEpoch = useApexStore((s) => s.currentEpoch);
 
-  // Invalidate on any store change that affects visible state
-  useEffect(() => { invalidate(); }, [selectedNode, invalidate]);
-  useEffect(() => { invalidate(); }, [selectedNodes, invalidate]);
-  useEffect(() => { invalidate(); }, [timelinePosition, invalidate]);
-  useEffect(() => { invalidate(); }, [severedEdges, invalidate]);
-  useEffect(() => { invalidate(); }, [currentEpoch, invalidate]);
+  // Invalidate on any store change that affects visible state. One effect
+  // with combined deps fires identically to the previous five separate
+  // useEffects — React re-runs the effect when any dep changes.
+  useEffect(() => {
+    invalidate();
+  }, [selectedNode, selectedNodes, timelinePosition, severedEdges, currentEpoch, invalidate]);
 
   // Expose a stable callback so node hover can trigger invalidate
   // without subscribing StoreInvalidator to hover state
@@ -473,6 +515,7 @@ export default function CausalDAG3D() {
   const multiSelectedNodes = useApexStore((s) => s.selectedNodes);
   const setSelectedNodes = useApexStore((s) => s.setSelectedNodes);
   const isolateSelection = useApexStore((s) => s.isolateSelection);
+  const visibleEdgeTypes = useApexStore((s) => s.visibleEdgeTypes);
   const scissorsMode = useApexStore((s) => s.scissorsMode);
   const severedEdges = useApexStore((s) => s.severedEdges);
   const severEdge = useApexStore((s) => s.severEdge);
@@ -487,6 +530,75 @@ export default function CausalDAG3D() {
   const interventionEpochs = useApexStore((s) => s.interventionEpochs);
   const activeTimeline = useApexStore((s) => s.activeTimeline);
   const isLive = useApexStore((s) => s.isLive);
+  // Timeline scrub state + per-node temporal history. Both feed the
+  // posMap memo below so historical scrubbing reads omega-at-the-
+  // scrubbed-time instead of always-current omega (the bug the user
+  // reported as "scrubbing doesn't do the migration thing anymore").
+  const timelinePosition = useApexStore((s) => s.timelinePosition);
+  const temporalData = useApexStore((s) => s.temporalData);
+
+  // Progressive node-mount ramp. r3f's React reconciler mounts every
+  // <DAGNode3D /> in a single commit; each child creates a THREE.Mesh
+  // + materials + a handful of sub-meshes (selection ring, outline,
+  // glow). For a 6-domain / ~200-node launch that single commit costs
+  // ~1.5–2s of frozen tab — the "LAUNCH WORKSPACE freezes" bug the
+  // user keeps reporting.
+  //
+  // Fix: render only `graphData.nodes.slice(0, visibleNodeCount)` and
+  // ramp the count from a small initial batch up to total over a few
+  // frames via requestAnimationFrame. Each frame mounts ~60 orbs which
+  // costs ~10–15 ms — well within the 16 ms frame budget so input
+  // stays responsive while the workspace materializes.
+  //
+  // Edges are filtered to those whose BOTH endpoints have already
+  // mounted (visibleNodeIds set lookup) so we don't render dangling
+  // half-edges mid-ramp.
+  //
+  // Reset key: graphData.nodes reference. A new graph load (domain
+  // swap, demo flow, snapshot apply) restarts the ramp from the
+  // initial batch.
+  const NODE_RAMP_INITIAL = 30;
+  const NODE_RAMP_BATCH = 60;
+  const [visibleNodeCount, setVisibleNodeCount] = useState<number>(() =>
+    Math.min(NODE_RAMP_INITIAL, graphData.nodes.length),
+  );
+  useEffect(() => {
+    // Reset to the initial batch whenever the node set itself swaps.
+    // setState-in-effect here is the whole point: this effect's job is
+    // to ramp visibleNodeCount in response to an external state change
+    // (graphData.nodes reference swap), which is the rule's intended
+    // exception. The setVisibleNodeCount inside `step()` below is
+    // functional-update, also outside React's render path.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisibleNodeCount(Math.min(NODE_RAMP_INITIAL, graphData.nodes.length));
+    if (graphData.nodes.length <= NODE_RAMP_INITIAL) return;
+    let rafId = 0;
+    let cancelled = false;
+    const step = () => {
+      if (cancelled) return;
+      setVisibleNodeCount((cur) => {
+        const total = graphData.nodes.length;
+        if (cur >= total) return cur;
+        const next = Math.min(cur + NODE_RAMP_BATCH, total);
+        if (next < total) rafId = requestAnimationFrame(step);
+        return next;
+      });
+    };
+    rafId = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [graphData.nodes]);
+
+  const visibleNodeIds = useMemo(() => {
+    const s = new Set<string>();
+    const limit = Math.min(visibleNodeCount, graphData.nodes.length);
+    for (let i = 0; i < limit; i++) s.add(graphData.nodes[i].id);
+    return s;
+  }, [graphData.nodes, visibleNodeCount]);
+  const isProgressiveMounting =
+    visibleNodeCount < graphData.nodes.length;
 
   const selectionBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -508,33 +620,90 @@ export default function CausalDAG3D() {
       ? replayEpochs[clampedEpoch] ?? null
       : null;
 
+  // Map of nodeId → 1-indexed activation order. Drives the small
+  // numbered badges that float over the orbs during replay. Only
+  // populated when a cascade has actually run; outside replay the
+  // map is empty and no badges render.
+  const activationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) return new Map<string, number>();
+    return cascadeActivationOrder(replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch]);
+
+  // Per-edge firing info — `{ ordinal, activationEpoch }` for edges
+  // whose target has activated by `clampedEpoch`. Drives the FIRE
+  // pulse in `DAGEdge3D` (brighter + larger particle, color flash)
+  // during a small window around each edge's activation epoch, so
+  // the cascade reads as edges-firing-in-order rather than just
+  // nodes-lighting-up-with-static-edges.
+  const edgeActivationOrder = useMemo(() => {
+    if (!replayActive || replayEpochs.length === 0) {
+      return new Map<string, EdgeActivationInfo>();
+    }
+    return cascadeEdgeActivationOrder(graphData.edges, replayEpochs, clampedEpoch);
+  }, [replayActive, replayEpochs, clampedEpoch, graphData.edges]);
+
   const canvasKey = useWebGLRecovery();
   const positionsRef = useRef<NodePosition[]>([]);
 
   // Stable topology key — only recompute layout when nodes/edges are added/removed,
   // NOT when omega scores or other properties change during temporal scrubbing.
   // This prevents the force simulation from re-running on every dial tick.
-  const topologyKey = useMemo(() => {
-    const nk = graphData.nodes.map((n) => n.id).sort().join(",");
-    const ek = graphData.edges.map((e) => `${e.source}>${e.target}`).sort().join(",");
-    return nk + "|" + ek;
-  }, [graphData]);
+  //
+  // Delegates to graphSignature (same helper used by 2D / Map / Relief /
+  // NodeInspector since round 16). graphSignature carries the round-18
+  // fingerprint cache, so on feed ticks — where graphData.nodes is
+  // rebuilt via .map but ids haven't moved — this is an O(1) lookup
+  // instead of the prior ~5 ms inline sort+join of ~700 entries.
+  const topologyKey = useMemo(
+    () => graphSignature(graphData.nodes, graphData.edges),
+    [graphData.nodes, graphData.edges],
+  );
 
   // Keep a ref to current graphData so layout computation can access current nodes/edges
   const graphDataForLayoutRef = useRef(graphData);
   graphDataForLayoutRef.current = graphData;
 
-  const positions = useMemo(() => {
+  // Layout + network-metrics state, populated by the Web Worker
+  // (`requestLayout3D`). Both used to be synchronous useMemos that
+  // ran d3-force-3d + Brandes' centrality on the main thread on
+  // every topologyKey change — that was the bulk of the
+  // LAUNCH-WORKSPACE freeze the user reported. They now run off-
+  // thread, and the previously-applied result stays rendered while
+  // a new layout computes. First-layout flash is covered by the
+  // `INITIALIZING LAYOUT…` overlay below.
+  const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
+  // Latest request id — used to drop stale worker responses when
+  // topologyKey flips multiple times in quick succession (fast
+  // domain toggling, repeated severs).
+  const latestRequestIdRef = useRef(-1);
+
+  useEffect(() => {
     const g = graphDataForLayoutRef.current;
-    const result = computeLayout3D(
+    const req = requestLayout3D(
       g.nodes,
       g.edges,
-      positionsRef.current.length > 0 ? positionsRef.current : undefined
+      positionsRef.current.length > 0 ? positionsRef.current : undefined,
     );
-    positionsRef.current = result;
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    latestRequestIdRef.current = req.id;
+    req.then((result) => {
+      if (latestRequestIdRef.current !== req.id) return; // stale, drop
+      positionsRef.current = result.positions;
+      setLayoutResult(result);
+    });
   }, [topologyKey]);
+
+  // Wrap derivations in useMemo so the array / map references stay
+  // stable across renders that don't actually flip `layoutResult`
+  // — otherwise downstream useMemos keyed on `positions` would
+  // invalidate every render.
+  const positions = useMemo<NodePosition[]>(
+    () => layoutResult?.positions ?? [],
+    [layoutResult],
+  );
+  const networkMetrics = useMemo<Record<string, NodeMetrics>>(
+    () => layoutResult?.metrics ?? {},
+    [layoutResult],
+  );
 
   const basePosMap = useMemo(() => {
     const map: Record<string, [number, number, number]> = {};
@@ -544,12 +713,22 @@ export default function CausalDAG3D() {
     return map;
   }, [positions]);
 
-  // Compute network metrics (eigenvector centrality, degree, betweenness, clustering)
-  // These drive node sizing and hover tooltip information
-  const networkMetrics = useMemo(() => {
-    return computeNetworkMetrics(graphData.nodes, graphData.edges);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topologyKey]);
+  // Selection/ablation Sets — render loop iterates every node and edge, and
+  // `multiSelectedNodes.includes(...)` / `ablatedNodeIds.includes(...)` is O(M)
+  // per node, O(M) per edge. With 50 selections on a 200-node graph that's
+  // 20K+ ops per render. Sets keep `.has()` at O(1).
+  const multiSelectedSet = useMemo(
+    () => new Set(multiSelectedNodes),
+    [multiSelectedNodes],
+  );
+  const ablatedNodeSet = useMemo(
+    () => new Set(ablatedNodeIds),
+    [ablatedNodeIds],
+  );
+  const ablatedEdgeSet = useMemo(
+    () => new Set(ablatedEdgeIds),
+    [ablatedEdgeIds],
+  );
 
   // Build adjacency for neighbor lookup (shared by both replay & historical contraction)
   const neighbors = useMemo(() => {
@@ -571,6 +750,59 @@ export default function CausalDAG3D() {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topologyKey]);
+
+  // Same pattern for edges — used by greyedOutNodes to resolve severed
+  // edges in O(1) instead of running graphData.edges.find per cut.
+  const edgeById = useMemo(() => {
+    const m = new Map<string, (typeof graphData.edges)[number]>();
+    for (const e of graphData.edges) m.set(e.id, e);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey]);
+
+  // χ★ result on the live filtered graph. Lets the renderer highlight
+  // the load-bearing skeleton AND lets the EdgeInspector surface
+  // per-edge BES + bridge / top-k membership without recomputing.
+  // Memoised on topologyKey so it only recomputes when the graph
+  // structure actually changes — Brandes' BES is O(V·E) and
+  // re-running every render would be wasteful.
+  // Defer the chi-star computation behind topologyKey. chiStar runs a full
+  // Brandes' edge-betweenness pass (O(V·E)) — ~120K queue/Map ops on the
+  // default ~350-node / ~350-edge graph — and used to run synchronously in
+  // the same React commit as the canvas mount on LAUNCH WORKSPACE. The
+  // result only drives visual edge-tier styling (bridge / chi-star /
+  // regular), so a one-frame lag where new edges briefly render at the
+  // default tier before popping into bridge styling is imperceptible. By
+  // keying the memo on `deferredTopologyKey` instead of `topologyKey`, the
+  // commit that introduces a new topology paints first with the prior
+  // chiStarInfo, then a follow-up commit lands with the recomputed sets —
+  // identical pattern to round 13's APSP deferral in CDOmegaMonitor.
+  const deferredTopologyKey = useDeferredValue(topologyKey);
+  const chiStarInfo = useMemo(() => {
+    if (graphData.edges.length === 0) {
+      return {
+        chiStarSet: new Set<string>(),
+        bridgeSet: new Set<string>(),
+        bes: new Map<string, number>(),
+        rank: new Map<string, number>(),
+      };
+    }
+    const r = chiStar({
+      nodes: graphData.nodes,
+      edges: graphData.edges.filter((e) => !e.isSevered),
+      metadata: graphData.metadata,
+    });
+    const rank = new Map<string, number>();
+    r.besRanking.forEach((entry, idx) => rank.set(entry.edgeId, idx));
+    return {
+      chiStarSet: new Set(r.chiStar),
+      bridgeSet: new Set(r.bridges),
+      bes: r.bes,
+      rank,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredTopologyKey]);
+  const chiStarSet = chiStarInfo.chiStarSet;
 
   // Store baseline omega scores (live/initial values) as a reference point.
   // Movement during scrubbing is driven by the DELTA from baseline, not absolute omega.
@@ -595,26 +827,54 @@ export default function CausalDAG3D() {
   //   Movement is driven by absolute omega level (not delta), ensuring visible change.
   // During LIVE: return base positions (no movement).
   const posMap = useMemo(() => {
-    // Live mode — no animation
-    if (isLive && !currentSnapshot) return basePosMap;
-
     const map: Record<string, [number, number, number]> = {};
 
-    // Get stress for each node (0 to 1 scale)
+    // Get stress for each node (0 to 1 scale).
+    //
+    // Three sources, in priority order:
+    //  1. Active cascade replay → currentSnapshot.shockIntensity. Sharp,
+    //     intervention-driven motion.
+    //  2. Historical scrub (timeline dragged off "now") → omega-at-the-
+    //     scrubbed-time from temporalData.nodes[id].history. Live feed
+    //     data writes into this history every tick, so scrubbing back
+     //     reads the real past, not the current-adjusted omega.
+    //  3. Live mode → node.omegaFragility.composite, which is the
+    //     feed-adjusted live value (applyOmegaLiveAdjustments). Slow
+    //     drift as real-world data ticks in.
+    //
+    // All three paths funnel through the same omega → stress curve so
+    // the displacement code below doesn't have to branch.
     const getStress = (nodeId: string): number => {
       if (currentSnapshot) {
         const state = currentSnapshot.nodeStates[nodeId];
         return state ? state.shockIntensity : 0;
       }
-      // Historical mode: use the temporal omega value directly
-      // High omega (>5) = stressed, pulls inward
-      // Low omega (<5) = relaxed, pushes outward
-      // Use O(1) nodeById lookup (item #10) instead of O(N) find
       const node = nodeById.get(nodeId);
       if (!node) return 0;
-      const omega = node.omegaFragility.composite;
-      // Map 0-10 omega to -1 to +1 stress (5 = neutral)
-      return Math.max(-1, Math.min(1, (omega - 5) / 4));
+      let omega = node.omegaFragility.composite;
+      if (!isLive) {
+        // Historical scrub: look up the closest temporal sample at or
+        // before the scrubbed timestamp. Fall through to current omega
+        // if the node has no history (newly-added domains, etc.).
+        const history = temporalData?.nodes.get(nodeId)?.history;
+        if (history && history.length > 0) {
+          let lo = 0;
+          let hi = history.length - 1;
+          // Binary search for the rightmost timestamp ≤ target.
+          while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (history[mid].timestamp <= timelinePosition) lo = mid;
+            else hi = mid - 1;
+          }
+          omega = history[lo].omegaComposite;
+        }
+      }
+      // Map omega → [-1, +1] stress with a steeper curve around the
+      // mid-band so typical ±0.5 drift around omega 5-7 actually
+      // moves the orb. The displacement magnitudes (PULL_MAX / PUSH_MAX
+      // below) are deliberately small in live mode — the breath should
+      // be subtle so the user notices it as motion, not jitter.
+      return Math.max(-1, Math.min(1, (omega - 4) / 3));
     };
 
     // Compute network centroid
@@ -716,7 +976,16 @@ export default function CausalDAG3D() {
 
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basePosMap, currentSnapshot, neighbors, omegaKey, isLive, nodeById]);
+  }, [
+    basePosMap,
+    currentSnapshot,
+    neighbors,
+    omegaKey,
+    isLive,
+    nodeById,
+    timelinePosition,
+    temporalData,
+  ]);
 
   const domainMap = useMemo(() => getNodeDomainMap(), []);
 
@@ -768,10 +1037,11 @@ export default function CausalDAG3D() {
   // Compute greyed-out nodes: after a cut, nodes with Ω < 7 that are NOT downstream of cut points and NOT consequence nodes
   const greyedOutNodes = useMemo(() => {
     if (severedEdges.length === 0) return new Set<string>();
-    // Find all cut targets (downstream of severed edges)
+    // Find all cut targets (downstream of severed edges) — O(1) via edgeById
+    // instead of graphData.edges.find per cut.
     const cutTargets = new Set<string>();
     for (const edgeId of severedEdges) {
-      const edge = graphData.edges.find((e) => e.id === edgeId);
+      const edge = edgeById.get(edgeId);
       if (edge) cutTargets.add(edge.target);
     }
     // BFS downstream from cut targets
@@ -797,18 +1067,27 @@ export default function CausalDAG3D() {
       }
     }
     return greyed;
-  }, [severedEdges, graphData]);
+  }, [severedEdges, graphData, edgeById]);
 
   // Compute disconnected nodes: find the largest connected component,
-  // grey out any node not in it (floating imported clusters)
+  // grey out any node not in it (floating imported clusters).
+  //
+  // Connectivity is purely structural — scrubbing temporal omega bumps
+  // `graphData.nodes` refs but doesn't change which edges connect what.
+  // Key on `topologyKey + severedEdges` (not `graphData`) so this O(V + E)
+  // BFS doesn't rebuild on every replay tick. Read graphData via ref so
+  // deps stay stable. Same shape as `positions` / `networkMetrics` above.
   const disconnectedNodes = useMemo(() => {
+    const g = graphDataForLayoutRef.current;
+    const severedSet = new Set(severedEdges);
+
     // Build undirected adjacency list from active (non-severed) edges
     const adj = new Map<string, Set<string>>();
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       adj.set(node.id, new Set());
     }
-    for (const edge of graphData.edges) {
-      if (edge.isSevered) continue;
+    for (const edge of g.edges) {
+      if (edge.isSevered || severedSet.has(edge.id)) continue;
       adj.get(edge.source)?.add(edge.target);
       adj.get(edge.target)?.add(edge.source);
     }
@@ -817,7 +1096,7 @@ export default function CausalDAG3D() {
     const visited = new Set<string>();
     const components: Set<string>[] = [];
 
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       if (visited.has(node.id)) continue;
       const component = new Set<string>();
       const queue = [node.id];
@@ -844,13 +1123,14 @@ export default function CausalDAG3D() {
 
     // Everything outside the largest component is disconnected
     const disconnected = new Set<string>();
-    for (const node of graphData.nodes) {
+    for (const node of g.nodes) {
       if (!largest.has(node.id)) {
         disconnected.add(node.id);
       }
     }
     return disconnected;
-  }, [graphData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topologyKey, severedEdges]);
 
   const handleScissorsClick = useCallback(
     (edgeId: string) => {
@@ -903,18 +1183,55 @@ export default function CausalDAG3D() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [selectedNode, setSelectedNode, selectedEdge]);
 
-  // Resolve labels for edge inspector
+  // Resolve labels for edge inspector via the existing nodeById Map (O(1))
+  // instead of two Array.find calls per render.
   const selectedEdgeSourceLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.source)?.label ?? selectedEdge.source
+    ? nodeById.get(selectedEdge.source)?.label ?? selectedEdge.source
     : "";
   const selectedEdgeTargetLabel = selectedEdge
-    ? graphData.nodes.find((n) => n.id === selectedEdge.target)?.label ?? selectedEdge.target
+    ? nodeById.get(selectedEdge.target)?.label ?? selectedEdge.target
     : "";
+
+  // Throttle Canvas-level pointer-move invalidates to one per animation
+  // frame. The earlier inline arrow dispatched a `dag3d-invalidate` Event
+  // on every pointer-pixel-move — at typical 120Hz mouse polling that's
+  // ~120 dispatches/sec, each calling invalidate() through the
+  // StoreInvalidator listener. R3F coalesces frames internally, but the
+  // per-event JS work (Event allocation + listener fire + invalidate
+  // bookkeeping) was ~half of the cost of an actual render frame at
+  // idle. A rAF-coalesced ref keeps the worst case to 60 dispatches/sec
+  // (or the display rate, whichever is lower) regardless of how fast
+  // the mouse moves. PR #199 follow-up.
+  const invalidatePendingRef = useRef(false);
+  const onCanvasPointerMove = useCallback(() => {
+    if (invalidatePendingRef.current) return;
+    invalidatePendingRef.current = true;
+    requestAnimationFrame(() => {
+      invalidatePendingRef.current = false;
+      window.dispatchEvent(new Event("dag3d-invalidate"));
+    });
+  }, []);
 
   return (
     <div style={{ position: "absolute", inset: 0 }} onContextMenu={(e) => e.preventDefault()}>
       <CanvasWatermark />
       <DAGOverlay />
+      {/* First-layout overlay — the WebGL canvas mounts immediately
+          once the dynamic chunk loads, but orbs can't render until
+          the worker returns the initial layout (~150-300ms on a 500-
+          node CROSS-DOMAIN workspace). Without this overlay the user
+          would see an empty black canvas for that interval. Subsequent
+          re-layouts (domain toggle, sever, etc.) keep the previous
+          positions on screen, so this only fires on first mount. */}
+      {!layoutResult && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none bg-background/60"
+        >
+          <div className="text-[10px] font-mono text-text-muted animate-pulse">
+            COMPUTING LAYOUT…
+          </div>
+        </div>
+      )}
       {selectionRect && (
         <div
           style={{
@@ -931,15 +1248,29 @@ export default function CausalDAG3D() {
         />
       )}
       <DAGErrorBoundary>
-      {/* frameloop="demand" stops the render loop when idle — invalidate() is called
-          on every interaction event so nothing visible is lost (item #1). */}
+      {/* frameloop="always" so the orb idle-breath in DAGNode3D's useFrame
+          renders continuously, matching 2D/map view behaviour. Was
+          "demand" — a battery-saving optimization that froze the orbs
+          between mouse moves and read as a dead canvas. The
+          invalidate()-based StoreInvalidator / ReplayInvalidator below
+          remain harmless no-ops in always mode and stay for low-cost
+          safety against any future flip back to demand. */}
       <Canvas
         key={canvasKey}
-        frameloop="demand"
+        frameloop="always"
         camera={{ position: [40, 30, 80], fov: 60 }}
         style={{ background: "#050508", position: "absolute", inset: 0, touchAction: "none" }}
         gl={{ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true }}
         onCreated={({ gl }) => {
+          // Launch instrumentation: r3f calls onCreated once the Canvas
+          // is mounted and the GL context is live but before the first
+          // frame paints. Pair with the "launch:moduleLoad" mark in
+          // page.tsx to give a full module-load → canvas-ready number.
+          // Subsequent canvas remounts (key change) re-fire; the
+          // aggregator rolls them into the same bucket which is fine —
+          // remount cost is itself worth tracking.
+          mark("launch:firstFrame");
+          measureBetween("launch", "launch:moduleLoad", "launch:firstFrame");
           const canvas = gl.domElement;
           canvas.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
@@ -953,7 +1284,7 @@ export default function CausalDAG3D() {
           if (selectedNode) setSelectedNode(null);
           window.dispatchEvent(new Event("dag3d-invalidate"));
         }}
-        onPointerMove={() => window.dispatchEvent(new Event("dag3d-invalidate"))}
+        onPointerMove={onCanvasPointerMove}
       >
           <ambientLight intensity={0.4} />
           <pointLight position={[80, 80, 80]} intensity={0.8} color="#00e5ff" />
@@ -961,19 +1292,27 @@ export default function CausalDAG3D() {
           <pointLight position={[0, 0, -80]} intensity={0.3} color="#e040fb" />
 
           {/* Nodes */}
-          {graphData.nodes.map((node) => {
+          {graphData.nodes.map((node, idx) => {
+            // Progressive mount gate — skip orbs not yet in the ramped-in
+            // window. Cheap O(1) check, no Set lookup needed because the
+            // visibility cutoff is contiguous from index 0.
+            if (idx >= visibleNodeCount) return null;
             const pos = posMap[node.id];
             if (!pos) return null;
 
             // Hide non-selected nodes when isolation is active
-            if (isolateSelection && multiSelectedNodes.length > 0 && !multiSelectedNodes.includes(node.id)) return null;
+            if (isolateSelection && multiSelectedSet.size > 0 && !multiSelectedSet.has(node.id)) return null;
 
             const isTarget = interventionTarget === node.id;
             const isRestricted = truthFilter === "verified" && node.isRestricted;
-            const isMultiSelected = multiSelectedNodes.includes(node.id);
+            const isMultiSelected = multiSelectedSet.has(node.id);
             const isSelected = selectedNode === node.id || isMultiSelected;
             const isNeighborOfSelected = selectedNeighborNodes.has(node.id);
-            const anyNodeSelected = selectedNode !== null;
+            // Dim non-selected nodes whenever ANYTHING is selected — single OR
+            // multi. Previously only the singular selection drove the dim
+            // pass, so domain-legend / shift-drag selections silently pushed
+            // multiple cyan rings into a sea of equally-bright neighbors.
+            const anyNodeSelected = selectedNode !== null || multiSelectedSet.size > 0;
 
             return (
               <DAGNode3D
@@ -987,7 +1326,7 @@ export default function CausalDAG3D() {
                 anyNodeSelected={anyNodeSelected}
                 isConsequence={node.isConsequence ?? false}
                 isGreyedOut={greyedOutNodes.has(node.id) || disconnectedNodes.has(node.id)}
-                isAblated={ablatedNodeIds.includes(node.id)}
+                isAblated={ablatedNodeSet.has(node.id)}
                 ablationMode={ablationMode}
                 metrics={networkMetrics[node.id]}
                 epochState={currentSnapshot?.nodeStates[node.id] ?? (
@@ -998,6 +1337,7 @@ export default function CausalDAG3D() {
                     isActivated: node.omegaFragility.composite > 7,
                   } : undefined
                 )}
+                activationOrdinal={activationOrder.get(node.id)}
                 onDoubleClick={() => handleDoubleClick(node.id)}
                 onClick={() => {
                   if (ablationMode) {
@@ -1016,12 +1356,25 @@ export default function CausalDAG3D() {
 
           {/* Edges */}
           {graphData.edges.map((edge) => {
+            // Progressive mount gate — only render an edge once BOTH
+            // endpoints have come in. Avoids dangling half-edges during
+            // the launch ramp (would otherwise render from a mounted
+            // source into empty space toward a not-yet-mounted target).
+            if (
+              !visibleNodeIds.has(edge.source) ||
+              !visibleNodeIds.has(edge.target)
+            )
+              return null;
             const srcPos = posMap[edge.source];
             const tgtPos = posMap[edge.target];
             if (!srcPos || !tgtPos) return null;
 
             // Hide edges that don't connect two selected nodes when isolation is active
-            if (isolateSelection && multiSelectedNodes.length > 0 && (!multiSelectedNodes.includes(edge.source) || !multiSelectedNodes.includes(edge.target))) return null;
+            if (isolateSelection && multiSelectedSet.size > 0 && (!multiSelectedSet.has(edge.source) || !multiSelectedSet.has(edge.target))) return null;
+
+            // Per-edge-type visibility filter. Empty Set = show all
+            // (back-compat). User-driven via the DAGOverlay chip strip.
+            if (visibleEdgeTypes.size > 0 && !visibleEdgeTypes.has(edge.type)) return null;
 
             const isHighlighted =
               interventionMode &&
@@ -1059,11 +1412,21 @@ export default function CausalDAG3D() {
                 isConsequenceEdge={edge.isConsequenceEdge ?? false}
                 scissorsMode={scissorsMode}
                 onScissorsClick={() => handleScissorsClick(edge.id)}
-                isAblated={ablatedEdgeIds.includes(edge.id)}
+                isAblated={ablatedEdgeSet.has(edge.id)}
                 ablationMode={ablationMode}
                 onAblationClick={() => toggleAblatedEdge(edge.id)}
                 onEdgeClick={() => setSelectedEdge(selectedEdge?.id === edge.id ? null : edge)}
                 epochState={currentSnapshot?.edgeStates[edge.id]}
+                fireActivationEpoch={edgeActivationOrder.get(edge.id)?.activationEpoch}
+                currentEpoch={clampedEpoch}
+                replayActive={replayActive}
+                chiStarTier={
+                  chiStarInfo.bridgeSet.has(edge.id)
+                    ? "bridge"
+                    : chiStarInfo.chiStarSet.has(edge.id)
+                      ? "top-bes"
+                      : null
+                }
               />
             );
           })}
@@ -1083,6 +1446,28 @@ export default function CausalDAG3D() {
           />
       </Canvas>
       </DAGErrorBoundary>
+      {/* Launch overlay — paints over the canvas while progressive mount
+          is in flight. Without this, large multi-domain launches read as
+          a frozen tab (the canvas mounts piece by piece but the gap is
+          ~50–100ms with the ramp; without the ramp it was 1.5–2s of true
+          freeze). Auto-dismisses once visibleNodeCount catches up to
+          total. Pointer events disabled so it doesn't intercept clicks
+          on the already-mounted orbs underneath. */}
+      {isProgressiveMounting && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none bg-background/40 backdrop-blur-[1px]"
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-[10px] font-[family-name:var(--font-michroma)] tracking-widest text-accent-cyan animate-pulse">
+              MATERIALIZING WORKSPACE
+            </div>
+            <div className="text-[8px] font-mono text-text-muted tabular-nums">
+              {visibleNodeCount} / {graphData.nodes.length} nodes
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {selectedEdge && (
           <EdgeInspector
@@ -1091,6 +1476,16 @@ export default function CausalDAG3D() {
             sourceLabel={selectedEdgeSourceLabel}
             targetLabel={selectedEdgeTargetLabel}
             onClose={() => setSelectedEdge(null)}
+            chiStarInfo={
+              chiStarInfo.chiStarSet.has(selectedEdge.id)
+                ? {
+                    isBridge: chiStarInfo.bridgeSet.has(selectedEdge.id),
+                    bes: chiStarInfo.bes.get(selectedEdge.id) ?? 0,
+                    rank: chiStarInfo.rank.get(selectedEdge.id) ?? null,
+                    totalEdges: chiStarInfo.bes.size,
+                  }
+                : null
+            }
           />
         )}
       </AnimatePresence>

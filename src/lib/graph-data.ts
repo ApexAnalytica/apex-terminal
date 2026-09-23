@@ -2,11 +2,19 @@ import {
   CausalGraph,
   CausalNode,
   CausalEdge,
-  CausalShock,
-  RiskPropagationCard,
   GraphMetadata,
   OmegaFragilityProfile,
 } from "./types";
+
+// Re-export lightweight helpers from graph-color so existing callers keep
+// working. New code should import directly from "@/lib/graph-color" to
+// avoid pulling this 3000-line dataset into the bundle.
+export {
+  EMPTY_GRAPH,
+  getCategoryColor,
+  getCategoryLabel,
+  getDomainColor,
+} from "./graph-color";
 
 // ─── Helper ─────────────────────────────────────────────────────
 // Pillars: I=Irreplaceability, R=Restoration Latency, J=Jurisdictional Hazard,
@@ -63,20 +71,6 @@ const NODES: CausalNode[] = [
     globalConcentration: "100% Saudi Arabia",
     replacementTime: "2-5 years",
     physicalConstraint: "Coastal asset; exposed to Red Sea shipping/security disruption; aging facility undergoing digital modernization",
-    domain: "Saudi Aramco Energy",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
-    id: "sa_abqaiq_plants",
-    label: "Abqaiq Plants",
-    shortLabel: "ABP",
-    category: "manufacturing",
-    omegaFragility: omega(7.8, 9.0, 7.0, 7.5, 7.9, 7.0),
-    globalConcentration: "100% Saudi Arabia",
-    replacementTime: "2-5 years",
-    physicalConstraint: "Critical single-node processing hub; high-value target; aging but heavily digitized facility",
     domain: "Saudi Aramco Energy",
     discoverySource: "DCD",
     isConfounded: false,
@@ -548,19 +542,6 @@ const NODES: CausalNode[] = [
     isRestricted: false,
   },
   {
-    id: "qf_strait_of_hormuz",
-    label: "Strait of Hormuz",
-    shortLabel: "SOH",
-    category: "infrastructure",
-    omegaFragility: omega(7.2, 8.5, 5.5, 9.0, 6.2, 7.5),
-    globalConcentration: "Global",
-    replacementTime: "3-5 years",
-    domain: "QAFCO Fertilizer",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
     id: "qf_india_fertilizer_market",
     label: "India fertilizer import market",
     shortLabel: "IFI",
@@ -887,20 +868,6 @@ const NODES: CausalNode[] = [
     globalConcentration: "100% Multiple",
     replacementTime: "3-7 years",
     physicalConstraint: "FX weakness + fertilizer prices amplify food insecurity",
-    domain: "Ma'aden Phosphate",
-    discoverySource: "DCD",
-    isConfounded: false,
-    isRestricted: false,
-  },
-  {
-    id: "mn_strait_of_hormuz",
-    label: "Strait of Hormuz",
-    shortLabel: "SOH",
-    category: "infrastructure",
-    omegaFragility: omega(8.1, 8.5, 5.5, 8.0, 10, 7.5),
-    globalConcentration: "100% Oman / Iran",
-    replacementTime: "3-7 years",
-    physicalConstraint: "Conflict, insurance spikes, closure risk",
     domain: "Ma'aden Phosphate",
     discoverySource: "DCD",
     isConfounded: false,
@@ -2381,6 +2348,536 @@ const NODES: CausalNode[] = [
     isConfounded: false,
     isRestricted: false,
   },
+  // ── FX / USD strength (1) ──
+  {
+    id: "ip_dxy",
+    label: "US Dollar Index (DXY)",
+    shortLabel: "DXY",
+    category: "finance",
+    omegaFragility: omega(7.5, 1.0, 1.0, 8.5, 9, 8.0),
+    globalConcentration: "Geometric basket: EUR 57.6%, JPY 13.6%, GBP 11.9%, CAD 9.1%, SEK 4.2%, CHF 3.6%",
+    replacementTime: "real-time (FX market continuous)",
+    physicalConstraint: "Reserve-currency premium gauge; rises with US rate differential and risk-off; transmits to commodity prices (USD-priced) and EM dollar-debt rollover stress; closes the Fed → DXY → import-prices → core CPI → Fed feedback loop",
+    domain: "Macro Impact: Inflation & Policy",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  // ── Real-rate intermediary (1) ──
+  {
+    id: "ip_real_rate_10y",
+    label: "10y Real Interest Rate",
+    shortLabel: "10yR",
+    category: "finance",
+    omegaFragility: omega(7.0, 1.0, 1.0, 7.5, 8, 7.0),
+    globalConcentration: "100% United States (Treasury + TIPS market)",
+    replacementTime: "real-time (TIPS market continuous)",
+    physicalConstraint: "Inflation-adjusted long-end yield; the cleanest signal for global capital flows since carry-trade decisions hinge on real not nominal returns. Strips out inflation expectations from US10y and is what theoretical models (Engel-Mark-West 2007, Stavrakeva-Tang 2024) put on the right-hand side of the DXY equation",
+    domain: "Macro Impact: Inflation & Policy",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ─── Frontier Science (6 placeholder nodes) ──────────────────────
+  // Scaffold for the Frontier Science card (DomainSelector.tsx). Six
+  // anchor nodes covering the four sub-areas the card description
+  // names: post-Standard Model physics, neutrino frontier, quantum
+  // gravity probes, dark sector detection. All carry
+  // `dataStatus: "blank-needs-data"` — the UI shows a "DATA NEEDED"
+  // badge so they're visibly placeholder rather than mistaken for live
+  // signals.
+  //
+  // Activation pattern (when the teammate physics data drop lands):
+  //   1. Wire each node to its experimental data source (FNAL/CERN
+  //      releases, Particle Data Group fits, LIGO catalogs, Planck
+  //      Legacy archive). Add entries to NODE_TIMESERIES_MAP.
+  //   2. Drop dataStatus override so getDataStatus() infers "live"
+  //      from liveData presence.
+  //   3. Add cross-domain bridge edges where mechanisms exist:
+  //        - Defense (`gpu_supply_itar` → `fs_dark_matter_direct`):
+  //          GPU-bound TPC reconstruction; flagged the same way the
+  //          ATHENA bridges are spliced in DomainSelector.
+  //        - Energy (Aramco/QE → `fs_neutrino_mass_hierarchy`):
+  //          fusion-reactor neutrino flux / nuclear-physics overlap
+  //          for ITER / Wendelstein-7X programs.
+  //   4. Replace these placeholder mechanisms with citations from the
+  //      data drop (PDG / arXiv / experiment paper).
+  //
+  // Until then: the nodes exist so the canvas can render, the legend
+  // includes Frontier Science, and the omega-fragility profiles are
+  // first-pass estimates from facility characteristics (one-of-a-kind
+  // detector ⇒ high irreplaceability + restoration latency).
+  {
+    id: "fs_neutrino_mass_hierarchy",
+    label: "Neutrino Mass Hierarchy",
+    shortLabel: "νMH",
+    category: "science",
+    omegaFragility: omega(8.5, 8.0, 1.0, 6.0, 9, 5.0),
+    globalConcentration: "Distributed: NOvA (Fermilab) + T2K (J-PARC) + JUNO (China) + DUNE (US, in construction)",
+    replacementTime: "10-15 years (single experiment); discovery requires generational facility",
+    physicalConstraint: "Normal vs inverted ordering of m_ν; resolves whether m_3 > m_1 or vice-versa. Critical for neutrinoless double-beta decay sensitivity targeting and CP-violation searches",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_dark_matter_direct",
+    label: "Dark Matter Direct Detection",
+    shortLabel: "DMd",
+    category: "science",
+    omegaFragility: omega(9.0, 9.0, 1.0, 5.5, 9, 4.0),
+    globalConcentration: "LZ (US, SURF) + XENONnT (Italy, LNGS) — two-experiment global frontier",
+    replacementTime: "8-12 years (xenon procurement + underground lab construction)",
+    physicalConstraint: "Spin-independent WIMP-nucleon cross-section limits; current sensitivity ~10⁻⁴⁸ cm² above 30 GeV. Loss of either lab cuts the global exclusion plot by 50%",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_axion_haloscope",
+    label: "Axion Haloscope Search",
+    shortLabel: "Axn",
+    category: "science",
+    omegaFragility: omega(7.5, 6.0, 2.0, 5.0, 8, 4.0),
+    globalConcentration: "ADMX (US) + HAYSTAC (Yale) + CAPP (Korea) + ORGAN (Australia)",
+    replacementTime: "5-8 years per cavity generation",
+    physicalConstraint: "Microwave-cavity searches for axion-photon coupling g_aγγ across 1-100 µeV. Probes QCD-axion band predicted by Peccei-Quinn solutions to the strong-CP problem",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_gravitational_wave_obs",
+    label: "Gravitational Wave Observatory",
+    shortLabel: "GWO",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 2.0, 6.0, 9, 4.5),
+    globalConcentration: "LIGO (US, 2 sites) + Virgo (Italy) + KAGRA (Japan); next-gen Cosmic Explorer + Einstein Telescope in design",
+    replacementTime: "10-15 years (interferometer arms + isolation systems)",
+    physicalConstraint: "Strain sensitivity h ~ 10⁻²² at 100 Hz; binary-merger detections at gigaparsec range. Quantum-gravity probes via merger ringdowns and Lorentz-invariance tests on multi-messenger events (GW170817 + GRB 170817A)",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_proton_decay_search",
+    label: "Proton Decay Search",
+    shortLabel: "p→",
+    category: "science",
+    omegaFragility: omega(8.0, 8.5, 1.0, 6.0, 9, 4.0),
+    globalConcentration: "Super-Kamiokande (Japan); Hyper-K under construction; DUNE far detector (US) complementary",
+    replacementTime: "15-20 years (giant water-Cherenkov + photomultiplier arrays)",
+    physicalConstraint: "Lifetime limit τ_p > 1.6 × 10³⁴ years (Super-K, 2020). Direct test of GUT predictions; non-observation continues to constrain SU(5), SO(10), and supersymmetric extensions",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+  {
+    id: "fs_hubble_tension",
+    label: "Hubble Tension (H₀)",
+    shortLabel: "H₀",
+    category: "science",
+    omegaFragility: omega(6.5, 3.0, 1.5, 7.0, 8, 5.5),
+    globalConcentration: "Planck (CMB, ~67 km/s/Mpc) vs SH0ES + JWST local-distance ladder (~73 km/s/Mpc); ~5σ tension since 2019",
+    replacementTime: "Active anomaly; ongoing JWST + Roman + Euclid measurements",
+    physicalConstraint: "5σ disagreement between early-universe (CMB-inferred) and late-universe (Cepheid + Type-Ia ladder) Hubble parameter. Either systematics in distance ladders, new physics in pre-recombination era (early dark energy, extra Neff), or post-recombination modification of expansion history",
+    domain: "Frontier Science",
+    discoverySource: "DCD",
+    isConfounded: true,
+    isRestricted: false,
+    dataStatus: "blank-needs-data",
+  },
+
+  // ─── AI Safety / IDS — Ghauri 2025 D.Eng. (17 nodes) ─────────
+  // Demonstrates the Ω-Robustness framework's IDS case studies as a
+  // third domain. Nodes draw from Chapters 5–8 of the dissertation.
+  // ── Datasets (3) ──
+  {
+    id: "ais_cicids_2017",
+    label: "CICIDS-2017 Dataset",
+    shortLabel: "CIC17",
+    category: "science",
+    omegaFragility: omega(4.8, 4.0, 2.0, 3.0, 8.0, 8.0),
+    globalConcentration: "Public benchmark, Canadian Institute for Cybersecurity",
+    replacementTime: "Immediate (other public IDS datasets exist)",
+    physicalConstraint: "Multi-day enterprise traffic capture with normal + 8 attack classes (DDoS, Brute Force, Heartbleed, Botnet, Infiltration, etc.). Bridges legacy intrusion-detection benchmarks (KDD99) and modern multi-protocol traffic. Primary substrate for the dissertation's continual-learning experiments.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_unsw_nb15",
+    label: "UNSW-NB15 Dataset",
+    shortLabel: "UNSW",
+    category: "science",
+    omegaFragility: omega(4.5, 4.0, 2.0, 3.0, 7.0, 7.0),
+    globalConcentration: "Public benchmark, UNSW Cyber Range Lab",
+    replacementTime: "Immediate (substitutable by CICIDS-2017 or AWID)",
+    physicalConstraint: "49 features, raw packet captures, nine attack categories (Exploits, DoS, Fuzzers, Worms, etc.). Designed to address KDD99 limitations with modern multi-protocol traffic. Bridge between early synthetic traffic and contemporary flow-based telemetry.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_awid_h23q",
+    label: "AWID-H23Q Dataset",
+    shortLabel: "AWID",
+    category: "science",
+    omegaFragility: omega(4.7, 5.0, 2.0, 3.0, 7.0, 7.0),
+    globalConcentration: "Public benchmark, Aegean University ICS Security Lab",
+    replacementTime: "Immediate (only public Wi-Fi-specific IDS benchmark; partial substitutability)",
+    physicalConstraint: "Wi-Fi 802.11 telemetry covering data-link and physical layer attacks; H23Q revision adds HTTP/2, HTTP/3, QUIC. Wireless-specific attack vectors (impersonation, injection, flooding) underrepresented in enterprise-LAN datasets.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ── Attack Classes (9) ──
+  {
+    id: "ais_attack_ddos",
+    label: "DDoS Attack",
+    shortLabel: "DDoS",
+    category: "communications",
+    omegaFragility: omega(6.1, 2.0, 4.0, 8.0, 9.0, 9.0),
+    globalConcentration: "Commodity attack pattern, ubiquitous threat",
+    replacementTime: "Hours (capacity provisioning, BGP rerouting, scrubbing services)",
+    physicalConstraint: "Volumetric or protocol-based traffic flood saturating network or service capacity. Cascade target par excellence — successful DDoS propagates to all dependent services. Dominant CICIDS-2017 attack class by traffic volume.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_brute_force",
+    label: "Brute Force Attack",
+    shortLabel: "BF",
+    category: "communications",
+    omegaFragility: omega(4.6, 2.0, 3.0, 6.0, 6.0, 7.0),
+    globalConcentration: "Commodity attack pattern, automated tooling widely available",
+    replacementTime: "Minutes (rate limiting, account lockout, MFA enforcement)",
+    physicalConstraint: "Credential-stuffing or password-spraying against authentication endpoints. Tractable to detect via flow-rate features but persistent — automated retries can mask in slow-low patterns that evade naive thresholds.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_heartbleed",
+    label: "Heartbleed Exploit",
+    shortLabel: "HB",
+    category: "communications",
+    omegaFragility: omega(7.4, 8.0, 7.0, 7.0, 7.0, 8.0),
+    globalConcentration: "OpenSSL CVE-2014-0160 specific; latent in unpatched legacy systems",
+    replacementTime: "Patch deployment cycles (months in legacy infrastructure)",
+    physicalConstraint: "TLS heartbeat-extension memory-disclosure exploit (OpenSSL 1.0.1 pre-2014). Highest-rarity attack class in CICIDS-2017 — IDS models trained without seeing it forget it quickly when streaming newer traffic. Anchor for the dissertation's catastrophic-forgetting demonstration: high-FR, high-mechanism-rarity node.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_exploits",
+    label: "Exploits (UNSW)",
+    shortLabel: "EXPL",
+    category: "communications",
+    omegaFragility: omega(5.8, 3.0, 4.0, 7.0, 8.0, 8.0),
+    globalConcentration: "Diverse class — buffer overflows, memory-corruption, RCE chains",
+    replacementTime: "Patch + signature update cycle (weeks)",
+    physicalConstraint: "Generic exploit class in UNSW-NB15 covering memory-corruption, code-injection, and protocol-violation attacks. Heterogeneous payloads make this class harder for the GAT learner to internalise as a coherent task; partial coverage easily forgotten.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_dos",
+    label: "DoS Attack (UNSW)",
+    shortLabel: "DoS",
+    category: "communications",
+    omegaFragility: omega(5.7, 2.0, 4.0, 8.0, 8.0, 8.0),
+    globalConcentration: "Single-source denial-of-service variants",
+    replacementTime: "Hours (filtering, rate limiting)",
+    physicalConstraint: "Single-attacker DoS variants in UNSW-NB15 — distinct from the multi-source DDoS class in CICIDS. Lower-volume, more pattern-stable; easier to learn but co-occurs with Exploits and Reconnaissance in mixed-attack windows.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_fuzzers",
+    label: "Fuzzers Attack",
+    shortLabel: "FUZZ",
+    category: "communications",
+    omegaFragility: omega(4.9, 4.0, 4.0, 5.0, 6.0, 6.0),
+    globalConcentration: "Automated input-mutation tools (AFL, libFuzzer family)",
+    replacementTime: "Days (input-validation hardening)",
+    physicalConstraint: "Mutation-based payload fuzzing against network services, generating high-entropy traffic that masquerades as exploration. UNSW-NB15 captures both random and structure-aware fuzzing patterns.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_wireless_injection",
+    label: "Wireless Injection",
+    shortLabel: "WI",
+    category: "communications",
+    omegaFragility: omega(5.9, 5.0, 5.0, 6.0, 7.0, 7.0),
+    globalConcentration: "Wireless-specific (802.11 frame injection, deauth, association)",
+    replacementTime: "Months (WPA3 migration, management-frame protection)",
+    physicalConstraint: "Frame-injection attacks at the 802.11 link layer — deauthentication floods, association replay, EAPOL injection. AWID-H23Q's signature attack class. Underrepresented in enterprise-LAN datasets, so models trained on CIC/UNSW alone forget this class entirely under continual learning.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_spoofing",
+    label: "Spoofing Attack",
+    shortLabel: "SPOOF",
+    category: "communications",
+    omegaFragility: omega(5.7, 4.0, 4.0, 7.0, 7.0, 7.0),
+    globalConcentration: "MAC / IP / ARP / DNS spoofing variants",
+    replacementTime: "Hours-days (protocol-level mitigations)",
+    physicalConstraint: "Identity-impersonation attacks across multiple OSI layers. AWID-H23Q covers wireless-specific MAC spoofing and association replay; corresponds to identity-misuse cascade target — once the AP trusts a spoofed identity, downstream authorization decisions cascade.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attack_mitm",
+    label: "MITM Attack",
+    shortLabel: "MITM",
+    category: "communications",
+    omegaFragility: omega(6.7, 5.0, 5.0, 8.0, 8.0, 8.0),
+    globalConcentration: "Man-in-the-middle across wireless & wired (KRACK, BEAST, downgrade)",
+    replacementTime: "Months (cipher-suite upgrades, HSTS rollout)",
+    physicalConstraint: "Active interception of traffic between two parties; particularly severe in wireless contexts (rogue AP, evil-twin). Causes silent data exposure cascading through authentication, confidentiality, and integrity guarantees simultaneously.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ── IDS Components / Architecture (5) ──
+  {
+    id: "ais_gat",
+    label: "Graph Attention Network",
+    shortLabel: "GAT",
+    category: "infrastructure",
+    omegaFragility: omega(7.3, 8.0, 7.0, 4.0, 10.0, 7.0),
+    globalConcentration: "Reference architecture from dissertation Ch 8 (3-layer GAT, 8 heads, dim 64, ELU, dropout 0.2)",
+    replacementTime: "Weeks (retrain alternative architecture, lose attention semantics)",
+    physicalConstraint: "Continual learner. Sits at the structural centre of the IDS pipeline — every attack class flows through it. Catastrophic-forgetting attractor: representations degrade window-by-window without explicit memory mechanism. Highest cascade-load node by topology in the dissertation graph.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_replay_buffer",
+    label: "Topology-Aware Replay Buffer",
+    shortLabel: "RB",
+    category: "infrastructure",
+    omegaFragility: omega(6.4, 6.0, 8.0, 3.0, 9.0, 6.0),
+    globalConcentration: "Custom χ★-biased buffer (Ghauri 2025 §6) — generic replay buffers commodity",
+    replacementTime: "Days (replace with naive replay; lose χ★ bias and forgetting reduction)",
+    physicalConstraint: "Tiny rehearsal buffer (~2% of per-window flows). Selection biased toward edges in χ★ — flows incident on bridge edges enter at p=0.9 vs p=0.05 baseline. Halves catastrophic forgetting in dissertation experiments without modifying topology.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_attention_layer",
+    label: "Attention Head Layer",
+    shortLabel: "AH",
+    category: "infrastructure",
+    omegaFragility: omega(6.3, 7.0, 6.0, 3.0, 9.0, 6.0),
+    globalConcentration: "Multi-head attention; 8 heads × 3 layers in reference impl",
+    replacementTime: "Weeks (architecture change)",
+    physicalConstraint: "Where Bridge-Edge Strength (BES) is measured at inference time. Attention weight α_e per edge during training; BES = mean α_e over e ∈ χ★. Per Ghauri Ch 8 §4.1, BES peaks lead Forgetting Rate spikes by 0–1 windows — leading indicator of imminent cascade.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_training_scheduler",
+    label: "Training Scheduler",
+    shortLabel: "TS",
+    category: "infrastructure",
+    omegaFragility: omega(4.2, 4.0, 3.0, 2.0, 7.0, 5.0),
+    globalConcentration: "One-epoch-per-window streaming scheduler; commodity pattern",
+    replacementTime: "Hours (config change)",
+    physicalConstraint: "Segments each corpus into 24 non-overlapping one-hour windows; trains one epoch per window with weights frozen between windows. Simple but pivotal — windowing granularity directly affects forgetting curves. Shorter windows amplify FR; longer windows blur the regime-shift signal.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "ais_eval_harness",
+    label: "Evaluation Harness",
+    shortLabel: "EH",
+    category: "infrastructure",
+    omegaFragility: omega(4.1, 3.0, 2.0, 4.0, 6.0, 6.0),
+    globalConcentration: "Standard continual-learning evaluation (FR, BES, HES, F1)",
+    replacementTime: "Days (re-instrument)",
+    physicalConstraint: "Computes Forgetting Rate (FR) per window, Bridge-Edge Strength (BES) over χ★, and Hub-Edge Strength (HES) over degree-top hubs. Output drives the topology-aware replay buffer's biased sampling — so evaluation feeds back into training, forming the closing loop in the architecture.",
+    domain: "AI Safety / IDS",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ─── Shared Infrastructure (cross-domain chokepoints, ports, cables) ────
+  // Phase 16 pilot — replace single-concept-multi-dimension nodes with
+  // facet decomposition. A geographic chokepoint like the Strait of Hormuz
+  // isn't one variable — it's a cluster of variables (throughput, capacity,
+  // war-risk premium, etc.) that each have their own data sources and
+  // downstream effects. Pearl-style causal logic requires nodes that
+  // represent ONE intervenable variable; the previous `si_hormuz_throughput` (formerly qf_strait_of_hormuz)
+  // + `si_hormuz_throughput` (formerly mn_strait_of_hormuz) per-domain copies conflated all dimensions into
+  // a single node and duplicated state across two domains.
+  //
+  // This block introduces the canonical facets in a new "Shared
+  // Infrastructure" domain. Per-domain Hormuz nodes (qf_/mn_) are kept for
+  // backward compatibility — their downstream edges still propagate — and
+  // are now FED by the canonical facets via cross-domain edges (see edges
+  // section below). A follow-up PR (#2) will migrate downstream edges off
+  // the per-domain copies and delete them.
+  //
+  // The shared-infra pattern is the template for: Hormuz (this pilot),
+  // Ras Laffan port (Qatar LNG hub), Abqaiq Plants (Saudi crude
+  // processing), 2Africa undersea cable, and any future multi-domain
+  // physical infrastructure.
+  {
+    id: "si_hormuz_throughput",
+    label: "Strait of Hormuz — Throughput",
+    shortLabel: "SOH-T",
+    category: "infrastructure",
+    // Live signal from EIA Persian Gulf producers. Throughput is a flow
+    // measurement (mb/d). Compared to capacity for the chokepoint axiom.
+    omegaFragility: omega(7.8, 9.0, 3.5, 9.0, 9.5, 6.5),
+    globalConcentration: "100% Persian Gulf transit",
+    replacementTime: "n/a (metric, not asset)",
+    physicalConstraint: "Aggregate flow through the strait; bounded above by capacity and below by demand. Disruption (closure, blockade) cascades to global oil prices within hours.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_hormuz_capacity",
+    label: "Strait of Hormuz — Capacity",
+    shortLabel: "SOH-C",
+    category: "infrastructure",
+    // Static facet — published EIA stated chokepoint capacity. Doesn't
+    // move much (decades to build alternative pipelines), but the
+    // throughput/capacity ratio is what the Tarski A-04 axiom flags.
+    omegaFragility: omega(7.5, 10, 9.0, 7.0, 8.5, 6.0),
+    globalConcentration: "100% Persian Gulf transit",
+    replacementTime: "10-15 years (SUMED + Iraq-Turkey pipeline expansion + UAE crude bypass)",
+    physicalConstraint: "Tanker traffic ceiling at ~21 mb/d; constrained by 2-3 deepwater shipping lanes. Alternative routes exist (SUMED, UAE bypass) but combined capacity is <5 mb/d.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_hormuz_war_risk_premium",
+    label: "Strait of Hormuz — War-Risk Premium",
+    shortLabel: "SOH-W",
+    category: "infrastructure",
+    // Risk facet — captures geopolitical disruption probability. No free
+    // public source (Lloyd's marine insurance is paywalled), so this stays
+    // synthetic for now. Architectural seat for future wiring once a
+    // proxy is found (VIX correlation, naval activity, Iran tension index).
+    omegaFragility: omega(8.5, 8.0, 5.0, 9.5, 8.0, 9.5),
+    globalConcentration: "100% Iran / Oman territorial waters",
+    replacementTime: "Inversely proportional to geopolitical detente",
+    physicalConstraint: "Insurance premium spikes 10-30× during conflict episodes (e.g. Tanker War 1984-88, 2019 Gulf incidents). Tail-depth heavy — modal regime is benign, but tail events are catastrophic.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+
+  // ── Abqaiq Plants — Phase 16 second pilot (validates the pattern
+  //    generalizes from chokepoint to processing facility). Abqaiq is
+  //    the central stabilization facility for ~65-70% of Saudi crude
+  //    production. Same shape as Hormuz: throughput is a flow that's
+  //    bounded by capacity, war-risk premium captures disruption
+  //    probability (proven real by the 2019 drone strike). The legacy
+  //    `si_abqaiq_throughput` (formerly sa_abqaiq_plants) node will be deprecated in the follow-up
+  //    cleanup PR; for now it's preserved as a downstream consumer of
+  //    the throughput facet (cross-domain edge below).
+  //
+  //    Throughput facet is wired LIVE via the existing eia-saudi-crude
+  //    provider — the matcher (updated in this PR) recognizes
+  //    `si_abqaiq_throughput` as a throughput-semantic node and routes
+  //    the monthly EIA Saudi crude production signal here. Note the
+  //    proxy semantics: EIA reports country-level production (~10 mb/d)
+  //    while Abqaiq's actual processed volume is ~67% of that. The
+  //    facet's source string documents this.
+  {
+    id: "si_abqaiq_throughput",
+    label: "Abqaiq — Throughput",
+    shortLabel: "ABQ-T",
+    category: "manufacturing",
+    omegaFragility: omega(7.8, 9.0, 6.5, 7.5, 7.9, 7.0),
+    globalConcentration: "100% Saudi Arabia",
+    replacementTime: "n/a (metric, not asset)",
+    physicalConstraint: "Live signal: EIA monthly Saudi crude production as the closest free public proxy for Abqaiq processed volume. Abqaiq processes 65-70% of national output; exact per-facility split is not published.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_abqaiq_capacity",
+    label: "Abqaiq — Capacity",
+    shortLabel: "ABQ-C",
+    category: "manufacturing",
+    omegaFragility: omega(8.0, 10, 8.5, 7.5, 8.0, 7.0),
+    globalConcentration: "100% Saudi Arabia",
+    replacementTime: "2-5 years (rebuild stabilization columns + spheroids)",
+    physicalConstraint: "Stated processing capacity ~7 mb/d (Aramco published). Single-node concentration — no comparable alternative facility exists within Saudi Arabia. Designed-in redundancy in stabilization trains limits worst-case from a single train failure but full-facility loss (e.g. 2019 drone strike scenario) takes 2-5 years to fully recover.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
+  {
+    id: "si_abqaiq_war_risk_premium",
+    label: "Abqaiq — War-Risk Premium",
+    shortLabel: "ABQ-W",
+    category: "manufacturing",
+    omegaFragility: omega(8.8, 8.5, 5.5, 9.5, 8.5, 9.5),
+    globalConcentration: "100% Houthi / IRGC missile range",
+    replacementTime: "Inversely proportional to Yemen / Iran detente",
+    physicalConstraint: "Already realized: 14-Sep-2019 Houthi/IRGC drone-and-cruise-missile attack temporarily took 5.7 mb/d of capacity offline (~50% of Saudi production at the time). Recurrent risk surface tied to Yemen conflict + Iran tension index. Tail-depth heavy — single successful strike can produce 5-10× oil price shock within hours.",
+    domain: "Shared Infrastructure",
+    discoverySource: "DCD",
+    isConfounded: false,
+    isRestricted: false,
+  },
 ];
 
 // ─── Main Graph Edges ─────────────────────────────────────
@@ -2389,92 +2886,92 @@ const EDGES: CausalEdge[] = [
 
   // ─── Middle East Playbook Edges (69) ────────────────────────
   // ── Saudi Aramco ──
-  { id: "sa_east_west_pipeline__sa_yanbu_refinery", source: "sa_east_west_pipeline", target: "sa_yanbu_refinery", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Enables crude transfer toward west-coast refining/logistics." },
-  { id: "sa_abqaiq_plants__sa_ras_tanura_terminal", source: "sa_abqaiq_plants", target: "sa_ras_tanura_terminal", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes/stabilizes crude that moves to east-coast export terminals." },
-  { id: "sa_abqaiq_plants__sa_east_west_pipeline", source: "sa_abqaiq_plants", target: "sa_east_west_pipeline", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Abqaiq sits in the eastern production-processing system that can pump crude westward." },
-  { id: "sa_fadhili_gas_plant__sa_master_gas_system_mgs", source: "sa_fadhili_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Gas plant sends sales gas into the national gas backbone." },
+  { id: "sa_east_west_pipeline__sa_yanbu_refinery", source: "sa_east_west_pipeline", target: "sa_yanbu_refinery", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Enables crude transfer toward west-coast refining/logistics." },
+  { id: "si_abqaiq_throughput__sa_ras_tanura_terminal", source: "si_abqaiq_throughput", target: "sa_ras_tanura_terminal", weight: 0.6, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes/stabilizes crude that moves to east-coast export terminals." },
+  { id: "si_abqaiq_throughput__sa_east_west_pipeline", source: "si_abqaiq_throughput", target: "sa_east_west_pipeline", weight: 0.6, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Abqaiq sits in the eastern production-processing system that can pump crude westward." },
+  { id: "sa_fadhili_gas_plant__sa_master_gas_system_mgs", source: "sa_fadhili_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Gas plant sends sales gas into the national gas backbone." },
   { id: "sa_wasit_gas_plant__sa_master_gas_system_mgs", source: "sa_wasit_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Wasit is explicitly described as part of the MGS." },
   { id: "sa_hawiyah_gas_plant__sa_master_gas_system_mgs", source: "sa_hawiyah_gas_plant", target: "sa_master_gas_system_mgs", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Major gas-processing node in the Saudi system." },
   { id: "sa_ras_tanura_refinery__sa_ras_tanura_terminal", source: "sa_ras_tanura_refinery", target: "sa_ras_tanura_terminal", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Refinery and export-terminal location co-exist at Ras Tanura, forming a key coastal node." },
-  { id: "sa_fadhili_gas_plant__sa_master_gas_system", source: "sa_fadhili_gas_plant", target: "sa_master_gas_system", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Design capacity feeds national gas network." },
-  { id: "sa_wasit_gas_plant__sa_master_gas_system", source: "sa_wasit_gas_plant", target: "sa_master_gas_system", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes non-associated gas into domestic network." },
+  { id: "sa_fadhili_gas_plant__sa_master_gas_system", source: "sa_fadhili_gas_plant", target: "sa_master_gas_system", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Design capacity feeds national gas network." },
+  { id: "sa_wasit_gas_plant__sa_master_gas_system", source: "sa_wasit_gas_plant", target: "sa_master_gas_system", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Processes non-associated gas into domestic network." },
   { id: "sa_ras_tanura_terminal__sa_east_west_pipeline", source: "sa_ras_tanura_terminal", target: "sa_east_west_pipeline", weight: 0.5, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "West-coast bypass reduces full reliance on Gulf route." },
-  { id: "sa_east_west_pipeline__sa_yanbu_ngl_fractionation_complex", source: "sa_east_west_pipeline", target: "sa_yanbu_ngl_fractionation_complex", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "West-coast hydrocarbon movement underpins Red Sea export flexibility." },
+  { id: "sa_east_west_pipeline__sa_yanbu_ngl_fractionation_complex", source: "sa_east_west_pipeline", target: "sa_yanbu_ngl_fractionation_complex", weight: 0.6, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "West-coast hydrocarbon movement underpins Red Sea export flexibility." },
   // ── Saudi Aramco orphan connections ──
-  { id: "sa_ras_tanura_terminal__sa_juaymah_crude", source: "sa_ras_tanura_terminal", target: "sa_juaymah_crude_terminal", weight: 0.7, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Ras Tanura and Juaymah crude terminals form an integrated eastern export complex sharing pipeline feed and port logistics." },
-  { id: "sa_master_gas_system_mgs__sa_juaymah_lpg", source: "sa_master_gas_system_mgs", target: "sa_juaymah_lpg_terminal", weight: 0.7, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Master Gas System feeds NGL/LPG streams to Juaymah LPG terminal for export." },
-  { id: "sa_hawiyah_gas_plant__sa_hawiyah_storage", source: "sa_hawiyah_gas_plant", target: "sa_hawiyah_gas_plant_storage_complex", weight: 0.8, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Hawiyah gas plant output flows to co-located storage complex for seasonal balancing." },
+  { id: "sa_ras_tanura_terminal__sa_juaymah_crude", source: "sa_ras_tanura_terminal", target: "sa_juaymah_crude_terminal", weight: 0.7, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Ras Tanura and Juaymah crude terminals form an integrated eastern export complex sharing pipeline feed and port logistics." },
+  { id: "sa_master_gas_system_mgs__sa_juaymah_lpg", source: "sa_master_gas_system_mgs", target: "sa_juaymah_lpg_terminal", weight: 0.7, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Master Gas System feeds NGL/LPG streams to Juaymah LPG terminal for export." },
+  { id: "sa_hawiyah_gas_plant__sa_hawiyah_storage", source: "sa_hawiyah_gas_plant", target: "sa_hawiyah_gas_plant_storage_complex", weight: 0.8, lag: 1, type: "flow", confidence: 0.85, isInconsistent: false, physicalMechanism: "Hawiyah gas plant output flows to co-located storage complex for seasonal balancing." },
   { id: "sa_juaymah_crude__sa_east_west", source: "sa_juaymah_crude_terminal", target: "sa_east_west_pipeline", weight: 0.5, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Eastern crude terminal operations affect pipeline diversion decisions to west coast." },
-  { id: "sa_hawiyah_storage__sa_master_gas", source: "sa_hawiyah_gas_plant_storage_complex", target: "sa_master_gas_system", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Storage complex buffers supply into the national gas network during demand peaks." },
+  { id: "sa_hawiyah_storage__sa_master_gas", source: "sa_hawiyah_gas_plant_storage_complex", target: "sa_master_gas_system", weight: 0.6, lag: 1, type: "flow", confidence: 0.75, isInconsistent: false, physicalMechanism: "Storage complex buffers supply into the national gas network during demand peaks." },
   // ── QatarEnergy (intra-domain) ──
-  { id: "qe_north_field__qe_rlic", source: "qe_north_field_gas_field", target: "qe_ras_laffan_industrial_city_rlic", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "North Field gas feeds all processing within Ras Laffan Industrial City." },
+  { id: "qe_north_field__qe_rlic", source: "qe_north_field_gas_field", target: "qe_ras_laffan_industrial_city_rlic", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "North Field gas feeds all processing within Ras Laffan Industrial City." },
   { id: "qe_rlic__qe_export_trains", source: "qe_ras_laffan_industrial_city_rlic", target: "qe_qatarenergy_lng_export_trains_qatargas_1", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "RLIC houses all 14 LNG export trains; industrial city operations directly determine train throughput." },
-  { id: "qe_export_trains__qe_ras_laffan_port", source: "qe_qatarenergy_lng_export_trains_qatargas_1", target: "qe_ras_laffan_port", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "LNG from export trains loads at Ras Laffan port for global shipment." },
-  { id: "qe_north_field__qe_pearl_gtl", source: "qe_north_field_gas_field", target: "qe_pearl_gtl_plant", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Pearl GTL receives North Field gas as feedstock for gas-to-liquids conversion (140,000 bbl/d)." },
-  { id: "qe_north_field__qe_oryx_gtl", source: "qe_north_field_gas_field", target: "qe_oryx_gtl_plant", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Oryx GTL receives North Field gas as feedstock for gas-to-liquids conversion." },
-  { id: "qe_north_field__qe_barzan", source: "qe_north_field_gas_field", target: "qe_barzan_gas_plant", weight: 0.8, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Barzan gas plant processes North Field gas for domestic consumption." },
-  { id: "qe_north_field__qe_umm_said", source: "qe_north_field_gas_field", target: "qe_umm_said_mesaieed_refinery", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Umm Said refinery processes condensate and gas liquids from North Field production." },
+  { id: "qe_export_trains__qe_ras_laffan_port", source: "qe_qatarenergy_lng_export_trains_qatargas_1", target: "qe_ras_laffan_port", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "LNG from export trains loads at Ras Laffan port for global shipment." },
+  { id: "qe_north_field__qe_pearl_gtl", source: "qe_north_field_gas_field", target: "qe_pearl_gtl_plant", weight: 0.7, lag: 1, type: "flow", confidence: 0.75, isInconsistent: false, physicalMechanism: "Pearl GTL receives North Field gas as feedstock for gas-to-liquids conversion (140,000 bbl/d)." },
+  { id: "qe_north_field__qe_oryx_gtl", source: "qe_north_field_gas_field", target: "qe_oryx_gtl_plant", weight: 0.7, lag: 1, type: "flow", confidence: 0.75, isInconsistent: false, physicalMechanism: "Oryx GTL receives North Field gas as feedstock for gas-to-liquids conversion." },
+  { id: "qe_north_field__qe_barzan", source: "qe_north_field_gas_field", target: "qe_barzan_gas_plant", weight: 0.8, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Barzan gas plant processes North Field gas for domestic consumption." },
+  { id: "qe_north_field__qe_umm_said", source: "qe_north_field_gas_field", target: "qe_umm_said_mesaieed_refinery", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Umm Said refinery processes condensate and gas liquids from North Field production." },
   { id: "qe_rlic__qe_laffan_refinery", source: "qe_ras_laffan_industrial_city_rlic", target: "qe_laffan_refinery_lr1_lr2_merged", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Laffan Refinery operates within RLIC processing condensate from LNG trains." },
-  { id: "qe_barzan__qe_dolphin", source: "qe_barzan_gas_plant", target: "qe_dolphin_pipeline_gas_exports_to_uae_oman", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Domestic gas balance from Barzan affects available volumes for Dolphin pipeline export." },
-  { id: "qe_laffan_refinery_lr1_lr2_merged__qe_ras_laffan_port", source: "qe_laffan_refinery_lr1_lr2_merged", target: "qe_ras_laffan_port", weight: 0.6, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Refined products export through Ras Laffan." },
+  { id: "qe_barzan__qe_dolphin", source: "qe_barzan_gas_plant", target: "qe_dolphin_pipeline_gas_exports_to_uae_oman", weight: 0.5, lag: 1, type: "flow", confidence: 0.65, isInconsistent: false, physicalMechanism: "Domestic gas balance from Barzan affects available volumes for Dolphin pipeline export." },
+  { id: "qe_laffan_refinery_lr1_lr2_merged__qe_ras_laffan_port", source: "qe_laffan_refinery_lr1_lr2_merged", target: "qe_ras_laffan_port", weight: 0.6, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Refined products export through Ras Laffan." },
   // ── QAFCO ──
-  { id: "qf_qatar_energy_feedstock__qf_qafco_complex", source: "qf_qatar_energy_feedstock", target: "qf_qafco_complex", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is the primary input for ammonia production, which is then converted to urea." },
+  { id: "qf_qatar_energy_feedstock__qf_qafco_complex", source: "qf_qatar_energy_feedstock", target: "qf_qafco_complex", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is the primary input for ammonia production, which is then converted to urea." },
   { id: "qf_qafco_complex__qf_qafco7_blue_ammonia", source: "qf_qafco_complex", target: "qf_qafco7_blue_ammonia", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Blue ammonia project expands ammonia capacity and reduces CO2 via CCS." },
-  { id: "qf_qafco_complex__qf_strait_of_hormuz", source: "qf_qafco_complex", target: "qf_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Bulk exports from Persian Gulf generally transit the Strait of Hormuz." },
+  { id: "qf_qafco_complex__si_hormuz_throughput", source: "qf_qafco_complex", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Bulk exports from Persian Gulf generally transit the Strait of Hormuz." },
   { id: "qf_qafco_complex__qf_global_food_prices", source: "qf_qafco_complex", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Urea supply influences farm input costs and yields; disruptions raise food inflation and political r" },
-  { id: "qf_north_field_gas__qf_qatar_energy_feedstock", source: "qf_north_field_gas", target: "qf_qatar_energy_feedstock", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "North Field underpins QatarEnergy feedstock availability to domestic gas-based industries." },
-  { id: "qf_qatar_energy_feedstock__qf_qafco_ammonia_product", source: "qf_qatar_energy_feedstock", target: "qf_qafco_ammonia_product", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is reformed to produce hydrogen for ammonia synthesis." },
-  { id: "qf_qafco_ammonia_product__qf_qafco_urea_product", source: "qf_qafco_ammonia_product", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ammonia reacts with CO2 to produce urea; most ammonia is consumed internally." },
-  { id: "qf_qafco_urea_product__qf_gulf_formaldehyde_company", source: "qf_qafco_urea_product", target: "qf_gulf_formaldehyde_company", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Urea is one input into UFC-85, which is then added back to urea to improve strength." },
-  { id: "qf_qafco_urea_product__qf_qatar_melamine_company", source: "qf_qafco_urea_product", target: "qf_qatar_melamine_company", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Part of the urea stream is thermally decomposed into melamine via the QMC downstream chain." },
+  { id: "qf_north_field_gas__qf_qatar_energy_feedstock", source: "qf_north_field_gas", target: "qf_qatar_energy_feedstock", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "North Field underpins QatarEnergy feedstock availability to domestic gas-based industries." },
+  { id: "qf_qatar_energy_feedstock__qf_qafco_ammonia_product", source: "qf_qatar_energy_feedstock", target: "qf_qafco_ammonia_product", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is reformed to produce hydrogen for ammonia synthesis." },
+  { id: "qf_qafco_ammonia_product__qf_qafco_urea_product", source: "qf_qafco_ammonia_product", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ammonia reacts with CO2 to produce urea; most ammonia is consumed internally." },
+  { id: "qf_qafco_urea_product__qf_gulf_formaldehyde_company", source: "qf_qafco_urea_product", target: "qf_gulf_formaldehyde_company", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Urea is one input into UFC-85, which is then added back to urea to improve strength." },
+  { id: "qf_qafco_urea_product__qf_qatar_melamine_company", source: "qf_qafco_urea_product", target: "qf_qatar_melamine_company", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Part of the urea stream is thermally decomposed into melamine via the QMC downstream chain." },
   { id: "qf_qafco_complex__qf_mesaieed_industrial_city", source: "qf_qafco_complex", target: "qf_mesaieed_industrial_city", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO operates inside the Mesaieed industrial cluster." },
-  { id: "qf_qafco_complex__qf_mesaieed_port", source: "qf_qafco_complex", target: "qf_mesaieed_port", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Physical fertilizer exports move through the Mesaieed port/logistics system." },
-  { id: "qf_mesaieed_port__qf_strait_of_hormuz", source: "qf_mesaieed_port", target: "qf_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Most Gulf exports must transit Hormuz to reach global markets." },
+  { id: "qf_qafco_complex__qf_mesaieed_port", source: "qf_qafco_complex", target: "qf_mesaieed_port", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Physical fertilizer exports move through the Mesaieed port/logistics system." },
+  { id: "qf_mesaieed_port__si_hormuz_throughput", source: "qf_mesaieed_port", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Most Gulf exports must transit Hormuz to reach global markets." },
   { id: "qf_qafco_urea_product__qf_india_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_india_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "India is a major import market in the global fertilizer system and is named among QAFCO customer geo" },
   { id: "qf_qafco_urea_product__qf_brazil_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_brazil_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Brazil is a large fertilizer importer and exposed to QAFCO-linked nitrogen supply and price conditio" },
   { id: "qf_qafco_urea_product__qf_australia_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_australia_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Australia is explicitly named among QAFCO customer demand geographies." },
   { id: "qf_qafco_urea_product__qf_usa_fertilizer_market", source: "qf_qafco_urea_product", target: "qf_usa_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "USA is explicitly named among QAFCO customer demand geographies." },
-  { id: "qf_strait_of_hormuz__qf_qafco_urea_product", source: "qf_strait_of_hormuz", target: "qf_qafco_urea_product", weight: 0.7, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Any partial closure, insecurity, or insurance spike in Hormuz can constrain QAFCO cargo flows." },
+  { id: "si_hormuz_throughput__qf_qafco_urea_product", source: "si_hormuz_throughput", target: "qf_qafco_urea_product", weight: 0.7, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Any partial closure, insecurity, or insurance spike in Hormuz can constrain QAFCO cargo flows." },
   { id: "qf_qafco_urea_product__qf_global_food_prices", source: "qf_qafco_urea_product", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Nitrogen fertilizer shortages or price spikes raise farm input costs and can reduce yields, feeding " },
   { id: "qf_qafco7_blue_ammonia__qf_qafco_ammonia_product", source: "qf_qafco7_blue_ammonia", target: "qf_qafco_ammonia_product", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO-7 adds new low-carbon ammonia capacity, increasing system redundancy and export potential." },
   { id: "qf_qafco7_blue_ammonia__qf_global_food_prices", source: "qf_qafco7_blue_ammonia", target: "qf_global_food_prices", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Additional ammonia capacity can support future urea expansion and moderate supply tightness over tim" },
   { id: "qf_qafco_complex__qf_qatar_melamine_company", source: "qf_qafco_complex", target: "qf_qatar_melamine_company", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO fully owns QMC." },
   { id: "qf_qafco_complex__qf_gulf_formaldehyde_company", source: "qf_qafco_complex", target: "qf_gulf_formaldehyde_company", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO holds a 70% stake in GFC." },
-  { id: "qf_qafco_ammonia_product__qf_aqueous_ammonia_facility", source: "qf_qafco_ammonia_product", target: "qf_aqueous_ammonia_facility", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Part of ammonia output is used to produce aqueous ammonia for NOx reduction applications." },
-  { id: "qf_qafco_1_4_site__qf_qafco_urea_product", source: "qf_qafco_1_4_site", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO 1-4 site contributes to aggregate urea output." },
-  { id: "qf_qafco_5_6_site__qf_qafco_urea_product", source: "qf_qafco_5_6_site", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO 5-6 site contributes to aggregate urea output." },
-  { id: "qf_qafco_urea_product__qf_mesaieed_port", source: "qf_qafco_urea_product", target: "qf_mesaieed_port", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Finished urea moves from production/storage to export loading at Mesaieed." },
+  { id: "qf_qafco_ammonia_product__qf_aqueous_ammonia_facility", source: "qf_qafco_ammonia_product", target: "qf_aqueous_ammonia_facility", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Part of ammonia output is used to produce aqueous ammonia for NOx reduction applications." },
+  { id: "qf_qafco_1_4_site__qf_qafco_urea_product", source: "qf_qafco_1_4_site", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO 1-4 site contributes to aggregate urea output." },
+  { id: "qf_qafco_5_6_site__qf_qafco_urea_product", source: "qf_qafco_5_6_site", target: "qf_qafco_urea_product", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "QAFCO 5-6 site contributes to aggregate urea output." },
+  { id: "qf_qafco_urea_product__qf_mesaieed_port", source: "qf_qafco_urea_product", target: "qf_mesaieed_port", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Finished urea moves from production/storage to export loading at Mesaieed." },
   { id: "qf_india_fertilizer_market__qf_global_food_prices", source: "qf_india_fertilizer_market", target: "qf_global_food_prices", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large importing markets amplify price shocks when supply is disrupted." },
   { id: "qf_brazil_fertilizer_market__qf_global_food_prices", source: "qf_brazil_fertilizer_market", target: "qf_global_food_prices", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large importing markets amplify global nitrogen price volatility." },
   // ── Ma'aden ──
-  { id: "mn_natural_gas_feedstock_system__mn_ras_al_khair_ammonia_units", source: "mn_natural_gas_feedstock_system", target: "mn_ras_al_khair_ammonia_units", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is the core input to ammonia production." },
-  { id: "mn_umm_wu_al_phosphate_mine__mn_wa_ad_al_shamal_phosphate_hub", source: "mn_umm_wu_al_phosphate_mine", target: "mn_wa_ad_al_shamal_phosphate_hub", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ore from northern deposits feeds phosphate processing." },
-  { id: "mn_hazm_al_jalamid_phosphate_mine__mn_ras_al_khair_phosphate_hub", source: "mn_hazm_al_jalamid_phosphate_mine", target: "mn_ras_al_khair_phosphate_hub", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Mine output is linked by rail to Ras Al Khair complex." },
-  { id: "mn_north_south_railway__mn_ras_al_khair_phosphate_hub", source: "mn_north_south_railway", target: "mn_ras_al_khair_phosphate_hub", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Rail corridor moves ore/intermediates to export/finishing hub." },
-  { id: "mn_wa_ad_al_shamal_phosphate_hub__mn_ras_al_khair_phosphate_hub", source: "mn_wa_ad_al_shamal_phosphate_hub", target: "mn_ras_al_khair_phosphate_hub", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden says Wa'ad Al Shamal mines/processes while Ras Al Khair finishes/stores/exports." },
-  { id: "mn_ras_al_khair_ammonia_units__mn_ras_al_khair_dap_plant", source: "mn_ras_al_khair_ammonia_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ammonia is a key input into DAP/phosphate fertilizer output." },
-  { id: "mn_sulfuric_acid_units__mn_phosphoric_acid_units", source: "mn_sulfuric_acid_units", target: "mn_phosphoric_acid_units", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Sulfuric acid is part of phosphate fertilizer chemistry chain." },
-  { id: "mn_phosphoric_acid_units__mn_ras_al_khair_dap_plant", source: "mn_phosphoric_acid_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Phosphoric acid is a direct DAP intermediate." },
-  { id: "mn_ras_al_khair_phosphate_hub__mn_strait_of_hormuz", source: "mn_ras_al_khair_phosphate_hub", target: "mn_strait_of_hormuz", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Arabian Gulf fertilizer exports depend on Gulf shipping lanes." },
-  { id: "mn_strait_of_hormuz__mn_bangladesh_agricultural_development_corp", source: "mn_strait_of_hormuz", target: "mn_bangladesh_agricultural_development_corp", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Shipping disruption can delay contracted fertilizer deliveries." },
-  { id: "mn_strait_of_hormuz__mn_india_fertilizer_market", source: "mn_strait_of_hormuz", target: "mn_india_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Gulf route disruption raises freight cost and delivery time to India." },
-  { id: "mn_strait_of_hormuz__mn_brazil_fertilizer_market", source: "mn_strait_of_hormuz", target: "mn_brazil_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Long-haul fertilizer exports still depend on Gulf maritime access." },
-  { id: "mn_strait_of_hormuz__mn_african_import_dependent_markets", source: "mn_strait_of_hormuz", target: "mn_african_import_dependent_markets", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Insurance and freight spikes increase landed fertilizer prices." },
-  { id: "mn_ras_al_khair_dap_plant__mn_bangladesh_agricultural_development_corp", source: "mn_ras_al_khair_dap_plant", target: "mn_bangladesh_agricultural_development_corp", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden renewed a 600,000-ton fertilizer supply agreement with BADC." },
+  { id: "mn_natural_gas_feedstock_system__mn_ras_al_khair_ammonia_units", source: "mn_natural_gas_feedstock_system", target: "mn_ras_al_khair_ammonia_units", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Natural gas is the core input to ammonia production." },
+  { id: "mn_umm_wu_al_phosphate_mine__mn_wa_ad_al_shamal_phosphate_hub", source: "mn_umm_wu_al_phosphate_mine", target: "mn_wa_ad_al_shamal_phosphate_hub", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ore from northern deposits feeds phosphate processing." },
+  { id: "mn_hazm_al_jalamid_phosphate_mine__mn_ras_al_khair_phosphate_hub", source: "mn_hazm_al_jalamid_phosphate_mine", target: "mn_ras_al_khair_phosphate_hub", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Mine output is linked by rail to Ras Al Khair complex." },
+  { id: "mn_north_south_railway__mn_ras_al_khair_phosphate_hub", source: "mn_north_south_railway", target: "mn_ras_al_khair_phosphate_hub", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Rail corridor moves ore/intermediates to export/finishing hub." },
+  { id: "mn_wa_ad_al_shamal_phosphate_hub__mn_ras_al_khair_phosphate_hub", source: "mn_wa_ad_al_shamal_phosphate_hub", target: "mn_ras_al_khair_phosphate_hub", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden says Wa'ad Al Shamal mines/processes while Ras Al Khair finishes/stores/exports." },
+  { id: "mn_ras_al_khair_ammonia_units__mn_ras_al_khair_dap_plant", source: "mn_ras_al_khair_ammonia_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ammonia is a key input into DAP/phosphate fertilizer output." },
+  { id: "mn_sulfuric_acid_units__mn_phosphoric_acid_units", source: "mn_sulfuric_acid_units", target: "mn_phosphoric_acid_units", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Sulfuric acid is part of phosphate fertilizer chemistry chain." },
+  { id: "mn_phosphoric_acid_units__mn_ras_al_khair_dap_plant", source: "mn_phosphoric_acid_units", target: "mn_ras_al_khair_dap_plant", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Phosphoric acid is a direct DAP intermediate." },
+  { id: "mn_ras_al_khair_phosphate_hub__si_hormuz_throughput", source: "mn_ras_al_khair_phosphate_hub", target: "si_hormuz_throughput", weight: 0.6, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Arabian Gulf fertilizer exports depend on Gulf shipping lanes." },
+  { id: "si_hormuz_throughput__mn_bangladesh_agricultural_development_corp", source: "si_hormuz_throughput", target: "mn_bangladesh_agricultural_development_corp", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Shipping disruption can delay contracted fertilizer deliveries." },
+  { id: "si_hormuz_throughput__mn_india_fertilizer_market", source: "si_hormuz_throughput", target: "mn_india_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Gulf route disruption raises freight cost and delivery time to India." },
+  { id: "si_hormuz_throughput__mn_brazil_fertilizer_market", source: "si_hormuz_throughput", target: "mn_brazil_fertilizer_market", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Long-haul fertilizer exports still depend on Gulf maritime access." },
+  { id: "si_hormuz_throughput__mn_african_import_dependent_markets", source: "si_hormuz_throughput", target: "mn_african_import_dependent_markets", weight: 0.7, lag: 2, type: "confounded", confidence: 0.65, isInconsistent: false, physicalMechanism: "Insurance and freight spikes increase landed fertilizer prices." },
+  { id: "mn_ras_al_khair_dap_plant__mn_bangladesh_agricultural_development_corp", source: "mn_ras_al_khair_dap_plant", target: "mn_bangladesh_agricultural_development_corp", weight: 0.8, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden renewed a 600,000-ton fertilizer supply agreement with BADC." },
   { id: "mn_bangladesh_agricultural_development_corp__mn_ma_aden_phosphate_business", source: "mn_bangladesh_agricultural_development_corp", target: "mn_ma_aden_phosphate_business", weight: 0.8, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden supplies about 42% of Bangladesh's estimated DAP requirement." },
   { id: "mn_ma_aden_phosphate_business__mn_india_fertilizer_market", source: "mn_ma_aden_phosphate_business", target: "mn_india_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "India is a major import market for Gulf phosphate fertilizers." },
   { id: "mn_ma_aden_phosphate_business__mn_brazil_fertilizer_market", source: "mn_ma_aden_phosphate_business", target: "mn_brazil_fertilizer_market", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Brazil is a major global buyer of imported crop nutrients." },
   { id: "mn_ma_aden_phosphate_business__mn_african_import_dependent_markets", source: "mn_ma_aden_phosphate_business", target: "mn_african_import_dependent_markets", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Guide emphasizes Africa as a downstream impact region." },
   { id: "mn_ma_aden_phosphate_business__mn_global_food_price_stress", source: "mn_ma_aden_phosphate_business", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Fertilizer price spikes increase farm input costs and pressure food affordability." },
   { id: "mn_natural_gas_feedstock_system__mn_global_food_price_stress", source: "mn_natural_gas_feedstock_system", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Gas cost spikes raise ammonia and fertilizer prices." },
-  { id: "mn_ras_al_khair_ammonia_units__mn_blue_low_carbon_ammonia_export_program", source: "mn_ras_al_khair_ammonia_units", target: "mn_blue_low_carbon_ammonia_export_program", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Low-carbon ammonia is produced at Ras Al Khair and shipped to global markets." },
+  { id: "mn_ras_al_khair_ammonia_units__mn_blue_low_carbon_ammonia_export_program", source: "mn_ras_al_khair_ammonia_units", target: "mn_blue_low_carbon_ammonia_export_program", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Low-carbon ammonia is produced at Ras Al Khair and shipped to global markets." },
   { id: "mn_phosphogypsum_stacks_recycling_complex__mn_ma_aden_phosphate_business", source: "mn_phosphogypsum_stacks_recycling_complex", target: "mn_ma_aden_phosphate_business", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "CO2 capture and phosphogypsum recycling aim to lower footprint of phosphate business." },
-  { id: "mn_industrial_water_pipeline_system__mn_wa_ad_al_shamal_phosphate_hub", source: "mn_industrial_water_pipeline_system", target: "mn_wa_ad_al_shamal_phosphate_hub", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Water infrastructure supports continuous industrial operations." },
+  { id: "mn_industrial_water_pipeline_system__mn_wa_ad_al_shamal_phosphate_hub", source: "mn_industrial_water_pipeline_system", target: "mn_wa_ad_al_shamal_phosphate_hub", weight: 0.6, lag: 1, type: "flow", confidence: 0.7, isInconsistent: false, physicalMechanism: "Water infrastructure supports continuous industrial operations." },
   { id: "mn_industrial_water_pipeline_system__mn_phosphate_3_mega_project", source: "mn_industrial_water_pipeline_system", target: "mn_phosphate_3_mega_project", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Water access is necessary for expansion scaling." },
   { id: "mn_phosphate_3_mega_project__mn_ma_aden_phosphate_business", source: "mn_phosphate_3_mega_project", target: "mn_ma_aden_phosphate_business", weight: 0.6, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Project increases phosphate fertilizer production by 50% to 9 Mtpa." },
   { id: "mn_ras_al_khair_dap_plant__mn_global_food_price_stress", source: "mn_ras_al_khair_dap_plant", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large Gulf fertilizer outages can tighten international supply." },
   { id: "mn_phosphate_3_mega_project__mn_global_food_price_stress", source: "mn_phosphate_3_mega_project", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Expansion is intended to add resilient supply and ease tightness over time." },
-  { id: "mn_strait_of_hormuz__mn_global_food_price_stress", source: "mn_strait_of_hormuz", target: "mn_global_food_price_stress", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Fertilizer export blockages can transmit into crop-input inflation worldwide." },
+  { id: "si_hormuz_throughput__mn_global_food_price_stress", source: "si_hormuz_throughput", target: "mn_global_food_price_stress", weight: 0.7, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Fertilizer export blockages can transmit into crop-input inflation worldwide." },
   { id: "mn_bangladesh_agricultural_development_corp__mn_global_food_price_stress", source: "mn_bangladesh_agricultural_development_corp", target: "mn_global_food_price_stress", weight: 0.6, lag: 2, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Large fertilizer procurement shocks can affect national crop economics and import bills." },
 
   // ─── Financial Contagion Edges (25) ──────────────────────────
@@ -2589,7 +3086,7 @@ const EDGES: CausalEdge[] = [
   // ── Saudi Aramco cross-domain broadening ──
   { id: "sa_ras_tanura_terminal__sc_shipping_cost_index", source: "sa_ras_tanura_terminal", target: "sc_shipping_cost_index", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Ras Tanura handles 6.5 Mbbl/d — terminal disruption triggers tanker rerouting and global shipping cost spikes." },
   { id: "sa_east_west_pipeline__ic_red_sea_exposure", source: "sa_east_west_pipeline", target: "ic_red_sea_exposure", weight: 0.4, lag: 1, type: "directed", confidence: 0.6, isInconsistent: false, physicalMechanism: "East-West pipeline bypasses Strait of Hormuz but terminus at Yanbu exposes Red Sea infrastructure corridor." },
-  { id: "sa_master_gas_system__mn_natural_gas_feedstock_system", source: "sa_master_gas_system", target: "mn_natural_gas_feedstock_system", weight: 0.7, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Saudi Master Gas System supplies feedstock to Ma'aden ammonia/phosphate operations — gas allocation directly constrains fertilizer output." },
+  { id: "sa_master_gas_system__mn_natural_gas_feedstock_system", source: "sa_master_gas_system", target: "mn_natural_gas_feedstock_system", weight: 0.7, lag: 1, type: "flow", confidence: 0.8, isInconsistent: false, physicalMechanism: "Saudi Master Gas System supplies feedstock to Ma'aden ammonia/phosphate operations — gas allocation directly constrains fertilizer output." },
   { id: "sa_ras_tanura_terminal__sr_china_gdp", source: "sa_ras_tanura_terminal", target: "sr_china_gdp", weight: 0.55, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "China is Saudi Arabia's largest crude buyer — Ras Tanura disruption creates energy supply shock to Chinese manufacturing and GDP." },
 
   // ── Supply Chain ↔ Sovereign Risk links ──
@@ -2606,8 +3103,7 @@ const EDGES: CausalEdge[] = [
 
   // ── Ma'aden ↔ other domains cross-domain ──
   { id: "mn_ras_al_khair_dap_plant__sc_fertilizer_price_index", source: "mn_ras_al_khair_dap_plant", target: "sc_fertilizer_price_index", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Ma'aden DAP production is ~6 Mtpa — outages tighten global phosphate supply and drive fertilizer price spikes." },
-  { id: "mn_strait_of_hormuz__sc_shipping_cost_index", source: "mn_strait_of_hormuz", target: "sc_shipping_cost_index", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Hormuz closure risk drives shipping insurance premiums and rerouting costs for all Gulf-origin cargo." },
-  { id: "mn_strait_of_hormuz__qf_strait_of_hormuz", source: "mn_strait_of_hormuz", target: "qf_strait_of_hormuz", weight: 0.9, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Same physical chokepoint — any disruption affecting Ma'aden exports simultaneously affects QAFCO exports." },
+  { id: "si_hormuz_throughput__sc_shipping_cost_index", source: "si_hormuz_throughput", target: "sc_shipping_cost_index", weight: 0.7, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Hormuz closure risk drives shipping insurance premiums and rerouting costs for all Gulf-origin cargo." },
   { id: "mn_global_food_price_stress__fc_fx_pressure", source: "mn_global_food_price_stress", target: "fc_fx_pressure", weight: 0.55, lag: 2, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Phosphate-driven food price stress depletes FX reserves in net food-importing EMs through higher import bills." },
   { id: "mn_global_food_price_stress__sr_brazil_gdp", source: "mn_global_food_price_stress", target: "sr_brazil_gdp", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Food price inflation raises farm input costs for Brazilian agribusiness, reducing export competitiveness and GDP contribution." },
   { id: "mn_ras_al_khair_ammonia_units__qf_qafco_ammonia_product", source: "mn_ras_al_khair_ammonia_units", target: "qf_qafco_ammonia_product", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Ma'aden and QAFCO ammonia compete in global nitrogen markets — capacity changes at either affect pricing for both." },
@@ -2622,12 +3118,12 @@ const EDGES: CausalEdge[] = [
 
   // ── Infrastructure ↔ Sovereign Risk / Financial cross-domain ──
   { id: "ic_latency_risk__sr_china_gdp", source: "ic_latency_risk", target: "sr_china_gdp", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Sustained latency spikes disrupt China-Europe digital trade, cloud services, and financial settlement, dragging tech-dependent GDP growth." },
-  { id: "ic_red_sea_exposure__qf_strait_of_hormuz", source: "ic_red_sea_exposure", target: "qf_strait_of_hormuz", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat extends to Strait of Hormuz — same Houthi/Iran threat vector affects both cable and maritime chokepoints." },
+  { id: "ic_red_sea_exposure__si_hormuz_throughput", source: "ic_red_sea_exposure", target: "si_hormuz_throughput", weight: 0.65, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat extends to Strait of Hormuz — same Houthi/Iran threat vector affects both cable and maritime chokepoints." },
   { id: "ic_telecom_egypt__fc_sovereign_default", source: "ic_telecom_egypt", target: "fc_sovereign_default", weight: 0.4, lag: 3, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Telecom Egypt generates transit fees from 15+ cables; Egypt sovereign stress threatens state-owned operator and global data transit continuity." },
 
   // ── Saudi Aramco ↔ QAFCO / Financial cross-domain ──
   { id: "sa_yanbu_refinery__ic_red_sea_exposure", source: "sa_yanbu_refinery", target: "ic_red_sea_exposure", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Yanbu refinery exports via Red Sea — shared exposure corridor with undersea cables and shipping." },
-  { id: "sa_abqaiq_plants__fc_fx_pressure", source: "sa_abqaiq_plants", target: "fc_fx_pressure", weight: 0.5, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Abqaiq processes 7 Mbbl/d — disruption (as in 2019 drone attack) spikes oil prices, raising EM energy import bills and FX pressure." },
+  { id: "si_abqaiq_throughput__fc_fx_pressure", source: "si_abqaiq_throughput", target: "fc_fx_pressure", weight: 0.5, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Abqaiq processes 7 Mbbl/d — disruption (as in 2019 drone attack) spikes oil prices, raising EM energy import bills and FX pressure." },
   { id: "sa_juaymah_lpg_terminal__qf_qatar_energy_feedstock", source: "sa_juaymah_lpg_terminal", target: "qf_qatar_energy_feedstock", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Saudi LPG exports compete with Qatar gas liquids in Asian markets — pricing pressure transmits to feedstock allocation decisions." },
 
   // ── Supply Chain ↔ Infrastructure cross-domain ──
@@ -2699,8 +3195,7 @@ const EDGES: CausalEdge[] = [
   { id: "ic_latency_risk__fc_em_fx_reserves", source: "ic_latency_risk", target: "fc_em_fx_reserves", weight: 0.4, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Sustained latency erodes EM digital trade and remittance throughput, reducing FX inflows and gradually drawing down central bank reserves." },
 
   // Inbound cross-domain pressure on the cable cluster
-  { id: "mn_strait_of_hormuz__ic_red_sea_exposure", source: "mn_strait_of_hormuz", target: "ic_red_sea_exposure", weight: 0.55, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Hormuz tensions and Red Sea cable threats are coupled by the same Iran/Houthi axis — escalation in one chokepoint correlates with attacks on the other." },
-  { id: "qf_strait_of_hormuz__ic_red_sea_exposure", source: "qf_strait_of_hormuz", target: "ic_red_sea_exposure", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Joint maritime threat vector: Strait of Hormuz instability historically precedes Bab el-Mandeb / Red Sea cable attacks within the same conflict cycle." },
+  { id: "si_hormuz_throughput__ic_red_sea_exposure", source: "si_hormuz_throughput", target: "ic_red_sea_exposure", weight: 0.55, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "Hormuz tensions and Red Sea cable threats are coupled by the same Iran/Houthi axis — escalation in one chokepoint correlates with attacks on the other." },
   { id: "fc_sovereign_default__ic_telecom_egypt", source: "fc_sovereign_default", target: "ic_telecom_egypt", weight: 0.45, lag: 2, type: "temporal", confidence: 0.6, isInconsistent: false, physicalMechanism: "Egyptian sovereign distress tightens FX availability for Telecom Egypt's cable maintenance and capacity upgrades, degrading the global cable backbone." },
   { id: "sr_china_gdp__ic_latency_risk", source: "sr_china_gdp", target: "ic_latency_risk", weight: 0.35, lag: 2, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Chinese economic activity sets backbone traffic volume — surges and slumps modulate congestion-driven latency on shared trans-Eurasian routes." },
 
@@ -2762,6 +3257,141 @@ const EDGES: CausalEdge[] = [
   { id: "mi_capacity_utilization__ip_ppi_all_commodities", source: "mi_capacity_utilization", target: "ip_ppi_all_commodities", weight: 0.5, lag: 1, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Capacity utilization above ~80% signals supply bottlenecks and pricing power; producers raise commodity prices as slack evaporates." },
   { id: "ip_fed_funds_effective__mi_mortgage_rate_30y", source: "ip_fed_funds_effective", target: "mi_mortgage_rate_30y", weight: 0.65, lag: 1, type: "directed", confidence: 0.8, isInconsistent: false, physicalMechanism: "Fed funds rate anchors the short end of the yield curve; mortgage rates track the 10Y Treasury which responds to Fed policy path expectations." },
   { id: "mi_case_shiller_hpi__ip_cpi_oer", source: "mi_case_shiller_hpi", target: "ip_cpi_oer", weight: 0.55, lag: 6, type: "temporal", confidence: 0.7, isInconsistent: false, physicalMechanism: "Home price appreciation feeds into OER with 12-18 month lag as new leases gradually roll into the BLS rental sample." },
+
+  // ─── Physical → Inflation pass-through (audit-driven cross-domain) ─
+  // Weights are empirical — fitted with ARDL on monthly log-returns of
+  // IMF Pink Sheet + EIA-mirror commodity series, AIC-selected lags,
+  // Newey-West HAC standard errors. See research/macro/ for the full
+  // pipeline + research/macro/output/edge_fits.json for the per-edge
+  // fit record. weight = clip(|long_run_multiplier| × source_share, 0,
+  // 0.95) — i.e. expected % move in target under full source disruption.
+  // P1/P2/P4 channel fits sit at 90% confidence; P3 capped at 55%
+  // because shipping is fit through a partial proxy (Industrial Inputs
+  // index in lieu of an unreachable Baltic Dry / Drewry feed).
+
+  // ── P1: Energy → Inflation (channel: Brent → IMF Fuel Energy, β=0.918 [0.84, 1.00], n=303) ──
+  { id: "sa_ras_tanura_terminal__ip_cpi_energy", source: "sa_ras_tanura_terminal", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Ras Tanura handles ~6.5 Mbbl/d Saudi crude (~7% global). Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.07 source share.", weightSourceRef: "imf-fuel-energy-ardl", confidenceSourceRef: "imf-fuel-energy-ardl" },
+  { id: "si_abqaiq_throughput__ip_cpi_energy", source: "si_abqaiq_throughput", target: "ip_cpi_energy", weight: 0.064, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Abqaiq processes ~7 Mbbl/d (~7% global). 2019 drone attack drove +23% abnormal cumulative Brent return (t=2.26, 90d post-window) — consistent with the 0.918 channel elasticity applied to a 57.6% peak disruption.", weightSourceRef: "imf-fuel-energy-ardl", confidenceSourceRef: "eia-abqaiq-2019" },
+  { id: "si_hormuz_throughput__ip_cpi_energy", source: "si_hormuz_throughput", target: "ip_cpi_energy", weight: 0.184, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Hormuz carries ~20% of global oil transit. Empirical channel: Brent → IMF Fuel Energy long-run elasticity 0.918, scaled by 0.20 transit share.", weightSourceRef: "imf-fuel-energy-ardl", confidenceSourceRef: "eia-hormuz-chokepoint" },
+  { id: "qe_north_field_gas_field__ip_cpi_energy", source: "qe_north_field_gas_field", target: "ip_cpi_energy", weight: 0.092, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "North Field is ~25% of global LNG capacity. Empirical channel: Brent → IMF Fuel Energy elasticity 0.918, scaled by 0.10 (CPI energy is mostly oil; partial gas pass-through).", weightSourceRef: "imf-fuel-energy-ardl", confidenceSourceRef: "imf-fuel-energy-ardl" },
+  { id: "qe_ras_laffan_port__ip_ppi_energy", source: "qe_ras_laffan_port", target: "ip_ppi_energy", weight: 0.011, lag: 1, type: "directed", confidence: 0.82, isInconsistent: false, physicalMechanism: "Ras Laffan loads ~77 MTPA LNG. Empirical channel: Henry Hub natgas → IMF Fuel Energy refit, scaled by 0.10 source share.", weightSourceRef: "imf-fuel-energy-ardl", confidenceSourceRef: "imf-fuel-energy-ardl" },
+
+  // ── P2: Food/Fertilizer → Inflation (channel: Wheat → IMF Food Price Index, β=0.184, n=316; Industrial Inputs → All Commodity Index, n=446) ──
+  { id: "qf_global_food_prices__ip_cpi_food", source: "qf_global_food_prices", target: "ip_cpi_food", weight: 0.018, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Global food prices feed US CPI food via grain/protein channels. Empirical channel: Wheat → IMF Food Price Index long-run elasticity 0.184, scaled by 0.10 QAFCO-attributable share of global nitrogen-driven food cost.", weightSourceRef: "imf-wheat-food-ardl", confidenceSourceRef: "imf-wheat-food-ardl" },
+  { id: "mn_global_food_price_stress__ip_cpi_food", source: "mn_global_food_price_stress", target: "ip_cpi_food", weight: 0.022, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Phosphate-driven food stress propagates into US CPI food. Empirical channel: Wheat → IMF Food Price Index elasticity 0.184, scaled by 0.12 Ma'aden share of global DAP.", weightSourceRef: "imf-wheat-food-ardl", confidenceSourceRef: "imf-wheat-food-ardl" },
+  { id: "sc_food_price_inflation__ip_cpi_food", source: "sc_food_price_inflation", target: "ip_cpi_food", weight: 0.092, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "MENA food inflation tracks the same global wheat/oilseed cycle as US CPI food. Empirical channel: Wheat → IMF Food Price Index, scaled by 0.50 shared-cycle exposure.", weightSourceRef: "imf-wheat-food-ardl", confidenceSourceRef: "imf-wheat-food-ardl" },
+  { id: "sc_fertilizer_price_index__ip_ppi_all_commodities", source: "sc_fertilizer_price_index", target: "ip_ppi_all_commodities", weight: 0.118, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "Fertilizer cost shocks raise the all-commodities PPI index via farm-gate transmission. Empirical channel: IMF Industrial Inputs (fertilizer proxy) → All Commodity Index, scaled by 0.15.", weightSourceRef: "imf-industrial-inputs-allcommodity-ardl", confidenceSourceRef: "imf-industrial-inputs-allcommodity-ardl" },
+
+  // ── P3: Supply Chain → Goods inflation (channel: Industrial Inputs → All Commodity Index — partial proxy for shipping; confidence capped at 0.55) ──
+  { id: "sc_shipping_cost_index__ip_ppi_all_commodities", source: "sc_shipping_cost_index", target: "ip_ppi_all_commodities", weight: 0.235, lag: 1, type: "directed", confidence: 0.55, isInconsistent: false, physicalMechanism: "Container freight costs feed imported intermediate-goods prices. Partial-proxy channel: IMF Industrial Inputs → All Commodity Index (in lieu of unreachable Baltic Dry / Drewry feed), scaled by 0.30. Refit pending freight-index access." },
+  { id: "sc_shipping_cost_index__ip_cpi_goods", source: "sc_shipping_cost_index", target: "ip_cpi_goods", weight: 0.196, lag: 1, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Shipping cost → goods inflation pass-through. Partial-proxy channel: same Industrial Inputs → All Commodity fit, scaled by 0.25." },
+  { id: "ic_red_sea_exposure__ip_cpi_goods", source: "ic_red_sea_exposure", target: "ip_cpi_goods", weight: 0.157, lag: 1, type: "temporal", confidence: 0.55, isInconsistent: false, physicalMechanism: "Red Sea geopolitical threat vector raises imported-goods costs via shipping reroute. Partial-proxy channel through commodity-volatility transmission, scaled by 0.20." },
+
+  // ── P4: Sovereign → US Macro feedback (channel: China Iron-Ore → IMF Industrial Inputs, β=0.193, n=446) ──
+  { id: "sr_china_gdp__mi_ism_manufacturing", source: "sr_china_gdp", target: "mi_ism_manufacturing", weight: 0.077, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand drives US manufacturing PMI via export channel. Empirical channel: IMF China Iron-Ore (demand proxy) → IMF Industrial Inputs long-run elasticity 0.193, scaled by 0.40.", weightSourceRef: "imf-ironore-industrial-inputs-ardl", confidenceSourceRef: "imf-ironore-industrial-inputs-ardl" },
+  { id: "sr_china_gdp__mi_industrial_production", source: "sr_china_gdp", target: "mi_industrial_production", weight: 0.068, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China demand → US IP via supply-chain feedback. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.35.", weightSourceRef: "imf-ironore-industrial-inputs-ardl", confidenceSourceRef: "imf-ironore-industrial-inputs-ardl" },
+  { id: "sr_china_gdp__ip_ppi_all_commodities", source: "sr_china_gdp", target: "ip_ppi_all_commodities", weight: 0.106, lag: 1, type: "temporal", confidence: 0.9, isInconsistent: false, physicalMechanism: "China is the marginal commodity demand setter. Empirical channel: same Iron-Ore → Industrial Inputs fit, scaled by 0.55 (closest direct mapping among P4 edges).", weightSourceRef: "imf-ironore-industrial-inputs-ardl", confidenceSourceRef: "imf-ironore-industrial-inputs-ardl" },
+
+  // ─── DXY / USD-strength loop (closes the Fed → DXY → import-price → core CPI feedback) ─
+  // Empirical fits in research/macro/output/dxy_fits.json. Synthetic DXY is a
+  // geometric basket of EUR/JPY/GBP/CAD/SEK/CHF rebuilt monthly from the
+  // datasets/exchange-rates GitHub mirror; matches real-world DXY level to
+  // ~1% in 2026-03. Two channels are ARDL-fit; two are literature-cited
+  // because no EM-FX-pressure panel is reachable from this sandbox.
+  // Replaces the prior weak direct ip_fed_funds_effective → ip_dxy edge
+  // (β=+0.014, structural break flagged in OOS) with a two-step chain
+  // routed through the real-rate intermediary — the cleaner causal mechanism.
+  { id: "ip_fed_funds_effective__ip_real_rate_10y", source: "ip_fed_funds_effective", target: "ip_real_rate_10y", weight: 0.031, lag: 1, type: "directed", confidence: 0.51, isInconsistent: false, physicalMechanism: "Fed funds policy stance drives the long-end nominal yield, which feeds into the real rate after stripping inflation expectations. Empirical channel: US10y → synthetic real rate (constructed as us10y − 2.5%-anchored CPI-equivalent inflation proxy from IMF All Commodity smoothed YoY × 0.15 pass-through), long-run β=0.031 [-0.029, 0.091], n=280. Mechanical near-identity by construction — the meaningful empirical content sits in the next edge." },
+  { id: "ip_real_rate_10y__ip_dxy", source: "ip_real_rate_10y", target: "ip_dxy", weight: 0.6, lag: 6, type: "temporal", confidence: 0.65, isInconsistent: false, physicalMechanism: "Real-rate-differential channel: high US real rates pull capital in, strengthening the dollar. Engel-Mark-West 2007 + Stavrakeva-Tang 2024 estimate a 1pp rise in 10y real rate maps to +5-7% DXY appreciation over 12-18 months. Empirical refit on synthetic-proxy real rate (β=-0.000 [-0.001, 0.001], n=219) was too noisy for monthly returns — proxy doesn't separate real-rate moves from forward-guidance / risk-regime confounders. Literature-cited until FRED DFII10 (TIPS yield) becomes reachable.", weightSourceRef: "dxy-real-rate-literature", confidenceSourceRef: "dxy-real-rate-literature" },
+  { id: "ip_dxy__ip_cpi_goods", source: "ip_dxy", target: "ip_cpi_goods", weight: 0.749, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Stronger USD compresses USD-priced commodity inputs and import costs feeding into CPI goods. Empirical channel: synthetic DXY → IMF All Commodity Index long-run multiplier −0.749 [−1.19, −0.31], n=220 — strong, sign-correct, statistically significant. NEGATIVE-sign edge (graph weight is magnitude; sign captured separately by the inverse market mechanism in the description).", weightSourceRef: "dxy-allcommodity-ardl", confidenceSourceRef: "dxy-allcommodity-ardl" },
+  { id: "ip_dxy__fc_fx_pressure", source: "ip_dxy", target: "fc_fx_pressure", weight: 0.44, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "USD strength tightens dollar funding for EM corporates with dollar-denominated debt (Bruno-Shin 2015 / Hofmann-Patel-Wu 2022). Two empirical refits triangulate the channel: (1) monthly ARDL on 7-EM mirror panel (Brazil, India, Mexico, South Africa, Thailand, Malaysia, Sri Lanka): long-run β = 0.381 [0.27, 0.49], n=325, 1999-02 to 2026-03 — tight CI, excludes high-vol EMs; (2) annual pooled OLS on 15-EM PIMCO panel including Turkey + Argentina + Colombia + Egypt + Pakistan: β = 0.520 [0.10, 0.94], n=195, 2011-2024 — wider CI but captures the literature-anchored EM volatility. Weight 0.44 sits between the two point estimates; confidence 0.85 reflects cross-panel agreement on sign + magnitude.", weightSourceRef: "dxy-em-fx-ardl", confidenceSourceRef: "em-dollar-funding-literature" },
+  { id: "ip_dxy__fc_em_fx_reserves", source: "ip_dxy", target: "fc_em_fx_reserves", weight: 0.478, lag: 6, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "EM central banks burn FX reserves defending currencies as DXY strengthens; the 2022-23 cycle saw $400B+ in reserve drawdowns across major EMs. Empirical refit on PIMCO sovereign reserves panel (14 EMs, annual 2011-2024, n=195): pooled OLS Δlog(reserves) ~ Δlog(DXY) yields β = -0.478 [-1.01, +0.05], sign-correct (negative). Lag=6 reflects the gradual annual-cadence response (reserves drain over 6-12 months); fitted_weight is the magnitude. CI just touches zero — channel is real but identification benefits from longer panel.", weightSourceRef: "dxy-em-fx-ardl", confidenceSourceRef: "em-dollar-funding-literature" },
+
+  // ─── Frontier Science placeholder edges (4) ──────────────────────
+  // Low-confidence intra-domain links so the canvas renders the
+  // sub-network instead of disconnected nodes. Mechanisms are
+  // textbook (not refit). Refit pending the teammate physics drop —
+  // see graph-data.ts comment block above the fs_* nodes for the
+  // activation pattern. Tarski R-04 won't flag these (intra-domain).
+  { id: "fs_neutrino_mass_hierarchy__fs_proton_decay_search", source: "fs_neutrino_mass_hierarchy", target: "fs_proton_decay_search", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both observables constrain GUT-scale physics: neutrino-mass ordering selects between SU(5)/SO(10) embeddings that predict different proton-decay branching ratios. Confounded by the underlying GUT scale rather than direct causation." },
+  { id: "fs_dark_matter_direct__fs_axion_haloscope", source: "fs_dark_matter_direct", target: "fs_axion_haloscope", weight: 0.4, lag: 0, type: "confounded", confidence: 0.5, isInconsistent: false, physicalMechanism: "Both probe the dark sector but in complementary mass windows: WIMP TPCs cover GeV-TeV; axion haloscopes cover µeV. Coordinated by the global dark-sector exclusion plot — confounded edge reflects shared theoretical motivation, not flow." },
+  { id: "fs_gravitational_wave_obs__fs_hubble_tension", source: "fs_gravitational_wave_obs", target: "fs_hubble_tension", weight: 0.5, lag: 0, type: "directed", confidence: 0.55, isInconsistent: false, physicalMechanism: "Standard-siren H₀ measurements from binary-neutron-star mergers (GW170817-style) provide a third route to the Hubble parameter independent of the CMB and Cepheid ladders. Tension resolution depends on enough sirens to discriminate ~5σ between 67 and 73 km/s/Mpc." },
+  { id: "fs_gravitational_wave_obs__fs_neutrino_mass_hierarchy", source: "fs_gravitational_wave_obs", target: "fs_neutrino_mass_hierarchy", weight: 0.3, lag: 0, type: "confounded", confidence: 0.45, isInconsistent: false, physicalMechanism: "Multi-messenger supernova detection (gravitational waves + IceCube neutrinos) pins down absolute mass scale via flight-time differences — Σm_ν < 0.4 eV from SN1987A. Constrains hierarchy when combined with cosmological Σm_ν bounds. Weak edge: hasn't fired since 1987 and channel uncertainty is high." },
+
+  // ─── AI Safety / IDS edges (18) — Ghauri 2025 D.Eng. ─────────
+  // Dataset → Attack Class (containment, 9)
+  { id: "ais_cicids_2017__ais_attack_ddos", source: "ais_cicids_2017", target: "ais_attack_ddos", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 corpus contains the DDoS attack class as a labelled sub-population.", weightSourceRef: "cicids-2017-dataset", confidenceSourceRef: "cicids-2017-dataset" },
+  { id: "ais_cicids_2017__ais_attack_brute_force", source: "ais_cicids_2017", target: "ais_attack_brute_force", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 contains brute-force attack flows against SSH and FTP endpoints.", weightSourceRef: "cicids-2017-dataset", confidenceSourceRef: "cicids-2017-dataset" },
+  { id: "ais_cicids_2017__ais_attack_heartbleed", source: "ais_cicids_2017", target: "ais_attack_heartbleed", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "CICIDS-2017 includes Heartbleed exploit traffic — minority class, anchor for catastrophic-forgetting demos.", weightSourceRef: "cicids-2017-dataset", confidenceSourceRef: "cicids-2017-dataset" },
+  { id: "ais_unsw_nb15__ais_attack_exploits", source: "ais_unsw_nb15", target: "ais_attack_exploits", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 contains the Exploits attack class spanning memory-corruption and code-injection variants.", weightSourceRef: "unsw-nb15-dataset", confidenceSourceRef: "unsw-nb15-dataset" },
+  { id: "ais_unsw_nb15__ais_attack_dos", source: "ais_unsw_nb15", target: "ais_attack_dos", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 contains single-source DoS variants, distinct from CICIDS's multi-source DDoS class.", weightSourceRef: "unsw-nb15-dataset", confidenceSourceRef: "unsw-nb15-dataset" },
+  { id: "ais_unsw_nb15__ais_attack_fuzzers", source: "ais_unsw_nb15", target: "ais_attack_fuzzers", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "UNSW-NB15 captures mutation-based fuzzing payloads against network services.", weightSourceRef: "unsw-nb15-dataset", confidenceSourceRef: "unsw-nb15-dataset" },
+  { id: "ais_awid_h23q__ais_attack_wireless_injection", source: "ais_awid_h23q", target: "ais_attack_wireless_injection", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q's signature attack class — 802.11 frame injection at link layer.", weightSourceRef: "awid3-dataset", confidenceSourceRef: "awid3-dataset" },
+  { id: "ais_awid_h23q__ais_attack_spoofing", source: "ais_awid_h23q", target: "ais_attack_spoofing", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q contains MAC and association-replay spoofing attacks.", weightSourceRef: "awid3-dataset", confidenceSourceRef: "awid3-dataset" },
+  { id: "ais_awid_h23q__ais_attack_mitm", source: "ais_awid_h23q", target: "ais_attack_mitm", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "AWID-H23Q includes wireless MITM scenarios (rogue AP, evil-twin).", weightSourceRef: "awid3-dataset", confidenceSourceRef: "awid3-dataset" },
+
+  // Dataset → GAT (training input, 3)
+  { id: "ais_cicids_2017__ais_gat", source: "ais_cicids_2017", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "CICIDS-2017 traffic windows feed the continual GAT learner one epoch per window.", weightSourceRef: "ghauri-gat-continual-ids", confidenceSourceRef: "cicids-2017-dataset" },
+  { id: "ais_unsw_nb15__ais_gat", source: "ais_unsw_nb15", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "UNSW-NB15 flows feed the GAT in cross-corpus continual-learning evaluations.", weightSourceRef: "ghauri-gat-continual-ids", confidenceSourceRef: "unsw-nb15-dataset" },
+  { id: "ais_awid_h23q__ais_gat", source: "ais_awid_h23q", target: "ais_gat", weight: 0.85, lag: 1, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "AWID-H23Q wireless flows extend the GAT's training distribution to link-layer attack vectors.", weightSourceRef: "ghauri-gat-continual-ids", confidenceSourceRef: "awid3-dataset" },
+
+  // Internal architecture (6)
+  { id: "ais_training_scheduler__ais_gat", source: "ais_training_scheduler", target: "ais_gat", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Scheduler segments each corpus into 24 one-hour windows and gates one training epoch per window. Window granularity directly shapes the forgetting curve.", weightSourceRef: "ghauri-gat-continual-ids", confidenceSourceRef: "ghauri-gat-continual-ids" },
+  { id: "ais_gat__ais_attention_layer", source: "ais_gat", target: "ais_attention_layer", weight: 0.85, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Attention heads sit inside the GAT and emit per-edge attention weights α_e at inference time — the substrate for BES measurement.", weightSourceRef: "ghauri-bes-leading-indicator", confidenceSourceRef: "ghauri-bes-leading-indicator" },
+  { id: "ais_attention_layer__ais_replay_buffer", source: "ais_attention_layer", target: "ais_replay_buffer", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Attention-derived BES values inform which flows the replay buffer prioritises (χ★-incident flows enter at p=0.9).", weightSourceRef: "ghauri-bes-replay-selection", confidenceSourceRef: "ghauri-bes-replay-selection" },
+  { id: "ais_replay_buffer__ais_gat", source: "ais_replay_buffer", target: "ais_gat", weight: 0.65, lag: 1, type: "temporal", confidence: 0.8, isInconsistent: false, physicalMechanism: "Replay buffer feeds rehearsal samples back into the next-window training batch. Closes the topology-aware-replay loop; halves catastrophic forgetting in Ch 8 §6 experiments.", weightSourceRef: "ghauri-replay-forgetting-reduction", confidenceSourceRef: "ghauri-replay-forgetting-reduction" },
+  { id: "ais_gat__ais_eval_harness", source: "ais_gat", target: "ais_eval_harness", weight: 0.85, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Evaluation harness reads GAT predictions per window and computes FR, BES, HES, and F1 trajectories.", weightSourceRef: "ghauri-gat-continual-ids", confidenceSourceRef: "ghauri-gat-continual-ids" },
+  { id: "ais_eval_harness__ais_replay_buffer", source: "ais_eval_harness", target: "ais_replay_buffer", weight: 0.6, lag: 1, type: "temporal", confidence: 0.75, isInconsistent: false, physicalMechanism: "FR / BES outputs inform the next-window replay-buffer sampling weights — closing the structure-aware feedback loop between evaluation and training.", weightSourceRef: "ghauri-bes-replay-selection", confidenceSourceRef: "ghauri-replay-forgetting-reduction" },
+
+  // ── AI Safety / IDS ↔ Infrastructure / Financial cross-domain links (3) ──
+  // The IDS attack classes aren't only academic — they're the realised
+  // threat vectors that drive systemic-risk events in the geopolitical
+  // graph. DDoS targets telecom hubs → cascading latency; MITM targets
+  // cross-border banking → financial-message integrity loss.
+  { id: "ais_attack_ddos__ic_telecom_egypt", source: "ais_attack_ddos", target: "ic_telecom_egypt", weight: 0.55, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "DDoS attacks target telecom-aggregation hubs (Telecom Egypt's 10 landing stations are a high-value target by traffic concentration). Successful saturation cascades to all transit cables landing there." },
+  { id: "ais_attack_ddos__ic_latency_risk", source: "ais_attack_ddos", target: "ic_latency_risk", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Volumetric DDoS against transit infrastructure produces measurable latency spikes — the same risk surface measured by ic_latency_risk for cable-failure scenarios." },
+  { id: "ais_attack_mitm__fc_cross_border_banking", source: "ais_attack_mitm", target: "fc_cross_border_banking", weight: 0.5, lag: 1, type: "directed", confidence: 0.65, isInconsistent: false, physicalMechanism: "MITM attacks targeting interbank message integrity (SWIFT, downgrade, downgrade-after-handshake) erode the trust assumptions cross-border settlement depends on. Manifests as latency + reconciliation drift in the financial-contagion graph." },
+
+  // ─── Shared Infrastructure → Domain cross-domain edges (Phase 16) ──
+  // The new canonical facet nodes (si_hormuz_*) feed the existing
+  // per-domain Hormuz copies (si_hormuz_throughput (formerly qf_/mn_strait_of_hormuz)) which keep their
+  // downstream edges intact. This is the additive-pilot pattern: the
+  // facets get live data, the per-domain nodes continue propagating
+  // cascade into their domain's downstream operations. A follow-up PR
+  // will migrate downstream edges directly off the facets and delete
+  // the per-domain copies.
+  //
+  // The intra-facet relationship: throughput is bounded by capacity;
+  // war-risk premium negatively correlates with effective throughput
+  // (high risk = forced reroute = lower realized throughput at Hormuz
+  // specifically). Both relationships have high confidence — they're
+  // mechanical, not statistical.
+  { id: "si_hormuz_capacity__si_hormuz_throughput", source: "si_hormuz_capacity", target: "si_hormuz_throughput", weight: 0.9, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Physical capacity sets the upper bound on observed throughput. Realized throughput operates below capacity except in rare full-saturation episodes — the throughput/capacity ratio is the canonical chokepoint-stress signal (Tarski A-04)." },
+  { id: "si_hormuz_war_risk_premium__si_hormuz_throughput", source: "si_hormuz_war_risk_premium", target: "si_hormuz_throughput", weight: 0.7, lag: 1, type: "directed", confidence: 0.85, isInconsistent: false, physicalMechanism: "Elevated war-risk premium causes tanker operators to reroute via SUMED, longer Cape Horn alternatives, or to delay shipments — directly reducing observed Hormuz throughput. Empirically: 2019 Gulf incidents reduced monthly Hormuz throughput by 12-18% vs prior 12-month average." },
+
+  // Facet → per-domain Hormuz copies. Higher-confidence cross-domain
+  // edges because the per-domain nodes are CURRENTLY the only consumers
+  // of the throughput signal (will be eliminated in the follow-up PR).
+
+  // Cross-domain bridges: war-risk premium directly affects Financial
+  // Contagion (insurance / OAS pricing) and Supply Chain (food shipping
+  // costs route around the strait). These are NEW signal paths the
+  // single-node design couldn't carry — facet decomposition unlocks
+  // them by separating the risk facet from the throughput facet.
+  { id: "si_hormuz_war_risk_premium__sc_shipping_cost_index", source: "si_hormuz_war_risk_premium", target: "sc_shipping_cost_index", weight: 0.6, lag: 1, type: "directed", confidence: 0.75, isInconsistent: false, physicalMechanism: "Gulf war-risk spikes drive marine insurance premiums (Lloyd's W3 list inclusion) and trigger Suez/Cape rerouting decisions — both feed directly into the Cass Freight Expenditures Index. Channel was hidden in the single-node Hormuz design because throughput-and-risk were conflated." },
+
+  // ── Abqaiq Plants facets (Phase 16 second pilot)
+  // Intra-facet: capacity bounds throughput; war-risk reduces effective throughput
+  { id: "si_abqaiq_capacity__si_abqaiq_throughput", source: "si_abqaiq_capacity", target: "si_abqaiq_throughput", weight: 0.85, lag: 0, type: "directed", confidence: 0.95, isInconsistent: false, physicalMechanism: "Facility capacity sets the upper bound on processed volume. Realized throughput operates below capacity except in peak demand episodes — the throughput/capacity ratio is the analog of the Hormuz chokepoint-stress signal for processing facilities." },
+  { id: "si_abqaiq_war_risk_premium__si_abqaiq_throughput", source: "si_abqaiq_war_risk_premium", target: "si_abqaiq_throughput", weight: 0.6, lag: 0, type: "directed", confidence: 0.9, isInconsistent: false, physicalMechanism: "Elevated war-risk premium triggers preemptive throughput reduction (planned maintenance, dispersal of inventory) and forces post-incident shutdowns. 2019 drone strike took 5.7 mb/d offline immediately and ~3 mb/d for the following 2 weeks — the canonical realized impact path." },
+
+  // Facet → legacy per-domain copy (backward compat during transition)
+
+  // Cross-domain bridge: Abqaiq war-risk premium spills into Financial
+  // Contagion via high-yield OAS pricing (oil-shock proxy) and the
+  // Saudi sovereign-default channel. This is a NEW signal path that
+  // wasn't expressible in the single-node Abqaiq design.
+  { id: "si_abqaiq_war_risk_premium__fc_sovereign_default", source: "si_abqaiq_war_risk_premium", target: "fc_sovereign_default", weight: 0.5, lag: 1, type: "directed", confidence: 0.7, isInconsistent: false, physicalMechanism: "Abqaiq disruption directly threatens Saudi oil revenue and crowd-out of sovereign-debt servicing. 2019 strike triggered measurable HY OAS spike (BAMLH0A0HYM2 jumped 40 bp in the following week). Channel was implicit in the single-node Abqaiq design but couldn't be assigned to a specific facet — now lives on the war-risk facet where it semantically belongs." },
 ];
 
 const METADATA: GraphMetadata = {
@@ -2778,20 +3408,6 @@ export const MAIN_GRAPH: CausalGraph = {
   nodes: NODES,
   edges: EDGES,
   metadata: METADATA,
-};
-
-export const EMPTY_GRAPH: CausalGraph = {
-  nodes: [],
-  edges: [],
-  metadata: {
-    density: 0,
-    constraintType: "none",
-    verificationStatus: "UNVERIFIED",
-    totalNodes: 0,
-    totalEdges: 0,
-    inconsistentEdges: 0,
-    restrictedNodes: 0,
-  },
 };
 
 // ─── DCD Sub-Graph (for Trinity Panel) ───────────────────────────
@@ -2838,79 +3454,6 @@ export const FCI_EDGES: CausalEdge[] = EDGES.filter(
     (FCI_NODES.some((n) => n.id === e.source) &&
       FCI_NODES.some((n) => n.id === e.target))
 );
-
-// ─── Risk Cards Builder ──────────────────────────────────────────
-export function buildRiskCards(
-  graph: CausalGraph,
-  shocks: CausalShock[]
-): RiskPropagationCard[] {
-  const totalSeverity = shocks.reduce((sum, s) => sum + s.severity, 0);
-  const shockMultiplier = Math.min(1, totalSeverity);
-
-  return graph.nodes
-    .map((node) => ({
-      nodeId: node.id,
-      label: node.label,
-      category: node.category,
-      omegaScore: parseFloat(
-        (node.omegaFragility.composite * (1 + shockMultiplier * 0.05)).toFixed(1)
-      ),
-      domain: node.domain,
-      globalConcentration: node.globalConcentration,
-    }))
-    .sort((a, b) => b.omegaScore - a.omegaScore)
-    .slice(0, 6);
-}
-
-// ─── Category Colors ─────────────────────────────────────────────
-export function getCategoryColor(category: string): string {
-  switch (category) {
-    case "manufacturing": return "#00e5ff";
-    case "infrastructure": return "#7c4dff";
-    case "economic": return "#ffab00";
-    case "finance": return "#ff6d00";
-    case "energy": return "#00e676";
-    case "geopolitical": return "#ff1744";
-    case "communications": return "#448aff";
-    case "agriculture": return "#76ff03";
-    case "science": return "#e040fb";
-    default: return "#5a5e72";
-  }
-}
-
-export function getCategoryLabel(category: string): string {
-  return category.toUpperCase();
-}
-
-// ─── Domain Colors ───────────────────────────────────────────────
-export function getDomainColor(domain: string): string {
-  switch (domain) {
-    case "Saudi Aramco Energy": return "#00e676";
-    case "QatarEnergy LNG": return "#00e5ff";
-    case "QAFCO Fertilizer": return "#76ff03";
-    case "Ma'aden Phosphate": return "#ffab00";
-    case "Financial Contagion": return "#ff6d00";
-    case "Sovereign Risk": return "#ffab00";
-    case "Supply Chain Food Security": return "#00e5ff";
-    case "Undersea Cable Infrastructure": return "#7c4dff";
-    case "Macro Impact: Labor, Growth & Housing": return "#40c4ff";
-    case "Macro Impact: Inflation & Policy": return "#ff80ab";
-    // Defense & ISR (ATHENA) domains
-    case "Drone Swarms": return "#ff4081";       // pink
-    case "SATCOM": return "#448aff";             // blue
-    case "ISR Fusion": return "#ea80fc";         // purple-pink
-    case "Chip Embargo": return "#ff9100";       // deep orange
-    case "Secure Compute": return "#69f0ae";     // mint green
-    case "Kill Chain": return "#ff1744";         // red
-    // Life sciences (T1D β-cell) domains
-    case "T1D Autoimmune": return "#ff80ab";     // soft pink
-    case "T1D \u03B2-cell Biology": return "#40c4ff"; // T1D brand cyan
-    case "T1D Metabolic": return "#69f0ae";      // mint green
-    case "T1D Intervention": return "#ffab00";   // amber
-    case "T1D Complications": return "#ff6d00";  // deep orange
-    default: return "#5a5e72";
-  }
-}
 
 // ─── Node Domain Map (for cross-domain edge detection) ───────────
 export function getNodeDomainMap(): Record<string, string> {

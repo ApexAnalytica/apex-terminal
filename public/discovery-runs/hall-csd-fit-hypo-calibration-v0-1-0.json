@@ -1,0 +1,238 @@
+{
+  "id": "651d9f61-aab0-4c4b-9d1a-0b2565ae33f5",
+  "cohortId": "hall-cgm-2018",
+  "cohortSourceHash": "903256ffb5977c770db355c798ac98a720e741a9af6b1e757f13e97b4fa1cca9",
+  "algorithm": {
+    "id": "csd-fit-hypo-calibration",
+    "version": "0.1.0"
+  },
+  "params": {
+    "cgmVariableId": "cgm_glucose_mgdl",
+    "hypoThresholdMgdl": 70,
+    "predictionHorizonMin": 30,
+    "gridSeconds": 300,
+    "windowSize": 24,
+    "minPointsPerSubject": 50,
+    "nReliabilityBins": 10,
+    "bootstrapSamples": 100,
+    "bootstrapLevel": 0.9,
+    "bootstrapSeed": 11134917
+  },
+  "startedAt": "2026-05-05T22:01:32.560Z",
+  "completedAt": "2026-05-05T22:01:33.035Z",
+  "status": "succeeded",
+  "result": {
+    "variables": [
+      "cgm_glucose_mgdl"
+    ],
+    "edges": [],
+    "diagnostics": {
+      "aurocFitHigh": 0.5029296551270095,
+      "aurocFitLow": 0.4970703448729905,
+      "brierScore": 0.09250722664126793,
+      "ece": 0.20025812739845758,
+      "meanCiHalfWidth": 0.11839192509231747,
+      "baseRate": 0.02729163777562058,
+      "nPairs": 36055,
+      "nSubjects": 19,
+      "reliabilityBins": [
+        {
+          "binLow": 0,
+          "binHigh": 0.1,
+          "predictedMean": 0.03131714172213645,
+          "observedRate": 0.028875865743207246,
+          "count": 9385
+        },
+        {
+          "binLow": 0.1,
+          "binHigh": 0.2,
+          "predictedMean": 0.152343370772795,
+          "observedRate": 0.02721291866028708,
+          "count": 6688
+        },
+        {
+          "binLow": 0.2,
+          "binHigh": 0.3,
+          "predictedMean": 0.24954672522414897,
+          "observedRate": 0.021065830721003136,
+          "count": 7975
+        },
+        {
+          "binLow": 0.3,
+          "binHigh": 0.4,
+          "predictedMean": 0.3472647042346392,
+          "observedRate": 0.02874453994645625,
+          "count": 7097
+        },
+        {
+          "binLow": 0.4,
+          "binHigh": 0.5,
+          "predictedMean": 0.4406257651292312,
+          "observedRate": 0.033137194177764014,
+          "count": 3229
+        },
+        {
+          "binLow": 0.5,
+          "binHigh": 0.6,
+          "predictedMean": 0.5406160964543638,
+          "observedRate": 0.028790786948176585,
+          "count": 1042
+        },
+        {
+          "binLow": 0.6,
+          "binHigh": 0.7,
+          "predictedMean": 0.6440569646564388,
+          "observedRate": 0.04,
+          "count": 400
+        },
+        {
+          "binLow": 0.7,
+          "binHigh": 0.8,
+          "predictedMean": 0.7416072327617025,
+          "observedRate": 0.026490066225165563,
+          "count": 151
+        },
+        {
+          "binLow": 0.8,
+          "binHigh": 0.9,
+          "predictedMean": 0.8387423324096309,
+          "observedRate": 0,
+          "count": 41
+        },
+        {
+          "binLow": 0.9,
+          "binHigh": 1,
+          "predictedMean": 0.9947600680582623,
+          "observedRate": 0.0425531914893617,
+          "count": 47
+        }
+      ],
+      "perSubject": [
+        {
+          "id": "hall-1636-69-001",
+          "nPairs": 1870,
+          "nEvents": 35,
+          "meanF": 0.21749703647092544
+        },
+        {
+          "id": "hall-1636-69-026",
+          "nPairs": 1830,
+          "nEvents": 0,
+          "meanF": 0.22143921405671285
+        },
+        {
+          "id": "hall-1636-69-032",
+          "nPairs": 1753,
+          "nEvents": 6,
+          "meanF": 0.2324452997359892
+        },
+        {
+          "id": "hall-1636-69-090",
+          "nPairs": 1939,
+          "nEvents": 26,
+          "meanF": 0.2264439206239661
+        },
+        {
+          "id": "hall-1636-69-091",
+          "nPairs": 1820,
+          "nEvents": 0,
+          "meanF": 0.22645634733062986
+        },
+        {
+          "id": "hall-1636-69-114",
+          "nPairs": 1782,
+          "nEvents": 0,
+          "meanF": 0.237529549845478
+        },
+        {
+          "id": "hall-1636-70-1005",
+          "nPairs": 1903,
+          "nEvents": 37,
+          "meanF": 0.22586691024731703
+        },
+        {
+          "id": "hall-1636-70-1010",
+          "nPairs": 1866,
+          "nEvents": 55,
+          "meanF": 0.23966025037938574
+        },
+        {
+          "id": "hall-2133-004",
+          "nPairs": 1752,
+          "nEvents": 26,
+          "meanF": 0.2467448999760408
+        },
+        {
+          "id": "hall-2133-015",
+          "nPairs": 1896,
+          "nEvents": 58,
+          "meanF": 0.22498177037968972
+        },
+        {
+          "id": "hall-2133-017",
+          "nPairs": 1819,
+          "nEvents": 6,
+          "meanF": 0.2253446346075719
+        },
+        {
+          "id": "hall-2133-018",
+          "nPairs": 1754,
+          "nEvents": 0,
+          "meanF": 0.24068333142646928
+        },
+        {
+          "id": "hall-2133-019",
+          "nPairs": 1828,
+          "nEvents": 44,
+          "meanF": 0.23562233947265476
+        },
+        {
+          "id": "hall-2133-021",
+          "nPairs": 1790,
+          "nEvents": 21,
+          "meanF": 0.23070550453645902
+        },
+        {
+          "id": "hall-2133-024",
+          "nPairs": 1830,
+          "nEvents": 164,
+          "meanF": 0.22961972824744548
+        },
+        {
+          "id": "hall-2133-027",
+          "nPairs": 2054,
+          "nEvents": 137,
+          "meanF": 0.2059280964547547
+        },
+        {
+          "id": "hall-2133-035",
+          "nPairs": 1935,
+          "nEvents": 16,
+          "meanF": 0.22584447252087908
+        },
+        {
+          "id": "hall-2133-036",
+          "nPairs": 2268,
+          "nEvents": 174,
+          "meanF": 0.21212375085535554
+        },
+        {
+          "id": "hall-2133-039",
+          "nPairs": 2366,
+          "nEvents": 179,
+          "meanF": 0.2271570772184304
+        }
+      ],
+      "validatedSubScores": [
+        "F",
+        "F-bootstrap-CI"
+      ],
+      "degenerateSubScores": [
+        "E",
+        "G-spectral",
+        "S-edges",
+        "M"
+      ]
+    }
+  }
+}

@@ -6,7 +6,7 @@ import { useApexStore } from "@/stores/useApexStore";
 import { computeOmegaState, computeDoomsdayState, computeAlertLevel } from "@/lib/omega-engine";
 import CDOmegaMonitor from "../CDOmegaMonitor";
 import ImportButton from "@/components/import/ImportButton";
-import { EMPTY_GRAPH } from "@/lib/graph-data";
+import { EMPTY_GRAPH } from "@/lib/graph-color";
 import { ModuleId } from "@/lib/types";
 
 const MODULE_TABS: { id: ModuleId; label: string; icon: string; color: string }[] = [

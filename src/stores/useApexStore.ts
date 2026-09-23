@@ -3,24 +3,92 @@ import {
   CausalShock,
   CausalNode,
   CausalEdge,
+  EdgeType,
   ModuleId,
   ViewMode,
+  NodeSizeMetric,
   TruthFilter,
   CopilotMessage,
   CausalGraph,
   EpochSnapshot,
   TimelineId,
+  LiveDataPoint,
+  LIVE_HISTORY_MAX,
+  upsertLiveSignal,
 } from "@/lib/types";
+import type { FeedDispatchBatch } from "@/lib/feeds/providers/types";
 import type { InterdictionResult } from "@/lib/interdiction-engine";
 import type { TrialPrior } from "@/lib/trial-prior";
 import type { SystemStateSnapshot } from "@/lib/snapshots/types";
-import { validateSnapshot } from "@/lib/snapshots/tarski-validator";
 import {
-  runTarskiValidation,
+  loadGraphCalcHistory,
+  saveGraphCalcHistory,
+  loadNodeCalcHistory,
+  saveNodeCalcHistory,
+  type NodeCalcHistory,
+} from "@/lib/calc-history-persistence";
+import {
+  loadAxiomInteractionHistory,
+  saveAxiomInteractionHistory,
+  type AxiomInteractionHistory,
+} from "@/lib/axiom-interaction-persistence";
+import { record as recordPerf } from "@/lib/perf/instrument";
+
+// Mirrors instrument.ts's internal ENABLED gate so hot-path call sites
+// can skip even the cheap performance.now() in production. Keeping the
+// constant local avoids exporting an internal from the perf module.
+const ENABLED_PERF =
+  typeof window !== "undefined" &&
+  typeof performance !== "undefined" &&
+  process.env.NODE_ENV !== "production";
+
+import {
+  loadBottomDockCollapsed,
+  saveBottomDockCollapsed,
+  loadWatchlistCollapsed,
+  saveWatchlistCollapsed,
+  loadPinnedSeries,
+  savePinnedSeries,
+  loadSeveredEdges,
+  saveSeveredEdges,
+  loadEnabledAxioms,
+  saveEnabledAxioms,
+  loadSnapshotHistory,
+  saveSnapshotHistory,
+  loadViewMode,
+  saveViewMode,
+  loadActiveModule,
+  saveActiveModule,
+  loadNodeSizeMetric,
+  saveNodeSizeMetric,
+  loadVisibleEdgeTypes,
+  saveVisibleEdgeTypes,
+  loadTruthFilter,
+  saveTruthFilter,
+  loadActivePersona,
+  saveActivePersona,
+  loadSelectedDataSources,
+  saveSelectedDataSources,
+} from "@/lib/ui-prefs-persistence";
+// `applyTarskiFlags`, `clearTarskiFlags`, and the `TarskiValidationReport`
+// type live in the lightweight `tarski-flags.ts`. `runTarskiValidation`
+// stays in `tarski-data.ts` next to the 891-LOC AXIOM_LIBRARY +
+// 800-LOC validation engine and is dynamic-imported below — verified
+// mode is opt-in (user clicks the truth filter), so the heavy chunk
+// only loads once per session at the first verified-mode trigger.
+import {
   applyTarskiFlags,
   clearTarskiFlags,
   type TarskiValidationReport,
-} from "@/lib/tarski-data";
+} from "@/lib/tarski-flags";
+import { applyOmegaLiveAdjustments } from "@/lib/omega-pillar-wiring";
+import { applyCrossDomainBridges, AUTO_BRIDGE_ID_PREFIX } from "@/lib/cross-domain-bridging";
+// `resolveDomainProfile` lives in `domain-profiles.ts` (480 LOC of profile
+// data: three big profile objects + pillar labels + estimator configs).
+// The store's four use sites are all inside the deferred Tarski `.then()`
+// blocks below — combine the imports so the heavy profile data only
+// loads when tarski validation is actually needed.
+import type { PillarKey } from "@/lib/domain-profiles";
 
 export interface ImportedDataset {
   id: string;
@@ -41,15 +109,107 @@ export const DATASET_COLORS = [
   "#448aff", // blue
   "#76ff03", // lime
 ];
-import { mergeGraphs } from "@/lib/import/merge";
-import { EMPTY_GRAPH } from "@/lib/graph-data";
-import { simulateCascade } from "@/lib/cascade-simulator";
-import type { LLMProvider } from "@/lib/llm-providers";
-import type { TimeGranularity, TemporalDataset } from "@/lib/temporal-data";
-import { generateTemporalData } from "@/lib/temporal-data";
-import { loadRealTemporalData } from "@/lib/real-timeseries";
+import { EMPTY_GRAPH } from "@/lib/graph-color";
+// `cascade-simulator` is a 446-LOC module only used by the three replay-
+// related actions below (`replayWithIntervention`, `startReplay`,
+// `branchReplay`). All three are fire-and-forget — they kick off the
+// async sim and write results back into the store via `.then()`. So we
+// import the module dynamically at the call sites; the eager-bundle
+// pays nothing on initial paint.
+async function loadSimulateCascadeAsync() {
+  const mod = await import("@/lib/cascade-simulator");
+  return mod.simulateCascadeAsync;
+}
 
-interface ApexState {
+// `import/merge` (mergeGraphs) is only called when the user clicks IMPORT
+// in the lazy-loaded ImportModal. `snapshots/tarski-validator`
+// (validateSnapshot) is only called when the user saves a snapshot via
+// the lazy-loaded SystemCopilot. Both action handlers are
+// fire-and-forget (callers don't await), so we dynamic-import the heavy
+// helper inside each action and call `set` from within the resolved
+// promise. Keeps the modules out of the initial-paint bundle.
+async function loadMergeGraphs() {
+  const mod = await import("@/lib/import/merge");
+  return mod.mergeGraphs;
+}
+async function loadValidateSnapshot() {
+  const mod = await import("@/lib/snapshots/tarski-validator");
+  return mod.validateSnapshot;
+}
+import type { LLMProvider } from "@/lib/llm-providers";
+import type { TimeGranularity, TemporalDataset, TemporalEvent } from "@/lib/temporal-data";
+import type { TrainingTrace } from "@/lib/discovery/training-trace-types";
+
+/** Cap on how many feed-emitted events we retain in temporalData.events.
+ *  Events are de-duped by id, so monthly/weekly upstream cadences mean this
+ *  cap is rarely hit in practice. */
+const FEED_EVENT_CAP = 200;
+
+/** Append a TemporalEvent to the existing temporalData. Returns null if no
+ *  graph (and thus no temporal store) is loaded yet, so callers can spread
+ *  the result conditionally without overwriting state with null. */
+function appendFeedEvent(
+  current: TemporalDataset | null,
+  event: TemporalEvent,
+): TemporalDataset | null {
+  if (!current) return null;
+  // De-dupe by id so retries / cache hits don't spam the timeline.
+  if (current.events.some((e) => e.id === event.id)) return null;
+  const events = [...current.events, event];
+  // Retain only the most recent FEED_EVENT_CAP non-template events.
+  // Static template events are kept as-is; live ones get a unique id prefix.
+  const trimmed = events.length > FEED_EVENT_CAP * 2
+    ? events.slice(-FEED_EVENT_CAP * 2)
+    : events;
+  // Range may need to extend if a live event lands outside the existing
+  // window (e.g. a fresh "now" event after only historical events).
+  const eventMs = event.date.getTime();
+  const rangeEnd = eventMs > current.rangeEnd.getTime() ? event.date : current.rangeEnd;
+  const rangeStart = eventMs < current.rangeStart.getTime() ? event.date : current.rangeStart;
+  return { ...current, events: trimmed, rangeStart, rangeEnd };
+}
+
+// `temporal-data` (334 LOC, `generateTemporalData` — synthetic timeline
+// fallback) and `real-timeseries` (426 LOC, `loadRealTemporalData` —
+// network fetcher + per-node history hydration) are only used by
+// `initTemporalData` below, which fires once after the user lands on a
+// workspace (graph mutation triggers the call). Lazy-import both so they
+// don't ride along on the initial-paint bundle.
+async function loadGenerateTemporalData() {
+  const mod = await import("@/lib/temporal-data");
+  return mod.generateTemporalData;
+}
+async function loadLoadRealTemporalData() {
+  const mod = await import("@/lib/real-timeseries");
+  return mod.loadRealTemporalData;
+}
+
+// `runTarskiValidation` (AXIOM_LIBRARY + validation engine, ~1700 LOC)
+// and `resolveDomainProfile` (480 LOC of profile data) are both only
+// needed when the user enables verified mode. Co-load them so both
+// chunks defer until first use. Parallel `Promise.all` keeps the
+// first-load latency to a single network round-trip.
+async function loadTarskiHelpers() {
+  const [tarski, profiles] = await Promise.all([
+    import("@/lib/tarski-data"),
+    import("@/lib/domain-profiles"),
+  ]);
+  return {
+    runTarskiValidation: tarski.runTarskiValidation,
+    resolveDomainProfile: profiles.resolveDomainProfile,
+  };
+}
+
+// Drop pinned time-series ids that no longer exist in the graph. Returns the
+// same array when nothing changes so Zustand subscribers don't re-render.
+function prunePinsToGraph(graph: CausalGraph, pins: string[]): string[] {
+  if (pins.length === 0) return pins;
+  const validIds = new Set(graph.nodes.map((n) => n.id));
+  const filtered = pins.filter((id) => validIds.has(id));
+  return filtered.length === pins.length ? pins : filtered;
+}
+
+export interface ApexState {
   // Module navigation
   activeModule: ModuleId;
   setActiveModule: (id: ModuleId) => void;
@@ -68,6 +228,17 @@ interface ApexState {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
 
+  /**
+   * Drives 3D orb size. The 3D view can map the radius to either the
+   * static ΩF composite or to one of the live network-analysis metrics
+   * (eigenvector / betweenness centrality). Both centrality metrics are
+   * already computed during layout and surfaced in the right-side
+   * Network Analysis panel; this toggle lets the user swap which signal
+   * the orbs encode without leaving the canvas.
+   */
+  nodeSizeMetric: NodeSizeMetric;
+  setNodeSizeMetric: (metric: NodeSizeMetric) => void;
+
   // Truth filter
   truthFilter: TruthFilter;
   setTruthFilter: (f: TruthFilter) => void;
@@ -75,14 +246,151 @@ interface ApexState {
   enabledAxioms: Set<string>;
   setEnabledAxioms: (axioms: Set<string>) => void;
   runTarskiWithAxioms: () => void;
+  /**
+   * Apply a generic feed-provider dispatch batch:
+   *  - Upserts the new `liveData` point on each `nodeId` in `updates`.
+   *  - Drops any existing signals of `signalKinds` from nodes NOT in `updates`
+   *    (so e.g. an OFAC tick that no longer matches Iran lifts the stale flag).
+   *  - Appends a `TemporalEvent` if `event` is provided (deduped by id).
+   *  - Re-runs Tarski validation when `truthFilter === "verified"`.
+   */
+  applyFeedBatch: (batch: FeedDispatchBatch) => void;
+
+  /**
+   * Push a calculation result onto a node's `liveData[]` as a TimeDial
+   * snapshot. Drives the "→ DIAL" affordance in the CALCULATIONS panel:
+   * each press appends to the node's history via `upsertLiveSignal`,
+   * making the calculation scrubbable on the TimeDial and renderable
+   * in the time-series cards. Unlike `applyFeedBatch`, this is purely
+   * additive — no kind-cleanup, so manual snapshots from different
+   * nodes don't clobber each other.
+   */
+  pushCalculationSnapshot: (nodeId: string, point: LiveDataPoint) => void;
+
+  /**
+   * History of graph-wide calculation snapshots, keyed by calc id.
+   * Populated by `pushGraphCalcSnapshot` from the CALCULATIONS panel
+   * when a graph-wide calc (mean ΩF, cross-domain edges, etc.) is
+   * pushed. Capped at LIVE_HISTORY_MAX entries per calc.
+   */
+  graphCalcHistory: Record<string, { value: number; observedAt: string }[]>;
+  /** Append a snapshot for a graph-wide calc; rolling-cap at LIVE_HISTORY_MAX.
+   *  Persists the updated history to localStorage (best-effort). */
+  pushGraphCalcSnapshot: (calcId: string, value: number) => void;
+
+  /**
+   * Persistent mirror of node-scoped calc-kind LiveDataPoints, keyed
+   * by nodeId. Each entry holds the latest calc-kind point per kind
+   * (the point's embedded `history` array carries the full trajectory).
+   * Written by pushCalculationSnapshot and hydrated by
+   * hydrateNodeCalcHistory.
+   */
+  nodeCalcHistory: NodeCalcHistory;
+  /** Hydrate graphCalcHistory from localStorage. Called from a client
+   *  effect after mount (not at store-create time) to avoid an SSR
+   *  hydration mismatch — the server renders with {}, the client merges
+   *  persisted history in post-hydration. Merge is non-destructive:
+   *  any in-memory entries pushed before hydration are preserved. */
+  hydrateGraphCalcHistory: () => void;
+
+  /** Hydrate node-scoped calc trajectories from localStorage. Each
+   *  persisted entry is a calc-kind LiveDataPoint (with embedded
+   *  `history` array) that gets replayed into the matching node's
+   *  liveData via upsertLiveSignal. Same SSR-safe post-mount pattern
+   *  as hydrateGraphCalcHistory. */
+  hydrateNodeCalcHistory: () => void;
+
+  /**
+   * Tracks which Tarski axioms the user has clicked into and when.
+   * Drives the recommender's decayed-recency boost — an axiom the
+   * user has investigated recently surfaces in the recommended list
+   * even when no node selection / structural feature lights it up.
+   *
+   * Persisted to localStorage via axiom-interaction-persistence so the
+   * memory survives reloads (and travel between machines via the
+   * sessions/MD-sync workflow, eventually).
+   */
+  axiomInteractionHistory: AxiomInteractionHistory;
+  /** Record an axiom interaction (the user expanded its card).
+   *  Increments clickCount + bumps lastClickedAt to now. Persists. */
+  recordAxiomInteraction: (axiomId: string) => void;
+  /** Hydrate axiom interaction history from localStorage. SSR-safe
+   *  post-mount pattern. */
+  hydrateAxiomInteractionHistory: () => void;
 
   // Selected node (focus)
   selectedNode: string | null;
   setSelectedNode: (nodeId: string | null) => void;
 
+  // Inferred-latent selection — a SEPARATE channel from selectedNode so latent
+  // overlay ids (latent__…) never reach the node-selection consumers
+  // (NodeInspector / 3D highlight / copilot focus / temporal). Mutually
+  // exclusive with node + edge selection.
+  selectedLatentId: string | null;
+  setSelectedLatentId: (id: string | null) => void;
+
+  // Which pillar (if any) is expanded inside NodeInspector. Lifted from
+  // NodeInspector local state to the store so the onboarding tour can
+  // gate the "click a pillar vertex" step on real interaction (the
+  // node-inspector step's awaitInteraction predicate reads this).
+  // Reset to null whenever the selected node changes — explanation card
+  // is per-node, not per-app.
+  expandedPillar: PillarKey | null;
+  setExpandedPillar: (key: PillarKey | null) => void;
+
+  /** Bottom time-series dock collapsed state. Persisted to localStorage
+   *  (see ui-prefs-persistence) so the user's choice to reclaim canvas
+   *  room survives reloads. Defaults to expanded; hydrated post-mount via
+   *  hydrateBottomDockCollapsed to avoid an SSR hydration mismatch. */
+  bottomDockCollapsed: boolean;
+  setBottomDockCollapsed: (collapsed: boolean) => void;
+  hydrateBottomDockCollapsed: () => void;
+
+  /** Watchlist column (inside the dock) collapsed-to-left state.
+   *  Independent of the whole-dock collapse: the user can shrink just
+   *  the watchlist rail to a narrow strip and let the chart fill the
+   *  freed width while keeping both surfaces visible. */
+  watchlistCollapsed: boolean;
+  setWatchlistCollapsed: (collapsed: boolean) => void;
+  hydrateWatchlistCollapsed: () => void;
+
+  /** Hydrate persisted pinned series (node + calc) from localStorage,
+   *  pruned against the current graph so stale node ids drop. Pinned
+   *  series mutations are persisted automatically by a store-level
+   *  subscription (see end of file) — callers only need to hydrate. */
+  hydratePinnedSeries: () => void;
+
+  /** Hydrate persisted Pearl-scissors severed edges, enabled Tarski
+   *  axioms, and Pareto snapshot history. Each is persisted on change
+   *  via the store-level subscription at the end of the file; callers
+   *  only need to trigger hydration once on mount. Severed edges are
+   *  pruned against the current graph so stale ids drop. */
+  hydrateSeveredEdges: () => void;
+  hydrateEnabledAxioms: () => void;
+  hydrateSnapshotHistory: () => void;
+
+  /** Hydrate persisted user preferences (viewMode, activeModule,
+   *  nodeSizeMetric, visibleEdgeTypes, truthFilter, activePersona,
+   *  selectedDataSources). All seven validate against their respective
+   *  unions before applying; an unrecognised stored value falls back
+   *  to the in-memory default. Auto-persisted on change via the
+   *  subscription block at the end of the file. */
+  hydrateUserPrefs: () => void;
+
   // Selected edge (for edge inspector popup)
   selectedEdgeId: string | null;
   setSelectedEdgeId: (edgeId: string | null) => void;
+
+  /**
+   * Promote a heuristic auto-bridge (id prefix `auto-bridge`) to a
+   * confirmed cross-domain edge. Bumps `confidence` to 0.8 (above
+   * R-04's 0.7 cutoff) and changes the `physicalMechanism` prefix from
+   * "auto-bridge:" to "promoted bridge:" so `isAutoBridge` stops
+   * returning true. Idempotent — calling on an already-promoted edge
+   * or a non-auto edge is a no-op. Re-runs Tarski validation when
+   * `truthFilter === "verified"` so the previously-FLAGGED edge clears.
+   */
+  promoteAutoBridge: (edgeId: string) => void;
 
   // Multi-selection (lasso/area select)
   selectedNodes: string[];
@@ -110,8 +418,23 @@ interface ApexState {
   ablatedNodeIds: string[];
   ablatedEdgeIds: string[];
   setAblationMode: (on: boolean) => void;
+  /**
+   * Toggle the canvas ablation CLICK-MODE without clearing the existing
+   * cut set. `setAblationMode(false)` wipes `ablatedNodeIds`/`ablatedEdgeIds`
+   * (intended for the classic "exit & discard" flow); the redesigned PEARL
+   * workspace binds the Manual tab to this NON-destructive variant so
+   * leaving the tab stops the canvas hijacking clicks WITHOUT losing the
+   * cuts the analyst already made.
+   */
+  setAblationActive: (on: boolean) => void;
   toggleAblatedNode: (nodeId: string) => void;
   toggleAblatedEdge: (edgeId: string) => void;
+
+  // Inferred latent nodes (Dr. Pita synthetic-node #1) — opt-in, default OFF.
+  // Read-only overlay derived on demand via deriveLatentNodes; never stored
+  // on the graph, never enters cascade / ΩF / system metrics.
+  showLatentNodes: boolean;
+  setShowLatentNodes: (on: boolean) => void;
   resetAblation: () => void;
   startAblationReplay: () => void;
 
@@ -152,6 +475,15 @@ interface ApexState {
   setOllamaModel: (model: string) => void;
   setIsLlmStreaming: (streaming: boolean) => void;
 
+  /**
+   * Optional TTS voice override. When set, speakText() prefers
+   * any SpeechSynthesisVoice whose name contains this string
+   * (case-insensitive). When null, the existing British-female
+   * fallback chain runs. Set via the copilot's set_voice tool.
+   */
+  preferredVoiceName: string | null;
+  setPreferredVoiceName: (name: string | null) => void;
+
   // Sandbox
   sandboxOrgName: string | null;
   setSandboxOrgName: (name: string | null) => void;
@@ -169,6 +501,16 @@ interface ApexState {
   setSelectedDomains: (domains: string[]) => void;
   setIsMultiDomainMode: (multi: boolean) => void;
   setDomainSelectorOpen: (open: boolean) => void;
+
+  // Live continual-learning training trace (Phase 3 PR 5). Null
+  // means "no customer-uploaded trace; UI surfaces fall back to the
+  // synthetic demo trace and render the SYNTHETIC badge." Set this
+  // via `loadTrainingTraceFromJSON` / `loadTrainingTraceFromCSV` from
+  // the AI Safety panel's LOAD TRACE affordance. Source.kind on a
+  // trace ingested through those adapters is always "live"; the
+  // SnapshotDiagnostics card reads `sourceKind` and flips the badge.
+  loadedTrainingTrace: TrainingTrace | null;
+  setLoadedTrainingTrace: (trace: TrainingTrace | null) => void;
 
   // Persona
   activePersona:
@@ -198,6 +540,14 @@ interface ApexState {
   setVisibleCategories: (categories: Set<string>) => void;
   setVisibleDiscoverySources: (sources: Set<string>) => void;
 
+  // Edge-type visibility — drives the per-type show/hide toggle row
+  // in DAGOverlay. Set semantics: any member present is VISIBLE.
+  // Empty set is treated as "all visible" so older clients without
+  // the setting still render every edge.
+  visibleEdgeTypes: Set<EdgeType>;
+  toggleEdgeTypeVisibility: (type: EdgeType) => void;
+  setVisibleEdgeTypes: (types: Set<EdgeType>) => void;
+
   // Import modal
   importModalOpen: boolean;
   setImportModalOpen: (open: boolean) => void;
@@ -213,6 +563,10 @@ interface ApexState {
   tourStep: number;
   setTourActive: (active: boolean) => void;
   setTourStep: (step: number) => void;
+
+  // Guided demo flows (Hormuz / China / Red Sea cause-and-effect tours)
+  activeDemoFlowId: string | null;
+  setActiveDemoFlowId: (id: string | null) => void;
 
   // Snapshots
   currentSnapshot: SystemStateSnapshot | null;
@@ -247,6 +601,11 @@ interface ApexState {
   temporalData: TemporalDataset | null;
   timelineSelection: { start: number; end: number } | null; // user-selected date range window
   timelineFullRange: { start: number; end: number } | null; // saved full range before zoom
+  // True while the user is actively dragging the dial scrubber. Lets the
+  // TimeSeriesOverlay show its hover tooltip pinned to the dial position
+  // even though the cursor is on the dial track, not the chart.
+  timelineDragging: boolean;
+  setTimelineDragging: (dragging: boolean) => void;
   setTimelinePosition: (ts: number) => void;
   // rAF-batched variant — coalesces rapid scrub calls to ≤ display refresh rate
   // (~60fps), preventing posMap/omegaKey recalculation on every pointer-move pixel.
@@ -266,6 +625,16 @@ interface ApexState {
   pinnedTimeSeriesNodes: string[];
   togglePinnedTimeSeries: (nodeId: string) => void;
   clearPinnedTimeSeries: () => void;
+
+  /**
+   * Calc ids pinned to the bottom time-series watchlist. Graph-wide
+   * calcs (mean ΩF, cross-domain edges, etc.) have no node to pin
+   * against, so they keep their own pinned list. Each entry's
+   * trajectory comes from `graphCalcHistory[calcId]`.
+   */
+  pinnedCalcSeries: string[];
+  togglePinnedCalcSeries: (calcId: string) => void;
+  clearPinnedCalcSeries: () => void;
 }
 
 export const useApexStore = create<ApexState>((set, get) => ({
@@ -277,9 +646,24 @@ export const useApexStore = create<ApexState>((set, get) => ({
   graphData: EMPTY_GRAPH,
   initialGraph: EMPTY_GRAPH,
   setGraphData: (g) => {
-    set({ graphData: g, initialGraph: g, temporalData: null });
-    // Re-fire temporal load so the new graph gets its real-data mappings
-    // resolved (without this, switching profiles keeps stale temporal data).
+    // Whenever the graph node id set changes we must re-resolve temporalData
+    // and drop pinned-series ids that no longer exist; otherwise the
+    // TimeSeriesOverlay shows stale "NO DATA" badges for ghost pins.
+    // Cross-domain auto-bridging — when MULTI-domain composition leaves
+    // the graph in multiple disconnected components, propose heuristic
+    // cross-domain bridge edges (low-confidence, picked up as FLAGGED by
+    // R-04). No-op when the graph is already connected.
+    const { graph: bridged } = applyCrossDomainBridges(g);
+    // Apply ΩF live-pillar adjustments (Tarski → J, Spirtes-metrics → C)
+    // so a freshly loaded graph carries any overlay derived from incoming
+    // node attributes (e.g. live sanctions, out-degree).
+    const adjusted = applyOmegaLiveAdjustments(bridged);
+    set((s) => ({
+      graphData: adjusted,
+      initialGraph: adjusted,
+      temporalData: null,
+      pinnedTimeSeriesNodes: prunePinsToGraph(adjusted, s.pinnedTimeSeriesNodes),
+    }));
     get().initTemporalData();
   },
 
@@ -295,42 +679,560 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   // View
   viewMode: "3d",
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) => {
+    // View-switch instrumentation: start mark fires the instant the
+    // user picks a new view. The end mark is emitted from the new
+    // view component's first mount effect; measureBetween joins them
+    // into a "view-switch" rolling aggregate. We tag the mark per
+    // target mode so consecutive switches don't overwrite each other
+    // mid-render.
+    if (ENABLED_PERF) {
+      performance.mark(`view-switch:start:${mode}`);
+    }
+    set({ viewMode: mode });
+  },
+
+  // Default to eigenvector — that's what the 3D view shipped with before
+  // the toggle. Surfacing the choice as a visible UI control is the
+  // change; the existing read stays the default.
+  nodeSizeMetric: "eigenvector",
+  setNodeSizeMetric: (metric) => set({ nodeSizeMetric: metric }),
 
   // Truth filter
   truthFilter: "raw",
   tarskiReport: null,
   enabledAxioms: new Set<string>(),
   setEnabledAxioms: (axioms) => set({ enabledAxioms: axioms }),
-  runTarskiWithAxioms: () =>
+  runTarskiWithAxioms: () => {
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
+      set((s) => {
+        // Clear previous flags first
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
+      });
+    });
+  },
+  applyFeedBatch: (batch) => {
+    // Perf instrumentation: synchronous phase only — the post-set
+    // Tarski revalidation (phase 2) runs async and gets its own
+    // microtask budget. The "feed-tick" bucket therefore measures
+    // exactly the work that blocks the next paint, which is what we
+    // care about for laptop-felt smoothness.
+    const tickStart = ENABLED_PERF ? performance.now() : 0;
+    // Phase 1: apply feed mutation + omega adjustments synchronously. The
+    // non-verified path is complete here. Verified mode trails phase 2.
+    let needsTarskiRevalidation = false;
     set((s) => {
-      // Clear previous flags first
-      const cleanGraph = clearTarskiFlags(s.graphData);
-      const report = runTarskiValidation(cleanGraph, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
-      const flaggedGraph = applyTarskiFlags(cleanGraph, report);
-      return { truthFilter: "verified" as TruthFilter, graphData: flaggedGraph, tarskiReport: report };
-    }),
-  setTruthFilter: (f) =>
-    set((s) => {
-      if (f === "verified") {
-        // Dynamically run Tarski validation against the live graph
-        const report = runTarskiValidation(s.graphData, s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined);
-        const flaggedGraph = applyTarskiFlags(s.graphData, report);
-        return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
-      } else {
-        // Clear all flags when switching back to RAW
+      const { signalKinds, updates, event, providerId } = batch;
+      // Stamp the providerId onto each emitted point so cleanup later
+      // knows who wrote each signal (prevents cross-provider clobber when
+      // multiple providers share a `kind`, e.g. "indicator").
+      const updateMap = new Map(
+        updates.map((u) => [u.nodeId, { ...u.point, providerId }] as const),
+      );
+      const kindSet = new Set(signalKinds);
+      let touched = false;
+
+      const nextNodes = s.graphData.nodes.map((n) => {
+        const incoming = updateMap.get(n.id);
+        if (incoming) {
+          const existing = n.liveData?.find((p) => p.kind === incoming.kind);
+          if (
+            existing &&
+            existing.observedAt === incoming.observedAt &&
+            existing.value === incoming.value &&
+            existing.source === incoming.source
+          ) {
+            return n; // identical reading — preserve reference for memo stability
+          }
+          touched = true;
+          return { ...n, liveData: upsertLiveSignal(n.liveData, incoming) };
+        }
+        // No incoming update for this node — drop ONLY signals THIS provider
+        // owns whose kind is in `signalKinds`. Signals written by other
+        // providers (e.g. a different provider's "indicator") survive
+        // untouched. This is the cross-provider cleanup safety net.
+        if (
+          n.liveData?.some(
+            (p) => kindSet.has(p.kind) && p.providerId === providerId,
+          )
+        ) {
+          touched = true;
+          return {
+            ...n,
+            liveData: n.liveData.filter(
+              (p) => !(kindSet.has(p.kind) && p.providerId === providerId),
+            ),
+          };
+        }
+        return n;
+      });
+
+      if (!touched) return s;
+      const nextGraph = { ...s.graphData, nodes: nextNodes };
+
+      const nextTemporal = event
+        ? appendFeedEvent(s.temporalData, {
+            id: event.id,
+            date: new Date(event.observedAt),
+            label: event.label,
+            description: event.description,
+            affectedNodeIds: event.affectedNodeIds,
+            severity: event.severity,
+          })
+        : null;
+
+      const base: Partial<ApexState> = nextTemporal ? { temporalData: nextTemporal } : {};
+      // ΩF pillar wiring: refresh live deltas after the feed mutation
+      // (sanctions / centrality may have shifted).
+      const adjusted = applyOmegaLiveAdjustments(nextGraph);
+      // Verified mode needs a tarski revalidation after the mutation; that
+      // step runs in phase 2 (async dynamic-import) so the tarski-data
+      // chunk doesn't ride into the eager bundle. Verified is opt-in, so
+      // the user has already triggered the load via setTruthFilter — the
+      // import call below resolves from the ES-module cache.
+      needsTarskiRevalidation = s.truthFilter === "verified";
+      return { ...base, graphData: adjusted };
+    });
+    if (ENABLED_PERF) recordPerf("feed-tick", performance.now() - tickStart);
+
+    if (!needsTarskiRevalidation) return;
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
+      set((s) => {
+        if (s.truthFilter !== "verified") return s; // bailed mid-flight
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        const adjusted = applyOmegaLiveAdjustments(flaggedGraph);
+        return { graphData: adjusted, tarskiReport: report };
+      });
+    });
+  },
+  setTruthFilter: (f) => {
+    if (f !== "verified") {
+      // Clear-flags path is sync — no AXIOM_LIBRARY needed.
+      set((s) => {
         const cleanGraph = clearTarskiFlags(s.graphData);
         return { truthFilter: f, graphData: cleanGraph, tarskiReport: null };
+      });
+      return;
+    }
+    // Verified path dynamic-imports the validation engine; subsequent
+    // verified-mode operations (applyFeedBatch, severEdge) hit the
+    // ES-module cache.
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
+      set((s) => {
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          s.graphData,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(s.graphData, report);
+        return { truthFilter: f, graphData: flaggedGraph, tarskiReport: report };
+      });
+    });
+  },
+
+  pushCalculationSnapshot: (nodeId, point) => {
+    set((s) => {
+      let persistedPoint: LiveDataPoint | null = null;
+      const nextNodes = s.graphData.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const merged = upsertLiveSignal(n.liveData, point);
+        // Capture the merged calc-kind point (with its accumulated
+        // history array) so we can mirror just that into persistent
+        // storage — no need to drag the rest of n.liveData through
+        // localStorage.
+        persistedPoint = merged.find((p) => p.kind === point.kind) ?? null;
+        return { ...n, liveData: merged };
+      });
+      // Persistence (best-effort): mirror the upserted calc-kind point
+      // into nodeCalcHistory[nodeId], dropping any prior entry of the
+      // same kind (upsert semantics mirror node.liveData). Save outside
+      // the React state cycle but synchronous so the write completes
+      // before the user can navigate away.
+      if (persistedPoint) {
+        const safePoint: LiveDataPoint = persistedPoint;
+        const existing = s.nodeCalcHistory[nodeId] ?? [];
+        const next: LiveDataPoint[] = [
+          ...existing.filter((p) => p.kind !== safePoint.kind),
+          safePoint,
+        ];
+        const nextHistory: NodeCalcHistory = {
+          ...s.nodeCalcHistory,
+          [nodeId]: next,
+        };
+        saveNodeCalcHistory(nextHistory);
+        return {
+          graphData: { ...s.graphData, nodes: nextNodes },
+          nodeCalcHistory: nextHistory,
+        };
       }
-    }),
+      return {
+        graphData: { ...s.graphData, nodes: nextNodes },
+      };
+    });
+  },
+
+  graphCalcHistory: {},
+  pushGraphCalcSnapshot: (calcId, value) => {
+    set((s) => {
+      const observedAt = new Date().toISOString();
+      const existing = s.graphCalcHistory[calcId] ?? [];
+      // De-dupe identical-timestamp entries (rapid double-click safety).
+      const last = existing[existing.length - 1];
+      if (last && last.observedAt === observedAt && last.value === value) {
+        return {};
+      }
+      const next = [...existing, { value, observedAt }];
+      const trimmed =
+        next.length > LIVE_HISTORY_MAX
+          ? next.slice(-LIVE_HISTORY_MAX)
+          : next;
+      const updated = { ...s.graphCalcHistory, [calcId]: trimmed };
+      // Persist (best-effort; SSR-safe + swallows quota errors).
+      saveGraphCalcHistory(updated);
+      return { graphCalcHistory: updated };
+    });
+  },
+  hydrateGraphCalcHistory: () => {
+    const persisted = loadGraphCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory entries pushed before hydration
+      // win on key collision (they're newer than what's on disk). Most
+      // of the time the in-memory side is empty at mount so this is just
+      // the persisted data.
+      const merged: typeof s.graphCalcHistory = { ...persisted };
+      for (const [calcId, entries] of Object.entries(s.graphCalcHistory)) {
+        if (entries.length > 0) merged[calcId] = entries;
+      }
+      return { graphCalcHistory: merged };
+    });
+  },
+
+  nodeCalcHistory: {},
+  hydrateNodeCalcHistory: () => {
+    const persisted = loadNodeCalcHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Replay each persisted calc-kind point into the matching node's
+      // liveData via upsertLiveSignal. Skip nodes that aren't in the
+      // current graph (stale persistence from a prior graph schema).
+      // We also skip replay if the node already has a same-kind point
+      // with a >= observedAt — the in-memory side wins on collision,
+      // mirroring hydrateGraphCalcHistory semantics.
+      const byId = new Map(s.graphData.nodes.map((n) => [n.id, n]));
+      const matchedIds: string[] = [];
+      const nextNodes = s.graphData.nodes.map((n) => {
+        const entries = persisted[n.id];
+        if (!entries || entries.length === 0) return n;
+        matchedIds.push(n.id);
+        let liveData = n.liveData;
+        for (const point of entries) {
+          const existing = liveData?.find((p) => p.kind === point.kind);
+          if (existing && existing.observedAt >= point.observedAt) continue;
+          liveData = upsertLiveSignal(liveData, point);
+        }
+        return liveData === n.liveData ? n : { ...n, liveData };
+      });
+      if (matchedIds.length === 0) {
+        // Nothing matched — still seed in-memory mirror with what's on
+        // disk so subsequent pushes don't silently lose prior trajectory
+        // (e.g. user reselects a node we haven't touched yet).
+        return { nodeCalcHistory: { ...persisted, ...s.nodeCalcHistory } };
+      }
+      // Mirror only what we actually replayed (matched ids), so
+      // nodeCalcHistory tracks the live nodes; nodes not in the
+      // current graph still survive in the localStorage layer (we
+      // didn't touch the persisted object).
+      const mirror: NodeCalcHistory = { ...s.nodeCalcHistory };
+      for (const id of matchedIds) {
+        const fromDisk = persisted[id];
+        const inMem = mirror[id] ?? [];
+        // Per-kind, keep whichever side has the newer observedAt.
+        const byKind = new Map<string, LiveDataPoint>();
+        for (const p of fromDisk) byKind.set(p.kind, p);
+        for (const p of inMem) {
+          const prev = byKind.get(p.kind);
+          if (!prev || p.observedAt >= prev.observedAt) byKind.set(p.kind, p);
+        }
+        mirror[id] = Array.from(byKind.values());
+      }
+      void byId; // (kept for readability; lookup map above)
+      return {
+        graphData: { ...s.graphData, nodes: nextNodes },
+        nodeCalcHistory: mirror,
+      };
+    });
+  },
+
+  axiomInteractionHistory: {},
+  recordAxiomInteraction: (axiomId) => {
+    set((s) => {
+      const now = new Date().toISOString();
+      const existing = s.axiomInteractionHistory[axiomId];
+      const next: AxiomInteractionHistory = {
+        ...s.axiomInteractionHistory,
+        [axiomId]: {
+          lastClickedAt: now,
+          clickCount: (existing?.clickCount ?? 0) + 1,
+        },
+      };
+      saveAxiomInteractionHistory(next);
+      return { axiomInteractionHistory: next };
+    });
+  },
+  hydrateAxiomInteractionHistory: () => {
+    const persisted = loadAxiomInteractionHistory();
+    if (Object.keys(persisted).length === 0) return;
+    set((s) => {
+      // Non-destructive merge: in-memory wins on collision (it's
+      // either a fresh click that hasn't been persisted yet or an
+      // identical replay — either way prefer it). Same pattern as
+      // graphCalcHistory hydration.
+      const merged: AxiomInteractionHistory = { ...persisted };
+      for (const [id, rec] of Object.entries(s.axiomInteractionHistory)) {
+        merged[id] = rec;
+      }
+      return { axiomInteractionHistory: merged };
+    });
+  },
 
   // Selected node
   selectedNode: null,
-  setSelectedNode: (nodeId) => set({ selectedNode: nodeId }),
+  setSelectedNode: (nodeId) =>
+    set((s) => ({
+      selectedNode: nodeId,
+      // Selecting a real node closes any open latent inspector.
+      selectedLatentId: nodeId ? null : s.selectedLatentId,
+      // Reset the expanded pillar when the selected node changes; the
+      // explanation card belongs to the previous node and would read
+      // misleadingly against fresh ΩF values.
+      expandedPillar: nodeId === s.selectedNode ? s.expandedPillar : null,
+    })),
+
+  // Inferred-latent selection (separate channel; mutually exclusive with
+  // node + edge selection so latent ids never leak into node consumers).
+  selectedLatentId: null,
+  setSelectedLatentId: (id) =>
+    set((s) => ({
+      selectedLatentId: id,
+      // Opening a latent clears node + edge; clearing it (null) leaves them.
+      selectedNode: id ? null : s.selectedNode,
+      selectedEdgeId: id ? null : s.selectedEdgeId,
+    })),
+
+  expandedPillar: null,
+  setExpandedPillar: (key) => set({ expandedPillar: key }),
+
+  // Bottom-dock collapse. Default expanded; the persisted preference is
+  // applied post-mount by hydrateBottomDockCollapsed so server and first
+  // client render agree (both see `false`) before the stored value lands.
+  bottomDockCollapsed: false,
+  setBottomDockCollapsed: (collapsed) => {
+    saveBottomDockCollapsed(collapsed);
+    set({ bottomDockCollapsed: collapsed });
+  },
+  hydrateBottomDockCollapsed: () => {
+    const persisted = loadBottomDockCollapsed();
+    if (persisted !== null) set({ bottomDockCollapsed: persisted });
+  },
+
+  // Watchlist column collapse. Same post-mount hydration pattern.
+  watchlistCollapsed: false,
+  setWatchlistCollapsed: (collapsed) => {
+    saveWatchlistCollapsed(collapsed);
+    set({ watchlistCollapsed: collapsed });
+  },
+  hydrateWatchlistCollapsed: () => {
+    const persisted = loadWatchlistCollapsed();
+    if (persisted !== null) set({ watchlistCollapsed: persisted });
+  },
+
+  // Pinned series hydration. Node ids are pruned against the current
+  // graph so a persisted pin for a node that no longer exists silently
+  // drops rather than rendering a phantom row. Calc ids are kept as-is
+  // — graphCalcHistory hydrates separately and the chart's hasData
+  // branch handles the empty case.
+  hydratePinnedSeries: () => {
+    const persisted = loadPinnedSeries();
+    if (!persisted) return;
+    set((s) => {
+      const nextNodes = prunePinsToGraph(s.graphData, persisted.nodes);
+      const nextCalcs = persisted.calcs;
+      // Only update keys that actually change so we don't kick off a
+      // re-render or trip the persistence subscription for a no-op.
+      const out: Partial<ApexState> = {};
+      if (
+        nextNodes.length !== s.pinnedTimeSeriesNodes.length ||
+        nextNodes.some((id, i) => id !== s.pinnedTimeSeriesNodes[i])
+      ) {
+        out.pinnedTimeSeriesNodes = nextNodes;
+      }
+      if (
+        nextCalcs.length !== s.pinnedCalcSeries.length ||
+        nextCalcs.some((id, i) => id !== s.pinnedCalcSeries[i])
+      ) {
+        out.pinnedCalcSeries = nextCalcs;
+      }
+      return out;
+    });
+  },
+
+  hydrateSeveredEdges: () => {
+    const persisted = loadSeveredEdges();
+    if (!persisted || persisted.length === 0) return;
+    set((s) => {
+      // Prune to edge ids that still exist in the current graph; stale
+      // ids (graph was reloaded with a different schema) silently drop.
+      const valid = new Set(s.graphData.edges.map((e) => e.id));
+      const next = persisted.filter((id) => valid.has(id));
+      if (next.length === 0) return {};
+      return { severedEdges: next };
+    });
+  },
+  hydrateEnabledAxioms: () => {
+    const persisted = loadEnabledAxioms();
+    if (!persisted) return;
+    // Empty stored array is a deliberate "no axioms enabled" — preserved
+    // as such. Set reference always changes here so the persistence
+    // subscription will run once on hydration (harmless idempotent write).
+    set({ enabledAxioms: new Set(persisted) });
+  },
+  hydrateSnapshotHistory: () => {
+    const persisted = loadSnapshotHistory();
+    if (!persisted || persisted.length === 0) return;
+    set({
+      snapshotHistory: persisted,
+      // Surface the most recent persisted snapshot as the "current" so
+      // panels that read currentSnapshot have something to render
+      // immediately on mount.
+      currentSnapshot: persisted[persisted.length - 1],
+    });
+  },
+
+  hydrateUserPrefs: () => {
+    // Validate each stored value against the live union before applying.
+    // Anything stale (renamed enum member, hand-edited corruption) drops
+    // silently rather than being typed as `as ViewMode` and causing a
+    // runtime render mismatch.
+    const out: Partial<ApexState> = {};
+
+    const vm = loadViewMode();
+    if (vm === "2d" || vm === "3d" || vm === "map" || vm === "relief") {
+      out.viewMode = vm;
+    }
+
+    const am = loadActiveModule();
+    if (am === "spirtes" || am === "tarski" || am === "pearl" || am === "pareto") {
+      out.activeModule = am;
+    }
+
+    const nsm = loadNodeSizeMetric();
+    if (nsm === "omega" || nsm === "eigenvector" || nsm === "betweenness") {
+      out.nodeSizeMetric = nsm;
+    }
+
+    const tf = loadTruthFilter();
+    if (tf === "raw" || tf === "verified") out.truthFilter = tf;
+
+    const personaList: ApexState["activePersona"][] = [
+      "scientist",
+      "financial",
+      "macro",
+      "geopolitical",
+      "cross",
+      "analyst",
+    ];
+    const ap = loadActivePersona();
+    if (ap !== null && (personaList as string[]).includes(ap)) {
+      out.activePersona = ap as ApexState["activePersona"];
+    }
+
+    const ds = loadSelectedDataSources();
+    if (ds && ds.length > 0) out.selectedDataSources = ds;
+
+    const vet = loadVisibleEdgeTypes();
+    if (vet) {
+      const allowed: EdgeType[] = ["directed", "confounded", "temporal", "flow"];
+      const filtered = vet.filter((t): t is EdgeType =>
+        (allowed as string[]).includes(t),
+      );
+      // Empty-after-filter means corrupted storage → keep default rather
+      // than hiding every edge type on the user.
+      if (filtered.length > 0) out.visibleEdgeTypes = new Set(filtered);
+    }
+
+    if (Object.keys(out).length > 0) set(out);
+  },
 
   // Selected edge
   selectedEdgeId: null,
-  setSelectedEdgeId: (edgeId) => set({ selectedEdgeId: edgeId }),
+  setSelectedEdgeId: (edgeId) =>
+    set((s) => ({
+      selectedEdgeId: edgeId,
+      // Selecting an edge closes any open latent inspector.
+      selectedLatentId: edgeId ? null : s.selectedLatentId,
+    })),
+  promoteAutoBridge: (edgeId) => {
+    let needsTarskiRevalidation = false;
+    set((s) => {
+      const idx = s.graphData.edges.findIndex((e) => e.id === edgeId);
+      if (idx === -1) return s;
+      const edge = s.graphData.edges[idx];
+      if (!edge.id.startsWith(AUTO_BRIDGE_ID_PREFIX)) return s;
+      // Skip already-promoted edges (physicalMechanism prefix has flipped).
+      if (!edge.physicalMechanism?.startsWith("auto-bridge:")) return s;
+
+      const promoted: CausalEdge = {
+        ...edge,
+        confidence: 0.8,
+        physicalMechanism: edge.physicalMechanism.replace(
+          /^auto-bridge:/,
+          "promoted bridge:",
+        ),
+      };
+      const newEdges = [...s.graphData.edges];
+      newEdges[idx] = promoted;
+      const newGraph: CausalGraph = { ...s.graphData, edges: newEdges };
+
+      needsTarskiRevalidation = s.truthFilter === "verified";
+      return { graphData: newGraph };
+    });
+
+    if (!needsTarskiRevalidation) return;
+    // VERIFIED mode: refresh the Tarski report so the previously-
+    // FLAGGED R-04 violation on this edge clears. Dynamic-imported so
+    // the AXIOM_LIBRARY stays off the eager bundle.
+    void loadTarskiHelpers().then(({ runTarskiValidation, resolveDomainProfile }) => {
+      set((s) => {
+        if (s.truthFilter !== "verified") return s; // bailed mid-flight
+        const cleanGraph = clearTarskiFlags(s.graphData);
+        const profileId = resolveDomainProfile(s.selectedDomains).id;
+        const report = runTarskiValidation(
+          cleanGraph,
+          s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+          profileId,
+        );
+        const flaggedGraph = applyTarskiFlags(cleanGraph, report);
+        return { graphData: flaggedGraph, tarskiReport: report };
+      });
+    });
+  },
 
   // Multi-selection
   selectedNodes: [],
@@ -371,6 +1273,19 @@ export const useApexStore = create<ApexState>((set, get) => ({
     ...(on ? { scissorsMode: false } : {}),
     ...(!on ? { ablatedNodeIds: [], ablatedEdgeIds: [] } : {}),
   })),
+
+  // Inferred latent-node overlay toggle (opt-in, default OFF).
+  showLatentNodes: false,
+  setShowLatentNodes: (on) => set({ showLatentNodes: on }),
+
+  // Non-destructive: flips the canvas click-mode only; never clears the
+  // cut set. Used by the redesigned PEARL Manual tab so switching tabs
+  // (or leaving PEARL) can safely stop canvas-hijacking without deleting
+  // the analyst's ablations.
+  setAblationActive: (on) => set((s) => ({
+    ablationMode: on,
+    ...(on ? { scissorsMode: false } : {}),
+  })),
   toggleAblatedNode: (nodeId) =>
     set((s) => {
       const removing = s.ablatedNodeIds.includes(nodeId);
@@ -403,29 +1318,37 @@ export const useApexStore = create<ApexState>((set, get) => ({
     }),
   resetAblation: () =>
     set({ ablatedNodeIds: [], ablatedEdgeIds: [], ablationMode: false }),
-  startAblationReplay: () =>
-    set((s) => {
-      // Build ablated graph by removing ablated nodes and edges
-      const ablatedGraph = {
-        ...s.graphData,
-        nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
-        edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
-        metadata: {
-          ...s.graphData.metadata,
-          totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
-          totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
-        },
-      };
-      const epochs = simulateCascade(ablatedGraph, s.shocks, s.severedEdges);
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        replayBranchEpoch: null,
-      };
-    }),
+  startAblationReplay: () => {
+    const s = get();
+    const ablatedGraph = {
+      ...s.graphData,
+      nodes: s.graphData.nodes.filter((n) => !s.ablatedNodeIds.includes(n.id)),
+      edges: s.graphData.edges.filter((e) => !s.ablatedEdgeIds.includes(e.id)),
+      metadata: {
+        ...s.graphData.metadata,
+        totalNodes: s.graphData.nodes.length - s.ablatedNodeIds.length,
+        totalEdges: s.graphData.edges.length - s.ablatedEdgeIds.length,
+      },
+    };
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      replayBranchEpoch: null,
+    });
+
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(ablatedGraph, shocks, severedEdges).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ interventionEpochs: epochs, replayPlaying: true });
+      })
+    );
+  },
 
   // Tarski axiom filter
   // Interdiction (chat-based)
@@ -467,6 +1390,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setGeminiModel: (model) => set({ geminiModel: model }),
   setOllamaUrl: (url) => set({ ollamaUrl: url }),
   setOllamaModel: (model) => set({ ollamaModel: model }),
+  preferredVoiceName: null,
+  setPreferredVoiceName: (name) => set({ preferredVoiceName: name }),
   setIsLlmStreaming: (streaming) => set({ isLlmStreaming: streaming }),
 
   // Sandbox
@@ -474,7 +1399,7 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setSandboxOrgName: (name) => set({ sandboxOrgName: name }),
   sandboxGraphs: [],
   activeSandboxGraphId: null,
-  addSandboxGraph: (name, graph) =>
+  addSandboxGraph: (name, graph) => {
     set((s) => {
       const id = `graph-${Date.now()}`;
       return {
@@ -482,12 +1407,18 @@ export const useApexStore = create<ApexState>((set, get) => ({
         activeSandboxGraphId: id,
         graphData: graph,
         initialGraph: graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
       };
-    }),
-  switchSandboxGraph: (id) =>
+    });
+    get().initTemporalData();
+  },
+  switchSandboxGraph: (id) => {
+    let didSwitch = false;
     set((s) => {
       const target = s.sandboxGraphs.find((g) => g.id === id);
       if (!target) return s;
+      didSwitch = true;
       // Save current graph back to its slot before switching
       const updatedGraphs = s.sandboxGraphs.map((g) =>
         g.id === s.activeSandboxGraphId
@@ -499,23 +1430,32 @@ export const useApexStore = create<ApexState>((set, get) => ({
         activeSandboxGraphId: id,
         graphData: target.graph,
         initialGraph: target.graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(target.graph, s.pinnedTimeSeriesNodes),
       };
-    }),
-  deleteSandboxGraph: (id) =>
+    });
+    if (didSwitch) get().initTemporalData();
+  },
+  deleteSandboxGraph: (id) => {
+    const wasActive = get().activeSandboxGraphId === id;
     set((s) => {
       const remaining = s.sandboxGraphs.filter((g) => g.id !== id);
-      const wasActive = s.activeSandboxGraphId === id;
       if (wasActive) {
         const next = remaining[0];
+        const nextGraph = next?.graph ?? EMPTY_GRAPH;
         return {
           sandboxGraphs: remaining,
           activeSandboxGraphId: next?.id ?? null,
-          graphData: next?.graph ?? EMPTY_GRAPH,
-          initialGraph: next?.graph ?? EMPTY_GRAPH,
+          graphData: nextGraph,
+          initialGraph: nextGraph,
+          temporalData: null,
+          pinnedTimeSeriesNodes: prunePinsToGraph(nextGraph, s.pinnedTimeSeriesNodes),
         };
       }
       return { sandboxGraphs: remaining };
-    }),
+    });
+    if (wasActive) get().initTemporalData();
+  },
   renameSandboxGraph: (id, name) =>
     set((s) => ({
       sandboxGraphs: s.sandboxGraphs.map((g) =>
@@ -531,6 +1471,11 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setIsMultiDomainMode: (multi) => set({ isMultiDomainMode: multi }),
   setDomainSelectorOpen: (open) => set({ domainSelectorOpen: open }),
 
+  // Live continual-learning training trace (Phase 3 PR 5). Null until
+  // a customer uploads via the AI Safety panel's LOAD TRACE control.
+  loadedTrainingTrace: null,
+  setLoadedTrainingTrace: (trace) => set({ loadedTrainingTrace: trace }),
+
   // Persona (default: financial — more specific than the prior "analyst")
   activePersona: "financial",
   setActivePersona: (persona) => set({ activePersona: persona }),
@@ -545,26 +1490,51 @@ export const useApexStore = create<ApexState>((set, get) => ({
   setVisibleCategories: (categories) => set({ visibleCategories: categories }),
   setVisibleDiscoverySources: (sources) => set({ visibleDiscoverySources: sources }),
 
+  // Edge-type visibility — defaults to "show all four types". Toggling
+  // an edge type drops it from / adds it back to the Set; consumers
+  // (4 canvas surfaces) treat an empty Set as "all visible" so older
+  // sessions without the setting render every edge.
+  visibleEdgeTypes: new Set<EdgeType>(["directed", "temporal", "confounded", "flow"]),
+  toggleEdgeTypeVisibility: (type) =>
+    set((s) => {
+      const next = new Set(s.visibleEdgeTypes);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return { visibleEdgeTypes: next };
+    }),
+  setVisibleEdgeTypes: (types) => set({ visibleEdgeTypes: types }),
+
   // Import
   importModalOpen: false,
   setImportModalOpen: (open) => set({ importModalOpen: open }),
-  mergeGraphData: (nodes, edges, datasetColor) =>
-    set((s) => {
-      const coloredNodes = datasetColor
-        ? nodes.map((n) => ({ ...n, datasetColor }))
-        : nodes;
-      const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
-      return { graphData: graph, initialGraph: graph };
-    }),
+  mergeGraphData: (nodes, edges, datasetColor) => {
+    void loadMergeGraphs().then((mergeGraphs) => {
+      set((s) => {
+        const coloredNodes = datasetColor
+          ? nodes.map((n) => ({ ...n, datasetColor }))
+          : nodes;
+        const { graph } = mergeGraphs(s.graphData, { nodes: coloredNodes, edges });
+        return {
+          graphData: graph,
+          initialGraph: graph,
+          temporalData: null,
+          pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
+        };
+      });
+      get().initTemporalData();
+    });
+  },
 
   // Imported dataset tracking
   importedDatasets: [],
   addImportedDataset: (dataset) =>
     set((s) => ({ importedDatasets: [...s.importedDatasets, dataset] })),
-  removeImportedDataset: (id) =>
+  removeImportedDataset: (id) => {
+    let graphChanged = false;
     set((s) => {
       const dataset = s.importedDatasets.find((d) => d.id === id);
       if (!dataset) return s;
+      graphChanged = true;
 
       const remainingDatasets = s.importedDatasets.filter((d) => d.id !== id);
 
@@ -612,39 +1582,57 @@ export const useApexStore = create<ApexState>((set, get) => ({
         importedDatasets: remainingDatasets,
         graphData: graph,
         initialGraph: graph,
+        temporalData: null,
+        pinnedTimeSeriesNodes: prunePinsToGraph(graph, s.pinnedTimeSeriesNodes),
       };
-    }),
+    });
+    if (graphChanged) get().initTemporalData();
+  },
 
   // Tour
   tourActive: false,
   tourStep: 0,
   setTourActive: (active) => set({ tourActive: active, tourStep: 0 }),
+
+  // Demo flows
+  activeDemoFlowId: null,
+  setActiveDemoFlowId: (id) => set({ activeDemoFlowId: id }),
   setTourStep: (step) => set({ tourStep: step }),
 
   // Snapshots
   currentSnapshot: null,
   snapshotHistory: [],
   isComputeLoading: false,
-  setSnapshot: (snapshot) =>
-    set((s) => {
-      const validated = validateSnapshot(snapshot);
-      const snapshotWithValidation = {
-        ...snapshot,
-        tarskiValidation: validated,
-      };
-      if (validated.status === "VIOLATIONS_FOUND") {
-        // Log but still store — violations are informational in v2
-        console.warn(
-          "[Tarski] Snapshot has violations:",
-          validated.violations
-        );
-      }
-      const history = [...s.snapshotHistory, snapshotWithValidation];
-      return {
-        currentSnapshot: snapshotWithValidation,
-        snapshotHistory: history.slice(-50), // cap at 50
-      };
-    }),
+  setSnapshot: (snapshot) => {
+    void loadValidateSnapshot().then((validateSnapshot) => {
+      set((s) => {
+        // Validate against the FULL 32-axiom library by passing the live
+        // graph + currently-enabled axioms. Without the liveGraph, the
+        // validator falls back to a thin 5-axiom degraded path; we always
+        // have it on hand here so we always get the full coverage.
+        const validated = validateSnapshot(snapshot, {
+          liveGraph: s.graphData,
+          enabledAxioms: s.enabledAxioms.size > 0 ? s.enabledAxioms : undefined,
+        });
+        const snapshotWithValidation = {
+          ...snapshot,
+          tarskiValidation: validated,
+        };
+        if (validated.status === "VIOLATIONS_FOUND") {
+          // Log but still store — violations are informational in v2
+          console.warn(
+            "[Tarski] Snapshot has violations:",
+            validated.violations
+          );
+        }
+        const history = [...s.snapshotHistory, snapshotWithValidation];
+        return {
+          currentSnapshot: snapshotWithValidation,
+          snapshotHistory: history.slice(-50), // cap at 50
+        };
+      });
+    });
+  },
   setIsComputeLoading: (loading) => set({ isComputeLoading: loading }),
 
   // Replay / Cascade
@@ -657,19 +1645,37 @@ export const useApexStore = create<ApexState>((set, get) => ({
   activeTimeline: "baseline",
   replayBranchEpoch: null,
 
-  startReplay: () =>
-    set((s) => {
-      const epochs = simulateCascade(s.graphData, s.shocks, s.severedEdges);
-      return {
-        baselineEpochs: epochs,
-        interventionEpochs: [],
-        replayActive: true,
-        replayPlaying: true,
-        currentEpoch: 0,
-        activeTimeline: "baseline",
-        replayBranchEpoch: null,
-      };
-    }),
+  startReplay: () => {
+    // Snapshot inputs synchronously so a later state mutation can't
+    // change the substrate the simulation is running against.
+    const s = get();
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+
+    // Phase 1: enter "computing" state immediately so the UI can show
+    // a starting indicator without waiting for the full 200-epoch run.
+    // replayPlaying stays false until the snapshots arrive.
+    set({
+      baselineEpochs: [],
+      interventionEpochs: [],
+      replayActive: true,
+      replayPlaying: false,
+      currentEpoch: 0,
+      activeTimeline: "baseline" as TimelineId,
+      replayBranchEpoch: null,
+    });
+
+    // Phase 2: chunked simulation across idle frames (keeps the UI thread
+    // unblocked); flip to playing when results land. Bail if the user
+    // stopped the replay mid-flight.
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(graphData, shocks, severedEdges).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ baselineEpochs: epochs, replayPlaying: true });
+      })
+    );
+  },
 
   stopReplay: () =>
     set({
@@ -708,27 +1714,43 @@ export const useApexStore = create<ApexState>((set, get) => ({
 
   setActiveTimeline: (id) => set({ activeTimeline: id, currentEpoch: 0 }),
 
-  branchFromCurrentEpoch: () =>
-    set((s) => {
-      if (!s.replayActive || s.baselineEpochs.length === 0) return s;
-      const branchSnapshot = s.baselineEpochs[s.currentEpoch];
-      if (!branchSnapshot) return s;
-      const epochs = simulateCascade(
-        s.graphData,
-        s.shocks,
-        s.severedEdges,
+  branchFromCurrentEpoch: () => {
+    const s = get();
+    if (!s.replayActive || s.baselineEpochs.length === 0) return;
+    const branchSnapshot = s.baselineEpochs[s.currentEpoch];
+    if (!branchSnapshot) return;
+
+    const graphData = s.graphData;
+    const shocks = s.shocks;
+    const severedEdges = s.severedEdges;
+    const initialStates = branchSnapshot.nodeStates;
+    // Capture the branch point before we reset currentEpoch — the
+    // intervention timeline restarts at 0 but we need the original
+    // baseline epoch index for the side-by-side comparison UI.
+    const branchEpoch = s.currentEpoch;
+
+    set({
+      interventionEpochs: [],
+      activeTimeline: "intervention" as TimelineId,
+      replayBranchEpoch: branchEpoch,
+      currentEpoch: 0,
+      replayPlaying: false,
+    });
+
+    void loadSimulateCascadeAsync().then((simulateCascadeAsync) =>
+      simulateCascadeAsync(
+        graphData,
+        shocks,
+        severedEdges,
         undefined,
         undefined,
-        branchSnapshot.nodeStates
-      );
-      return {
-        interventionEpochs: epochs,
-        activeTimeline: "intervention" as TimelineId,
-        replayBranchEpoch: s.currentEpoch,
-        currentEpoch: 0,
-        replayPlaying: true,
-      };
-    }),
+        initialStates,
+      ).then((epochs) => {
+        if (!get().replayActive) return;
+        set({ interventionEpochs: epochs, replayPlaying: true });
+      })
+    );
+  },
 
   // Timeline / Time Dial
   timelinePosition: Date.now(),
@@ -741,6 +1763,9 @@ export const useApexStore = create<ApexState>((set, get) => ({
   timelineSelection: null,
   timelineFullRange: null,
   temporalData: null,
+  timelineDragging: false,
+
+  setTimelineDragging: (dragging) => set({ timelineDragging: dragging }),
 
   setTimelinePosition: (ts) =>
     set({ timelinePosition: ts, isLive: false }),
@@ -775,7 +1800,57 @@ export const useApexStore = create<ApexState>((set, get) => ({
     })),
 
   setTimelineGranularity: (g) =>
-    set({ timelineGranularity: g }),
+    set((s) => {
+      // Granularity buttons (1H/1D/1W/1M) double as scale selectors: they
+      // also constrain timelineRange to a window of the corresponding size,
+      // anchored at the end of the existing range. Card sparklines and the
+      // comparison overlay filter their history by timelineRange, so the
+      // visible curve length follows the chosen scale.
+      //
+      // CAPTURE FULL RANGE ON FIRST CALL: without this, the floor
+      // (max(_, end - windowMs)) would clamp to the *current* timelineRange
+      // start — which after the first granularity click is already shrunk.
+      // Result: subsequent clicks could shrink further but never expand back.
+      // By saving timelineFullRange on first entry, we always have the
+      // original extent to expand into.
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const windowMs: Record<TimeGranularity, number> = {
+        hour: 60 * 60 * 1000,
+        day: DAY_MS,
+        week: 7 * DAY_MS,
+        month: 30 * DAY_MS,
+        year: 365 * DAY_MS,
+        "5year": 5 * 365 * DAY_MS,
+        // "all" maps to a very wide ceiling so it dominates the floor in
+        // the Math.max below. Effectively "show all available data".
+        // 50 years is wider than WB's earliest published series (1970-ish)
+        // so this captures the entire data extent in practice.
+        all: 50 * 365 * DAY_MS,
+      };
+      const end = s.timelineRange.end;
+      const fullRange = s.timelineFullRange ?? { ...s.timelineRange };
+      // For short presets (hour/day/week/month) clamp to the captured
+      // `fullRange.start` (typically end - 60d, the synthetic-data default).
+      // For long presets (year/5year/all) bypass this clamp — the user is
+      // explicitly choosing a window wider than the synthetic baseline,
+      // because they want to see real published history for annual signals.
+      // Without this, 1Y would silently collapse back to 1M.
+      const isLongPreset = g === "year" || g === "5year" || g === "all";
+      const newStart = isLongPreset
+        ? end - windowMs[g]
+        : Math.max(fullRange.start, end - windowMs[g]);
+      // Also widen `timelineFullRange` when a long preset is picked so that
+      // a subsequent ZOOM OUT lands somewhere sensible instead of snapping
+      // back to the 60-day default mid-investigation.
+      const nextFullRange = isLongPreset
+        ? { start: Math.min(fullRange.start, newStart), end: Math.max(fullRange.end, end) }
+        : fullRange;
+      return {
+        timelineGranularity: g,
+        timelineRange: { start: newStart, end },
+        timelineFullRange: nextFullRange,
+      };
+    }),
 
   setTimelineSelection: (sel) =>
     set({ timelineSelection: sel }),
@@ -805,15 +1880,27 @@ export const useApexStore = create<ApexState>((set, get) => ({
   initTemporalData: () => {
     const state = get();
     if (state.temporalData) return;
-    // Set synthetic data immediately as fallback while real data loads
-    const syntheticData = generateTemporalData(state.graphData.nodes, state.graphData.edges, 60);
-    set({
-      temporalData: syntheticData,
-      timelineRange: {
-        start: syntheticData.rangeStart.getTime(),
-        end: syntheticData.rangeEnd.getTime(),
-      },
-      timelinePosition: syntheticData.rangeEnd.getTime(),
+    // Set synthetic data immediately as fallback while real data loads.
+    // Both helpers are dynamic-imported — they total ~760 LOC and are
+    // never needed before a workspace is loaded.
+    void loadGenerateTemporalData().then((generateTemporalData) => {
+      const current = get();
+      // Re-check the early-out: another call may have populated the
+      // store while the synthetic helper chunk was loading.
+      if (current.temporalData) return;
+      const syntheticData = generateTemporalData(
+        current.graphData.nodes,
+        current.graphData.edges,
+        60,
+      );
+      set({
+        temporalData: syntheticData,
+        timelineRange: {
+          start: syntheticData.rangeStart.getTime(),
+          end: syntheticData.rangeEnd.getTime(),
+        },
+        timelinePosition: syntheticData.rangeEnd.getTime(),
+      });
     });
     // Load real analyst-collected data asynchronously, then replace synthetic.
     // Retry until graphData is populated (it may be empty on first mount).
@@ -824,7 +1911,8 @@ export const useApexStore = create<ApexState>((set, get) => ({
         setTimeout(doLoad, 500);
         return;
       }
-      loadRealTemporalData(nodes, edges)
+      void loadLoadRealTemporalData()
+        .then((loadRealTemporalData) => loadRealTemporalData(nodes, edges))
         .then((realData) => {
           if (realData.nodes.size > 0) {
             set({
@@ -859,4 +1947,72 @@ export const useApexStore = create<ApexState>((set, get) => ({
         : [...s.pinnedTimeSeriesNodes, nodeId],
     })),
   clearPinnedTimeSeries: () => set({ pinnedTimeSeriesNodes: [] }),
+
+  pinnedCalcSeries: [],
+  togglePinnedCalcSeries: (calcId) =>
+    set((s) => ({
+      pinnedCalcSeries: s.pinnedCalcSeries.includes(calcId)
+        ? s.pinnedCalcSeries.filter((id) => id !== calcId)
+        : [...s.pinnedCalcSeries, calcId],
+    })),
+  clearPinnedCalcSeries: () => set({ pinnedCalcSeries: [] }),
 }));
+
+// ─── Auto-persistence (store-level subscriptions) ──────────────────
+//
+// Rather than wire save*() into every mutator + every graph-change
+// path, subscribe once per concern and write whenever the watched
+// reference changes. Reference equality is correct here — all
+// mutators (toggle/clear/prune) produce new arrays/sets via
+// spread/filter/new Set(...), so a referential delta tracks the
+// semantic delta exactly.
+//
+// SSR-safe via the localStorage guard inside each save* helper. The
+// subscription does not fire on initial subscribe, so the first
+// invocation is always on a real state change.
+
+useApexStore.subscribe((state, prev) => {
+  if (
+    state.pinnedTimeSeriesNodes === prev.pinnedTimeSeriesNodes &&
+    state.pinnedCalcSeries === prev.pinnedCalcSeries
+  ) {
+    return;
+  }
+  savePinnedSeries({
+    nodes: state.pinnedTimeSeriesNodes,
+    calcs: state.pinnedCalcSeries,
+  });
+});
+
+useApexStore.subscribe((state, prev) => {
+  if (state.severedEdges !== prev.severedEdges) {
+    saveSeveredEdges(state.severedEdges);
+  }
+  if (state.enabledAxioms !== prev.enabledAxioms) {
+    saveEnabledAxioms(state.enabledAxioms);
+  }
+  if (state.snapshotHistory !== prev.snapshotHistory) {
+    saveSnapshotHistory(state.snapshotHistory);
+  }
+});
+
+// User-preference fields. Primitives → reference compare is just an
+// equality compare; Sets/arrays produce new references on every change
+// in their setters so === tracks the semantic delta.
+useApexStore.subscribe((state, prev) => {
+  if (state.viewMode !== prev.viewMode) saveViewMode(state.viewMode);
+  if (state.activeModule !== prev.activeModule) saveActiveModule(state.activeModule);
+  if (state.nodeSizeMetric !== prev.nodeSizeMetric) {
+    saveNodeSizeMetric(state.nodeSizeMetric);
+  }
+  if (state.visibleEdgeTypes !== prev.visibleEdgeTypes) {
+    saveVisibleEdgeTypes(state.visibleEdgeTypes);
+  }
+  if (state.truthFilter !== prev.truthFilter) saveTruthFilter(state.truthFilter);
+  if (state.activePersona !== prev.activePersona) {
+    saveActivePersona(state.activePersona);
+  }
+  if (state.selectedDataSources !== prev.selectedDataSources) {
+    saveSelectedDataSources(state.selectedDataSources);
+  }
+});

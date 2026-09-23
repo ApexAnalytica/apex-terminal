@@ -1,0 +1,89 @@
+{
+  "referenceId": "graph-cascade-buffer-breach",
+  "substrateId": "graph-activated-mean-omega",
+  "eventLabel": "Cascade-simulator: max-Ω across activated nodes reached ≥ 9.0 (node-critical) within next 50 epochs",
+  "windowSize": 30,
+  "lookahead": 50,
+  "totalWindows": 38279,
+  "totalEvents": 3269,
+  "baseRate": 0.08539930510201416,
+  "bins": [
+    {
+      "binLow": 0,
+      "binHigh": 0.1,
+      "count": 1072,
+      "eventCount": 147,
+      "eventRate": 0.13712686567164178
+    },
+    {
+      "binLow": 0.1,
+      "binHigh": 0.2,
+      "count": 43,
+      "eventCount": 13,
+      "eventRate": 0.3023255813953488
+    },
+    {
+      "binLow": 0.2,
+      "binHigh": 0.3,
+      "count": 82,
+      "eventCount": 51,
+      "eventRate": 0.6219512195121951
+    },
+    {
+      "binLow": 0.3,
+      "binHigh": 0.4,
+      "count": 175,
+      "eventCount": 71,
+      "eventRate": 0.4057142857142857
+    },
+    {
+      "binLow": 0.4,
+      "binHigh": 0.5,
+      "count": 479,
+      "eventCount": 219,
+      "eventRate": 0.4572025052192067
+    },
+    {
+      "binLow": 0.5,
+      "binHigh": 0.6,
+      "count": 1206,
+      "eventCount": 484,
+      "eventRate": 0.4013266998341625
+    },
+    {
+      "binLow": 0.6,
+      "binHigh": 0.7,
+      "count": 1084,
+      "eventCount": 444,
+      "eventRate": 0.4095940959409594
+    },
+    {
+      "binLow": 0.7,
+      "binHigh": 0.8,
+      "count": 937,
+      "eventCount": 380,
+      "eventRate": 0.4055496264674493
+    },
+    {
+      "binLow": 0.8,
+      "binHigh": 0.9,
+      "count": 493,
+      "eventCount": 255,
+      "eventRate": 0.5172413793103449
+    },
+    {
+      "binLow": 0.9,
+      "binHigh": 1,
+      "count": 32708,
+      "eventCount": 1205,
+      "eventRate": 0.036841139782316255
+    }
+  ],
+  "buildMeta": {
+    "builderVersion": "0.1.0",
+    "builtAt": "2026-05-20T20:49:20.123Z",
+    "source": "Manifold committed graph (192 nodes, 348 edges) × cascade simulator. 915 scenarios at Ω >= 5.5 (single-node sweep × 5 severities + 10-node pair-shock sweep at severity 0.7). Digital-twin calibration — events are simulator outcomes, not real-world events.",
+    "cohortFrom": "scenario-1",
+    "cohortTo": "scenario-915"
+  }
+}

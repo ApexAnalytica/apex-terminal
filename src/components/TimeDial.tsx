@@ -5,12 +5,29 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApexStore } from "@/stores/useApexStore";
 import type { TimeGranularity, TemporalEvent } from "@/lib/temporal-data";
 import { getEventsInRange } from "@/lib/temporal-data";
+import {
+  computeActivitySeries,
+  gradientFromActivity,
+} from "@/lib/timeline/activity-heatmap";
 
-const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string }[] = [
-  { value: "hour", label: "1H" },
-  { value: "day", label: "1D" },
-  { value: "week", label: "1W" },
-  { value: "month", label: "1M" },
+// Resolution of the network-activity heatmap behind the track. 120
+// buckets ≈ 12h-wide cells on a 60-day window; fine enough to read
+// hot-spots as distinct bands, coarse enough that the gradient string
+// stays short (~240 colour stops, ~3KB).
+const HEATMAP_BUCKETS = 120;
+
+// Two groups so we can render a subtle visual divider between fast presets
+// (sub-monthly, suitable for daily/weekly FRED + EIA Hormuz) and long presets
+// (year+, suitable for World Bank annual / WGI governance). The divider is
+// rendered inline in the JSX below.
+const GRANULARITY_OPTIONS: { value: TimeGranularity; label: string; group: "short" | "long" }[] = [
+  { value: "hour", label: "1H", group: "short" },
+  { value: "day", label: "1D", group: "short" },
+  { value: "week", label: "1W", group: "short" },
+  { value: "month", label: "1M", group: "short" },
+  { value: "year", label: "1Y", group: "long" },
+  { value: "5year", label: "5Y", group: "long" },
+  { value: "all", label: "ALL", group: "long" },
 ];
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
@@ -37,6 +54,12 @@ function formatDate(ts: number, granularity: TimeGranularity): string {
         month: "short",
         year: "2-digit",
       });
+    case "year":
+    case "5year":
+    case "all":
+      // For long presets, year is the only meaningful x-axis label —
+      // showing month/day on a multi-year axis is noise.
+      return d.toLocaleDateString("en-US", { year: "numeric" });
   }
 }
 
@@ -87,6 +110,15 @@ function generateTicks(
       break;
     case "month":
       step = DAY * 30;
+      break;
+    case "year":
+      step = DAY * 90; // quarterly ticks across a 1y span
+      break;
+    case "5year":
+      step = DAY * 365; // annual ticks across 5y
+      break;
+    case "all":
+      step = DAY * 365 * 5; // 5-year ticks across the full span
       break;
   }
 
@@ -140,6 +172,7 @@ export default function TimeDial() {
     stepEpoch,
     setActiveTimeline,
     branchFromCurrentEpoch,
+    setTimelineDragging,
   } = useApexStore();
 
   const trackRef = useRef<HTMLDivElement>(null);
@@ -148,6 +181,14 @@ export default function TimeDial() {
   const [rangeAnchor, setRangeAnchor] = useState<number | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<TemporalEvent | null>(null);
   const [historicalPlaying, setHistoricalPlaying] = useState(false);
+  // Granularity row used to render all 7 presets (1H..ALL) inline,
+  // which crowded the dial header on narrow viewports. Now collapses
+  // to a single chip showing the active preset; clicking expands the
+  // full row, picking any preset re-collapses. User feedback:
+  // "the time dial itself has a very extensive selection window …
+  // we should make that collapsible so there's more room for the
+  // time dial itself."
+  const [granularityExpanded, setGranularityExpanded] = useState(false);
   const historicalPlayRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
 
@@ -166,6 +207,9 @@ export default function TimeDial() {
       case "day": return DAY;
       case "week": return DAY * 7;
       case "month": return DAY * 30;
+      case "year": return DAY * 30; // step monthly through a 1y span
+      case "5year": return DAY * 90; // step quarterly through 5y
+      case "all": return DAY * 365; // step annually through ALL
     }
   }, [timelineGranularity]);
 
@@ -249,6 +293,26 @@ export default function TimeDial() {
     [temporalData, start, end],
   );
 
+  // Network-activity heatmap behind the track. Quantitative — Σ |Δω|
+  // across all nodes with history covering each bucket, per-second
+  // normalized, then p95-clamped so a single spike doesn't crush the
+  // rest of the gradient. See lib/timeline/activity-heatmap.ts.
+  // Recomputes only on temporalData / window changes — feed ticks
+  // append to history but don't re-allocate the Map, so this stays
+  // referentially stable across live ticks (recomputes on each
+  // batched store mutation that swaps temporalData, which is the
+  // intended behaviour: live edits → fresh heatmap).
+  const activityGradient = useMemo(() => {
+    const series = computeActivitySeries(
+      temporalData,
+      start,
+      end,
+      HEATMAP_BUCKETS,
+    );
+    if (!series.hasSignal) return null;
+    return gradientFromActivity(series);
+  }, [temporalData, start, end]);
+
   // Events within selection (for context)
   const selectionEventCount = useMemo(() => {
     if (!timelineSelection || !temporalData) return 0;
@@ -303,10 +367,14 @@ export default function TimeDial() {
 
       // Normal drag = scrub
       setIsDragging(true);
+      // Tell the TimeSeriesOverlay to pin its tooltip to the dial position
+      // while we drag, so the smaller curves show their values next to the
+      // playhead instead of just an unlabeled line.
+      setTimelineDragging(true);
       setTimelineSelection(null); // Clear selection on normal click
       handleTrackScrub(e.clientX);
     },
-    [handleTrackScrub, replayActive, pixelToTimestamp, setTimelineSelection],
+    [handleTrackScrub, replayActive, pixelToTimestamp, setTimelineSelection, setTimelineDragging],
   );
 
   const handlePointerMove = useCallback(
@@ -329,7 +397,8 @@ export default function TimeDial() {
     setIsDragging(false);
     setIsRangeSelecting(false);
     setRangeAnchor(null);
-  }, []);
+    setTimelineDragging(false);
+  }, [setTimelineDragging]);
 
   // Criticality display for cascade mode
   let critLabel = "STABLE";
@@ -439,6 +508,15 @@ export default function TimeDial() {
           case "month":
             step = DAY * 30;
             break;
+          case "year":
+            step = DAY * 30;
+            break;
+          case "5year":
+            step = DAY * 90;
+            break;
+          case "all":
+            step = DAY * 365;
+            break;
         }
 
         if (e.key === "ArrowLeft" && e.shiftKey) {
@@ -468,7 +546,10 @@ export default function TimeDial() {
   if (!temporalData) return null;
 
   return (
-    <div className="relative flex items-center gap-3 px-4 py-2 border-t border-border bg-surface-elevated/90 backdrop-blur-sm select-none">
+    <div
+      data-tour="time-dial"
+      className="relative flex items-center gap-3 px-4 py-2 border-t border-border bg-surface-elevated/90 backdrop-blur-sm select-none"
+    >
       {/* Label — switches between Time Dial and CASCADE MODE */}
       <div className="flex flex-col items-center gap-0.5 min-w-[72px]">
         <AnimatePresence mode="wait">
@@ -585,28 +666,67 @@ export default function TimeDial() {
             exit={{ opacity: 0, width: 0 }}
             className="flex items-center gap-1 overflow-hidden"
           >
-            <div className="flex gap-0.5 rounded border border-border overflow-hidden">
-              {GRANULARITY_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTimelineGranularity(opt.value)}
-                  className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
-                  style={{
-                    backgroundColor:
-                      timelineGranularity === opt.value
-                        ? "rgba(0,229,255,0.15)"
-                        : "transparent",
-                    color:
-                      timelineGranularity === opt.value
-                        ? "var(--accent-cyan)"
-                        : "var(--text-muted)",
-                    borderRight: "1px solid var(--border)",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            {granularityExpanded ? (
+              <div className="flex gap-0.5 rounded border border-border overflow-hidden">
+                {GRANULARITY_OPTIONS.map((opt, i) => {
+                  // Insert a slightly heavier separator between "month" (short
+                  // group) and "year" (long group) so the eye picks up the
+                  // cadence-tier boundary without needing a legend.
+                  const prev = i > 0 ? GRANULARITY_OPTIONS[i - 1] : null;
+                  const isGroupBoundary = prev && prev.group !== opt.group;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setTimelineGranularity(opt.value);
+                        setGranularityExpanded(false);
+                      }}
+                      className="px-1.5 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider transition-colors"
+                      style={{
+                        backgroundColor:
+                          timelineGranularity === opt.value
+                            ? "rgba(0,229,255,0.15)"
+                            : "transparent",
+                        color:
+                          timelineGranularity === opt.value
+                            ? "var(--accent-cyan)"
+                            : "var(--text-muted)",
+                        borderRight: "1px solid var(--border)",
+                        borderLeft: isGroupBoundary
+                          ? "1px solid var(--border-bright)"
+                          : undefined,
+                      }}
+                      title={
+                        opt.value === "year"
+                          ? "1 year window — for annual signals (World Bank, WGI)"
+                          : opt.value === "5year"
+                            ? "5 year window — multi-year trend on annual signals"
+                            : opt.value === "all"
+                              ? "Full data span — shows every published observation"
+                              : undefined
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <button
+                onClick={() => setGranularityExpanded(true)}
+                className="px-2 py-0.5 text-[8px] font-[family-name:var(--font-michroma)] tracking-wider rounded border border-border flex items-center gap-1 hover:bg-white/5 transition-colors"
+                style={{
+                  color: "var(--accent-cyan)",
+                  backgroundColor: "rgba(0,229,255,0.08)",
+                }}
+                title="Click to change time-window preset"
+              >
+                <span>
+                  {GRANULARITY_OPTIONS.find((o) => o.value === timelineGranularity)?.label ?? "—"}
+                </span>
+                <span className="opacity-60 text-[7px]">▾</span>
+              </button>
+            )}
             {/* Historical play/pause button — only in non-live, non-replay mode */}
             {!isLive && (
               <button
@@ -685,12 +805,26 @@ export default function TimeDial() {
         <div
           ref={trackRef}
           data-timedial-track="true"
-          className="relative h-6 cursor-crosshair rounded"
-          style={{ backgroundColor: "rgba(26,28,46,0.8)" }}
+          className="relative h-6 cursor-crosshair rounded overflow-hidden"
+          style={{ backgroundColor: "color-mix(in srgb, var(--border) 80%, transparent)" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
         >
+          {/* Network-activity heatmap. Green (quiet) → amber → red
+              (active) per-bucket strip, computed from real ω history
+              and aligned to the same start→end window as the track
+              itself. Sits behind all other track decorations so the
+              cursor / fill / selection remain legible on top. */}
+          {activityGradient && (
+            <div
+              aria-hidden
+              className="absolute inset-0 pointer-events-none rounded"
+              title="Network activity (Σ |Δω| across nodes per bucket, p95-normalized)"
+              style={{ background: activityGradient }}
+            />
+          )}
+
           {/* Filled portion */}
           <div
             className="absolute top-0 left-0 h-full rounded-l transition-[width] duration-75"
@@ -917,14 +1051,14 @@ export default function TimeDial() {
                             : bufferValue < 35
                               ? "var(--accent-amber)"
                               : "var(--accent-cyan)"
-                          : "rgba(90, 94, 114, 0.2)",
+                          : "color-mix(in srgb, var(--text-muted) 20%, transparent)",
                     }}
                   />
                 ))}
               </div>
             </div>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Timeline tabs */}
             <div className="flex items-center gap-0.5">
@@ -981,7 +1115,7 @@ export default function TimeDial() {
               BRANCH
             </button>
 
-            <div className="h-5 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+            <div className="h-5 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
             {/* Stop button */}
             <button

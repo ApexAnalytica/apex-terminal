@@ -156,7 +156,7 @@ export default function ReplayControls() {
         style={{
           background: "rgba(10, 11, 16, 0.85)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(90, 94, 114, 0.3)",
+          border: "1px solid color-mix(in srgb, var(--text-muted) 30%, transparent)",
         }}
       >
         {/* Transport controls */}
@@ -187,7 +187,7 @@ export default function ReplayControls() {
           </button>
         </div>
 
-        <div className="h-6 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-6 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
         {/* Speed selector */}
         <div className="flex items-center gap-1">
@@ -208,7 +208,7 @@ export default function ReplayControls() {
           ))}
         </div>
 
-        <div className="h-6 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-6 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
         {/* Epoch slider */}
         <div className="flex items-center gap-2 flex-1 min-w-[160px]">
@@ -232,7 +232,7 @@ export default function ReplayControls() {
           </span>
         </div>
 
-        <div className="h-6 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-6 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
         {/* Criticality display */}
         <div className="flex flex-col items-center gap-1">
@@ -256,14 +256,14 @@ export default function ReplayControls() {
                         : bufferValue < 35
                           ? "var(--accent-amber)"
                           : "var(--accent-cyan)"
-                      : "rgba(90, 94, 114, 0.2)",
+                      : "color-mix(in srgb, var(--text-muted) 20%, transparent)",
                 }}
               />
             ))}
           </div>
         </div>
 
-        <div className="h-6 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-6 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
         {/* Stop button */}
         <button
@@ -284,7 +284,7 @@ export default function ReplayControls() {
         style={{
           background: "rgba(10, 11, 16, 0.75)",
           backdropFilter: "blur(12px)",
-          border: "1px solid rgba(90, 94, 114, 0.2)",
+          border: "1px solid color-mix(in srgb, var(--text-muted) 20%, transparent)",
         }}
       >
         {/* Timeline tabs */}
@@ -326,7 +326,7 @@ export default function ReplayControls() {
           </button>
         )}
 
-        <div className="h-4 w-px" style={{ background: "rgba(90, 94, 114, 0.3)" }} />
+        <div className="h-4 w-px" style={{ background: "color-mix(in srgb, var(--text-muted) 30%, transparent)" }} />
 
         {/* Branch button */}
         <button

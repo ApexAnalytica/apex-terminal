@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useDeferredValue, useMemo, useState } from "react";
 import { OmegaState, DoomsdayState, AlertLevel, CausalGraph } from "@/lib/types";
 import { getStatusColor } from "@/lib/omega-engine";
+import { computeSystemFragility } from "@/lib/omega-system";
 import { useFilteredGraph } from "@/hooks/useFilteredGraph";
 import { useApexStore } from "@/stores/useApexStore";
 import type { TemporalDataset } from "@/lib/temporal-data";
@@ -12,14 +12,6 @@ interface CDOmegaMonitorProps {
   state: OmegaState;
   doomsday: DoomsdayState;
   alertLevel: AlertLevel;
-}
-
-/** Compute average ΩF composite across all nodes (0-10 scale) */
-function computeAvgOmega(graph: CausalGraph): number {
-  const nodes = graph.nodes;
-  if (nodes.length === 0) return 0;
-  const sum = nodes.reduce((acc, n) => acc + (n.omegaFragility?.composite ?? 0), 0);
-  return sum / nodes.length;
 }
 
 /** Compute max ΩF composite across all nodes (0-10 scale) */
@@ -112,9 +104,22 @@ export default function CDOmegaMonitor({
 
   const hasNodes = filteredGraph.nodes.length > 0;
 
-  const avgOmega = useMemo(() => computeAvgOmega(filteredGraph), [filteredGraph]);
+  // System-level ΩF (ΩSF/ΩSX/contagion/buffer). The status badge, buffer bar
+  // and regime now derive from the throughput-weighted ΩSF rather than an
+  // unweighted mean of composites — the principled system metric.
+  const sys = useMemo(() => computeSystemFragility(filteredGraph), [filteredGraph]);
+  const avgOmega = sys.omegaSF;
   const maxOmega = useMemo(() => computeMaxOmega(filteredGraph), [filteredGraph]);
-  const avgPathLen = useMemo(() => computeAvgPathLength(filteredGraph), [filteredGraph]);
+  // computeAvgPathLength does BFS from every node (APSP) — O(N·(N+E)),
+  // ~121K ops on the default ~350-node graph. It used to run
+  // synchronously on every filteredGraph reference flip, which on
+  // LAUNCH WORKSPACE landed in the same tick as the canvas mount and
+  // on feed ticks would block any concurrent input. The displayed
+  // value is just a number rounded to 1-2 decimals, so a one-frame
+  // stale read is fine. `useDeferredValue` reuses the same pattern
+  // already in StructuralMetrics for omega-bridge-density.
+  const deferredGraph = useDeferredValue(filteredGraph);
+  const avgPathLen = useMemo(() => computeAvgPathLength(deferredGraph), [deferredGraph]);
   const omegaPct = useMemo(() => (hasNodes ? (avgOmega / 10) * 100 : 100), [avgOmega, hasNodes]);
   const derivedStatus = useMemo(() => (hasNodes ? deriveStatusLabel(avgOmega) : { status: "NOMINAL", color: "var(--accent-green)" }), [avgOmega, hasNodes]);
   const derivedAlert = useMemo(() => (hasNodes ? deriveAlertColor(avgOmega) : { level: "GREEN", color: "#00e676" }), [avgOmega, hasNodes]);
@@ -141,6 +146,10 @@ export default function CDOmegaMonitor({
 
   // Secondary metrics for overflow menu on small screens
   const secondaryMetrics = [
+    { label: "ΩSF", value: hasNodes ? sys.omegaSF.toFixed(1) : "—" },
+    { label: "ΩSX", value: hasNodes ? sys.omegaSX.toFixed(1) : "—" },
+    { label: "CONTAGION", value: hasNodes ? String(sys.contagionRadius) : "—" },
+    { label: "BUFFER", value: hasNodes ? `${sys.bufferHorizon}e` : "—" },
     { label: "AVG PATH", value: avgPathLen.toFixed(2) },
     { label: "MAX ΩF", value: maxOmega.toFixed(1) },
     { label: "DENSITY", value: (filteredGraph.metadata.density * 100).toFixed(1) + "%" },
@@ -187,28 +196,29 @@ export default function CDOmegaMonitor({
                 : i < segments * 0.35
                   ? "var(--accent-amber)"
                   : "var(--accent-green)";
+            const isCritical =
+              filled && derivedStatus.status === "CRITICAL";
             return (
-              <motion.div
+              <div
                 key={i}
                 className="h-4 w-[6px] rounded-[1px] hidden sm:block"
                 style={{
                   backgroundColor: filled ? segColor : "var(--border)",
                   opacity: filled ? 1 : 0.3,
+                  animation: isCritical
+                    ? "omega-segment-critical 0.5s ease-in-out infinite"
+                    : undefined,
                 }}
-                animate={
-                  filled && derivedStatus.status === "CRITICAL"
-                    ? { opacity: [1, 0.3, 1] }
-                    : {}
-                }
-                transition={
-                  derivedStatus.status === "CRITICAL"
-                    ? { duration: 0.5, repeat: Infinity }
-                    : {}
-                }
               />
             );
           })}
         </div>
+        {/* Buffer bar caption row. The third cell used to repeat the
+            derived status (ELEVATED / CRITICAL / SAFE) which the Status
+            Badge to the right already shows in larger type — duplicate
+            text in tight header space, called out by the user as filler.
+            Dropped; the Ω marker + percentage are the non-redundant
+            pieces and stay. */}
         <div className="flex justify-between">
           <span className="text-[9px] font-mono" style={{ color: "var(--accent-red)" }}>
             &Omega;
@@ -216,29 +226,24 @@ export default function CDOmegaMonitor({
           <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)" }}>
             {hasNodes ? `${omegaPct.toFixed(1)}%` : `${state.buffer.toFixed(1)}%`}
           </span>
-          <span className="text-[9px] font-mono hidden sm:block" style={{ color: "var(--accent-green)" }}>
-            {derivedStatus.status === "NOMINAL" ? "SAFE" : derivedStatus.status}
-          </span>
         </div>
       </div>
 
-      {/* Status Badge — always visible */}
-      <motion.div
+      {/* Status Badge — always visible. CSS keyframe replaces a
+          framer-motion animate prop; `--alert-color` lets the keyframe
+          flash between displayColor and transparent without the JS
+          animation runtime. */}
+      <div
         className="flex items-center gap-2 rounded border px-2 lg:px-3 py-1.5 shrink-0"
         style={{
           borderColor: displayColor,
           backgroundColor: `color-mix(in srgb, ${displayColor} 8%, transparent)`,
+          ["--alert-color" as string]: displayColor,
+          animation:
+            derivedStatus.status === "CRITICAL"
+              ? "omega-badge-critical 1s ease-in-out infinite"
+              : undefined,
         }}
-        animate={
-          derivedStatus.status === "CRITICAL"
-            ? { borderColor: [displayColor, "transparent", displayColor] }
-            : {}
-        }
-        transition={
-          derivedStatus.status === "CRITICAL"
-            ? { duration: 1, repeat: Infinity }
-            : {}
-        }
       >
         <div
           className="h-2 w-2 rounded-full shrink-0"
@@ -250,7 +255,7 @@ export default function CDOmegaMonitor({
         >
           {derivedStatus.status}
         </span>
-      </motion.div>
+      </div>
 
       {/* Shock Count — hidden below sm */}
       <div className="hidden sm:flex flex-col items-center shrink-0">
@@ -278,6 +283,23 @@ export default function CDOmegaMonitor({
             {edgeCount}
           </span>
           <span className="text-[8px] text-text-muted tracking-wider">EDGES</span>
+        </div>
+      </div>
+
+      {/* System-level ΩF — ΩSF (throughput-weighted) + ΩSX (exposure-weighted).
+          The principled aggregations of node ΩF; hidden below lg. */}
+      <div className="hidden lg:flex items-center gap-3 shrink-0" title="ΩSF: throughput-weighted system fragility · ΩSX: exposure-weighted (concentration) system fragility">
+        <div className="flex flex-col items-center">
+          <span className="font-mono text-sm font-bold tabular-nums" style={{ color: displayColor }}>
+            {hasNodes ? sys.omegaSF.toFixed(1) : "—"}
+          </span>
+          <span className="text-[8px] text-text-muted tracking-wider">ΩSF</span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="font-mono text-sm font-bold tabular-nums" style={{ color: "var(--text-muted)" }}>
+            {hasNodes ? sys.omegaSX.toFixed(1) : "—"}
+          </span>
+          <span className="text-[8px] text-text-muted tracking-wider">ΩSX</span>
         </div>
       </div>
 

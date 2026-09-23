@@ -1,0 +1,155 @@
+{
+  "id": "synthetic-cgm-pcmci-plus-v0-2-0",
+  "cohortId": "synthetic-cgm-2026-05",
+  "cohortSourceHash": "synth-cgm-deterministic-lcg-seed-0xC6707FB1-v0.1.0",
+  "algorithm": {
+    "id": "pcmci-plus",
+    "version": "0.2.0"
+  },
+  "params": {
+    "maxLagSeconds": 1800,
+    "gridSeconds": 300,
+    "pcAlpha": 0.05,
+    "mciAlpha": 0.05,
+    "contempAlpha": 0.05,
+    "maxCondsDim": 3,
+    "maxCondsDimMci": 5,
+    "minSubjects": 3,
+    "minGridPoints": 30
+  },
+  "startedAt": "2026-05-30T00:00:00.000Z",
+  "completedAt": "2026-05-30T00:00:01.000Z",
+  "status": "succeeded",
+  "result": {
+    "variables": [
+      "cgm_glucose_mgdl",
+      "meal_event",
+      "insulin_fast_units",
+      "insulin_slow_units"
+    ],
+    "edges": [
+      {
+        "source": "meal_event",
+        "target": "cgm_glucose_mgdl",
+        "lag": 300,
+        "strength": 0.4461293359066086,
+        "pValue": 0,
+        "evidence": "MCI partial-r=0.446 across 9 subjects at lag 300s, conditioning on 5 lagged covariates; BH-adjusted p=0.00e+0."
+      },
+      {
+        "source": "meal_event",
+        "target": "cgm_glucose_mgdl",
+        "lag": 600,
+        "strength": -0.2312493479115544,
+        "pValue": 0,
+        "evidence": "MCI partial-r=-0.231 across 9 subjects at lag 600s, conditioning on 5 lagged covariates; BH-adjusted p=0.00e+0."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 600,
+        "strength": -0.22308534724371754,
+        "pValue": 0,
+        "evidence": "MCI partial-r=-0.223 across 9 subjects at lag 600s, conditioning on 5 lagged covariates; BH-adjusted p=0.00e+0."
+      },
+      {
+        "source": "meal_event",
+        "target": "insulin_fast_units",
+        "lag": 900,
+        "strength": 0.1035519804774317,
+        "pValue": 5.632277134459685e-7,
+        "evidence": "MCI partial-r=0.104 across 9 subjects at lag 900s, conditioning on 5 lagged covariates; BH-adjusted p=5.63e-7."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 900,
+        "strength": -0.08429925543507655,
+        "pValue": 0.00007900362166760441,
+        "evidence": "MCI partial-r=-0.084 across 9 subjects at lag 900s, conditioning on 5 lagged covariates; BH-adjusted p=7.90e-5."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "meal_event",
+        "lag": 300,
+        "strength": 0.08064538934434218,
+        "pValue": 0.00011596294821732596,
+        "evidence": "MCI partial-r=0.081 across 9 subjects at lag 300s, conditioning on 5 lagged covariates; BH-adjusted p=1.16e-4."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "meal_event",
+        "lag": 600,
+        "strength": 0.05782111774738828,
+        "pValue": 0.006723812728648471,
+        "evidence": "MCI partial-r=0.058 across 9 subjects at lag 600s, conditioning on 5 lagged covariates; BH-adjusted p=6.72e-3."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "lag": 900,
+        "strength": 0.05097450119823391,
+        "pValue": 0.015350330260571563,
+        "evidence": "MCI partial-r=0.051 across 9 subjects at lag 900s, conditioning on 5 lagged covariates; BH-adjusted p=1.54e-2."
+      },
+      {
+        "source": "insulin_fast_units",
+        "target": "cgm_glucose_mgdl",
+        "lag": 300,
+        "strength": -0.03653899643550965,
+        "pValue": 0.043112934394278275,
+        "evidence": "MCI partial-r=-0.037 across 9 subjects at lag 300s, conditioning on 5 lagged covariates; BH-adjusted p=4.31e-2."
+      },
+      {
+        "source": "cgm_glucose_mgdl",
+        "target": "insulin_fast_units",
+        "strength": 0.05140793409493869,
+        "pValue": 0.010234386335306045,
+        "evidence": "Contemporaneous |r|=0.051 after conditioning on 8 covariates; orientation undetermined after Meek (no v-structure pinned the direction).",
+        "endpointMarks": {
+          "sourceMark": "circle",
+          "targetMark": "circle"
+        }
+      },
+      {
+        "source": "meal_event",
+        "target": "insulin_fast_units",
+        "strength": 0.9511771933817017,
+        "pValue": 0,
+        "evidence": "Contemporaneous |r|=0.951 after conditioning on 5 covariates; orientation undetermined after Meek (no v-structure pinned the direction).",
+        "endpointMarks": {
+          "sourceMark": "circle",
+          "targetMark": "circle"
+        }
+      }
+    ],
+    "diagnostics": {
+      "nSubjectsUsed": 9,
+      "nFinalCandidates": 23,
+      "nEdgesAfterFDR": 9,
+      "averageCondSize": 4.826086956521739,
+      "params": {
+        "maxLagSeconds": 1800,
+        "gridSeconds": 300,
+        "pcAlpha": 0.05,
+        "mciAlpha": 0.05,
+        "maxCondsDim": 3,
+        "maxCondsDimMci": 5,
+        "minSubjects": 3,
+        "minGridPoints": 30
+      },
+      "contemporaneousPhase": {
+        "ciTests": 14,
+        "edgesRemoved": 4,
+        "vStructuresFound": 0,
+        "meekIterations": 1,
+        "meekR1Fires": 0,
+        "meekR2Fires": 0,
+        "meekR3Fires": 0,
+        "edgesEmitted": 2,
+        "edgesDirected": 0,
+        "edgesUndirected": 2
+      }
+    }
+  }
+}

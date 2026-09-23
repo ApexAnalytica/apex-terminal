@@ -1,0 +1,36 @@
+[
+  {
+    "edge_id": "ip_fed_funds_effective__ip_real_rate_10y",
+    "method": "ardl_direct",
+    "source_proxy": "US 10y Treasury yield",
+    "target_proxy": "synthetic real 10y rate",
+    "long_run_multiplier": 0.031,
+    "ci_lower": -0.029,
+    "ci_upper": 0.091,
+    "selected_lag_months": 1,
+    "n_obs": 280,
+    "sample_period": "1994-01-31 \u2013 2017-06-30",
+    "fitted_weight": 0.031,
+    "fitted_lag_months": 1,
+    "fitted_confidence": 0.508,
+    "sign": 1,
+    "note": "Mechanical identity (real = nominal - inflation proxy); fit included for completeness."
+  },
+  {
+    "edge_id": "ip_real_rate_10y__ip_dxy",
+    "method": "literature_cited",
+    "source_proxy": "synthetic real 10y rate (proxy)",
+    "target_proxy": "Synthetic DXY",
+    "long_run_multiplier": null,
+    "ci_lower": null,
+    "ci_upper": null,
+    "selected_lag_months": 6,
+    "n_obs": 0,
+    "sample_period": "n/a \u2014 literature-cited",
+    "fitted_weight": 0.6,
+    "fitted_lag_months": 6,
+    "fitted_confidence": 0.65,
+    "sign": 1,
+    "note": "Engel-Mark-West 2007 + Stavrakeva-Tang 2024: 1pp rise in 10y real-rate differential maps to +5-7% DXY appreciation over 12-18 months. Empirical refit on synthetic-proxy real rate produced near-zero monthly fit (\u03b2=-0.000 [-0.001, 0.001], n=219) \u2014 proxy is too noisy for short-horizon channel detection. Refit pending FRED DFII10 access."
+  }
+]

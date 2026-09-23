@@ -8,64 +8,21 @@ import {
   CausalGraph,
 } from "./types";
 
-const PRESET_SHOCKS: CausalShock[] = [
-  {
-    id: "hormuz_closure",
-    name: "STRAIT OF HORMUZ CLOSURE",
-    severity: 0.50,
-    category: "geopolitical",
-    description: "Naval blockade shuts Strait of Hormuz — 21M bpd crude + 25% global LNG transit halted",
-    physicalConstraint: "Only bypass: East-West Pipeline (5M bpd max vs 21M bpd transit volume)",
-  },
-  {
-    id: "abqaiq_strike",
-    name: "ABQAIQ PROCESSING ATTACK",
-    severity: 0.45,
-    category: "energy",
-    description: "Drone/missile strike disables Abqaiq — 5.7M bpd processing capacity offline",
-    physicalConstraint: "Single-site concentration: 50% of Saudi processing capacity",
-  },
-  {
-    id: "lng_train_failure",
-    name: "RAS LAFFAN LNG TRAIN OUTAGE",
-    severity: 0.35,
-    category: "energy",
-    description: "Unplanned shutdown of 2 LNG mega-trains at Ras Laffan — 16 Mtpa capacity loss",
-    physicalConstraint: "Cryogenic heat exchanger replacement: 12-18 month lead time",
-  },
-  {
-    id: "fertilizer_export_ban",
-    name: "UREA EXPORT RESTRICTION",
-    severity: 0.30,
-    category: "supply",
-    description: "Emergency export controls on urea/ammonia — QAFCO output diverted to domestic",
-    physicalConstraint: "Food security override: Qatar domestic demand priority clause",
-  },
-  {
-    id: "phosphate_contamination",
-    name: "PHOSPHATE ORE CONTAMINATION",
-    severity: 0.25,
-    category: "supply",
-    description: "Cadmium contamination in Al Jalamid ore body — Ma'aden P3 output suspended",
-    physicalConstraint: "EU cadmium limit: 60mg/kg P2O5 — contaminated ore exceeds threshold",
-  },
-  {
-    id: "gas_grid_overload",
-    name: "MASTER GAS SYSTEM OVERLOAD",
-    severity: 0.40,
-    category: "energy",
-    description: "Summer peak demand exceeds MGS pipeline capacity — industrial curtailment",
-    physicalConstraint: "Pipeline hydraulic limit: 9.6 Bcf/d throughput ceiling",
-  },
-  {
-    id: "food_price_shock",
-    name: "GLOBAL FOOD PRICE SPIKE",
-    severity: 0.35,
-    category: "geopolitical",
-    description: "DAP/urea price surge >200% — importing nations face procurement crisis",
-    physicalConstraint: "Haber-Bosch economics: natural gas = 70-90% of ammonia production cost",
-  },
-];
+// Preset shock library — intentionally empty.
+//
+// The previous list was a domain-specific Saudi/Gulf scenario set
+// (Strait of Hormuz, Abqaiq, Ras Laffan, QAFCO, Ma'aden, MGS, food
+// price spike) that read as clutter to most users and tied the demo
+// to one geopolitical narrative. The platform's value is the engines
+// (causal discovery, criticality, interdiction), not a curated catalog
+// of scenarios — when a customer wants scenario presets they should
+// supply their own through the API, the import path, or a profile-
+// scoped catalog we add per-engagement.
+//
+// Active shocks injected by the user via direct node selection still
+// flow through the same `addShock` / cascade pipeline; only the
+// pre-baked SCENARIOS strip in the right rail is now empty by default.
+const PRESET_SHOCKS: CausalShock[] = [];
 
 export function getPresetShocks(): CausalShock[] {
   return PRESET_SHOCKS;

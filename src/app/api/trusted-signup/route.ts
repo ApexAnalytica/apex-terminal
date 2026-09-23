@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // Service-role client — bypasses RLS, never exposed to the browser.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-init: see comment in `src/app/api/admin/billing/expire/route.ts`.
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,17 +48,17 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Create user via admin API (service-role) ─────────────────
-    // The handle_new_user trigger will fire and create the profiles
-    // row with access_type from raw_user_meta_data. Because this
-    // call comes from the service-role (not the browser), the
-    // metadata is trustworthy.
+    // The handle_new_user trigger reads `tier` from raw_user_meta_data
+    // when invoked under service-role. Browser callers cannot reach
+    // this path, so the metadata is trustworthy.
+    const supabase = getSupabase();
     const { data, error: createError } =
       await supabase.auth.admin.createUser({
         email,
         password,
         email_confirm: true, // skip email verification for trusted users
         user_metadata: {
-          access_type: "trusted",
+          tier: "trusted",
           org_name: orgName || null,
         },
       });
@@ -82,7 +85,13 @@ export async function POST(request: NextRequest) {
     if (data.user) {
       const { error: updateError } = await supabase
         .from("profiles")
-        .update({ access_type: "trusted", trial_expires_at: null })
+        .update({
+          tier: "trusted",
+          subscription_status: "active",
+          trial_expires_at: null,
+          current_period_end: null,
+          access_type: "trusted",
+        })
         .eq("id", data.user.id);
 
       if (updateError) {

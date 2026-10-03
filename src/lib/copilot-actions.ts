@@ -16,6 +16,7 @@ import {
   executeActionsWithTrace,
   type ParsedActionTag,
   type ToolCallTrace,
+  type FailedActionAttempt,
 } from "./copilot/tool-registry";
 
 // Side-effect import: registers all built-in tools with the registry.
@@ -72,7 +73,14 @@ export async function processLlmActionsWithTrace(text: string): Promise<{
   displayText: string;
   actionResults: string[];
   toolCalls: ToolCallTrace[];
+  failedAttempts: FailedActionAttempt[];
 }> {
-  const { displayText, toolResults, toolCalls } = await executeActionsWithTrace(text);
-  return { displayText, actionResults: toolResults, toolCalls };
+  const { displayText, toolResults, toolCalls, failedAttempts } =
+    await executeActionsWithTrace(text);
+  return {
+    displayText,
+    actionResults: toolResults,
+    toolCalls,
+    failedAttempts,
+  };
 }

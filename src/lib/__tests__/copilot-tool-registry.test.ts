@@ -6,6 +6,8 @@ import {
   coerceAndValidate,
   executeTag,
   executeActions,
+  executeActionsWithTrace,
+  findFailedActionAttempts,
   renderToolsForPrompt,
   renderToolsAsJsonSchema,
   __resetRegistryForTests,
@@ -393,6 +395,127 @@ describe("renderToolsAsJsonSchema (proves MCP/Anthropic-compat)", () => {
     expect(isolate!.input_schema.type).toBe("object");
     expect(isolate!.input_schema.properties).toHaveProperty("query");
     expect(isolate!.input_schema.properties).toHaveProperty("ids");
+  });
+});
+
+// ─── Failed-action detection ────────────────────────────────────
+//
+// Captures the "near miss" signal — action-shaped strings the LLM
+// wrote but that didn't actually fire a tool. Motivated by Bug A
+// in the trace audit (square-bracket form like `[ACTION:foo:bar]`
+// that the parser silently dropped).
+
+describe("findFailedActionAttempts", () => {
+  const registered = new Set(["set_module", "select_node", "isolate_nodes"]);
+
+  it("captures square-bracket form as the canonical failure mode", () => {
+    const text = "Let me start. [ACTION:add_shock:TAIWAN_BLOCKADE] Done.";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      raw: "[ACTION:add_shock:TAIWAN_BLOCKADE]",
+      name: "add_shock",
+      reason: "square_brackets",
+    });
+  });
+
+  it("captures single-angle form as wrong_angle_count", () => {
+    const text = "Trying <ACTION:set_module:pearl> here.";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      name: "set_module",
+      reason: "wrong_angle_count",
+    });
+  });
+
+  it("captures double-angle form (<<...>>) as wrong_angle_count", () => {
+    const text = "Trying <<ACTION:set_module:pearl>> here.";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.reason).toBe("wrong_angle_count");
+  });
+
+  it("does NOT flag properly-formed triple-angle tags with a known tool", () => {
+    const text = "Switching modules. <<<ACTION:set_module:pearl>>>";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toEqual([]);
+  });
+
+  it("flags triple-angle tags with an unknown tool name", () => {
+    const text = "Trying <<<ACTION:teleport_user:mars>>> now.";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({
+      name: "teleport_user",
+      reason: "unknown_tool",
+    });
+  });
+
+  it("de-duplicates identical raw strings within one response", () => {
+    const text = "[ACTION:add_shock:TAIWAN] and again [ACTION:add_shock:TAIWAN] later.";
+    const found = findFailedActionAttempts(text, registered);
+    expect(found).toHaveLength(1);
+  });
+
+  it("returns an empty array on clean responses with no action-shaped text", () => {
+    const text = "Just analysis. No tool calls in this turn.";
+    expect(findFailedActionAttempts(text, registered)).toEqual([]);
+  });
+
+  it("captures mixed failure modes in source order", () => {
+    const text = `
+First [ACTION:add_shock:X] then <ACTION:select_node:Y> then <<<ACTION:unknown:Z>>>.
+    `.trim();
+    const found = findFailedActionAttempts(text, registered);
+    const reasons = found.map((f) => f.reason);
+    expect(reasons).toContain("square_brackets");
+    expect(reasons).toContain("wrong_angle_count");
+    expect(reasons).toContain("unknown_tool");
+    expect(found).toHaveLength(3);
+  });
+});
+
+describe("executeActionsWithTrace — failed-attempt integration", () => {
+  beforeEach(() => {
+    __resetRegistryForTests();
+  });
+
+  it("returns an empty failedAttempts array on a clean turn", async () => {
+    defineTool({
+      name: "noop",
+      description: "test",
+      params: {},
+      handler: () => "ok",
+    });
+    const result = await executeActionsWithTrace(
+      "Just text. <<<ACTION:noop>>>",
+      { getStore: () => ({}) as ApexState },
+    );
+    expect(result.failedAttempts).toEqual([]);
+    expect(result.toolCalls).toHaveLength(1);
+  });
+
+  it("surfaces a square-bracket near-miss alongside the executed tool call", async () => {
+    defineTool({
+      name: "set_module",
+      description: "test",
+      params: { module: { type: "string", required: true } },
+      legacyParam: "module",
+      handler: (p) => `module=${p.module}`,
+    });
+    const text =
+      "I'll switch modules. <<<ACTION:set_module:pearl>>> Also tried [ACTION:add_shock:TAIWAN].";
+    const result = await executeActionsWithTrace(text, {
+      getStore: () => ({}) as ApexState,
+    });
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]?.name).toBe("set_module");
+    expect(result.failedAttempts).toHaveLength(1);
+    expect(result.failedAttempts[0]).toMatchObject({
+      name: "add_shock",
+      reason: "square_brackets",
+    });
   });
 });
 
